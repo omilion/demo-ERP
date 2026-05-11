@@ -5,9 +5,20 @@ import cookiePlugin from './plugins/cookie.js'
 import jwtPlugin from './plugins/jwt.js'
 import prismaPlugin from './plugins/prisma.js'
 import authRoutes from './routes/auth/index.js'
+import { decorateRbac } from './middleware/rbac.js'
 
 export function buildApp(opts = {}) {
   const app = Fastify({ logger: opts.logger ?? true })
+
+  // Decorate synchronously so decorators are available before app.ready()
+  app.decorate('authenticate', async (request, reply) => {
+    try {
+      await request.jwtVerify()
+    } catch {
+      reply.status(401).send({ error: 'Unauthorized' })
+    }
+  })
+  decorateRbac(app)
 
   app.register(corsPlugin)
   app.register(cookiePlugin)

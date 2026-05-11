@@ -6,12 +6,4 @@ export default fp(async (fastify) => {
     secret: process.env.JWT_ACCESS_SECRET,
     sign: { expiresIn: process.env.JWT_ACCESS_EXPIRES || '15m' },
   })
-
-  fastify.decorate('authenticate', async (request, reply) => {
-    try {
-      await request.jwtVerify()
-    } catch {
-      reply.status(401).send({ error: 'Unauthorized' })
-    }
-  })
 })

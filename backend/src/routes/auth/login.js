@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
+import { randomUUID } from 'crypto'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -26,7 +27,7 @@ export default async function loginRoute(fastify) {
     })
 
     const refreshToken = jwt.sign(
-      { id: user.id },
+      { id: user.id, jti: randomUUID() },
       process.env.JWT_REFRESH_SECRET,
       { expiresIn: process.env.JWT_REFRESH_EXPIRES || '7d' }
     )
