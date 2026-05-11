@@ -1,0 +1,201 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["auth", "clientes", "catalogo", "ventas", "caja", "taller", "bodega"]
+}
+
+// ── AUTH ──────────────────────────────────────────────────────────────
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         Role
+  nombre       String
+  sucursalId   Int?      @map("sucursal_id")
+  activo       Boolean   @default(true)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  sessions     Session[]
+
+  @@map("users")
+  @@schema("auth")
+}
+
+model Session {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  refreshToken String   @unique @map("refresh_token")
+  expiresAt    DateTime @map("expires_at")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+  @@schema("auth")
+}
+
+enum Role {
+  admin
+  vendedor
+  bodeguero
+  cajero
+  taller
+  rrhh
+  solo_lectura
+
+  @@schema("auth")
+}
+
+// ── CLIENTES ─────────────────────────────────────────────────────────
+
+model Cliente {
+  id                 Int     @id @default(autoincrement())
+  rut                String  @unique
+  nombre             String
+  email              String?
+  telefono           String?
+  razonSocial        String? @map("razon_social")
+  limiteCredito      Float?  @map("limite_credito")
+  diasInactivoAlerta Int?    @map("dias_inactivo_alerta")
+  segmento           String? @default("C")
+  activo             Boolean @default(true)
+
+  @@map("clientes")
+  @@schema("clientes")
+}
+
+// ── CATALOGO ─────────────────────────────────────────────────────────
+
+model Producto {
+  id            Int     @id @default(autoincrement())
+  codigoInterno String  @unique @map("codigo_interno")
+  codigoBarra   String? @map("codigo_barra")
+  nombre        String
+  categoriaId   Int?    @map("categoria_id")
+  proveedorId   Int?    @map("proveedor_id")
+  precioLista   Float   @default(0) @map("precio_lista")
+  precioMarco   Float   @default(0) @map("precio_marco")
+  stock         Int     @default(0)
+  stockCritico  Int     @default(0) @map("stock_critico")
+  ubicacion     String?
+  visibleWeb    Boolean @default(false) @map("visible_web")
+  activo        Boolean @default(true)
+
+  @@map("productos")
+  @@schema("catalogo")
+}
+
+// ── VENTAS ───────────────────────────────────────────────────────────
+
+model Orden {
+  id                 Int         @id @default(autoincrement())
+  tipo               String
+  estado             String      @default("activa")
+  estadoPago         String      @default("no_pagada") @map("estado_pago")
+  estadoEntrega      String      @default("pendiente") @map("estado_entrega")
+  clienteId          Int?        @map("cliente_id")
+  userId             Int         @map("user_id")
+  sucursalId         Int?        @map("sucursal_id")
+  descuentoPct       Float       @default(0) @map("descuento_pct")
+  requiereAprobacion Boolean     @default(false) @map("requiere_aprobacion")
+  createdAt          DateTime    @default(now()) @map("created_at")
+  items              OrdenItem[]
+
+  @@map("ordenes")
+  @@schema("ventas")
+}
+
+model OrdenItem {
+  id             Int   @id @default(autoincrement())
+  ordenId        Int   @map("orden_id")
+  productoId     Int   @map("producto_id")
+  cantidad       Int
+  precioUnitario Float @map("precio_unitario")
+  orden          Orden @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+
+  @@map("orden_items")
+  @@schema("ventas")
+}
+
+// ── CAJA ─────────────────────────────────────────────────────────────
+
+model Caja {
+  id         Int     @id @default(autoincrement())
+  nombre     String
+  sucursalId Int?    @map("sucursal_id")
+  activa     Boolean @default(true)
+  turnos     Turno[]
+
+  @@map("cajas")
+  @@schema("caja")
+}
+
+model Turno {
+  id          Int              @id @default(autoincrement())
+  cajaId      Int              @map("caja_id")
+  userId      Int              @map("user_id")
+  estado      String           @default("abierto")
+  apertura    DateTime         @default(now())
+  cierre      DateTime?
+  caja        Caja             @relation(fields: [cajaId], references: [id])
+  movimientos MovimientoCaja[]
+
+  @@map("turnos")
+  @@schema("caja")
+}
+
+model MovimientoCaja {
+  id        Int      @id @default(autoincrement())
+  turnoId   Int      @map("turno_id")
+  tipo      String
+  monto     Float
+  medioPago String   @map("medio_pago")
+  createdAt DateTime @default(now()) @map("created_at")
+  turno     Turno    @relation(fields: [turnoId], references: [id])
+
+  @@map("movimientos_caja")
+  @@schema("caja")
+}
+
+// ── TALLER ───────────────────────────────────────────────────────────
+
+model Odt {
+  id         Int       @id @default(autoincrement())
+  estado     String    @default("pendiente")
+  prioridad  String    @default("normal")
+  vendedorId Int?      @map("vendedor_id")
+  operarioId Int?      @map("operario_id")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  items      OdtItem[]
+
+  @@map("odts")
+  @@schema("taller")
+}
+
+model OdtItem {
+  id         Int    @id @default(autoincrement())
+  odtId      Int    @map("odt_id")
+  productoId Int    @map("producto_id")
+  estado     String @default("pendiente")
+  cantidad   Int
+  odt        Odt    @relation(fields: [odtId], references: [id], onDelete: Cascade)
+
+  @@map("odt_items")
+  @@schema("taller")
+}
+
+// ── BODEGA ───────────────────────────────────────────────────────────
+
+model MovimientoBodega {
+  id         Int      @id @default(autoincrement())
+  productoId Int      @map("producto_id")
+  tipo       String
+  cantidad   Int
+  motivo     String
+  userId     Int      @map("user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("movimientos")
+  @@schema("bodega")
+}
