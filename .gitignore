@@ -1,3 +1,14 @@
-node_modules
+node_modules/
+dist/
 .env
-dist
+.env.local
+.env.*.local
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+ecosystem.config.cjs
+gh_actions_key
+gh_actions_key.pub

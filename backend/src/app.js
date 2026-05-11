@@ -31,7 +31,8 @@ export function buildApp(opts = {}) {
   return app
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+const __filename = new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1')
+if (process.argv[1].replace(/\\/g, '/') === __filename.replace(/\\/g, '/')) {
   const app = buildApp()
   try {
     await app.listen({ port: Number(process.env.PORT) || 3001, host: '0.0.0.0' })
