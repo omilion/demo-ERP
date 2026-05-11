@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   deploy:
     name: Build & Deploy
@@ -31,16 +34,16 @@ jobs:
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          printf '%s' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Deploy frontend
         run: |
           rsync -az --delete \
             --exclude='backend' \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
             frontend/dist/ \
-            -e "ssh -i ~/.ssh/deploy_key" \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/plastimar-erp/
 
       - name: Deploy backend
@@ -49,16 +52,12 @@ jobs:
             --exclude='node_modules' \
             --exclude='.env' \
             --exclude='ecosystem.config.cjs' \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
             backend/ \
-            -e "ssh -i ~/.ssh/deploy_key" \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/plastimar-erp/backend/
 
       - name: Restart API
         run: |
-          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
-            cd /var/www/plastimar-erp/backend
-            npm ci --omit=dev
-            npx prisma generate
-            npx prisma migrate deploy
-            pm2 reload ecosystem.config.cjs --update-env
-          EOF
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            "cd /var/www/plastimar-erp/backend && npm ci --omit=dev && npx prisma generate && npx prisma migrate deploy && pm2 reload ecosystem.config.cjs --update-env"
