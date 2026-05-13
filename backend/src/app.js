@@ -10,6 +10,7 @@ import clientesRoutes from './routes/clientes/index.js'
 import ventasRoutes from './routes/ventas/index.js'
 import odtsRoutes from './routes/odts/index.js'
 import cajaRoutes from './routes/caja/index.js'
+import dashboardStats from './routes/dashboard/stats.js'
 import { decorateRbac } from './middleware/rbac.js'
 
 export function buildApp(opts = {}) {
@@ -35,6 +36,7 @@ export function buildApp(opts = {}) {
   app.register(ventasRoutes, { prefix: '/api/ventas' })
   app.register(odtsRoutes, { prefix: '/api/odts' })
   app.register(cajaRoutes, { prefix: '/api/caja' })
+  app.register(dashboardStats, { prefix: '/api/dashboard' })
 
   app.get('/api/health', async () => ({ status: 'ok' }))
 

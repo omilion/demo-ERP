@@ -68,6 +68,25 @@ export default function CajaPage() {
         <KpiCard label="Movimientos" value={movimientos.length} icon="refreshCw" sublabel="Transacciones registradas" />
       </div>
 
+      {turno && (ingresos + egresos) > 0 && (
+        <div style={{ background: '#fff', borderRadius: 12, padding: '14px 20px', marginBottom: 16, border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Flujo del Turno</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
+              {Math.round(ingresos / (ingresos + egresos) * 100)}% ingresos · {Math.round(egresos / (ingresos + egresos) * 100)}% egresos
+            </span>
+          </div>
+          <div style={{ display: 'flex', height: 10, borderRadius: 99, overflow: 'hidden', gap: 2 }}>
+            <div style={{ flex: ingresos, background: 'var(--green-600)', borderRadius: '99px 0 0 99px', transition: 'flex 0.4s' }} />
+            <div style={{ flex: egresos, background: 'var(--red)', borderRadius: '0 99px 99px 0', transition: 'flex 0.4s' }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+            <span style={{ fontSize: 11, color: 'var(--green-600)', fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>+{fmt(ingresos)}</span>
+            <span style={{ fontSize: 11, color: 'var(--red)', fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>-{fmt(egresos)}</span>
+          </div>
+        </div>
+      )}
+
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Tabs tabs={[{ id: 'hoy', label: 'Hoy', count: movimientos.length }]} active={tab} onChange={setTab} />

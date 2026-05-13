@@ -37,10 +37,22 @@ export default function BodegaPage() {
     { key: 'codigoInterno', label: 'Código', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--text-2)' }}>{v}</span> },
     { key: 'nombre', label: 'Producto', wrap: true },
     { key: 'categoria', label: 'Categoría', render: v => v ? <Badge tone="gray">{v}</Badge> : null },
-    { key: 'stock', label: 'Stock', align: 'right', render: (v, row) => (
-      <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: v === 0 ? 'var(--red)' : v < row.stockCritico ? 'var(--amber)' : 'var(--green-600)' }}>{v}</span>
-    )},
-    { key: 'stockCritico', label: 'Mínimo', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace", color: 'var(--text-3)', fontSize: 12 }}>{v}</span> },
+    { key: 'stock', label: 'Stock / Mínimo', render: (v, row) => {
+      const min = row.stockCritico || 0
+      const color = v === 0 ? 'var(--red)' : v < min ? 'var(--amber)' : 'var(--green-600)'
+      const pct = min > 0 ? Math.min(100, Math.round((v / min) * 100)) : (v > 0 ? 100 : 0)
+      return (
+        <div style={{ minWidth: 110 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, fontSize: 12, color }}>{v}</span>
+            {min > 0 && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-3)' }}>/ {min}</span>}
+          </div>
+          <div style={{ height: 4, background: 'var(--border)', borderRadius: 99 }}>
+            <div style={{ height: '100%', width: pct + '%', background: color, borderRadius: 99, transition: 'width 0.3s' }} />
+          </div>
+        </div>
+      )
+    }},
     { key: 'estado', label: 'Estado', render: v => (
       <Badge tone={v === 'Sin stock' ? 'red' : v === 'Crítico' ? 'amber' : 'green'}>{v}</Badge>
     )},
