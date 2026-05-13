@@ -22,13 +22,17 @@ export default async function updateVenta(fastify) {
     if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
     const parsed = Schema.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
-    const result = await fastify.prisma.orden.updateMany({ where: { id }, data: parsed.data })
-    if (result.count === 0) return reply.code(404).send({ error: 'Venta no encontrada' })
-    const orden = await fastify.prisma.orden.findUnique({
-      where: { id },
-      include: { items: true },
-    })
-    const withCliente = await attachCliente(fastify, orden)
-    return { ...withCliente, total: computeTotal(orden.items, orden.descuentoPct) }
+    try {
+      const orden = await fastify.prisma.orden.update({
+        where: { id },
+        data: parsed.data,
+        include: { items: true },
+      })
+      const withCliente = await attachCliente(fastify, orden)
+      return { ...withCliente, total: computeTotal(orden.items, orden.descuentoPct) }
+    } catch (e) {
+      if (e.code === 'P2025') return reply.code(404).send({ error: 'Venta no encontrada' })
+      throw e
+    }
   })
 }

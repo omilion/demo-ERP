@@ -65,3 +65,56 @@ describe('POST /api/ventas', () => {
     }
   })
 })
+
+describe('GET /api/ventas/:id', () => {
+  let app, token
+
+  beforeAll(async () => { app = buildApp({ logger: false }); await app.ready(); token = await loginAs(app) })
+  afterAll(() => app.close())
+
+  it('returns venta with total and cliente', async () => {
+    const listRes = await app.inject({ method: 'GET', url: '/api/ventas', headers: { authorization: `Bearer ${token}` } })
+    const ventas = JSON.parse(listRes.body)
+    if (ventas.length === 0) return
+    const id = ventas[0].id
+    const res = await app.inject({ method: 'GET', url: `/api/ventas/${id}`, headers: { authorization: `Bearer ${token}` } })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body).toHaveProperty('total')
+  })
+
+  it('returns 404 for unknown id', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/ventas/999999', headers: { authorization: `Bearer ${token}` } })
+    expect(res.statusCode).toBe(404)
+  })
+})
+
+describe('PUT /api/ventas/:id', () => {
+  let app, token
+
+  beforeAll(async () => { app = buildApp({ logger: false }); await app.ready(); token = await loginAs(app) })
+  afterAll(() => app.close())
+
+  it('updates estadoPago and returns total', async () => {
+    const listRes = await app.inject({ method: 'GET', url: '/api/ventas', headers: { authorization: `Bearer ${token}` } })
+    const ventas = JSON.parse(listRes.body)
+    if (ventas.length === 0) return
+    const id = ventas[0].id
+    const res = await app.inject({
+      method: 'PUT', url: `/api/ventas/${id}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { estadoPago: 'Pagada' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body)).toHaveProperty('total')
+  })
+
+  it('returns 404 for unknown id', async () => {
+    const res = await app.inject({
+      method: 'PUT', url: '/api/ventas/999999',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { estadoPago: 'Pagada' },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+})
