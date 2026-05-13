@@ -19,9 +19,9 @@ export default async function updateCliente(fastify) {
     if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
     const parsed = Schema.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
-    const existing = await fastify.prisma.cliente.findFirst({ where: { id, activo: true } })
-    if (!existing) return reply.code(404).send({ error: 'Cliente no encontrado' })
-    const c = await fastify.prisma.cliente.update({ where: { id }, data: parsed.data })
+    const result = await fastify.prisma.cliente.updateMany({ where: { id, activo: true }, data: parsed.data })
+    if (result.count === 0) return reply.code(404).send({ error: 'Cliente no encontrado' })
+    const c = await fastify.prisma.cliente.findFirst({ where: { id } })
     const saldo = await computeSaldo(fastify.prisma, id)
     return { ...c, saldo }
   })
