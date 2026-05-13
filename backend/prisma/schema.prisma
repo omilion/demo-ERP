@@ -91,6 +91,27 @@ model Producto {
   @@schema("catalogo")
 }
 
+model Proveedor {
+  id              Int     @id @default(autoincrement())
+  nombre          String
+  rut             String  @unique
+  razonSocial     String? @map("razon_social")
+  giro            String?
+  email           String?
+  telefono        String?
+  direccion       String?
+  region          String?
+  comuna          String?
+  codigoProveedor Int?    @map("codigo_proveedor")
+  porcVentaSala   Int     @default(0) @map("porc_venta_sala")
+  porcMarco       Int     @default(0) @map("porc_marco")
+  porcLicitacion  Int     @default(0) @map("porc_licitacion")
+  activo          Boolean @default(true)
+
+  @@map("proveedores")
+  @@schema("catalogo")
+}
+
 model PrecioHistorial {
   id             Int      @id @default(autoincrement())
   productoId     Int      @map("producto_id")
@@ -142,6 +163,60 @@ model OrdenItem {
   @@schema("ventas")
 }
 
+model CobranzaHistorico {
+  id           Int       @id @default(autoincrement())
+  ejecutiva    String?
+  interno      Int?
+  ndoc         Int?
+  monto        Int?
+  montoMenos   Int?      @map("monto_menos")
+  nc           Int?
+  valorFactura Int?      @map("valor_factura")
+  multas       Int?
+  cliente      String?
+  rut          String?
+  fechaFactura DateTime? @map("fecha_factura")
+  mesAnio      String?   @map("mes_anio")
+  estado       String?
+  comision     String?
+  pagoCom      DateTime? @map("pago_comision")
+  despacho     DateTime?
+  fechaGestion DateTime? @map("fecha_gestion")
+  ingresoPago  DateTime? @map("ingreso_pago")
+  fechaPago    DateTime? @map("fecha_pago")
+  banco        String?
+  reclamo      String?
+  observacion  String?
+
+  @@map("cobranza_historico")
+  @@schema("ventas")
+}
+
+model CrmRegistro {
+  id              Int       @id @default(autoincrement())
+  ncotizacion     String?   @map("n_cotizacion")
+  fecha           DateTime?
+  accion          String?
+  competencia     Boolean   @default(false)
+  fechaProximo    DateTime? @map("fecha_proximo")
+  prioridad       String?
+  rut             String?
+  nombre          String?
+  rsocial         String?   @map("r_social")
+  email           String?
+  telefono        String?
+  ejecutiva       String?
+  fechaCotizacion DateTime? @map("fecha_cotizacion")
+  resultado       String?
+  estado          Int?
+  usuario         String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("crm_registros")
+  @@schema("ventas")
+}
+
 // ── CAJA ─────────────────────────────────────────────────────────────
 
 model Caja {
@@ -170,13 +245,17 @@ model Turno {
 }
 
 model MovimientoCaja {
-  id        Int      @id @default(autoincrement())
-  turnoId   Int      @map("turno_id")
-  tipo      String
-  monto     Float
-  medioPago String   @map("medio_pago")
-  createdAt DateTime @default(now()) @map("created_at")
-  turno     Turno    @relation(fields: [turnoId], references: [id])
+  id         Int       @id @default(autoincrement())
+  turnoId    Int?      @map("turno_id")
+  tipo       String
+  monto      Float
+  medioPago  String    @map("medio_pago")
+  referencia String?
+  ordenId    Int?      @map("orden_id")
+  usuario    String?
+  fecha      DateTime?
+  createdAt  DateTime  @default(now()) @map("created_at")
+  turno      Turno?    @relation(fields: [turnoId], references: [id])
 
   @@map("movimientos_caja")
   @@schema("caja")

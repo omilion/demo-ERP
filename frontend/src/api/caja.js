@@ -24,6 +24,21 @@ export const useCerrarTurno = () => {
   })
 }
 
+export const useCajaHistorico = (params = {}) =>
+  useQuery({
+    queryKey: ['caja', 'historico', params],
+    queryFn: () => api.get('/caja/historico', { params }).then(r => r.data),
+    placeholderData: { items: [], total: 0, limit: 100, stats: { totalIngresos: 0, totalEgresos: 0 } },
+    staleTime: 60_000,
+  })
+
+export const useCajaHistoricoYears = () =>
+  useQuery({
+    queryKey: ['caja', 'historico-years'],
+    queryFn: () => api.get('/caja/historico/years').then(r => r.data),
+    staleTime: 300_000,
+  })
+
 export const useCreateMovimiento = () => {
   const qc = useQueryClient()
   return useMutation({

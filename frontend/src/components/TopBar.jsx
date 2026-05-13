@@ -12,6 +12,7 @@ const NAV_GROUPS = [
   ]},
   { label: 'Bodega', items: [
     { label: 'Inventario', route: '/bodega' },
+    { label: 'Proveedores', route: '/proveedores' },
   ]},
   { label: 'Taller', items: [
     { label: 'ODTs', route: '/taller' },
