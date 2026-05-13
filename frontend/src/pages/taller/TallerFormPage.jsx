@@ -1,67 +1,81 @@
+import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
-import { FormField, FormDivider, Input, Select, Textarea, useForm, useSave } from '../../components/forms/index'
-import { ODTS } from '../../data/odts'
-
-const CLIENTES_LIST = ['SERVICIO NAC. DE SALUD – HOSPITAL CARLOS VAN BUREN','INSTITUTO DE HUMANIDADES LUIS CAMPINO','CONSTRUCTORA SANTA ELENA LTDA.','MUNICIPALIDAD DE VIÑA DEL MAR','HOTEL ENJOY VIÑA DEL MAR','CLÍNICA SANTA MARÍA S.A.','DISTRIBUIDORA LOS ANDES','COLEGIO INGLÉS VALPARAÍSO','DIR. SALUD REG. METROPOLITANA','EMPRESA PORTUARIA VALPARAÍSO']
-
-// ODT dates are DD-MM-YYYY, input[type=date] needs YYYY-MM-DD
-const toInputDate = s => s ? s.split('-').reverse().join('-') : ''
+import { FormField, FormDivider, Input, Select, useForm } from '../../components/forms/index'
+import { useOdt, useCreateOdt, useUpdateOdt } from '../../api/odts'
 
 export default function TallerFormPage() {
   const navigate = useNavigate()
   const { id } = useParams()
   const isEdit = !!id
-  const found = isEdit ? ODTS.find(o => o.id === Number(id)) : null
+  const { data: found } = useOdt(isEdit ? Number(id) : null)
+  const createOdt = useCreateOdt()
+  const updateOdt = useUpdateOdt()
 
-  const { data, set, errors, validate } = useForm(found ? {
-    tipo: found.tipo, cliente: found.cliente, descripcion: found.descripcion,
-    plazo: toInputDate(found.plazo), responsable: found.responsable, estado: found.estado,
-  } : {
-    tipo: 'Espumas', cliente: '', descripcion: '', plazo: '', responsable: '', estado: 'Pendiente',
+  const { data, set, errors, validate } = useForm({
+    tipo: 'Espumas', clienteNombre: '', descripcion: '', estado: 'Pendiente', plazo: '',
   })
-  const { saving, save } = useSave(() => navigate('/taller'))
+
+  const [initialized, setInitialized] = useState(false)
+  useEffect(() => {
+    if (found && !initialized) {
+      set('tipo', found.tipo || 'Espumas')
+      set('clienteNombre', found.clienteNombre || '')
+      set('descripcion', found.descripcion || '')
+      set('estado', found.estado || 'Pendiente')
+      set('plazo', found.plazo ? new Date(found.plazo).toISOString().slice(0, 10) : '')
+      setInitialized(true)
+    }
+  }, [found?.id])
 
   const handleSave = () => {
-    if (!validate({ cliente: { required: true }, descripcion: { required: true }, plazo: { required: true } })) return
-    save()
+    if (!validate({ descripcion: { required: true } })) return
+    const payload = {
+      tipo: data.tipo,
+      clienteNombre: data.clienteNombre || undefined,
+      descripcion: data.descripcion,
+      estado: data.estado,
+      plazo: data.plazo ? new Date(data.plazo).toISOString() : undefined,
+    }
+    if (isEdit) {
+      updateOdt.mutate({ id: Number(id), data: payload }, {
+        onSuccess: () => navigate('/taller'),
+        onError: () => alert('Error al guardar la ODT'),
+      })
+    } else {
+      createOdt.mutate(payload, {
+        onSuccess: () => navigate('/taller'),
+        onError: () => alert('Error al crear la ODT'),
+      })
+    }
   }
 
   return (
     <FormPage
       title={isEdit ? 'Editar ODT' : 'Nueva ODT'}
-      subtitle={isEdit ? `Editando ODT #${id}` : 'Asignar tarea al taller'}
+      subtitle={isEdit ? `Editando ODT #${id}` : 'Crear orden de trabajo'}
       breadcrumb={['Inicio', 'Taller', isEdit ? 'Editar ODT' : 'Nueva ODT']}
       onSave={handleSave}
-      saving={saving}
+      saving={createOdt.isPending || updateOdt.isPending}
     >
-      <FormDivider label="Asignación" />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <FormField label="Tipo de Taller" required>
-          <Select value={data.tipo} onChange={v => set('tipo', v)} options={['Espumas','Confecciones','Madera']} />
-        </FormField>
-        <FormField label="Responsable">
-          <Select value={data.responsable} onChange={v => set('responsable', v)} options={['','Pedro M.','Carmen L.','Roberto A.','Marcelo'].map(r => ({ value: r, label: r || '— Asignar —' }))} />
-        </FormField>
-      </div>
-      <FormField label="Cliente" required error={errors.cliente}>
-        <Select value={data.cliente} onChange={v => set('cliente', v)} error={errors.cliente} options={['', ...CLIENTES_LIST].map(c => ({ value: c, label: c || '— Seleccionar —' }))} />
-      </FormField>
-
       <FormDivider label="Trabajo" />
-      <FormField label="Descripción del trabajo" required error={errors.descripcion}>
-        <Textarea value={data.descripcion} onChange={v => set('descripcion', v)} error={errors.descripcion} placeholder="Describir materiales, medidas, cantidad y especificaciones técnicas…" rows={4} />
-      </FormField>
-
-      <FormDivider label="Planificación" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <FormField label="Plazo de entrega" required error={errors.plazo}>
-          <Input value={data.plazo} onChange={v => set('plazo', v)} type="date" error={errors.plazo} />
+        <FormField label="Tipo de Trabajo">
+          <Select value={data.tipo} onChange={v => set('tipo', v)} options={['Espumas', 'Confecciones', 'Madera']} />
         </FormField>
-        <FormField label="Estado inicial">
-          <Select value={data.estado} onChange={v => set('estado', v)} options={['Pendiente','Prioritaria','En proceso','Terminada']} />
+        <FormField label="Estado">
+          <Select value={data.estado} onChange={v => set('estado', v)} options={['Pendiente', 'En proceso', 'Prioritaria', 'Terminada']} />
         </FormField>
       </div>
+      <FormField label="Cliente">
+        <Input value={data.clienteNombre} onChange={v => set('clienteNombre', v)} placeholder="Nombre del cliente" />
+      </FormField>
+      <FormField label="Descripción" required error={errors.descripcion}>
+        <Input value={data.descripcion} onChange={v => set('descripcion', v)} placeholder="Detalle del trabajo" error={errors.descripcion} />
+      </FormField>
+      <FormField label="Plazo de entrega">
+        <Input type="date" value={data.plazo} onChange={v => set('plazo', v)} />
+      </FormField>
     </FormPage>
   )
 }

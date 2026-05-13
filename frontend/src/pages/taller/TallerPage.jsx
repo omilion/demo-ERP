@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon, Badge, KpiCard, PageHeader, Btn, SearchBar, Tabs } from '../../components/shared'
-import { ODTS } from '../../data/odts'
+import { useOdts } from '../../api/odts'
 
 const ESTADO_COLOR = {
   'Prioritaria': 'red',
@@ -9,13 +9,6 @@ const ESTADO_COLOR = {
   'En proceso': 'blue',
   'Terminada': 'green',
 }
-
-const TALLER_TABS = [
-  { id: 'all', label: 'Todos' },
-  { id: 'Espumas', label: 'Espumas', count: ODTS.filter(o => o.tipo === 'Espumas').length },
-  { id: 'Confecciones', label: 'Confecciones', count: ODTS.filter(o => o.tipo === 'Confecciones').length },
-  { id: 'Madera', label: 'Madera', count: ODTS.filter(o => o.tipo === 'Madera').length },
-]
 
 const OdtCard = ({ odt, onSelect }) => {
   const [hov, setHov] = useState(false)
@@ -29,17 +22,14 @@ const OdtCard = ({ odt, onSelect }) => {
         <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 600, color: 'var(--green-700)' }}>ODT #{odt.id}</span>
         <Badge tone={ESTADO_COLOR[odt.estado]}>{odt.estado}</Badge>
       </div>
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', marginBottom: 5, lineHeight: 1.3 }}>{odt.cliente}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', marginBottom: 5, lineHeight: 1.3 }}>{odt.clienteNombre}</div>
       <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 10, lineHeight: 1.4 }}>{odt.descripcion}</div>
       <div style={{ display: 'flex', gap: 14, fontSize: 11, color: 'var(--text-3)' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <Icon name="calendar" size={12} /> {odt.creada}
+          <Icon name="calendar" size={12} /> {new Date(odt.createdAt).toLocaleDateString('es-CL')}
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: odt.estado === 'Prioritaria' ? 'var(--red)' : 'var(--text-3)' }}>
-          <Icon name="clock" size={12} /> Plazo: {odt.plazo}
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <Icon name="user" size={12} /> {odt.responsable}
+          <Icon name="clock" size={12} /> Plazo: {odt.plazo ? new Date(odt.plazo).toLocaleDateString('es-CL') : '—'}
         </span>
       </div>
     </div>
@@ -56,11 +46,15 @@ const OdtModal = ({ odt, onClose, onEdit }) => (
       <div style={{ padding: '20px 22px' }}>
         <Badge tone={ESTADO_COLOR[odt.estado]}>{odt.estado}</Badge>
         <div style={{ marginTop: 14, marginBottom: 6, fontSize: 12, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Cliente</div>
-        <div style={{ fontWeight: 600, fontSize: 15 }}>{odt.cliente}</div>
+        <div style={{ fontWeight: 600, fontSize: 15 }}>{odt.clienteNombre}</div>
         <div style={{ marginTop: 14, marginBottom: 6, fontSize: 12, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Descripción</div>
         <div style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.5 }}>{odt.descripcion}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 18 }}>
-          {[['Tipo', odt.tipo], ['Creada', odt.creada], ['Plazo', odt.plazo], ['Responsable', odt.responsable]].map(([l, v], i) => (
+          {[
+            ['Tipo', odt.tipo],
+            ['Creada', new Date(odt.createdAt).toLocaleDateString('es-CL')],
+            ['Plazo', odt.plazo ? new Date(odt.plazo).toLocaleDateString('es-CL') : '—'],
+          ].map(([l, v], i) => (
             <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
               <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>{l}</div>
               <div style={{ fontWeight: 600, fontSize: 13 }}>{v}</div>
@@ -84,10 +78,19 @@ export default function TallerPage() {
   const [selected, setSelected] = useState(null)
   const [estadoFilter, setEstadoFilter] = useState('all')
 
-  const odts = ODTS
+  const { data: allOdts = [], isLoading } = useOdts()
+
+  const TALLER_TABS = [
+    { id: 'all', label: 'Todos' },
+    { id: 'Espumas', label: 'Espumas', count: allOdts.filter(o => o.tipo === 'Espumas').length },
+    { id: 'Confecciones', label: 'Confecciones', count: allOdts.filter(o => o.tipo === 'Confecciones').length },
+    { id: 'Madera', label: 'Madera', count: allOdts.filter(o => o.tipo === 'Madera').length },
+  ]
+
+  const odts = allOdts
     .filter(o => tab === 'all' || o.tipo === tab)
     .filter(o => estadoFilter === 'all' || o.estado === estadoFilter)
-    .filter(o => !search || o.cliente.toLowerCase().includes(search.toLowerCase()) || String(o.id).includes(search))
+    .filter(o => !search || (o.clienteNombre || '').toLowerCase().includes(search.toLowerCase()) || String(o.id).includes(search))
 
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px' }}>
@@ -102,11 +105,11 @@ export default function TallerPage() {
       />
 
       <div className="kpi-strip">
-        <KpiCard label="Total ODTs" value={ODTS.length} icon="clipboard" sublabel="En todos los talleres" />
-        <KpiCard label="Prioritarias" value={ODTS.filter(o=>o.estado==='Prioritaria').length} icon="zap" tone="red" sublabel="Atención urgente" />
-        <KpiCard label="En Proceso" value={ODTS.filter(o=>o.estado==='En proceso').length} icon="refreshCw" tone="blue" sublabel="En producción ahora" />
-        <KpiCard label="Pendientes" value={ODTS.filter(o=>o.estado==='Pendiente').length} icon="clock" tone="amber" sublabel="Sin iniciar" />
-        <KpiCard label="Terminadas" value={ODTS.filter(o=>o.estado==='Terminada').length} icon="check" tone="neutral" sublabel="Este mes" />
+        <KpiCard label="Total ODTs" value={allOdts.length} icon="clipboard" sublabel="En todos los talleres" />
+        <KpiCard label="Prioritarias" value={allOdts.filter(o=>o.estado==='Prioritaria').length} icon="zap" tone="red" sublabel="Atención urgente" />
+        <KpiCard label="En Proceso" value={allOdts.filter(o=>o.estado==='En proceso').length} icon="refreshCw" tone="blue" sublabel="En producción ahora" />
+        <KpiCard label="Pendientes" value={allOdts.filter(o=>o.estado==='Pendiente').length} icon="clock" tone="amber" sublabel="Sin iniciar" />
+        <KpiCard label="Terminadas" value={allOdts.filter(o=>o.estado==='Terminada').length} icon="check" tone="neutral" sublabel="Este mes" />
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
@@ -126,7 +129,11 @@ export default function TallerPage() {
           </div>
         </div>
         <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
-          {odts.length === 0 ? (
+          {isLoading ? (
+            <div style={{ gridColumn: '1/-1', padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>
+              Cargando ODTs…
+            </div>
+          ) : odts.length === 0 ? (
             <div style={{ gridColumn: '1/-1', padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>
               <Icon name="info" size={24} color="var(--border)" /><p style={{ marginTop: 12 }}>Sin ODTs con ese criterio</p>
             </div>

@@ -1,17 +1,26 @@
 import { useNavigate } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
-import { FormField, FormDivider, Input, Select, useForm, useSave } from '../../components/forms/index'
+import { FormField, FormDivider, Input, Select, useForm } from '../../components/forms/index'
 import { Icon } from '../../components/shared'
+import { useTurnoActivo, useCreateMovimiento } from '../../api/caja'
 
 export default function CajaFormPage() {
   const navigate = useNavigate()
+  const { data: turno } = useTurnoActivo()
+  const createMovimiento = useCreateMovimiento()
 
-  const { data, set, errors, validate } = useForm({ tipo: 'Ingreso', concepto: '', monto: '', forma: 'Efectivo' })
-  const { saving, save } = useSave(() => navigate('/caja'))
+  const { data, set, errors, validate } = useForm({ tipo: 'Ingreso', monto: '', medioPago: 'Efectivo' })
 
   const handleSave = () => {
-    if (!validate({ concepto: { required: true }, monto: { required: true } })) return
-    save()
+    if (!validate({ monto: { required: true } })) return
+    if (!turno) { alert('No hay turno activo. Abre un turno primero.'); return }
+    createMovimiento.mutate(
+      { turnoId: turno.id, data: { tipo: data.tipo, monto: Number(data.monto), medioPago: data.medioPago } },
+      {
+        onSuccess: () => navigate('/caja'),
+        onError: (err) => alert(err?.response?.data?.error || 'Error al registrar movimiento'),
+      }
+    )
   }
 
   return (
@@ -20,7 +29,7 @@ export default function CajaFormPage() {
       subtitle="Registrar ingreso o egreso de caja"
       breadcrumb={['Inicio', 'Caja', 'Nuevo Movimiento']}
       onSave={handleSave}
-      saving={saving}
+      saving={createMovimiento.isPending}
     >
       <FormDivider label="Movimiento" />
       <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
@@ -36,15 +45,12 @@ export default function CajaFormPage() {
           </button>
         ))}
       </div>
-      <FormField label="Concepto" required error={errors.concepto}>
-        <Input value={data.concepto} onChange={v => set('concepto', v)} placeholder="Descripción del movimiento" error={errors.concepto} />
-      </FormField>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <FormField label="Monto" required error={errors.monto}>
           <Input value={data.monto} onChange={v => set('monto', v)} type="number" prefix="$" placeholder="0" error={errors.monto} />
         </FormField>
         <FormField label="Forma de Pago">
-          <Select value={data.forma} onChange={v => set('forma', v)} options={['Efectivo','Transferencia','Cheque','Débito','Crédito']} />
+          <Select value={data.medioPago} onChange={v => set('medioPago', v)} options={['Efectivo', 'Transferencia', 'Cheque', 'Débito', 'Crédito']} />
         </FormField>
       </div>
     </FormPage>

@@ -8,6 +8,8 @@ import authRoutes from './routes/auth/index.js'
 import productosRoutes from './routes/productos/index.js'
 import clientesRoutes from './routes/clientes/index.js'
 import ventasRoutes from './routes/ventas/index.js'
+import odtsRoutes from './routes/odts/index.js'
+import cajaRoutes from './routes/caja/index.js'
 import { decorateRbac } from './middleware/rbac.js'
 
 export function buildApp(opts = {}) {
@@ -31,6 +33,8 @@ export function buildApp(opts = {}) {
   app.register(productosRoutes, { prefix: '/api/productos' })
   app.register(clientesRoutes, { prefix: '/api/clientes' })
   app.register(ventasRoutes, { prefix: '/api/ventas' })
+  app.register(odtsRoutes, { prefix: '/api/odts' })
+  app.register(cajaRoutes, { prefix: '/api/caja' })
 
   app.get('/api/health', async () => ({ status: 'ok' }))
 
