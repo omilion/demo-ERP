@@ -14,10 +14,15 @@ export default async function listProductos(fastify) {
       { nombre: { contains: search, mode: 'insensitive' } },
       { codigoInterno: { contains: search, mode: 'insensitive' } },
     ]
-    const productos = await fastify.prisma.producto.findMany({
-      where,
-      orderBy: { codigoInterno: 'asc' },
-    })
-    return productos.map(p => ({ ...p, estado: computeEstado(p) }))
+    const LIMIT = 500
+    const [productos, total] = await Promise.all([
+      fastify.prisma.producto.findMany({
+        where,
+        orderBy: { codigoInterno: 'asc' },
+        take: LIMIT,
+      }),
+      fastify.prisma.producto.count({ where }),
+    ])
+    return { items: productos.map(p => ({ ...p, estado: computeEstado(p) })), total, limit: LIMIT }
   })
 }

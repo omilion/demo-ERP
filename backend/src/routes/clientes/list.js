@@ -1,10 +1,10 @@
-import { computeSaldo } from './helpers.js'
-
 export default async function listClientes(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('clientes', 'read')],
   }, async (request, reply) => {
     const { search, tipo } = request.query
+    const LIMIT = 500
+
     const where = { activo: true }
     if (tipo) where.tipo = tipo
     if (search) where.OR = [
@@ -12,10 +12,34 @@ export default async function listClientes(fastify) {
       { rut: { contains: search } },
       { ciudad: { contains: search, mode: 'insensitive' } },
     ]
-    const clientes = await fastify.prisma.cliente.findMany({ where, orderBy: { nombre: 'asc' } })
-    const withSaldo = await Promise.all(
-      clientes.map(async c => ({ ...c, saldo: await computeSaldo(fastify.prisma, c.id) }))
-    )
-    return withSaldo
+
+    const [clientes, total] = await Promise.all([
+      fastify.prisma.cliente.findMany({ where, orderBy: { nombre: 'asc' }, take: LIMIT }),
+      fastify.prisma.cliente.count({ where }),
+    ])
+
+    // Compute all saldos in one SQL query
+    const saldos = await fastify.prisma.$queryRaw`
+      SELECT o.cliente_id,
+        COALESCE(SUM(
+          COALESCE(t.subtotal, 0) * (1 - o.descuento_pct / 100.0) - o.abono
+        ), 0)::float AS saldo
+      FROM ventas.ordenes o
+      LEFT JOIN (
+        SELECT orden_id, SUM(cantidad * precio_unitario) AS subtotal
+        FROM ventas.orden_items
+        GROUP BY orden_id
+      ) t ON t.orden_id = o.id
+      WHERE o.estado_pago != 'Pagada' AND o.cliente_id IS NOT NULL
+      GROUP BY o.cliente_id
+    `
+    const saldoMap = {}
+    for (const row of saldos) saldoMap[Number(row.cliente_id)] = Number(row.saldo)
+
+    return {
+      items: clientes.map(c => ({ ...c, saldo: saldoMap[c.id] ?? 0 })),
+      total,
+      limit: LIMIT,
+    }
   })
 }

@@ -21,7 +21,7 @@ describe('GET /api/productos', () => {
 
   afterAll(() => app.close())
 
-  it('returns list with estado computed', async () => {
+  it('returns paginated result with estado computed', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/productos',
@@ -29,9 +29,14 @@ describe('GET /api/productos', () => {
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
-    expect(Array.isArray(body)).toBe(true)
-    expect(body[0]).toHaveProperty('estado')
-    expect(['Normal', 'Crítico', 'Sin stock']).toContain(body[0].estado)
+    expect(body).toHaveProperty('items')
+    expect(body).toHaveProperty('total')
+    expect(body).toHaveProperty('limit')
+    expect(Array.isArray(body.items)).toBe(true)
+    if (body.items.length > 0) {
+      expect(body.items[0]).toHaveProperty('estado')
+      expect(['Normal', 'Crítico', 'Sin stock']).toContain(body.items[0].estado)
+    }
   })
 
   it('rejects unauthenticated', async () => {
@@ -102,7 +107,7 @@ describe('GET /api/productos/:id', () => {
       url: '/api/productos',
       headers: { authorization: `Bearer ${token}` },
     })
-    const productos = JSON.parse(listRes.body)
+    const { items: productos } = JSON.parse(listRes.body)
     const id = productos[0].id
     const res = await app.inject({
       method: 'GET',
@@ -140,7 +145,7 @@ describe('GET /api/productos/:id/historial-precios', () => {
       url: '/api/productos',
       headers: { authorization: `Bearer ${token}` },
     })
-    const productos = JSON.parse(listRes.body)
+    const { items: productos } = JSON.parse(listRes.body)
     const id = productos[0].id
     const res = await app.inject({
       method: 'GET',

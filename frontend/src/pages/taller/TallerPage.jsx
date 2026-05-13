@@ -49,9 +49,10 @@ const OdtModal = ({ odt, onClose, onEdit }) => (
         <div style={{ fontWeight: 600, fontSize: 15 }}>{odt.clienteNombre}</div>
         <div style={{ marginTop: 14, marginBottom: 6, fontSize: 12, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Descripción</div>
         <div style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.5 }}>{odt.descripcion}</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginTop: 18 }}>
           {[
             ['Tipo', odt.tipo],
+            ['Prioridad', odt.prioridad || 'normal'],
             ['Creada', new Date(odt.createdAt).toLocaleDateString('es-CL')],
             ['Plazo', odt.plazo ? new Date(odt.plazo).toLocaleDateString('es-CL') : '—'],
           ].map(([l, v], i) => (

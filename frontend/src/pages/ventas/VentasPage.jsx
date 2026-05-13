@@ -11,7 +11,7 @@ const FILTER_TABS = [
   { id: 'no_pagada', label: 'No Pagadas' },
   { id: 'pend_entrega', label: 'Pend. Entrega' },
   { id: 'entregada', label: 'Entregadas' },
-  { id: 'licitacion', label: 'Licitaciones' },
+  { id: 'licitacion', label: 'Lic. / Convenio' },
 ]
 
 export default function VentasPage() {
@@ -28,7 +28,7 @@ export default function VentasPage() {
     if (tab === 'no_pagada') return v.estadoPago === 'No pagada'
     if (tab === 'pend_entrega') return v.estadoEntrega === 'Pendiente entrega'
     if (tab === 'entregada') return v.estadoEntrega === 'Entregada'
-    if (tab === 'licitacion') return v.tipo === 'Licitación'
+    if (tab === 'licitacion') return v.tipo === 'Licitación' || v.tipo === 'Convenio Marco'
     if (tab === 'hoy') return new Date(v.createdAt).toLocaleDateString('es-CL') === today
     return true
   }).filter(v => !search ||
@@ -52,8 +52,10 @@ export default function VentasPage() {
     { key: 'abono', label: 'Abono', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: v > 0 ? 'var(--green-600)' : 'var(--text-3)' }}>{fmt(v)}</span> },
     { key: 'estadoPago', label: 'Pago', render: v => <StatusDot status={v} /> },
     { key: 'estadoEntrega', label: 'Entrega', render: v => <StatusDot status={v} /> },
+    { key: 'licitacion', label: 'Licitación / N° OC', render: v => v ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-2)' }}>{v}</span> : <span style={{ color: 'var(--text-3)' }}>—</span> },
+    { key: 'guias', label: 'Guía', render: v => v ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--green-700)' }}>#{v}</span> : <span style={{ color: 'var(--text-3)' }}>—</span> },
     { key: 'createdAt', label: 'Fecha', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-3)' }}>{new Date(v).toLocaleDateString('es-CL')}</span> },
-    { key: 'creadorNombre', label: 'Creador' },
+    { key: 'creadorNombre', label: 'Vendedor' },
     { key: '_actions', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 4 }}>
         <button onClick={e => { e.stopPropagation(); setSelected(row) }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}>Ver</button>

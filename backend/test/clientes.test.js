@@ -15,15 +15,17 @@ describe('GET /api/clientes', () => {
   beforeAll(async () => { app = buildApp({ logger: false }); await app.ready(); token = await loginAs(app) })
   afterAll(() => app.close())
 
-  it('returns list with saldo computed', async () => {
+  it('returns paginated list with saldo computed', async () => {
     const res = await app.inject({
       method: 'GET', url: '/api/clientes',
       headers: { authorization: `Bearer ${token}` },
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
-    expect(Array.isArray(body)).toBe(true)
-    if (body.length > 0) expect(body[0]).toHaveProperty('saldo')
+    expect(body).toHaveProperty('items')
+    expect(body).toHaveProperty('total')
+    expect(Array.isArray(body.items)).toBe(true)
+    if (body.items.length > 0) expect(body.items[0]).toHaveProperty('saldo')
   })
 
   it('cajero can read clientes', async () => {
@@ -73,7 +75,7 @@ describe('GET /api/clientes/:id', () => {
 
   it('returns cliente with saldo', async () => {
     const listRes = await app.inject({ method: 'GET', url: '/api/clientes', headers: { authorization: `Bearer ${token}` } })
-    const clientes = JSON.parse(listRes.body)
+    const { items: clientes } = JSON.parse(listRes.body)
     if (clientes.length === 0) return
     const id = clientes[0].id
     const res = await app.inject({ method: 'GET', url: `/api/clientes/${id}`, headers: { authorization: `Bearer ${token}` } })
@@ -109,7 +111,7 @@ describe('PUT /api/clientes/:id', () => {
 
   it('returns 400 for empty body', async () => {
     const listRes = await app.inject({ method: 'GET', url: '/api/clientes', headers: { authorization: `Bearer ${token}` } })
-    const clientes = JSON.parse(listRes.body)
+    const { items: clientes } = JSON.parse(listRes.body)
     if (clientes.length === 0) return
     const id = clientes[0].id
     const res = await app.inject({

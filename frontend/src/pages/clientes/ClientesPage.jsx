@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../components/shared'
 import { ViewClientePanel } from '../../components/forms/FormCliente'
@@ -7,19 +7,32 @@ import { useClientes } from '../../api/clientes'
 export default function ClientesPage() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [tipoFilter, setTipoFilter] = useState('all')
   const [selected, setSelected] = useState(null)
+  const debounceRef = useRef(null)
 
-  const { data: clientes = [], isLoading } = useClientes()
+  useEffect(() => {
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search), 350)
+    return () => clearTimeout(debounceRef.current)
+  }, [search])
 
-  if (isLoading) return <main style={{ padding: 24 }}><p>Cargando...</p></main>
+  const params = {}
+  if (debouncedSearch) params.search = debouncedSearch
+  if (tipoFilter !== 'all') params.tipo = tipoFilter
+  const { data: result = { items: [], total: 0, limit: 500 }, isLoading } = useClientes(params)
+
+  if (isLoading && !result.items?.length) return <main style={{ padding: 24 }}><p>Cargando...</p></main>
+
+  const clientes = result.items ?? []
+  const totalClientes = result.total ?? clientes.length
+  const LIMIT = result.limit ?? 500
 
   const shown = clientes
-    .filter(c => tipoFilter === 'all' || c.tipo === tipoFilter)
-    .filter(c => !search || c.nombre.toLowerCase().includes(search.toLowerCase()) || c.rut.includes(search) || (c.ciudad || '').toLowerCase().includes(search.toLowerCase()))
 
   const tipos = [...new Set(clientes.map(c => c.tipo).filter(Boolean))]
-  const fmt = n => '$' + n.toLocaleString('es-CL')
+  const fmt = n => '$' + Number(n).toLocaleString('es-CL')
 
   const cols = [
     { key: 'rut', label: 'RUT', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--text-2)' }}>{v}</span> },
@@ -44,14 +57,14 @@ export default function ClientesPage() {
 
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px' }}>
-      <PageHeader title="Clientes" subtitle={`${shown.length} de ${clientes.length} clientes`} breadcrumb={['Inicio', 'Clientes']}
+      <PageHeader title="Clientes" subtitle={`${shown.length} de ${totalClientes.toLocaleString('es-CL')} clientes`} breadcrumb={['Inicio', 'Clientes']}
         actions={<>
           <Btn variant="secondary" icon="download" size="sm">Exportar</Btn>
           <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/clientes/nuevo')}>Nuevo Cliente</Btn>
         </>}
       />
       <div className="kpi-strip">
-        <KpiCard label="Total clientes" value={clientes.length} icon="users" sublabel="Registrados en el sistema" />
+        <KpiCard label="Total clientes" value={totalClientes.toLocaleString('es-CL')} icon="users" sublabel="Registrados en el sistema" />
         <KpiCard label="Con deuda activa" value={clientes.filter(c => c.saldo > 0).length} icon="dollarSign" tone="red" sublabel="Saldo pendiente" />
         <KpiCard label="Deuda total" value={'$' + (deudaTotal / 1_000_000).toFixed(1) + 'M'} icon="barChart2" tone="amber" sublabel="Suma de saldos" />
         <KpiCard label="Institucional / Gob." value={clientes.filter(c => ['Institucional', 'Gobierno', 'Municipal'].includes(c.tipo)).length} icon="clipboard" sublabel="Clientes públicos" />
