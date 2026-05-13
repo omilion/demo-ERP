@@ -31,3 +31,14 @@ export const useUpdateOdt = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['odts'] }),
   })
 }
+
+export const useOdtEstado = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, estado }) => api.put(`/odts/${id}`, { estado }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['odts'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+}

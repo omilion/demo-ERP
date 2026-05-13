@@ -17,15 +17,19 @@ export default async function listOdts(fastify) {
       ]
     }
 
+    const ESTADO_ORDER = { Prioritaria: 0, 'En proceso': 1, Pendiente: 2, Terminada: 3 }
+
     const [odts, total] = await Promise.all([
-      fastify.prisma.odt.findMany({
-        where,
-        // En proceso → Pendiente → Terminada, luego más recientes primero
-        orderBy: [{ estado: 'asc' }, { createdAt: 'desc' }],
-        take: LIMIT,
-      }),
+      fastify.prisma.odt.findMany({ where, orderBy: { createdAt: 'desc' }, take: LIMIT }),
       fastify.prisma.odt.count({ where }),
     ])
+
+    odts.sort((a, b) => {
+      const oa = ESTADO_ORDER[a.estado] ?? 99
+      const ob = ESTADO_ORDER[b.estado] ?? 99
+      if (oa !== ob) return oa - ob
+      return new Date(b.createdAt) - new Date(a.createdAt)
+    })
 
     return { items: odts, total, limit: LIMIT }
   })

@@ -24,7 +24,7 @@ export default async function dashboardStats(fastify) {
       p.orden.count({ where: { estadoEntrega: 'Pendiente entrega' } }),
       p.odt.count({ where: { estado: 'Pendiente' } }),
       p.odt.count({ where: { estado: 'En proceso' } }),
-      p.odt.count({ where: { prioridad: 'urgente' } }),
+      p.odt.count({ where: { OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] } }),
       p.odt.count({ where: { tipo: 'Espumas', estado: { in: ['Pendiente', 'En proceso'] } } }),
       p.odt.count({ where: { tipo: 'Confecciones', estado: { in: ['Pendiente', 'En proceso'] } } }),
       p.odt.count({ where: { tipo: 'Madera', estado: { in: ['Pendiente', 'En proceso'] } } }),
