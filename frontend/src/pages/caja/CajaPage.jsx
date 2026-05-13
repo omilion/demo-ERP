@@ -83,7 +83,7 @@ export default function CajaPage() {
         <div style={{ padding: '14px 20px', borderTop: '2px solid var(--border)', background: 'oklch(0.985 0.004 155)', display: 'flex', justifyContent: 'flex-end', gap: 32 }}>
           <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Ingresos: <strong style={{ color: 'var(--green-600)', fontFamily: "'DM Mono', monospace" }}>{fmt(ingresos)}</strong></span>
           <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Egresos: <strong style={{ color: 'var(--red)', fontFamily: "'DM Mono', monospace" }}>-{fmt(egresos)}</strong></span>
-          <span style={{ fontSize: 13, color: 'var(--text-1)', fontWeight: 700 }}>Saldo: <span style={{ fontFamily: "'DM Mono', monospace", color: 'var(--green-600)' }}>{fmt(saldo)}</span></span>
+          <span style={{ fontSize: 13, color: 'var(--text-1)', fontWeight: 700 }}>Saldo: <span style={{ fontFamily: "'DM Mono', monospace", color: saldo >= 0 ? 'var(--green-600)' : 'var(--red)' }}>{saldo >= 0 ? fmt(saldo) : `-$${Math.abs(saldo).toLocaleString('es-CL')}`}</span></span>
         </div>
       </div>
     </main>

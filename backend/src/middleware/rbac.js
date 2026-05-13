@@ -8,6 +8,7 @@ const PERMISSIONS = {
     licitaciones: ['read', 'write'],
     clientes:     ['read', 'write'],
     catalogo:     ['read'],
+    taller:       ['read'],
   },
   bodeguero:    {
     bodega:   ['read', 'write', 'delete'],
