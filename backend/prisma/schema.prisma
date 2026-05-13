@@ -55,6 +55,8 @@ model Cliente {
   nombre             String
   email              String?
   telefono           String?
+  ciudad             String?
+  tipo               String?
   razonSocial        String? @map("razon_social")
   limiteCredito      Float?  @map("limite_credito")
   diasInactivoAlerta Int?    @map("dias_inactivo_alerta")
@@ -72,6 +74,9 @@ model Producto {
   codigoInterno String  @unique @map("codigo_interno")
   codigoBarra   String? @map("codigo_barra")
   nombre        String
+  categoria     String?
+  proveedor     String?
+  bodega        String  @default("Inventario")
   categoriaId   Int?    @map("categoria_id")
   proveedorId   Int?    @map("proveedor_id")
   precioLista   Float   @default(0) @map("precio_lista")
@@ -86,18 +91,37 @@ model Producto {
   @@schema("catalogo")
 }
 
+model PrecioHistorial {
+  id             Int      @id @default(autoincrement())
+  productoId     Int      @map("producto_id")
+  precioAnterior Float    @map("precio_anterior")
+  precioNuevo    Float    @map("precio_nuevo")
+  pct            Float
+  usuarioNombre  String   @map("usuario_nombre")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("precio_historial")
+  @@schema("catalogo")
+}
+
 // ── VENTAS ───────────────────────────────────────────────────────────
 
 model Orden {
   id                 Int         @id @default(autoincrement())
   tipo               String
-  estado             String      @default("activa")
-  estadoPago         String      @default("no_pagada") @map("estado_pago")
-  estadoEntrega      String      @default("pendiente") @map("estado_entrega")
+  estado             String      @default("Activa")
+  estadoPago         String      @default("No pagada") @map("estado_pago")
+  estadoEntrega      String      @default("Pendiente entrega") @map("estado_entrega")
   clienteId          Int?        @map("cliente_id")
   userId             Int         @map("user_id")
   sucursalId         Int?        @map("sucursal_id")
   descuentoPct       Float       @default(0) @map("descuento_pct")
+  abono              Float       @default(0)
+  facturado          Float?
+  guias              Int?
+  licitacion         String?
+  observaciones      String?
+  creadorNombre      String?     @map("creador_nombre")
   requiereAprobacion Boolean     @default(false) @map("requiere_aprobacion")
   createdAt          DateTime    @default(now()) @map("created_at")
   items              OrdenItem[]
@@ -161,13 +185,18 @@ model MovimientoCaja {
 // ── TALLER ───────────────────────────────────────────────────────────
 
 model Odt {
-  id         Int       @id @default(autoincrement())
-  estado     String    @default("pendiente")
-  prioridad  String    @default("normal")
-  vendedorId Int?      @map("vendedor_id")
-  operarioId Int?      @map("operario_id")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  items      OdtItem[]
+  id            Int       @id @default(autoincrement())
+  tipo          String?
+  clienteNombre String?   @map("cliente_nombre")
+  descripcion   String?
+  plazo         DateTime?
+  ordenId       Int?      @map("orden_id")
+  estado        String    @default("Pendiente")
+  prioridad     String    @default("normal")
+  vendedorId    Int?      @map("vendedor_id")
+  operarioId    Int?      @map("operario_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  items         OdtItem[]
 
   @@map("odts")
   @@schema("taller")
