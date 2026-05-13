@@ -6,6 +6,7 @@ import jwtPlugin from './plugins/jwt.js'
 import prismaPlugin from './plugins/prisma.js'
 import authRoutes from './routes/auth/index.js'
 import productosRoutes from './routes/productos/index.js'
+import clientesRoutes from './routes/clientes/index.js'
 import { decorateRbac } from './middleware/rbac.js'
 
 export function buildApp(opts = {}) {
@@ -27,6 +28,7 @@ export function buildApp(opts = {}) {
   app.register(prismaPlugin)
   app.register(authRoutes, { prefix: '/api/auth' })
   app.register(productosRoutes, { prefix: '/api/productos' })
+  app.register(clientesRoutes, { prefix: '/api/clientes' })
 
   app.get('/api/health', async () => ({ status: 'ok' }))
 

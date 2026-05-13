@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../components/shared'
 import { ViewClientePanel } from '../../components/forms/FormCliente'
-import { CLIENTES_DATA } from '../../data/clientes'
+import { useClientes } from '../../api/clientes'
 
 export default function ClientesPage() {
   const navigate = useNavigate()
@@ -10,11 +10,15 @@ export default function ClientesPage() {
   const [tipoFilter, setTipoFilter] = useState('all')
   const [selected, setSelected] = useState(null)
 
-  const shown = CLIENTES_DATA
-    .filter(c => tipoFilter === 'all' || c.tipo === tipoFilter)
-    .filter(c => !search || c.nombre.toLowerCase().includes(search.toLowerCase()) || c.rut.includes(search) || c.ciudad.toLowerCase().includes(search.toLowerCase()))
+  const { data: clientes = [], isLoading } = useClientes()
 
-  const tipos = [...new Set(CLIENTES_DATA.map(c => c.tipo))]
+  if (isLoading) return <main style={{ padding: 24 }}><p>Cargando...</p></main>
+
+  const shown = clientes
+    .filter(c => tipoFilter === 'all' || c.tipo === tipoFilter)
+    .filter(c => !search || c.nombre.toLowerCase().includes(search.toLowerCase()) || c.rut.includes(search) || (c.ciudad || '').toLowerCase().includes(search.toLowerCase()))
+
+  const tipos = [...new Set(clientes.map(c => c.tipo).filter(Boolean))]
   const fmt = n => '$' + n.toLocaleString('es-CL')
 
   const cols = [
@@ -25,7 +29,7 @@ export default function ClientesPage() {
       const tone = { Institucional: 'blue', Municipal: 'neutral', Gobierno: 'neutral', Distribuidor: 'amber', Empresa: 'gray' }[v] || 'gray'
       return <Badge tone={tone}>{v}</Badge>
     }},
-    { key: 'credito', label: 'Límite crédito', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--text-2)' }}>{fmt(v)}</span> },
+    { key: 'limiteCredito', label: 'Límite crédito', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--text-2)' }}>{v != null ? fmt(v) : '—'}</span> },
     { key: 'saldo', label: 'Saldo deuda', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: v > 0 ? 700 : 400, color: v > 0 ? 'var(--red)' : 'var(--text-3)', fontSize: 12 }}>{v > 0 ? fmt(v) : '—'}</span> },
     { key: 'email', label: 'Email', render: v => <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{v}</span> },
     { key: '_acc', label: '', render: (_, row) => (
@@ -36,19 +40,21 @@ export default function ClientesPage() {
     )},
   ]
 
+  const deudaTotal = clientes.reduce((s, c) => s + (c.saldo || 0), 0)
+
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px' }}>
-      <PageHeader title="Clientes" subtitle={`${shown.length} de ${CLIENTES_DATA.length} clientes`} breadcrumb={['Inicio', 'Clientes']}
+      <PageHeader title="Clientes" subtitle={`${shown.length} de ${clientes.length} clientes`} breadcrumb={['Inicio', 'Clientes']}
         actions={<>
           <Btn variant="secondary" icon="download" size="sm">Exportar</Btn>
           <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/clientes/nuevo')}>Nuevo Cliente</Btn>
         </>}
       />
       <div className="kpi-strip">
-        <KpiCard label="Total clientes" value={CLIENTES_DATA.length} icon="users" sublabel="Registrados en el sistema" />
-        <KpiCard label="Con deuda activa" value={CLIENTES_DATA.filter(c=>c.saldo>0).length} icon="dollarSign" tone="red" sublabel="Saldo pendiente" />
-        <KpiCard label="Deuda total" value="$17.0M" icon="barChart2" tone="amber" sublabel="Suma de saldos" />
-        <KpiCard label="Institucional / Gob." value={CLIENTES_DATA.filter(c=>['Institucional','Gobierno','Municipal'].includes(c.tipo)).length} icon="clipboard" sublabel="Clientes públicos" />
+        <KpiCard label="Total clientes" value={clientes.length} icon="users" sublabel="Registrados en el sistema" />
+        <KpiCard label="Con deuda activa" value={clientes.filter(c => c.saldo > 0).length} icon="dollarSign" tone="red" sublabel="Saldo pendiente" />
+        <KpiCard label="Deuda total" value={'$' + (deudaTotal / 1_000_000).toFixed(1) + 'M'} icon="barChart2" tone="amber" sublabel="Suma de saldos" />
+        <KpiCard label="Institucional / Gob." value={clientes.filter(c => ['Institucional', 'Gobierno', 'Municipal'].includes(c.tipo)).length} icon="clipboard" sublabel="Clientes públicos" />
       </div>
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
