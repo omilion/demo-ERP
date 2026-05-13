@@ -12,13 +12,14 @@ const Schema = z.object({
   precioMarco: z.number().min(0).optional(),
   ubicacion: z.string().optional(),
   activo: z.boolean().optional(),
-})
+}).refine(data => Object.keys(data).length > 0, { message: 'El cuerpo no puede estar vacío' })
 
 export default async function updateProducto(fastify) {
   fastify.put('/:id', {
     preHandler: [fastify.authenticate, fastify.rbac('catalogo', 'write')],
   }, async (request, reply) => {
-    const id = Number(request.params.id)
+    const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
     const parsed = Schema.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     const existing = await fastify.prisma.producto.findUnique({ where: { id } })

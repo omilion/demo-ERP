@@ -5,6 +5,9 @@ export default async function listProductos(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('catalogo', 'read')],
   }, async (request, reply) => {
     const { bodega, search } = request.query
+    if (bodega && !['Inventario', 'Taller'].includes(bodega)) {
+      return reply.code(400).send({ error: 'bodega debe ser Inventario o Taller' })
+    }
     const where = { activo: true }
     if (bodega) where.bodega = bodega
     if (search) where.OR = [
