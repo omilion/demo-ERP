@@ -1,13 +1,12 @@
+import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
-import { FormField, FormDivider, Input, Select, useForm, useSave } from '../../components/forms/index'
-import { PRODUCTOS } from '../../data/productos'
+import { FormField, FormDivider, Input, Select, useForm } from '../../components/forms/index'
 import { useAuthStore } from '../../store/auth'
-import { addCambio, getHistorial } from '../../data/precioHistorial'
+import { useProducto, useUpdateProducto, useCreateProducto, useHistorialPrecios, useAddPrecio } from '../../api/productos'
 
-function PrecioHistorial({ cod }) {
-  const hist = getHistorial(cod)
-  if (!hist.length) return null
+function PrecioHistorial({ historial }) {
+  if (!historial.length) return null
 
   const fmt = n => '$' + Number(n).toLocaleString('es-CL')
   const fmtDate = iso => new Date(iso).toLocaleString('es-CL', {
@@ -27,11 +26,11 @@ function PrecioHistorial({ cod }) {
             </tr>
           </thead>
           <tbody>
-            {hist.map((e, i) => {
+            {historial.map((e, i) => {
               const up = Number(e.pct) > 0
               return (
-                <tr key={i} style={{ borderBottom: i < hist.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                  <td style={{ padding: '9px 14px', color: 'var(--text-2)', fontFamily: "'DM Mono', monospace" }}>{fmtDate(e.fecha)}</td>
+                <tr key={i} style={{ borderBottom: i < historial.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                  <td style={{ padding: '9px 14px', color: 'var(--text-2)', fontFamily: "'DM Mono', monospace" }}>{fmtDate(e.createdAt)}</td>
                   <td style={{ padding: '9px 14px', fontFamily: "'DM Mono', monospace", color: 'var(--text-3)' }}>{fmt(e.precioAnterior)}</td>
                   <td style={{ padding: '9px 14px', fontFamily: "'DM Mono', monospace", fontWeight: 600, color: 'var(--text-1)' }}>{fmt(e.precioNuevo)}</td>
                   <td style={{ padding: '9px 14px' }}>
@@ -39,7 +38,7 @@ function PrecioHistorial({ cod }) {
                       {up ? '↑' : '↓'} {Math.abs(Number(e.pct))}%
                     </span>
                   </td>
-                  <td style={{ padding: '9px 14px', color: 'var(--text-3)' }}>{e.usuario}</td>
+                  <td style={{ padding: '9px 14px', color: 'var(--text-3)' }}>{e.usuarioNombre}</td>
                 </tr>
               )
             })}
@@ -52,37 +51,64 @@ function PrecioHistorial({ cod }) {
 
 export default function BodegaFormPage() {
   const navigate = useNavigate()
-  const { cod } = useParams()
-  const isEdit = !!cod
-  const found = isEdit ? PRODUCTOS.find(p => p.cod === cod) : null
-
+  const { id } = useParams()
+  const isEdit = !!id
   const user = useAuthStore(s => s.user)
 
-  const { data, set, errors, validate } = useForm(found ? {
-    cod: found.cod, nombre: found.nombre, cat: found.cat, bodega: found.bodega,
-    stock: String(found.stock), minimo: String(found.minimo), precio: String(found.precio),
-  } : {
+  const { data: found } = useProducto(isEdit ? Number(id) : null)
+  const createProducto = useCreateProducto()
+  const updateProducto = useUpdateProducto()
+  const { data: historial = [] } = useHistorialPrecios(found?.id)
+  const addPrecio = useAddPrecio()
+
+  const { data, set, errors, validate } = useForm({
     cod: '', nombre: '', cat: 'Espumas', bodega: 'Inventario', stock: '', minimo: '', precio: '',
   })
-  const { saving, save } = useSave(() => navigate('/bodega'))
+
+  useEffect(() => {
+    if (found) {
+      set('cod', found.codigoInterno)
+      set('nombre', found.nombre)
+      set('cat', found.categoria || 'Espumas')
+      set('bodega', found.bodega)
+      set('stock', String(found.stock))
+      set('minimo', String(found.stockCritico))
+      set('precio', String(found.precioLista))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [found?.id])
+
+  if (isEdit && !found) return <main style={{ padding: 24 }}><p>Cargando...</p></main>
 
   const handleSave = () => {
     if (!validate({ nombre: { required: true }, cod: { required: true } })) return
-    // Record price change if editing and price changed
-    if (isEdit && found && Number(data.precio) !== found.precio) {
-      addCambio(data.cod, {
-        precioAnterior: found.precio,
-        precioNuevo: Number(data.precio),
-        usuario: user?.email || 'desconocido',
+    const payload = {
+      nombre: data.nombre,
+      categoria: data.cat,
+      bodega: data.bodega,
+      stock: Number(data.stock),
+      stockCritico: Number(data.minimo),
+      precioLista: Number(data.precio),
+    }
+    if (isEdit && found && Number(data.precio) !== found.precioLista) {
+      addPrecio.mutate({
+        productoId: found.id,
+        data: { precioAnterior: found.precioLista, precioNuevo: Number(data.precio), usuarioNombre: user?.email || 'sistema' },
       })
     }
-    save()
+    if (isEdit) {
+      updateProducto.mutate({ id: found.id, data: payload }, { onSuccess: () => navigate('/bodega') })
+    } else {
+      createProducto.mutate({ ...payload, codigoInterno: data.cod }, { onSuccess: () => navigate('/bodega') })
+    }
   }
+
+  const saving = updateProducto.isPending || createProducto.isPending
 
   return (
     <FormPage
       title={isEdit ? 'Editar Producto' : 'Nuevo Producto'}
-      subtitle={isEdit ? `Editando código ${cod}` : 'Registrar producto en bodega'}
+      subtitle={isEdit ? `Editando código ${data.cod}` : 'Registrar producto en bodega'}
       breadcrumb={['Inicio', 'Bodega', isEdit ? 'Editar Producto' : 'Nuevo Producto']}
       onSave={handleSave}
       saving={saving}
@@ -116,7 +142,7 @@ export default function BodegaFormPage() {
         </FormField>
       </div>
 
-      <PrecioHistorial cod={data.cod} />
+      <PrecioHistorial historial={historial} />
     </FormPage>
   )
 }
