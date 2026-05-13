@@ -19,6 +19,7 @@ const PERMISSIONS = {
     caja:     ['read', 'write'],
     cobranza: ['read', 'write'],
     clientes: ['read'],
+    ventas:   ['read'],
   },
   taller:       {
     taller:   ['read', 'write'],
