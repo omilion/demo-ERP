@@ -12,6 +12,8 @@ import odtsRoutes from './routes/odts/index.js'
 import cajaRoutes from './routes/caja/index.js'
 import dashboardStats from './routes/dashboard/stats.js'
 import proveedoresRoutes from './routes/proveedores/index.js'
+import crmRoutes from './routes/crm/index.js'
+import cobranzaHistoricoRoutes from './routes/cobranza/index.js'
 import { decorateRbac } from './middleware/rbac.js'
 
 export function buildApp(opts = {}) {
@@ -39,6 +41,8 @@ export function buildApp(opts = {}) {
   app.register(cajaRoutes, { prefix: '/api/caja' })
   app.register(dashboardStats, { prefix: '/api/dashboard' })
   app.register(proveedoresRoutes, { prefix: '/api/proveedores' })
+  app.register(crmRoutes, { prefix: '/api/crm' })
+  app.register(cobranzaHistoricoRoutes, { prefix: '/api/cobranza-historico' })
 
   app.get('/api/health', async () => ({ status: 'ok' }))
 

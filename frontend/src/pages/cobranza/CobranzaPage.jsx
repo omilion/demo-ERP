@@ -2,10 +2,16 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs } from '../../components/shared'
 import { useVentas } from '../../api/ventas'
+import { useCobranzaHistorico, useCobranzaEjecutivas, useCobranzaMeses } from '../../api/cobranzaHistorico'
 
-const TABS = [
+const ESTADO_TABS = [
   { id: 'No pagada', label: 'No Pagadas' },
   { id: 'Parcial',   label: 'Con Abono Parcial' },
+]
+
+const MAIN_TABS = [
+  { id: 'activo',     label: 'Por Cobrar' },
+  { id: 'historico',  label: 'Historial de Cobro' },
 ]
 
 function diasDesde(fecha) {
@@ -19,33 +25,68 @@ function urgencyTone(dias) {
   return 'gray'
 }
 
+function estadoCobTone(estado) {
+  const s = (estado || '').toUpperCase()
+  if (s === 'CANCELADA') return 'green'
+  if (s === 'PENDIENTE') return 'amber'
+  if (s === 'NULA') return 'red'
+  return 'gray'
+}
+
 export default function CobranzaPage() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState('No pagada')
+  const [mainTab, setMainTab] = useState('activo')
+  const [estadoTab, setEstadoTab] = useState('No pagada')
   const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [debounced, setDebounced] = useState('')
   const debounceRef = useRef(null)
+
+  // Historico filters
+  const [histEjecutiva, setHistEjecutiva] = useState('')
+  const [histEstado, setHistEstado] = useState('')
+  const [histMes, setHistMes] = useState('')
+  const [histSearch, setHistSearch] = useState('')
+  const [histDebounced, setHistDebounced] = useState('')
+  const histDebRef = useRef(null)
 
   useEffect(() => {
     clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => setDebouncedSearch(search), 350)
+    debounceRef.current = setTimeout(() => setDebounced(search), 350)
     return () => clearTimeout(debounceRef.current)
   }, [search])
 
-  const params = { orderBy: 'asc', estadoPago: tab } // más antiguas primero = más urgentes
-  if (debouncedSearch) params.search = debouncedSearch
+  useEffect(() => {
+    clearTimeout(histDebRef.current)
+    histDebRef.current = setTimeout(() => setHistDebounced(histSearch), 350)
+    return () => clearTimeout(histDebRef.current)
+  }, [histSearch])
 
-  const { data: result = { items: [], total: 0 }, isLoading } = useVentas(params)
-  const ventas = result.items ?? []
-  const total = result.total ?? 0
+  // Active cobranza
+  const activeParams = { orderBy: 'asc', estadoPago: estadoTab }
+  if (debounced) activeParams.search = debounced
+  const { data: activeResult = { items: [], total: 0 }, isLoading } = useVentas(activeParams)
+  const ventas = activeResult.items ?? []
+  const total = activeResult.total ?? 0
+
+  // Historico cobranza
+  const histParams = {}
+  if (histEjecutiva) histParams.ejecutiva = histEjecutiva
+  if (histEstado) histParams.estado = histEstado
+  if (histMes) histParams.mes = histMes
+  if (histDebounced) histParams.search = histDebounced
+  const { data: histResult = { items: [], total: 0, stats: { cobrado: 0, pendiente: 0, n_canceladas: 0, n_pendientes: 0 } }, isLoading: histLoading } = useCobranzaHistorico(histParams)
+  const { data: ejecutivas = [] } = useCobranzaEjecutivas()
+  const { data: meses = [] } = useCobranzaMeses()
 
   const fmt = n => '$' + Math.abs(n || 0).toLocaleString('es-CL')
+  const fmtM = n => '$' + (Math.abs(n || 0) / 1_000_000).toFixed(1) + 'M'
 
+  // Active cobranza KPIs
   const montoPendiente = ventas.reduce((s, v) => s + Math.max(0, (v.total || 0) - (v.abono || 0)), 0)
   const masde30 = ventas.filter(v => diasDesde(v.createdAt) > 30).length
   const conAbono = ventas.filter(v => (v.abono || 0) > 0).length
 
-  const cols = [
+  const colsActivo = [
     {
       key: 'id', label: 'N° Venta',
       render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600, color: 'var(--green-700)' }}>{v}</span>
@@ -87,11 +128,8 @@ export default function CobranzaPage() {
       }
     },
     {
-      key: 'estadoPago', label: 'Estado Pago',
-      render: v => {
-        const tone = v === 'No pagada' ? 'red' : v === 'Parcial' ? 'amber' : 'green'
-        return <Badge tone={tone}>{v}</Badge>
-      }
+      key: 'estadoPago', label: 'Estado',
+      render: v => <Badge tone={v === 'No pagada' ? 'red' : v === 'Parcial' ? 'amber' : 'green'}>{v}</Badge>
     },
     {
       key: 'tipo', label: 'Tipo',
@@ -114,54 +152,131 @@ export default function CobranzaPage() {
     },
   ]
 
+  const colsHist = [
+    {
+      key: 'fechaFactura', label: 'Fecha Factura',
+      render: v => v ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-3)' }}>{new Date(v).toLocaleDateString('es-CL')}</span> : '—'
+    },
+    {
+      key: 'ndoc', label: 'N° Doc',
+      render: v => v ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 600, color: 'var(--green-700)' }}>{v}</span> : '—'
+    },
+    {
+      key: 'cliente', label: 'Cliente / RUT', wrap: true,
+      render: (v, row) => (
+        <div style={{ maxWidth: 220 }}>
+          <div style={{ fontWeight: 500, fontSize: 13 }}>{v || '—'}</div>
+          {row.rut && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>{row.rut}</div>}
+        </div>
+      )
+    },
+    {
+      key: 'valorFactura', label: 'Valor Factura', align: 'right',
+      render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 600 }}>{v ? fmt(v) : '—'}</span>
+    },
+    {
+      key: 'monto', label: 'Monto Cobrado', align: 'right',
+      render: v => v ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: 'var(--green-600)', fontWeight: 700 }}>{fmt(v)}</span> : '—'
+    },
+    {
+      key: 'estado', label: 'Estado',
+      render: v => v ? <Badge tone={estadoCobTone(v)}>{v}</Badge> : '—'
+    },
+    {
+      key: 'ejecutiva', label: 'Ejecutiva',
+      render: v => <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{v || '—'}</span>
+    },
+    {
+      key: 'fechaPago', label: 'Fecha Pago',
+      render: v => v ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--green-600)' }}>{new Date(v).toLocaleDateString('es-CL')}</span> : '—'
+    },
+    {
+      key: 'banco', label: 'Banco',
+      render: v => <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{v || '—'}</span>
+    },
+    {
+      key: 'mesAnio', label: 'Período',
+      render: v => <Badge tone="gray">{v || '—'}</Badge>
+    },
+  ]
+
   return (
-    <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px' }}>
+    <main style={{ maxWidth: 1400, margin: '0 auto', padding: '24px' }}>
       <PageHeader
         title="Cobranza"
-        subtitle={`${total.toLocaleString('es-CL')} documentos por cobrar`}
+        subtitle={mainTab === 'activo' ? `${total.toLocaleString('es-CL')} documentos por cobrar` : `${histResult.total.toLocaleString('es-CL')} registros históricos`}
         breadcrumb={['Inicio', 'Caja', 'Cobranza']}
         actions={<>
           <Btn variant="secondary" icon="download" size="sm">Exportar</Btn>
-          <Btn variant="primary" icon="send" size="sm">Enviar Recordatorios</Btn>
+          {mainTab === 'activo' && <Btn variant="primary" icon="send" size="sm">Enviar Recordatorios</Btn>}
         </>}
       />
 
-      <div className="kpi-strip">
-        <KpiCard
-          label="Saldo total pendiente"
-          value={'$' + (montoPendiente / 1_000_000).toFixed(1) + 'M'}
-          icon="dollarSign" tone="red"
-          sublabel="Suma de saldos sin cobrar"
-        />
-        <KpiCard
-          label="Documentos"
-          value={total.toLocaleString('es-CL')}
-          icon="fileText"
-          sublabel="Ventas no pagadas o parciales"
-        />
-        <KpiCard
-          label="Más de 30 días"
-          value={masde30}
-          icon="alertTriangle" tone="amber"
-          sublabel="Gestión urgente requerida"
-        />
-        <KpiCard
-          label="Con abono parcial"
-          value={conAbono}
-          icon="check"
-          sublabel="Pago parcial recibido"
-        />
-      </div>
+      {mainTab === 'activo' && (
+        <div className="kpi-strip">
+          <KpiCard label="Saldo total pendiente" value={fmtM(montoPendiente)} icon="dollarSign" tone="red" sublabel="Suma de saldos sin cobrar" />
+          <KpiCard label="Documentos" value={total.toLocaleString('es-CL')} icon="fileText" sublabel="Ventas no pagadas o parciales" />
+          <KpiCard label="Más de 30 días" value={masde30} icon="alertTriangle" tone="amber" sublabel="Gestión urgente requerida" />
+          <KpiCard label="Con abono parcial" value={conAbono} icon="check" sublabel="Pago parcial recibido" />
+        </div>
+      )}
+
+      {mainTab === 'historico' && (
+        <div className="kpi-strip">
+          <KpiCard label="Cobrado históricamente" value={fmtM(histResult.stats.cobrado)} icon="trendingUp" tone="neutral" sublabel="Total recuperado" />
+          <KpiCard label="Pendientes registrados" value={histResult.stats.n_pendientes} icon="clock" tone="amber" sublabel="Sin cobrar en historial" />
+          <KpiCard label="Facturas canceladas" value={(histResult.stats.n_canceladas || 0).toLocaleString('es-CL')} icon="checkCircle" tone="neutral" sublabel="Cobros completados" />
+          <KpiCard label="Notas crédito / Nulas" value={histResult.stats.n_nulas} icon="xCircle" tone="red" sublabel="Anuladas" />
+        </div>
+      )}
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Tabs tabs={TABS} active={tab} onChange={t => { setTab(t); setSearch('') }} />
-          <SearchBar placeholder="Buscar cliente, N° venta…" value={search} onChange={setSearch} style={{ width: 260, marginBottom: 10 }} />
+        <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 8 }}>
+          <Tabs tabs={MAIN_TABS} active={mainTab} onChange={t => setMainTab(t)} />
+
+          {mainTab === 'activo' && (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
+              <Tabs tabs={ESTADO_TABS} active={estadoTab} onChange={t => { setEstadoTab(t); setSearch('') }} />
+              <SearchBar placeholder="Buscar cliente, N° venta…" value={search} onChange={setSearch} style={{ width: 240 }} />
+            </div>
+          )}
+
+          {mainTab === 'historico' && (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              <select value={histEjecutiva} onChange={e => setHistEjecutiva(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
+                <option value="">Todas las ejecutivas</option>
+                {ejecutivas.map(e => <option key={e.ejecutiva} value={e.ejecutiva}>{e.ejecutiva} ({e.total})</option>)}
+              </select>
+              <select value={histEstado} onChange={e => setHistEstado(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
+                <option value="">Todos los estados</option>
+                <option value="CANCELADA">Cancelada</option>
+                <option value="PENDIENTE">Pendiente</option>
+                <option value="NULA">Nula</option>
+              </select>
+              <select value={histMes} onChange={e => setHistMes(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
+                <option value="">Todos los períodos</option>
+                {meses.map(m => <option key={m.mes_anio} value={m.mes_anio}>{m.mes_anio} ({m.total})</option>)}
+              </select>
+              <SearchBar placeholder="Cliente, RUT..." value={histSearch} onChange={setHistSearch} style={{ width: 200 }} />
+            </div>
+          )}
         </div>
-        {isLoading
-          ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-          : <Table columns={cols} rows={ventas} onRowClick={row => navigate('/ventas/' + row.id + '/editar')} emptyMessage="Sin documentos pendientes de cobro" />
-        }
+
+        {mainTab === 'activo' ? (
+          isLoading
+            ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
+            : <Table columns={colsActivo} rows={ventas} onRowClick={row => navigate('/ventas/' + row.id + '/editar')} emptyMessage="Sin documentos pendientes de cobro" />
+        ) : (
+          histLoading
+            ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
+            : <Table columns={colsHist} rows={histResult.items} emptyMessage="Sin registros históricos para este filtro" />
+        )}
+
+        {mainTab === 'historico' && histResult.total > histResult.limit && (
+          <div style={{ padding: '10px 20px', textAlign: 'center', fontSize: 12, color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>
+            Mostrando {histResult.limit} de {histResult.total.toLocaleString('es-CL')} registros. Usa filtros para acotar.
+          </div>
+        )}
       </div>
     </main>
   )

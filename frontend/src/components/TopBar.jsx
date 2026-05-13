@@ -7,8 +7,8 @@ import api from '../api/client'
 const NAV_GROUPS = [
   { label: 'Ventas', items: [
     { label: 'Ventas', route: '/ventas' },
-    { label: 'Cotizaciones', route: '/ventas' },
     { label: 'Licitaciones', route: '/licitaciones' },
+    { label: 'CRM', route: '/crm' },
   ]},
   { label: 'Bodega', items: [
     { label: 'Inventario', route: '/bodega' },

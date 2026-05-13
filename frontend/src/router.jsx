@@ -16,6 +16,7 @@ import ClientesFormPage from './pages/clientes/ClientesFormPage'
 import CobranzaPage from './pages/cobranza/CobranzaPage'
 import LicitacionesPage from './pages/licitaciones/LicitacionesPage'
 import ProveedoresPage from './pages/proveedores/ProveedoresPage'
+import CrmPage from './pages/crm/CrmPage'
 
 const ALL = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
 
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
       { path: 'cobranza/*',     element: <ProtectedRoute allowedRoles={['admin', 'cajero', 'solo_lectura']}><CobranzaPage /></ProtectedRoute> },
       { path: 'licitaciones/*', element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><LicitacionesPage /></ProtectedRoute> },
       { path: 'proveedores',   element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'solo_lectura']}><ProveedoresPage /></ProtectedRoute> },
+      { path: 'crm',           element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><CrmPage /></ProtectedRoute> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },
