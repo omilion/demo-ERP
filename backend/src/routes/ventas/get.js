@@ -1,4 +1,4 @@
-import { computeTotal, attachCliente } from './helpers.js'
+import { computeTotal, attachCliente, attachProductos } from './helpers.js'
 
 export default async function getVenta(fastify) {
   fastify.get('/:id', {
@@ -12,6 +12,7 @@ export default async function getVenta(fastify) {
     })
     if (!o) return reply.code(404).send({ error: 'Venta no encontrada' })
     const withCliente = await attachCliente(fastify, o)
-    return { ...withCliente, total: computeTotal(o.items, o.descuentoPct) }
+    const items = await attachProductos(fastify, o.items)
+    return { ...withCliente, items, total: computeTotal(o.items, o.descuentoPct) }
   })
 }

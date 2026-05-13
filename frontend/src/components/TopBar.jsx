@@ -149,6 +149,18 @@ export function TopBar() {
 
         {/* Nav groups */}
         <nav style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
+          <button onClick={() => navigate('/')} style={{
+            padding: '6px 12px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
+            color: location.pathname === '/' ? '#fff' : 'rgba(255,255,255,0.78)',
+            fontWeight: location.pathname === '/' ? 600 : 400,
+            background: location.pathname === '/' ? 'rgba(255,255,255,0.18)' : 'transparent',
+            transition: 'background 0.15s',
+          }}
+            onMouseEnter={e => location.pathname !== '/' && (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
+            onMouseLeave={e => location.pathname !== '/' && (e.currentTarget.style.background = 'transparent')}
+          >
+            Dashboard
+          </button>
           {visibleGroups.map(group => (
             <DropdownGroup key={group.label} group={group} currentPath={location.pathname} />
           ))}

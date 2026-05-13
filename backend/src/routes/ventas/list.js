@@ -1,4 +1,4 @@
-import { computeTotal, attachClientes } from './helpers.js'
+import { computeTotal, attachClientes, attachProductos } from './helpers.js'
 
 export default async function listVentas(fastify) {
   fastify.get('/', {
@@ -32,8 +32,15 @@ export default async function listVentas(fastify) {
     ])
 
     const withClientes = await attachClientes(fastify, ordenes)
+    const enriched = await Promise.all(
+      withClientes.map(async o => ({
+        ...o,
+        total: computeTotal(o.items, o.descuentoPct),
+        items: await attachProductos(fastify, o.items),
+      }))
+    )
     return {
-      items: withClientes.map(o => ({ ...o, total: computeTotal(o.items, o.descuentoPct) })),
+      items: enriched,
       total,
       limit: LIMIT,
     }

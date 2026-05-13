@@ -12,6 +12,17 @@ export async function attachCliente(fastify, orden) {
   return { ...orden, cliente }
 }
 
+export async function attachProductos(fastify, items = []) {
+  if (!items.length) return items
+  const ids = [...new Set(items.map(i => i.productoId).filter(Boolean))]
+  const productos = await fastify.prisma.producto.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, nombre: true, codigoInterno: true },
+  })
+  const map = Object.fromEntries(productos.map(p => [p.id, p]))
+  return items.map(i => ({ ...i, producto: map[i.productoId] || null }))
+}
+
 export async function attachClientes(fastify, ordenes) {
   const clienteIds = [...new Set(ordenes.map(o => o.clienteId).filter(Boolean))]
   if (clienteIds.length === 0) return ordenes.map(o => ({ ...o, cliente: null }))
