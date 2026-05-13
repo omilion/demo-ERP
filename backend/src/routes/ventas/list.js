@@ -4,7 +4,7 @@ export default async function listVentas(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request, reply) => {
-    const { estadoPago, estadoEntrega, tipo, search } = request.query
+    const { estadoPago, estadoEntrega, tipo, search, orderBy: orderParam } = request.query
     const LIMIT = 100
 
     const where = {}
@@ -21,11 +21,14 @@ export default async function listVentas(fastify) {
       ]
     }
 
+    // Cobranza: más antiguas primero (más urgentes). Default: más recientes primero.
+    const orderBy = orderParam === 'asc' ? { createdAt: 'asc' } : { createdAt: 'desc' }
+
     const [ordenes, total] = await Promise.all([
       fastify.prisma.orden.findMany({
         where,
         include: { items: true },
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         take: LIMIT,
       }),
       fastify.prisma.orden.count({ where }),

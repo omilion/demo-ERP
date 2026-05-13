@@ -4,9 +4,8 @@ import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs } from '../../c
 import { useVentas } from '../../api/ventas'
 
 const TABS = [
-  { id: 'all',       label: 'Todas' },
   { id: 'No pagada', label: 'No Pagadas' },
-  { id: 'Parcial',   label: 'Parciales' },
+  { id: 'Parcial',   label: 'Con Abono Parcial' },
 ]
 
 function diasDesde(fecha) {
@@ -22,7 +21,7 @@ function urgencyTone(dias) {
 
 export default function CobranzaPage() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState('all')
+  const [tab, setTab] = useState('No pagada')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const debounceRef = useRef(null)
@@ -33,8 +32,7 @@ export default function CobranzaPage() {
     return () => clearTimeout(debounceRef.current)
   }, [search])
 
-  const params = {}
-  if (tab !== 'all') params.estadoPago = tab
+  const params = { orderBy: 'asc', estadoPago: tab } // más antiguas primero = más urgentes
   if (debouncedSearch) params.search = debouncedSearch
 
   const { data: result = { items: [], total: 0 }, isLoading } = useVentas(params)

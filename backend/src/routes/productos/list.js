@@ -18,11 +18,19 @@ export default async function listProductos(fastify) {
     const [productos, total] = await Promise.all([
       fastify.prisma.producto.findMany({
         where,
-        orderBy: { codigoInterno: 'asc' },
+        // Stock crítico y sin stock primero, luego por nombre
+        orderBy: [{ stock: 'asc' }, { nombre: 'asc' }],
         take: LIMIT,
       }),
       fastify.prisma.producto.count({ where }),
     ])
-    return { items: productos.map(p => ({ ...p, estado: computeEstado(p) })), total, limit: LIMIT }
+    const items = productos.map(p => ({ ...p, estado: computeEstado(p) }))
+    // Re-sort: sin stock → crítico → normal (Prisma no puede ordenar por campo computado)
+    items.sort((a, b) => {
+      const order = { 'Sin stock': 0, 'Crítico': 1, 'Normal': 2 }
+      const diff = (order[a.estado] ?? 2) - (order[b.estado] ?? 2)
+      return diff !== 0 ? diff : a.nombre.localeCompare(b.nombre, 'es')
+    })
+    return { items, total, limit: LIMIT }
   })
 }
