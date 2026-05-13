@@ -342,16 +342,75 @@ async function main() {
     importedOrdenes += batch.length
   }, 'Ordenes')
 
+  // ── 5. Taller / ODTs ──────────────────────────────────────────────────────
+  console.log('\nParsing taller...')
+  const tallerRows = await parseTable('taller')
+  console.log(`  ${tallerRows.length} filas encontradas`)
+
+  const ESTADO_ODT_MAP = {
+    'Listo': 'Terminada',
+    'Terminado': 'Terminada',
+    'Terminada': 'Terminada',
+    'En proceso': 'En proceso',
+    'En Proceso': 'En proceso',
+    'Pendiente': 'Pendiente',
+  }
+  const PRIORIDAD_MAP = {
+    'Alta': 'alta',
+    'Normal': 'normal',
+    'Baja': 'normal',
+    'Urgente': 'urgente',
+  }
+
+  const odtsBatch = []
+  for (const r of tallerRows) {
+    if (intVal(r.eliminado) === 1) continue
+
+    const estadoRaw = str(r.estado_general) || 'Pendiente'
+    const estado = ESTADO_ODT_MAP[estadoRaw] || 'Pendiente'
+    const prioridad = PRIORIDAD_MAP[str(r.prioridad)] || 'normal'
+    const nInterno = r.n_interno ? `OT #${r.n_interno}` : null
+    const obs = str(r.obs_general)
+    const descripcion = [nInterno, obs].filter(Boolean).join(' — ') || 'Sin descripción'
+
+    let createdAt = new Date()
+    if (r.fecha_ingreso && r.fecha_ingreso !== '0000-00-00' && r.fecha_ingreso !== '0000-00-00 00:00:00') {
+      const d = new Date(r.fecha_ingreso)
+      if (!isNaN(d.getTime())) createdAt = d
+    }
+
+    let plazo = null
+    if (r.fecha_termino && r.fecha_termino !== '0000-00-00' && r.fecha_termino !== '0000-00-00 00:00:00') {
+      const d = new Date(r.fecha_termino)
+      if (!isNaN(d.getTime())) plazo = d
+    }
+
+    odtsBatch.push({
+      descripcion,
+      estado,
+      prioridad,
+      plazo: plazo || undefined,
+      createdAt,
+    })
+  }
+
+  console.log(`  ${odtsBatch.length} ODTs válidas`)
+  await batchRun(odtsBatch, async (batch) => {
+    await prisma.odt.createMany({ data: batch, skipDuplicates: false })
+  }, 'ODTs')
+
   // ── Summary ────────────────────────────────────────────────────────────────
   console.log('\n=== Migración completada ===')
-  const [pCount, cCount, oCount] = await Promise.all([
+  const [pCount, cCount, oCount, odtCount] = await Promise.all([
     prisma.producto.count(),
     prisma.cliente.count(),
     prisma.orden.count(),
+    prisma.odt.count(),
   ])
   console.log(`  Productos en DB: ${pCount}`)
   console.log(`  Clientes en DB:  ${cCount}`)
   console.log(`  Ordenes en DB:   ${oCount}`)
+  console.log(`  ODTs en DB:      ${odtCount}`)
 }
 
 main()

@@ -6,6 +6,7 @@ export const useOdts = (params = {}) =>
     queryKey: ['odts', params],
     queryFn: () => api.get('/odts', { params }).then(r => r.data),
     staleTime: 30_000,
+    placeholderData: { items: [], total: 0, limit: 100 },
   })
 
 export const useOdt = (id) =>

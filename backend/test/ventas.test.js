@@ -22,10 +22,11 @@ describe('GET /api/ventas', () => {
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
-    expect(Array.isArray(body)).toBe(true)
-    if (body.length > 0) {
-      expect(body[0]).toHaveProperty('total')
-      expect(body[0]).toHaveProperty('cliente')
+    expect(body).toHaveProperty('items')
+    expect(Array.isArray(body.items)).toBe(true)
+    if (body.items.length > 0) {
+      expect(body.items[0]).toHaveProperty('total')
+      expect(body.items[0]).toHaveProperty('cliente')
     }
   })
 
@@ -74,7 +75,7 @@ describe('GET /api/ventas/:id', () => {
 
   it('returns venta with total and cliente', async () => {
     const listRes = await app.inject({ method: 'GET', url: '/api/ventas', headers: { authorization: `Bearer ${token}` } })
-    const ventas = JSON.parse(listRes.body)
+    const { items: ventas } = JSON.parse(listRes.body)
     if (ventas.length === 0) return
     const id = ventas[0].id
     const res = await app.inject({ method: 'GET', url: `/api/ventas/${id}`, headers: { authorization: `Bearer ${token}` } })
@@ -97,7 +98,7 @@ describe('PUT /api/ventas/:id', () => {
 
   it('updates estadoPago and returns total', async () => {
     const listRes = await app.inject({ method: 'GET', url: '/api/ventas', headers: { authorization: `Bearer ${token}` } })
-    const ventas = JSON.parse(listRes.body)
+    const { items: ventas } = JSON.parse(listRes.body)
     if (ventas.length === 0) return
     const id = ventas[0].id
     const res = await app.inject({

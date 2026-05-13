@@ -18,7 +18,9 @@ describe('GET /api/odts', () => {
   it('returns list of odts', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/odts', headers: { authorization: `Bearer ${token}` } })
     expect(res.statusCode).toBe(200)
-    expect(Array.isArray(JSON.parse(res.body))).toBe(true)
+    const body = JSON.parse(res.body)
+    expect(body).toHaveProperty('items')
+    expect(Array.isArray(body.items)).toBe(true)
   })
 
   it('cajero cannot read odts', async () => {

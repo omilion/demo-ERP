@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Icon, Badge, KpiCard, PageHeader, Btn, SearchBar, Tabs } from '../../components/shared'
+import { Icon, Badge, PageHeader, Btn, SearchBar, Tabs } from '../../components/shared'
 import { useOdts } from '../../api/odts'
 
 const ESTADO_COLOR = {
@@ -8,6 +8,19 @@ const ESTADO_COLOR = {
   'Pendiente': 'amber',
   'En proceso': 'blue',
   'Terminada': 'green',
+}
+
+const TALLER_TABS = [
+  { id: 'all',          label: 'Todos' },
+  { id: 'Espumas',      label: 'Espumas' },
+  { id: 'Confecciones', label: 'Confecciones' },
+  { id: 'Madera',       label: 'Madera' },
+]
+
+const TAB_PARAMS = {
+  Espumas:      { tipo: 'Espumas' },
+  Confecciones: { tipo: 'Confecciones' },
+  Madera:       { tipo: 'Madera' },
 }
 
 const OdtCard = ({ odt, onSelect }) => {
@@ -31,6 +44,11 @@ const OdtCard = ({ odt, onSelect }) => {
         <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: odt.estado === 'Prioritaria' ? 'var(--red)' : 'var(--text-3)' }}>
           <Icon name="clock" size={12} /> Plazo: {odt.plazo ? new Date(odt.plazo).toLocaleDateString('es-CL') : '—'}
         </span>
+        {odt.prioridad && odt.prioridad !== 'normal' && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: odt.prioridad === 'urgente' ? 'var(--red)' : 'var(--text-2)' }}>
+            <Icon name="zap" size={12} /> {odt.prioridad}
+          </span>
+        )}
       </div>
     </div>
   )
@@ -51,7 +69,7 @@ const OdtModal = ({ odt, onClose, onEdit }) => (
         <div style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.5 }}>{odt.descripcion}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginTop: 18 }}>
           {[
-            ['Tipo', odt.tipo],
+            ['Tipo', odt.tipo || '—'],
             ['Prioridad', odt.prioridad || 'normal'],
             ['Creada', new Date(odt.createdAt).toLocaleDateString('es-CL')],
             ['Plazo', odt.plazo ? new Date(odt.plazo).toLocaleDateString('es-CL') : '—'],
@@ -76,28 +94,31 @@ export default function TallerPage() {
   const navigate = useNavigate()
   const [tab, setTab] = useState('all')
   const [search, setSearch] = useState('')
-  const [selected, setSelected] = useState(null)
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [estadoFilter, setEstadoFilter] = useState('all')
+  const [selected, setSelected] = useState(null)
+  const debounceRef = useRef(null)
 
-  const { data: allOdts = [], isLoading } = useOdts()
+  useEffect(() => {
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search), 400)
+    return () => clearTimeout(debounceRef.current)
+  }, [search])
 
-  const TALLER_TABS = [
-    { id: 'all', label: 'Todos' },
-    { id: 'Espumas', label: 'Espumas', count: allOdts.filter(o => o.tipo === 'Espumas').length },
-    { id: 'Confecciones', label: 'Confecciones', count: allOdts.filter(o => o.tipo === 'Confecciones').length },
-    { id: 'Madera', label: 'Madera', count: allOdts.filter(o => o.tipo === 'Madera').length },
-  ]
+  const apiParams = { ...TAB_PARAMS[tab] }
+  if (estadoFilter !== 'all') apiParams.estado = estadoFilter
+  if (debouncedSearch) apiParams.search = debouncedSearch
 
-  const odts = allOdts
-    .filter(o => tab === 'all' || o.tipo === tab)
-    .filter(o => estadoFilter === 'all' || o.estado === estadoFilter)
-    .filter(o => !search || (o.clienteNombre || '').toLowerCase().includes(search.toLowerCase()) || String(o.id).includes(search))
+  const { data: odtResult = { items: [], total: 0, limit: 100 }, isLoading } = useOdts(apiParams)
+  const odts = odtResult.items ?? []
+  const total = odtResult.total ?? 0
+  const LIMIT = odtResult.limit ?? 100
 
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px' }}>
       <PageHeader
         title="Taller — Órdenes de Trabajo"
-        subtitle="ODTs activas por área de producción"
+        subtitle={`${total.toLocaleString('es-CL')} ODTs en total`}
         breadcrumb={['Inicio', 'Taller', 'ODTs']}
         actions={<>
           <Btn variant="secondary" icon="download" size="sm">Exportar</Btn>
@@ -106,17 +127,22 @@ export default function TallerPage() {
       />
 
       <div className="kpi-strip">
-        <KpiCard label="Total ODTs" value={allOdts.length} icon="clipboard" sublabel="En todos los talleres" />
-        <KpiCard label="Prioritarias" value={allOdts.filter(o=>o.estado==='Prioritaria').length} icon="zap" tone="red" sublabel="Atención urgente" />
-        <KpiCard label="En Proceso" value={allOdts.filter(o=>o.estado==='En proceso').length} icon="refreshCw" tone="blue" sublabel="En producción ahora" />
-        <KpiCard label="Pendientes" value={allOdts.filter(o=>o.estado==='Pendiente').length} icon="clock" tone="amber" sublabel="Sin iniciar" />
-        <KpiCard label="Terminadas" value={allOdts.filter(o=>o.estado==='Terminada').length} icon="check" tone="neutral" sublabel="Este mes" />
+        {[
+          { label: 'Total ODTs', value: total.toLocaleString('es-CL'), icon: 'clipboard' },
+          { label: 'Mostrando', value: odts.length, icon: 'list' },
+        ].map((k, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: '#fff', borderRadius: 9, border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
+            <span style={{ color: 'var(--green-600)' }}><Icon name={k.icon} size={15} /></span>
+            <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600, fontSize: 16, color: 'var(--text-1)' }}>{k.value}</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{k.label}</span>
+          </div>
+        ))}
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
         <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Tabs tabs={TALLER_TABS} active={tab} onChange={setTab} />
+            <Tabs tabs={TALLER_TABS} active={tab} onChange={t => { setTab(t); setSearch('') }} />
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
               <select value={estadoFilter} onChange={e => setEstadoFilter(e.target.value)} style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff', cursor: 'pointer' }}>
                 <option value="all">Todos los estados</option>
@@ -125,10 +151,15 @@ export default function TallerPage() {
                 <option value="En proceso">En proceso</option>
                 <option value="Terminada">Terminadas</option>
               </select>
-              <SearchBar placeholder="Buscar ODT o cliente…" value={search} onChange={setSearch} style={{ width: 230 }} />
+              <SearchBar placeholder="Buscar N°, cliente, descripción…" value={search} onChange={setSearch} style={{ width: 260 }} />
             </div>
           </div>
         </div>
+        {total > LIMIT && (
+          <div style={{ padding: '7px 16px', background: 'var(--amber-bg, #fffbeb)', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text-2)' }}>
+            Mostrando las {LIMIT} más recientes de {total.toLocaleString('es-CL')}. Use el buscador o los filtros para encontrar ODTs específicas.
+          </div>
+        )}
         <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
           {isLoading ? (
             <div style={{ gridColumn: '1/-1', padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>
