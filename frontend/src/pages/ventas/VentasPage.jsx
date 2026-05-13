@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon, Badge, PageHeader, Btn, SearchBar, Table, Tabs, StatusDot } from '../../components/shared'
 import { ViewVentaPanel } from '../../components/forms/ViewVentaPanel'
-import { VENTAS_DATA } from '../../data/ventas'
+import { useVentas } from '../../api/ventas'
 
 
 const FILTER_TABS = [
   { id: 'all', label: 'Todas' },
   { id: 'hoy', label: 'Hoy' },
-  { id: 'no_pagada', label: 'No Pagadas', count: 140 },
-  { id: 'pend_entrega', label: 'Pend. Entrega', count: 45 },
+  { id: 'no_pagada', label: 'No Pagadas' },
+  { id: 'pend_entrega', label: 'Pend. Entrega' },
   { id: 'entregada', label: 'Entregadas' },
   { id: 'licitacion', label: 'Licitaciones' },
 ]
@@ -20,27 +20,40 @@ export default function VentasPage() {
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(null)
 
-  const filtered = VENTAS_DATA.filter(v => {
-    if (tab === 'no_pagada') return v.pago === 'No pagada'
-    if (tab === 'pend_entrega') return v.entrega === 'Pendiente entrega'
-    if (tab === 'entregada') return v.entrega === 'Entregada'
-    if (tab === 'licitacion') return v.tipo === 'Licitación'
-    if (tab === 'hoy') return v.fecha === '27-04-2026'
-    return true
-  }).filter(v => !search || v.cliente.toLowerCase().includes(search.toLowerCase()) || String(v.id).includes(search) || v.rut.includes(search))
+  const { data: ventas = [], isLoading } = useVentas()
 
-  const fmt = n => '$' + n.toLocaleString('es-CL')
+  const today = new Date().toLocaleDateString('es-CL')
+
+  const filtered = ventas.filter(v => {
+    if (tab === 'no_pagada') return v.estadoPago === 'No pagada'
+    if (tab === 'pend_entrega') return v.estadoEntrega === 'Pendiente entrega'
+    if (tab === 'entregada') return v.estadoEntrega === 'Entregada'
+    if (tab === 'licitacion') return v.tipo === 'Licitación'
+    if (tab === 'hoy') return new Date(v.createdAt).toLocaleDateString('es-CL') === today
+    return true
+  }).filter(v => !search ||
+    (v.cliente?.nombre || '').toLowerCase().includes(search.toLowerCase()) ||
+    String(v.id).includes(search) ||
+    (v.cliente?.rut || '').includes(search)
+  )
+
+  const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
+
+  const noPagedas = ventas.filter(v => v.estadoPago === 'No pagada').length
+  const pendEntrega = ventas.filter(v => v.estadoEntrega === 'Pendiente entrega').length
+  const totalMes = ventas.reduce((s, v) => s + (v.total || 0), 0)
+  const licitaciones = ventas.filter(v => v.tipo === 'Licitación').length
 
   const cols = [
     { key: 'id', label: 'N° Interno', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{v}</span> },
-    { key: 'cliente', label: 'Cliente', wrap: true, render: v => <span style={{ maxWidth: 220, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>{v}</span> },
+    { key: 'cliente', label: 'Cliente', wrap: true, render: v => <span style={{ maxWidth: 220, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>{v?.nombre}</span> },
     { key: 'tipo', label: 'Tipo', render: v => <Badge tone={v === 'Licitación' ? 'blue' : v === 'Convenio Marco' ? 'neutral' : 'gray'}>{v}</Badge> },
     { key: 'total', label: 'Total', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{fmt(v)}</span> },
     { key: 'abono', label: 'Abono', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: v > 0 ? 'var(--green-600)' : 'var(--text-3)' }}>{fmt(v)}</span> },
-    { key: 'pago', label: 'Pago', render: v => <StatusDot status={v} /> },
-    { key: 'entrega', label: 'Entrega', render: v => <StatusDot status={v} /> },
-    { key: 'fecha', label: 'Fecha', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-3)' }}>{v}</span> },
-    { key: 'creador', label: 'Creador' },
+    { key: 'estadoPago', label: 'Pago', render: v => <StatusDot status={v} /> },
+    { key: 'estadoEntrega', label: 'Entrega', render: v => <StatusDot status={v} /> },
+    { key: 'createdAt', label: 'Fecha', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-3)' }}>{new Date(v).toLocaleDateString('es-CL')}</span> },
+    { key: 'creadorNombre', label: 'Creador' },
     { key: '_actions', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 4 }}>
         <button onClick={e => { e.stopPropagation(); setSelected(row) }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}>Ver</button>
@@ -62,10 +75,10 @@ export default function VentasPage() {
 
       <div className="kpi-strip">
         {[
-          { label: 'No Pagadas', value: 140, icon: 'dollarSign' },
-          { label: 'Pend. Entrega', value: 45, icon: 'truck' },
-          { label: 'Total mes', value: '$24.865.009', icon: 'barChart2' },
-          { label: 'Licitaciones activas', value: 12, icon: 'clipboard' },
+          { label: 'No Pagadas', value: noPagedas, icon: 'dollarSign' },
+          { label: 'Pend. Entrega', value: pendEntrega, icon: 'truck' },
+          { label: 'Total mes', value: fmt(totalMes), icon: 'barChart2' },
+          { label: 'Licitaciones activas', value: licitaciones, icon: 'clipboard' },
         ].map((k, i) => (
           <div key={i} style={{
             display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
@@ -86,7 +99,10 @@ export default function VentasPage() {
             <SearchBar placeholder="Buscar cliente, N° o RUT…" value={search} onChange={setSearch} style={{ width: 260 }} />
           </div>
         </div>
-        <Table columns={cols} rows={filtered} onRowClick={row => setSelected(row)} />
+        {isLoading
+          ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
+          : <Table columns={cols} rows={filtered} onRowClick={row => setSelected(row)} />
+        }
       </div>
 
       {selected && <ViewVentaPanel venta={selected} onClose={() => setSelected(null)} onEdit={() => { navigate('/ventas/' + selected.id + '/editar'); setSelected(null) }} />}
