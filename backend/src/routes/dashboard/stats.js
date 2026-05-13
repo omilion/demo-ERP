@@ -14,6 +14,11 @@ export default async function dashboardStats(fastify) {
       confeccionesPendientes,
       maderaPendientes,
       stockRows,
+      crmPendientes,
+      crmEnGestion,
+      crmAltaPrioridad,
+      proveedoresTotal,
+      cobranzaStats,
     ] = await Promise.all([
       p.orden.count({ where: { estadoPago: 'No pagada' } }),
       p.orden.count({ where: { estadoEntrega: 'Pendiente entrega' } }),
@@ -33,6 +38,16 @@ export default async function dashboardStats(fastify) {
         WHERE activo = true
         GROUP BY bodega
       `,
+      p.crmRegistro.count({ where: { estado: 0 } }),
+      p.crmRegistro.count({ where: { estado: 1 } }),
+      p.crmRegistro.count({ where: { prioridad: { equals: 'Alta', mode: 'insensitive' } } }),
+      p.proveedor.count({ where: { activo: true } }),
+      p.$queryRaw`
+        SELECT
+          COALESCE(SUM(CASE WHEN UPPER(estado) = 'CANCELADA' THEN monto ELSE 0 END), 0)::numeric AS cobrado,
+          COUNT(CASE WHEN UPPER(estado) = 'PENDIENTE' THEN 1 END)::int AS n_pendientes
+        FROM ventas.cobranza_historico
+      `,
     ])
 
     const stockByBodega = {}
@@ -44,6 +59,7 @@ export default async function dashboardStats(fastify) {
       }
     }
 
+    const cs = cobranzaStats[0]
     return {
       ventas: {
         noPagadas: ventasNoPagadas,
@@ -61,6 +77,18 @@ export default async function dashboardStats(fastify) {
         { tipo: 'Madera',       activas: maderaPendientes },
       ],
       stock: stockByBodega,
+      crm: {
+        pendientes: crmPendientes,
+        enGestion: crmEnGestion,
+        altaPrioridad: crmAltaPrioridad,
+      },
+      proveedores: {
+        total: proveedoresTotal,
+      },
+      cobranzaHistorico: {
+        cobrado: Number(cs.cobrado),
+        pendientes: cs.n_pendientes,
+      },
     }
   })
 }

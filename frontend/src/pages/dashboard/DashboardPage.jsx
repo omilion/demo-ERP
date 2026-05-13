@@ -54,6 +54,10 @@ export default function DashboardPage() {
   const inv = stats?.stock?.Inventario ?? {}
   const tal = stats?.stock?.Taller ?? {}
   const maxTaller = Math.max(...(stats?.talleres ?? []).map(t => t.activas), 1)
+  const crm = stats?.crm ?? { pendientes: 0, enGestion: 0, altaPrioridad: 0 }
+  const proveedores = stats?.proveedores ?? { total: 0 }
+  const cobHist = stats?.cobranzaHistorico ?? { cobrado: 0, pendientes: 0 }
+  const fmtM = n => '$' + (Math.abs(n || 0) / 1_000_000).toFixed(1) + 'M'
 
   const now = new Date()
   const hora = now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
@@ -106,6 +110,20 @@ export default function DashboardPage() {
           icon="alertTriangle" tone="amber"
           sublabel={isLoading ? '' : `${tal.sinStock ?? 0} sin stock`}
           onClick={() => navigate('/bodega')}
+        />
+        <KpiCard
+          label="CRM — Pendientes"
+          value={isLoading ? '…' : crm.pendientes.toLocaleString('es-CL')}
+          icon="phone" tone={crm.altaPrioridad > 0 ? 'red' : 'blue'}
+          sublabel={isLoading ? '' : `${crm.altaPrioridad} prioridad alta`}
+          onClick={() => navigate('/crm')}
+        />
+        <KpiCard
+          label="Cobranza Cobrado"
+          value={isLoading ? '…' : fmtM(cobHist.cobrado)}
+          icon="trendingUp" tone="neutral"
+          sublabel={isLoading ? '' : `${cobHist.pendientes} pendientes historial`}
+          onClick={() => navigate('/cobranza')}
         />
       </div>
 
@@ -181,13 +199,44 @@ export default function DashboardPage() {
           <ActionRow icon="plusCircle" label="Nueva Venta" onClick={() => navigate('/ventas/nueva')} />
         </SectionCard>
 
-        <SectionCard title="Accesos Rápidos" icon="zap">
+        <SectionCard title="CRM — Seguimiento" icon="phone">
+          <div style={{ padding: '4px 14px 8px', display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: 'var(--amber)', fontSize: 13 }}>
+                  {isLoading ? '…' : crm.pendientes.toLocaleString('es-CL')}
+                </span>{' '}pendientes
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: 'var(--blue)', fontSize: 13 }}>
+                  {isLoading ? '…' : crm.enGestion.toLocaleString('es-CL')}
+                </span>{' '}en gestión
+              </span>
+              {!isLoading && crm.altaPrioridad > 0 && (
+                <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                  <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: 'var(--red)', fontSize: 13 }}>
+                    {crm.altaPrioridad.toLocaleString('es-CL')}
+                  </span>{' '}alta prioridad
+                </span>
+              )}
+            </div>
+            <button onClick={() => navigate('/crm')} style={{ fontSize: 11, color: 'var(--green-600)', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>
+              Ver todas →
+            </button>
+          </div>
+          <ActionRow icon="phone" label="Ver CRM completo" onClick={() => navigate('/crm')} />
+          <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
           <ActionRow icon="users" label="Clientes" onClick={() => navigate('/clientes')} />
+          <ActionRow icon="clipboard" label="Licitaciones" onClick={() => navigate('/licitaciones')} />
+        </SectionCard>
+
+        <SectionCard title="Accesos Rápidos" icon="zap">
           <ActionRow icon="creditCard" label="Caja" onClick={() => navigate('/caja')} />
           <ActionRow icon="dollarSign" label="Cobranza" onClick={() => navigate('/cobranza')} />
+          <ActionRow icon="truck" label="Proveedores" badge={isLoading ? '…' : proveedores.total} badgeTone="neutral" onClick={() => navigate('/proveedores')} />
+          <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
           <ActionRow icon="fileText" label="Nueva ODT" onClick={() => navigate('/taller/nueva')} />
           <ActionRow icon="layers" label="Nueva Venta Sala" onClick={() => navigate('/ventas/nueva')} />
-          <ActionRow icon="history" label="Historial Taller" onClick={() => navigate('/taller')} />
         </SectionCard>
       </div>
 

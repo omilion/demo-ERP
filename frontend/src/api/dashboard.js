@@ -16,5 +16,8 @@ export const useDashboardStats = () =>
         { tipo: 'Madera',       activas: 0 },
       ],
       stock: {},
+      crm: { pendientes: 0, enGestion: 0, altaPrioridad: 0 },
+      proveedores: { total: 0 },
+      cobranzaHistorico: { cobrado: 0, pendientes: 0 },
     },
   })
