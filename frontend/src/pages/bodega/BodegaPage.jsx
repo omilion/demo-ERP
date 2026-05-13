@@ -16,7 +16,7 @@ export default function BodegaPage() {
   const byBodega = tab === 'taller' ? productos.filter(p => p.bodega === 'Taller') : productos.filter(p => p.bodega === 'Inventario')
   const displayed = byBodega
     .filter(p => filter === 'all' || (filter === 'critico' && (p.estado === 'Crítico' || p.estado === 'Sin stock')))
-    .filter(p => !search || p.nombre.toLowerCase().includes(search.toLowerCase()) || p.codigoInterno.toLowerCase().includes(search.toLowerCase()))
+    .filter(p => !search || p.nombre.toLowerCase().includes(search.toLowerCase()) || (p.codigoInterno ?? '').toLowerCase().includes(search.toLowerCase()))
 
   const valorInventario = productos.reduce((sum, p) => sum + p.precioLista * p.stock, 0)
 

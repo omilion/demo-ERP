@@ -90,16 +90,31 @@ export default function BodegaFormPage() {
       stockCritico: Number(data.minimo),
       precioLista: Number(data.precio),
     }
-    if (isEdit && found && Number(data.precio) !== found.precioLista) {
-      addPrecio.mutate({
-        productoId: found.id,
-        data: { precioAnterior: found.precioLista, precioNuevo: Number(data.precio), usuarioNombre: user?.email || 'sistema' },
-      })
-    }
     if (isEdit) {
-      updateProducto.mutate({ id: found.id, data: payload }, { onSuccess: () => navigate('/bodega') })
+      updateProducto.mutate({ id: found.id, data: payload }, {
+        onSuccess: () => {
+          if (Number(data.precio) !== found.precioLista) {
+            addPrecio.mutate({
+              productoId: found.id,
+              data: {
+                precioAnterior: found.precioLista,
+                precioNuevo: Number(data.precio),
+                usuarioNombre: user?.email || 'sistema',
+              },
+            })
+          }
+          navigate('/bodega')
+        },
+        onError: () => alert('Error al guardar el producto. Intente nuevamente.'),
+      })
     } else {
-      createProducto.mutate({ ...payload, codigoInterno: data.cod }, { onSuccess: () => navigate('/bodega') })
+      createProducto.mutate(
+        { ...payload, codigoInterno: data.cod },
+        {
+          onSuccess: () => navigate('/bodega'),
+          onError: () => alert('Error al crear el producto. Intente nuevamente.'),
+        }
+      )
     }
   }
 
@@ -116,7 +131,7 @@ export default function BodegaFormPage() {
       <FormDivider label="Identificación" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <FormField label="Código" required error={errors.cod}>
-          <Input value={data.cod} onChange={v => set('cod', v)} placeholder="ESP-001" error={errors.cod} />
+          <Input value={data.cod} onChange={v => set('cod', v)} placeholder="ESP-001" error={errors.cod} disabled={isEdit} />
         </FormField>
         <FormField label="Categoría">
           <Select value={data.cat} onChange={v => set('cat', v)} options={['Espumas','Viscoelástico','Telas','Maderas','Colchones','Fibras','Accesorios','Látex','Bases','Protectores']} />
