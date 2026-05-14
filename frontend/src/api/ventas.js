@@ -30,3 +30,14 @@ export const useUpdateVenta = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['ventas'] }),
   })
 }
+
+export const useDeleteVenta = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/ventas/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+}

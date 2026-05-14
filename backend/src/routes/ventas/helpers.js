@@ -7,7 +7,7 @@ export async function attachCliente(fastify, orden) {
   if (!orden.clienteId) return { ...orden, cliente: null }
   const cliente = await fastify.prisma.cliente.findUnique({
     where: { id: orden.clienteId },
-    select: { id: true, nombre: true, rut: true },
+    select: { id: true, nombre: true, rut: true, email: true, telefono: true, ciudad: true, razonSocial: true, tipo: true },
   })
   return { ...orden, cliente }
 }
