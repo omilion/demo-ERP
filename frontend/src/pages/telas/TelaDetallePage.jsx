@@ -1,13 +1,25 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Badge, PageHeader, Btn, Table } from '../../components/shared'
-import { useTela, useCreateTelaMovimiento } from '../../api/telas'
+import { FormField, Input } from '../../components/forms'
+import { useTela, useCreateTelaMovimiento, useUpdateTela } from '../../api/telas'
 
 export default function TelaDetallePage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { data, isLoading } = useTela(id)
   const createMov = useCreateTelaMovimiento()
+  const updateMut = useUpdateTela()
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState({})
+
+  useEffect(() => {
+    if (data) setForm({
+      codigo: data.codigo || '', nombre: data.nombre || '', tipo: data.tipo || '',
+      color: data.color || '', ubicacion: data.ubicacion || '', proveedor: data.proveedor || '',
+      ancho: data.ancho ?? '', gramaje: data.gramaje ?? '', precio: data.precio ?? '', stockMin: data.stockMin ?? 0,
+    })
+  }, [data])
 
   const [tipo, setTipo] = useState('ingreso')
   const [cantidad, setCantidad] = useState('')
@@ -53,17 +65,51 @@ export default function TelaDetallePage() {
         title={data.nombre || data.codigo}
         subtitle={data.tipo || 'Sin tipo'}
         breadcrumb={['Inicio', 'Taller', 'Telas', data.codigo]}
-        actions={<Btn variant="secondary" size="sm" onClick={() => navigate('/telas')}>← Volver</Btn>}
+        actions={
+          <div style={{ display: 'flex', gap: 8 }}>
+            {!editing && <Btn variant="primary" size="sm" onClick={() => setEditing(true)}>Editar</Btn>}
+            {editing && <>
+              <Btn variant="secondary" size="sm" onClick={() => setEditing(false)} disabled={updateMut.isPending}>Cancelar</Btn>
+              <Btn variant="primary" size="sm" onClick={() => updateMut.mutate({ id, data: form }, { onSuccess: () => setEditing(false) })} disabled={updateMut.isPending}>
+                {updateMut.isPending ? 'Guardando…' : 'Guardar'}
+              </Btn>
+            </>}
+            <Btn variant="secondary" size="sm" onClick={() => navigate('/telas')}>← Volver</Btn>
+          </div>
+        }
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
-        <InfoCard label="Código" value={data.codigo} />
-        <InfoCard label="Stock">
-          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 22, fontWeight: 700, color: data.stock > 0 ? 'var(--green-700)' : 'var(--red-700)' }}>{(data.stock || 0).toFixed(2)}</span>
-        </InfoCard>
-        <InfoCard label="Tipo" value={data.tipo || '—'} />
-        <InfoCard label="Ubicación" value={data.ubicacion || '—'} />
-      </div>
+      {editing ? (
+        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+            <FormField label="Código"><Input value={form.codigo} onChange={v => setForm(f => ({ ...f, codigo: v }))} /></FormField>
+            <FormField label="Nombre"><Input value={form.nombre} onChange={v => setForm(f => ({ ...f, nombre: v }))} /></FormField>
+            <FormField label="Tipo"><Input value={form.tipo} onChange={v => setForm(f => ({ ...f, tipo: v }))} /></FormField>
+            <FormField label="Color"><Input value={form.color} onChange={v => setForm(f => ({ ...f, color: v }))} /></FormField>
+            <FormField label="Ubicación"><Input value={form.ubicacion} onChange={v => setForm(f => ({ ...f, ubicacion: v }))} /></FormField>
+            <FormField label="Proveedor"><Input value={form.proveedor} onChange={v => setForm(f => ({ ...f, proveedor: v }))} /></FormField>
+            <FormField label="Ancho (m)"><Input type="number" value={form.ancho} onChange={v => setForm(f => ({ ...f, ancho: v }))} /></FormField>
+            <FormField label="Gramaje"><Input type="number" value={form.gramaje} onChange={v => setForm(f => ({ ...f, gramaje: v }))} /></FormField>
+            <FormField label="Precio"><Input type="number" value={form.precio} onChange={v => setForm(f => ({ ...f, precio: v }))} /></FormField>
+            <FormField label="Stock mínimo"><Input type="number" value={form.stockMin} onChange={v => setForm(f => ({ ...f, stockMin: v }))} /></FormField>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+          <InfoCard label="Código" value={data.codigo} />
+          <InfoCard label="Stock">
+            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 22, fontWeight: 700, color: data.stock > 0 ? 'var(--green-700)' : 'var(--red-700)' }}>{(data.stock || 0).toFixed(2)}</span>
+          </InfoCard>
+          <InfoCard label="Tipo" value={data.tipo || '—'} />
+          <InfoCard label="Ubicación" value={data.ubicacion || '—'} />
+          <InfoCard label="Color" value={data.color || '—'} />
+          <InfoCard label="Proveedor" value={data.proveedor || '—'} />
+          <InfoCard label="Ancho" value={data.ancho ? data.ancho + 'm' : '—'} />
+          <InfoCard label="Gramaje" value={data.gramaje || '—'} />
+          <InfoCard label="Precio" value={data.precio ? '$' + data.precio.toLocaleString('es-CL') : '—'} />
+          <InfoCard label="Stock mín" value={(data.stockMin ?? 0).toString()} />
+        </div>
+      )}
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
         <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Registrar movimiento</div>

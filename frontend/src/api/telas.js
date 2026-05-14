@@ -15,6 +15,33 @@ export const useTela = (id) =>
     enabled: !!id,
   })
 
+export const useCreateTela = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data) => api.post('/telas', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['telas'] }),
+  })
+}
+
+export const useUpdateTela = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }) => api.put(`/telas/${id}`, data).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['telas'] })
+      qc.invalidateQueries({ queryKey: ['telas', vars.id] })
+    },
+  })
+}
+
+export const useDeleteTela = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/telas/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['telas'] }),
+  })
+}
+
 export const useCreateTelaMovimiento = () => {
   const qc = useQueryClient()
   return useMutation({

@@ -60,4 +60,28 @@ export default async function pagosProveedoresRoutes(fastify) {
     }
     return { ...pago, proveedor, detalles }
   })
+
+  fastify.put('/:id', {
+    preHandler: [fastify.authenticate, fastify.rbac('proveedores', 'write')],
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
+    const body = request.body || {}
+    const data = {}
+    for (const f of ['estado', 'documento', 'nDoc', 'usuario', 'bodega', 'obs', 'ncNumero']) {
+      if (body[f] !== undefined) data[f] = body[f]
+    }
+    if (body.fechaDoc !== undefined) data.fechaDoc = body.fechaDoc ? new Date(body.fechaDoc) : null
+    if (body.fechaPago !== undefined) data.fechaPago = body.fechaPago ? new Date(body.fechaPago) : null
+    if (body.fechaVencimiento !== undefined) data.fechaVencimiento = body.fechaVencimiento ? new Date(body.fechaVencimiento) : null
+    if (body.total !== undefined) data.total = parseFloat(body.total) || 0
+    if (body.nc !== undefined) data.nc = !!body.nc
+    if (body.ncMonto !== undefined) data.ncMonto = body.ncMonto === null ? null : parseFloat(body.ncMonto)
+    try {
+      return await fastify.prisma.pagoProveedor.update({ where: { id }, data })
+    } catch (e) {
+      if (e.code === 'P2025') return reply.code(404).send({ error: 'Pago no encontrado' })
+      throw e
+    }
+  })
 }

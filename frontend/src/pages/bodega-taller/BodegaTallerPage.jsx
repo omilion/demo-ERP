@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { Badge, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
-import { useBodegaTaller } from '../../api/bodegaTaller'
+import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
+import { FormField, Input } from '../../components/forms'
+import { useBodegaTaller, useCreateBodegaTaller, useUpdateBodegaTaller } from '../../api/bodegaTaller'
 
 const TABS = [
   { id: 'all',          label: 'Todos' },
@@ -14,7 +15,11 @@ export default function BodegaTallerPage() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [editing, setEditing] = useState(null) // row being edited
+  const [creating, setCreating] = useState(false)
   const debounceRef = useRef(null)
+  const createMut = useCreateBodegaTaller()
+  const updateMut = useUpdateBodegaTaller()
 
   useEffect(() => {
     clearTimeout(debounceRef.current)
@@ -52,6 +57,10 @@ export default function BodegaTallerPage() {
       render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{fmt(v)}</span> },
     { key: 'codigoBarra', label: 'Cód. barra',
       render: v => v ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: 'var(--text-3)' }}>{v}</span> : <span style={{ color: 'var(--text-3)' }}>—</span> },
+    { key: '_edit', label: '',
+      render: (_, row) => (
+        <button onClick={(e) => { e.stopPropagation(); setEditing(row) }} style={{ background: 'transparent', border: 'none', color: 'var(--green-700)', cursor: 'pointer', fontSize: 12 }}>Editar</button>
+      ) },
   ]
 
   return (
@@ -60,6 +69,7 @@ export default function BodegaTallerPage() {
         title="Bodega Taller"
         subtitle={`${total.toLocaleString('es-CL')} materiales de taller`}
         breadcrumb={['Inicio', 'Taller', 'Bodega']}
+        actions={<Btn variant="primary" size="sm" onClick={() => setCreating(true)}>+ Nuevo material</Btn>}
       />
       <div className="kpi-strip">
         <KpiCard label="Total materiales" value={total} icon="box" sublabel="En catálogo" />
@@ -82,6 +92,69 @@ export default function BodegaTallerPage() {
           : <Table columns={cols} rows={items} emptyMessage="Sin materiales" />
         }
       </div>
+
+      {(editing || creating) && (
+        <Modal
+          title={creating ? 'Nuevo material' : `Editar ${editing.codigoInterno}`}
+          onClose={() => { setEditing(null); setCreating(false) }}
+          onSave={(data) => {
+            const mut = creating ? createMut : updateMut
+            const payload = creating ? data : { id: editing.id, data }
+            mut.mutate(payload, { onSuccess: () => { setEditing(null); setCreating(false) } })
+          }}
+          initial={editing || {}}
+          allowCodigo={creating}
+          saving={createMut.isPending || updateMut.isPending}
+        />
+      )}
     </main>
+  )
+}
+
+function Modal({ title, onClose, onSave, initial, allowCodigo, saving }) {
+  const [form, setForm] = useState({
+    codigoInterno: initial.codigoInterno || '',
+    codigoBarra: initial.codigoBarra || '',
+    nombre: initial.nombre || '',
+    unidadMedida: initial.unidadMedida || '',
+    stock: initial.stock ?? 0,
+    stockCritico: initial.stockCritico ?? 0,
+    precio: initial.precio ?? 0,
+  })
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 20, width: 520, maxWidth: '90vw' }}>
+        <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 16 }}>{title}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <FormField label="Código interno" required={allowCodigo}>
+            <Input value={form.codigoInterno} onChange={v => setForm(f => ({ ...f, codigoInterno: v }))} disabled={!allowCodigo} />
+          </FormField>
+          <FormField label="Código barra">
+            <Input value={form.codigoBarra} onChange={v => setForm(f => ({ ...f, codigoBarra: v }))} />
+          </FormField>
+          <FormField label="Nombre" required>
+            <Input value={form.nombre} onChange={v => setForm(f => ({ ...f, nombre: v }))} />
+          </FormField>
+          <FormField label="Unidad">
+            <Input value={form.unidadMedida} onChange={v => setForm(f => ({ ...f, unidadMedida: v }))} />
+          </FormField>
+          <FormField label="Stock">
+            <Input type="number" value={form.stock} onChange={v => setForm(f => ({ ...f, stock: v }))} />
+          </FormField>
+          <FormField label="Stock crítico">
+            <Input type="number" value={form.stockCritico} onChange={v => setForm(f => ({ ...f, stockCritico: v }))} />
+          </FormField>
+          <FormField label="Precio">
+            <Input type="number" value={form.precio} onChange={v => setForm(f => ({ ...f, precio: v }))} />
+          </FormField>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+          <Btn variant="secondary" size="sm" onClick={onClose} disabled={saving}>Cancelar</Btn>
+          <Btn variant="primary" size="sm" onClick={() => onSave(form)} disabled={saving || !form.nombre || (allowCodigo && !form.codigoInterno)}>
+            {saving ? 'Guardando…' : 'Guardar'}
+          </Btn>
+        </div>
+      </div>
+    </div>
   )
 }

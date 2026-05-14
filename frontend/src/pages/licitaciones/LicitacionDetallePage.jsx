@@ -1,11 +1,14 @@
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Badge, PageHeader, Btn, Table } from '../../components/shared'
-import { useCotizacion } from '../../api/cotizaciones'
+import { FormField, Input, Select, Textarea } from '../../components/forms'
+import { useCotizacion, useUpdateCotizacion } from '../../api/cotizaciones'
 
 const ESTADO_TONE = {
   'Pendiente':  'amber', 'Adjudicada': 'green', 'Cerrada': 'neutral',
   'Rechazada':  'red',   'En proceso': 'blue',
 }
+const ESTADOS = ['Pendiente', 'En proceso', 'Adjudicada', 'Rechazada', 'Cerrada']
 
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
@@ -13,6 +16,20 @@ export default function LicitacionDetallePage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { data, isLoading } = useCotizacion(id)
+  const updateMut = useUpdateCotizacion()
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState({})
+
+  useEffect(() => {
+    if (data) setForm({
+      estado: data.estado || 'Pendiente',
+      obs: data.obs || '',
+      plazo: data.plazo || '',
+      ordenCompra: data.ordenCompra || '',
+      referencia: data.referencia || '',
+      fecha: data.fecha ? data.fecha.slice(0, 10) : '',
+    })
+  }, [data])
 
   if (isLoading) return <main style={{ padding: 24 }}>Cargando…</main>
   if (!data) return <main style={{ padding: 24 }}>No encontrada</main>
@@ -20,6 +37,12 @@ export default function LicitacionDetallePage() {
   const items = data.items ?? []
   const subtotal = items.reduce((s, i) => s + (i.cantidad || 0) * (i.precio || 0), 0)
   const totalAdjudicado = items.reduce((s, i) => s + (i.cantAdjudicados || 0) * (i.precio || 0), 0)
+
+  const handleSave = () => {
+    updateMut.mutate({ id: data.id, data: form }, {
+      onSuccess: () => setEditing(false),
+    })
+  }
 
   const cols = [
     { key: 'codigoInterno', label: 'Código',
@@ -44,40 +67,80 @@ export default function LicitacionDetallePage() {
         title={`Licitación ${data.idLicitacion || `#${data.id}`}`}
         subtitle={data.referencia || 'Sin referencia'}
         breadcrumb={['Inicio', 'Ventas', 'Licitaciones', String(data.id)]}
-        actions={<Btn variant="secondary" size="sm" onClick={() => navigate('/licitaciones')}>← Volver</Btn>}
+        actions={
+          <div style={{ display: 'flex', gap: 8 }}>
+            {!editing && <Btn variant="primary" size="sm" onClick={() => setEditing(true)}>Editar</Btn>}
+            {editing && <>
+              <Btn variant="secondary" size="sm" onClick={() => setEditing(false)} disabled={updateMut.isPending}>Cancelar</Btn>
+              <Btn variant="primary" size="sm" onClick={handleSave} disabled={updateMut.isPending}>
+                {updateMut.isPending ? 'Guardando…' : 'Guardar'}
+              </Btn>
+            </>}
+            <Btn variant="secondary" size="sm" onClick={() => navigate('/licitaciones')}>← Volver</Btn>
+          </div>
+        }
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
-        <InfoCard label="Estado"><Badge tone={ESTADO_TONE[data.estado] || 'gray'}>{data.estado}</Badge></InfoCard>
-        <InfoCard label="Fecha cotización" value={data.fecha ? new Date(data.fecha).toLocaleDateString('es-CL') : '—'} />
-        <InfoCard label="Fecha creación" value={data.fechaCreacion ? new Date(data.fechaCreacion).toLocaleDateString('es-CL') : '—'} />
-        <InfoCard label="Plazo" value={data.plazo || '—'} />
-        <InfoCard label="Vendedor" value={data.usuario || '—'} />
-        <InfoCard label="OC" value={data.ordenCompra || '—'} />
-      </div>
-
-      {data.cliente && (
+      {editing ? (
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
-          <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Organismo / Cliente</div>
-          <div style={{ fontWeight: 600, fontSize: 15 }}>{data.cliente.nombre}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4 }}>
-            <span style={{ fontFamily: "'DM Mono', monospace" }}>{data.cliente.rut}</span>
-            {data.cliente.email && <span> · {data.cliente.email}</span>}
-            {data.cliente.telefono && <span> · {data.cliente.telefono}</span>}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            <FormField label="Estado">
+              <Select value={form.estado} onChange={v => setForm(f => ({ ...f, estado: v }))} options={ESTADOS} />
+            </FormField>
+            <FormField label="Fecha">
+              <Input type="date" value={form.fecha} onChange={v => setForm(f => ({ ...f, fecha: v }))} />
+            </FormField>
+            <FormField label="Plazo">
+              <Input value={form.plazo} onChange={v => setForm(f => ({ ...f, plazo: v }))} />
+            </FormField>
+            <FormField label="OC">
+              <Input value={form.ordenCompra} onChange={v => setForm(f => ({ ...f, ordenCompra: v }))} />
+            </FormField>
+            <FormField label="Referencia">
+              <Input value={form.referencia} onChange={v => setForm(f => ({ ...f, referencia: v }))} />
+            </FormField>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <FormField label="Observaciones">
+              <Textarea value={form.obs} onChange={v => setForm(f => ({ ...f, obs: v }))} rows={4} />
+            </FormField>
           </div>
         </div>
-      )}
-      {!data.cliente && data.rutCliente && (
-        <div style={{ background: 'var(--amber-50)', border: '1px solid var(--amber-200)', borderRadius: 12, padding: 12, marginBottom: 16, fontSize: 13 }}>
-          RUT cliente <span style={{ fontFamily: "'DM Mono', monospace" }}>{data.rutCliente}</span> no encontrado en clientes registrados.
-        </div>
-      )}
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
+            <InfoCard label="Estado"><Badge tone={ESTADO_TONE[data.estado] || 'gray'}>{data.estado}</Badge></InfoCard>
+            <InfoCard label="Fecha cotización" value={data.fecha ? new Date(data.fecha).toLocaleDateString('es-CL') : '—'} />
+            <InfoCard label="Fecha creación" value={data.fechaCreacion ? new Date(data.fechaCreacion).toLocaleDateString('es-CL') : '—'} />
+            <InfoCard label="Plazo" value={data.plazo || '—'} />
+            <InfoCard label="Vendedor" value={data.usuario || '—'} />
+            <InfoCard label="OC" value={data.ordenCompra || '—'} />
+          </div>
 
-      {data.obs && (
-        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
-          <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Observaciones</div>
-          <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', color: 'var(--text-1)' }}>{data.obs}</div>
-        </div>
+          {data.cliente && (
+            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Organismo / Cliente</div>
+              <div style={{ fontWeight: 600, fontSize: 15 }}>{data.cliente.nombre}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4 }}>
+                <span style={{ fontFamily: "'DM Mono', monospace" }}>{data.cliente.rut}</span>
+                {data.cliente.email && <span> · {data.cliente.email}</span>}
+                {data.cliente.telefono && <span> · {data.cliente.telefono}</span>}
+              </div>
+            </div>
+          )}
+          {!data.cliente && data.rutCliente && (
+            <div style={{ background: 'var(--amber-bg)', border: '1px solid var(--border)', borderRadius: 12, padding: 12, marginBottom: 16, fontSize: 13 }}>
+              RUT cliente <span style={{ fontFamily: "'DM Mono', monospace" }}>{data.rutCliente}</span> no encontrado en clientes registrados.
+            </div>
+          )}
+
+          {data.obs && (
+            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Observaciones</div>
+              <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', color: 'var(--text-1)' }}>{data.obs}</div>
+            </div>
+          )}
+        </>
       )}
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>

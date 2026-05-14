@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from './client'
 
 export const useOrdenesCompra = (params = {}) =>
@@ -14,3 +14,22 @@ export const useOrdenCompra = (id) =>
     queryFn: () => api.get(`/ordenes-compra/${id}`).then(r => r.data),
     enabled: !!id,
   })
+
+export const useUpdateOrdenCompra = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }) => api.put(`/ordenes-compra/${id}`, data).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['ordenes-compra'] })
+      qc.invalidateQueries({ queryKey: ['ordenes-compra', vars.id] })
+    },
+  })
+}
+
+export const useDeleteOrdenCompra = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/ordenes-compra/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ordenes-compra'] }),
+  })
+}

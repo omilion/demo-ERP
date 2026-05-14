@@ -42,6 +42,27 @@ export default async function ordenesCompraRoutes(fastify) {
     return oc
   })
 
+  fastify.put('/:id', {
+    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
+    const body = request.body || {}
+    const data = {}
+    for (const f of ['estadoCompra', 'tipoDocumento', 'codigoVendedor', 'obsCliente', 'canal', 'textoPie', 'tipoCotizacion', 'cargoServicio', 'historialCargo']) {
+      if (body[f] !== undefined) data[f] = body[f]
+    }
+    if (body.total !== undefined) data.total = parseFloat(body.total) || 0
+    if (body.costoEnvio !== undefined) data.costoEnvio = parseFloat(body.costoEnvio) || 0
+    if (body.fechaCotizacion !== undefined) data.fechaCotizacion = body.fechaCotizacion ? new Date(body.fechaCotizacion) : null
+    try {
+      return await fastify.prisma.ordenCompraOnline.update({ where: { id }, data })
+    } catch (e) {
+      if (e.code === 'P2025') return reply.code(404).send({ error: 'OC no encontrada' })
+      throw e
+    }
+  })
+
   fastify.delete('/:id', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
   }, async (request, reply) => {

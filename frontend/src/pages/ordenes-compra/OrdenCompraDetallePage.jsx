@@ -1,6 +1,11 @@
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Badge, PageHeader, Btn, Table } from '../../components/shared'
-import { useOrdenCompra } from '../../api/ordenesCompra'
+import { FormField, Input, Select, Textarea } from '../../components/forms'
+import { useOrdenCompra, useUpdateOrdenCompra } from '../../api/ordenesCompra'
+
+const ESTADOS = ['', 'Pendiente', 'En proceso', 'Despachada', 'Entregada', 'Cancelada', 'Pagada']
+const CANALES = ['', 'Web', 'Convenio Marco', 'Venta Sala', 'Telefónica']
 
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
@@ -8,12 +13,32 @@ export default function OrdenCompraDetallePage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { data, isLoading } = useOrdenCompra(id)
+  const updateMut = useUpdateOrdenCompra()
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState({})
+
+  useEffect(() => {
+    if (data) setForm({
+      estadoCompra: data.estadoCompra || '',
+      tipoDocumento: data.tipoDocumento || '',
+      codigoVendedor: data.codigoVendedor || '',
+      canal: data.canal || '',
+      obsCliente: data.obsCliente || '',
+      cargoServicio: data.cargoServicio || '',
+      total: data.total ?? 0,
+      costoEnvio: data.costoEnvio ?? 0,
+    })
+  }, [data])
 
   if (isLoading) return <main style={{ padding: 24 }}>Cargando…</main>
   if (!data) return <main style={{ padding: 24 }}>No encontrada</main>
 
   const items = data.items ?? []
   const subtotal = items.reduce((s, i) => s + (i.cantidad || 0) * (i.precio || 0), 0)
+
+  const handleSave = () => {
+    updateMut.mutate({ id: data.id, data: form }, { onSuccess: () => setEditing(false) })
+  }
 
   const cols = [
     { key: 'codigoInterno', label: 'Código',
@@ -36,25 +61,71 @@ export default function OrdenCompraDetallePage() {
         title={`OC ${data.nCompra}`}
         subtitle={data.emailComprador || 'Sin email'}
         breadcrumb={['Inicio', 'Ventas', 'OC Online', data.nCompra]}
-        actions={<Btn variant="secondary" size="sm" onClick={() => navigate('/ordenes-compra')}>← Volver</Btn>}
+        actions={
+          <div style={{ display: 'flex', gap: 8 }}>
+            {!editing && <Btn variant="primary" size="sm" onClick={() => setEditing(true)}>Editar</Btn>}
+            {editing && <>
+              <Btn variant="secondary" size="sm" onClick={() => setEditing(false)} disabled={updateMut.isPending}>Cancelar</Btn>
+              <Btn variant="primary" size="sm" onClick={handleSave} disabled={updateMut.isPending}>
+                {updateMut.isPending ? 'Guardando…' : 'Guardar'}
+              </Btn>
+            </>}
+            <Btn variant="secondary" size="sm" onClick={() => navigate('/ordenes-compra')}>← Volver</Btn>
+          </div>
+        }
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
-        <InfoCard label="Fecha" value={data.fechaHora ? new Date(data.fechaHora).toLocaleString('es-CL') : '—'} />
-        <InfoCard label="Total" value={<span style={{ color: 'var(--green-700)', fontWeight: 700 }}>{fmt(data.total)}</span>} />
-        <InfoCard label="Estado">{data.estadoCompra ? <Badge tone="blue">{data.estadoCompra}</Badge> : '—'}</InfoCard>
-        <InfoCard label="Canal" value={data.canal || '—'} />
-        <InfoCard label="Documento" value={data.tipoDocumento || '—'} />
-        <InfoCard label="Vendedor" value={data.codigoVendedor || '—'} />
-        <InfoCard label="Costo envío" value={fmt(data.costoEnvio)} />
-        <InfoCard label="Cargo servicio" value={data.cargoServicio || '—'} />
-      </div>
-
-      {data.obsCliente && (
+      {editing ? (
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
-          <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6, textTransform: 'uppercase' }}>Observación cliente</div>
-          <div style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{data.obsCliente}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            <FormField label="Estado">
+              <Select value={form.estadoCompra} onChange={v => setForm(f => ({ ...f, estadoCompra: v }))} options={ESTADOS} />
+            </FormField>
+            <FormField label="Canal">
+              <Select value={form.canal} onChange={v => setForm(f => ({ ...f, canal: v }))} options={CANALES} />
+            </FormField>
+            <FormField label="Documento">
+              <Input value={form.tipoDocumento} onChange={v => setForm(f => ({ ...f, tipoDocumento: v }))} />
+            </FormField>
+            <FormField label="Vendedor">
+              <Input value={form.codigoVendedor} onChange={v => setForm(f => ({ ...f, codigoVendedor: v }))} />
+            </FormField>
+            <FormField label="Total">
+              <Input type="number" value={form.total} onChange={v => setForm(f => ({ ...f, total: v }))} />
+            </FormField>
+            <FormField label="Costo envío">
+              <Input type="number" value={form.costoEnvio} onChange={v => setForm(f => ({ ...f, costoEnvio: v }))} />
+            </FormField>
+            <FormField label="Cargo servicio">
+              <Input value={form.cargoServicio} onChange={v => setForm(f => ({ ...f, cargoServicio: v }))} />
+            </FormField>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <FormField label="Observación cliente">
+              <Textarea value={form.obsCliente} onChange={v => setForm(f => ({ ...f, obsCliente: v }))} rows={3} />
+            </FormField>
+          </div>
         </div>
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
+            <InfoCard label="Fecha" value={data.fechaHora ? new Date(data.fechaHora).toLocaleString('es-CL') : '—'} />
+            <InfoCard label="Total" value={<span style={{ color: 'var(--green-700)', fontWeight: 700 }}>{fmt(data.total)}</span>} />
+            <InfoCard label="Estado">{data.estadoCompra ? <Badge tone="blue">{data.estadoCompra}</Badge> : '—'}</InfoCard>
+            <InfoCard label="Canal" value={data.canal || '—'} />
+            <InfoCard label="Documento" value={data.tipoDocumento || '—'} />
+            <InfoCard label="Vendedor" value={data.codigoVendedor || '—'} />
+            <InfoCard label="Costo envío" value={fmt(data.costoEnvio)} />
+            <InfoCard label="Cargo servicio" value={data.cargoServicio || '—'} />
+          </div>
+
+          {data.obsCliente && (
+            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6, textTransform: 'uppercase' }}>Observación cliente</div>
+              <div style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{data.obsCliente}</div>
+            </div>
+          )}
+        </>
       )}
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>

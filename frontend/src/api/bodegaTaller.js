@@ -15,6 +15,14 @@ export const useBodegaTallerItem = (id) =>
     enabled: !!id,
   })
 
+export const useCreateBodegaTaller = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data) => api.post('/bodega-taller', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['bodega-taller'] }),
+  })
+}
+
 export const useUpdateBodegaTaller = () => {
   const qc = useQueryClient()
   return useMutation({

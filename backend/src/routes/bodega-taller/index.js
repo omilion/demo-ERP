@@ -33,6 +33,22 @@ export default async function bodegaTallerRoutes(fastify) {
     return item
   })
 
+  fastify.post('/', {
+    preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
+  }, async (request, reply) => {
+    const { codigoInterno, codigoBarra, nombre, unidadMedida, stock, stockCritico, precio } = request.body || {}
+    if (!codigoInterno || !nombre) return reply.code(400).send({ error: 'codigoInterno y nombre requeridos' })
+    const item = await fastify.prisma.bodegaTaller.create({
+      data: {
+        codigoInterno, codigoBarra, nombre, unidadMedida,
+        stock: stock != null ? parseFloat(stock) : 0,
+        stockCritico: stockCritico != null ? parseFloat(stockCritico) : 0,
+        precio: precio != null ? parseFloat(precio) : null,
+      },
+    })
+    return reply.code(201).send(item)
+  })
+
   fastify.put('/:id', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
   }, async (request, reply) => {
