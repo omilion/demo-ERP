@@ -7,15 +7,21 @@ import api from '../api/client'
 const NAV_GROUPS = [
   { label: 'Ventas', items: [
     { label: 'Ventas', route: '/ventas' },
+    { label: 'Matriz Ventas', route: '/matriz-ventas' },
     { label: 'Licitaciones', route: '/licitaciones' },
     { label: 'CRM', route: '/crm' },
   ]},
   { label: 'Bodega', items: [
     { label: 'Inventario', route: '/bodega' },
+    { label: 'Ingreso Mercadería', route: '/stock-ingresos' },
+    { label: 'Despachos', route: '/despachos' },
     { label: 'Proveedores', route: '/proveedores' },
   ]},
   { label: 'Taller', items: [
     { label: 'ODTs', route: '/taller' },
+    { label: 'Pasar a Taller', route: '/pasar-taller' },
+    { label: 'Bitácora', route: '/bitacora-taller' },
+    { label: 'Historial Materiales', route: '/historial-materiales' },
   ]},
   { label: 'Caja', items: [
     { label: 'Movimientos', route: '/caja' },

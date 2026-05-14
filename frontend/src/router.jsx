@@ -28,6 +28,12 @@ import DescuentosPage from './pages/descuentos/DescuentosPage'
 import ProveedoresPage from './pages/proveedores/ProveedoresPage'
 import CrmPage from './pages/crm/CrmPage'
 import ConfigPage from './pages/config/ConfigPage'
+import MatrizVentasPage from './pages/matriz-ventas/MatrizVentasPage'
+import DespachosPage from './pages/despachos/DespachosPage'
+import BitacoraTallerPage from './pages/bitacora-taller/BitacoraTallerPage'
+import HistorialMaterialesPage from './pages/historial-materiales/HistorialMaterialesPage'
+import StockIngresosPage from './pages/stock-ingresos/StockIngresosPage'
+import PasarTallerPage from './pages/pasar-taller/PasarTallerPage'
 
 const ALL = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
 
@@ -72,6 +78,12 @@ export const router = createBrowserRouter([
       { path: 'proveedores',   element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'solo_lectura']}><ProveedoresPage /></ProtectedRoute> },
       { path: 'crm',           element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><CrmPage /></ProtectedRoute> },
       { path: 'config',        element: <ProtectedRoute allowedRoles={['admin']}><ConfigPage /></ProtectedRoute> },
+      { path: 'matriz-ventas', element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><MatrizVentasPage /></ProtectedRoute> },
+      { path: 'despachos',     element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'vendedor', 'solo_lectura']}><DespachosPage /></ProtectedRoute> },
+      { path: 'bitacora-taller', element: <ProtectedRoute allowedRoles={['admin', 'taller', 'solo_lectura']}><BitacoraTallerPage /></ProtectedRoute> },
+      { path: 'historial-materiales', element: <ProtectedRoute allowedRoles={['admin', 'taller', 'solo_lectura']}><HistorialMaterialesPage /></ProtectedRoute> },
+      { path: 'stock-ingresos', element: <ProtectedRoute allowedRoles={['admin', 'bodeguero']}><StockIngresosPage /></ProtectedRoute> },
+      { path: 'pasar-taller',  element: <ProtectedRoute allowedRoles={['admin', 'taller', 'vendedor']}><PasarTallerPage /></ProtectedRoute> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

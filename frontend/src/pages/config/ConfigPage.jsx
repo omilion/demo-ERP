@@ -6,11 +6,15 @@ import {
   useFirmas, useCreateFirma, useUpdateFirma, useDeleteFirma,
   useBloqueos, useUpdateBloqueo,
 } from '../../api/config'
+import { useCargosTransporte, useCreateCargoTransporte, useUpdateCargoTransporte, useDeleteCargoTransporte } from '../../api/cargoTransporte'
+import { useGastos, useCreateGasto, useUpdateGasto, useDeleteGasto } from '../../api/gastos'
 
 const TABS = [
   { id: 'empresa', label: 'Empresa' },
   { id: 'firmas', label: 'Firmas Email' },
   { id: 'bloqueos', label: 'Bloqueos' },
+  { id: 'transporte', label: 'Cargo transporte' },
+  { id: 'gastos', label: 'Gastos' },
 ]
 
 export default function ConfigPage() {
@@ -27,8 +31,111 @@ export default function ConfigPage() {
         {tab === 'empresa' && <EmpresaSection />}
         {tab === 'firmas' && <FirmasSection />}
         {tab === 'bloqueos' && <BloqueosSection />}
+        {tab === 'transporte' && <CargoTransporteSection />}
+        {tab === 'gastos' && <GastosSection />}
       </div>
     </main>
+  )
+}
+
+function CargoTransporteSection() {
+  const { data = [], isLoading } = useCargosTransporte()
+  const createMut = useCreateCargoTransporte()
+  const updateMut = useUpdateCargoTransporte()
+  const deleteMut = useDeleteCargoTransporte()
+  const [nuevo, setNuevo] = useState({ nombre: '', valor: 0 })
+  const [edits, setEdits] = useState({})
+
+  if (isLoading) return <div>Cargando…</div>
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16 }}>
+      <div style={{ fontWeight: 600, marginBottom: 12 }}>Nuevo cargo</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 8, alignItems: 'end', marginBottom: 16 }}>
+        <FormField label="Nombre"><Input value={nuevo.nombre} onChange={v => setNuevo(s => ({ ...s, nombre: v }))} /></FormField>
+        <FormField label="Valor / %"><Input type="number" value={nuevo.valor} onChange={v => setNuevo(s => ({ ...s, valor: v }))} /></FormField>
+        <Btn variant="primary" onClick={() => {
+          if (!nuevo.nombre) return
+          createMut.mutate(nuevo, { onSuccess: () => setNuevo({ nombre: '', valor: 0 }) })
+        }}>+ Agregar</Btn>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead><tr style={{ background: 'var(--bg-muted)' }}>
+          <th style={{ padding: 10, textAlign: 'left' }}>Nombre</th>
+          <th style={{ padding: 10, textAlign: 'right' }}>Valor</th>
+          <th style={{ padding: 10 }}>Activo</th>
+          <th style={{ padding: 10 }}></th>
+        </tr></thead>
+        <tbody>
+          {data.map(c => {
+            const d = edits[c.id] || c
+            const dirty = d.nombre !== c.nombre || parseFloat(d.valor) !== c.valor || d.activo !== c.activo
+            return (
+              <tr key={c.id} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: 10 }}><Input value={d.nombre} onChange={v => setEdits(s => ({ ...s, [c.id]: { ...d, nombre: v } }))} /></td>
+                <td style={{ padding: 10, width: 140 }}><Input type="number" value={d.valor} onChange={v => setEdits(s => ({ ...s, [c.id]: { ...d, valor: v } }))} /></td>
+                <td style={{ padding: 10, textAlign: 'center' }}>
+                  <input type="checkbox" checked={d.activo} onChange={e => setEdits(s => ({ ...s, [c.id]: { ...d, activo: e.target.checked } }))} />
+                </td>
+                <td style={{ padding: 10, textAlign: 'right', display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                  {dirty && <Btn size="sm" variant="primary" onClick={() => updateMut.mutate({ id: c.id, data: { nombre: d.nombre, valor: d.valor, activo: d.activo } })}>Guardar</Btn>}
+                  <button onClick={() => { if (confirm('¿Eliminar?')) deleteMut.mutate(c.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer' }}>Borrar</button>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function GastosSection() {
+  const { data = [], isLoading } = useGastos()
+  const createMut = useCreateGasto()
+  const updateMut = useUpdateGasto()
+  const deleteMut = useDeleteGasto()
+  const [nuevo, setNuevo] = useState('')
+  const [edits, setEdits] = useState({})
+
+  if (isLoading) return <div>Cargando…</div>
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16 }}>
+      <div style={{ fontWeight: 600, marginBottom: 12 }}>Nuevo nombre de gasto</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end', marginBottom: 16 }}>
+        <FormField label="Nombre"><Input value={nuevo} onChange={setNuevo} /></FormField>
+        <Btn variant="primary" onClick={() => {
+          if (!nuevo) return
+          createMut.mutate({ nombre: nuevo }, { onSuccess: () => setNuevo('') })
+        }}>+ Agregar</Btn>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead><tr style={{ background: 'var(--bg-muted)' }}>
+          <th style={{ padding: 10, textAlign: 'left' }}>Nombre</th>
+          <th style={{ padding: 10 }}>Activo</th>
+          <th style={{ padding: 10 }}></th>
+        </tr></thead>
+        <tbody>
+          {data.map(g => {
+            const d = edits[g.id] || g
+            const dirty = d.nombre !== g.nombre || d.activo !== g.activo
+            return (
+              <tr key={g.id} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: 10 }}><Input value={d.nombre} onChange={v => setEdits(s => ({ ...s, [g.id]: { ...d, nombre: v } }))} /></td>
+                <td style={{ padding: 10, textAlign: 'center' }}>
+                  <input type="checkbox" checked={d.activo} onChange={e => setEdits(s => ({ ...s, [g.id]: { ...d, activo: e.target.checked } }))} />
+                </td>
+                <td style={{ padding: 10, textAlign: 'right', display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                  {dirty && <Btn size="sm" variant="primary" onClick={() => updateMut.mutate({ id: g.id, data: { nombre: d.nombre, activo: d.activo } })}>Guardar</Btn>}
+                  <button onClick={() => { if (confirm('¿Eliminar?')) deleteMut.mutate(g.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer' }}>Borrar</button>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 

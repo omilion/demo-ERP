@@ -24,6 +24,14 @@ import bodegaTallerRoutes from './routes/bodega-taller/index.js'
 import accesosRoutes from './routes/accesos/index.js'
 import descuentosRoutes from './routes/descuentos/index.js'
 import configRoutes from './routes/config/index.js'
+import matrizVentasRoutes from './routes/matriz-ventas/index.js'
+import cargoTransporteRoutes from './routes/cargo-transporte/index.js'
+import gastosRoutes from './routes/gastos/index.js'
+import bitacoraTallerRoutes from './routes/bitacora-taller/index.js'
+import historialMaterialesRoutes from './routes/historial-materiales/index.js'
+import despachosRoutes from './routes/despachos/index.js'
+import pasarTallerRoutes from './routes/pasar-taller/index.js'
+import stockIngresosRoutes from './routes/stock-ingresos/index.js'
 import { decorateRbac } from './middleware/rbac.js'
 
 export function buildApp(opts = {}) {
@@ -63,6 +71,14 @@ export function buildApp(opts = {}) {
   app.register(accesosRoutes, { prefix: '/api/accesos' })
   app.register(descuentosRoutes, { prefix: '/api/descuentos' })
   app.register(configRoutes, { prefix: '/api/config' })
+  app.register(matrizVentasRoutes, { prefix: '/api/matriz-ventas' })
+  app.register(cargoTransporteRoutes, { prefix: '/api/cargo-transporte' })
+  app.register(gastosRoutes, { prefix: '/api/gastos' })
+  app.register(bitacoraTallerRoutes, { prefix: '/api/bitacora-taller' })
+  app.register(historialMaterialesRoutes, { prefix: '/api/historial-materiales' })
+  app.register(despachosRoutes, { prefix: '/api/despachos' })
+  app.register(pasarTallerRoutes, { prefix: '/api/pasar-taller' })
+  app.register(stockIngresosRoutes, { prefix: '/api/stock-ingresos' })
 
   app.get('/api/health', async () => ({ status: 'ok' }))
 
