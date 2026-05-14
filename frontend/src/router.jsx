@@ -15,8 +15,19 @@ import ClientesPage from './pages/clientes/ClientesPage'
 import ClientesFormPage from './pages/clientes/ClientesFormPage'
 import CobranzaPage from './pages/cobranza/CobranzaPage'
 import LicitacionesPage from './pages/licitaciones/LicitacionesPage'
+import LicitacionDetallePage from './pages/licitaciones/LicitacionDetallePage'
+import OrdenesCompraPage from './pages/ordenes-compra/OrdenesCompraPage'
+import OrdenCompraDetallePage from './pages/ordenes-compra/OrdenCompraDetallePage'
+import PagosProveedoresPage from './pages/pagos-proveedores/PagosProveedoresPage'
+import PagoProveedorDetallePage from './pages/pagos-proveedores/PagoProveedorDetallePage'
+import TelasPage from './pages/telas/TelasPage'
+import TelaDetallePage from './pages/telas/TelaDetallePage'
+import BodegaTallerPage from './pages/bodega-taller/BodegaTallerPage'
+import AccesosPage from './pages/accesos/AccesosPage'
+import DescuentosPage from './pages/descuentos/DescuentosPage'
 import ProveedoresPage from './pages/proveedores/ProveedoresPage'
 import CrmPage from './pages/crm/CrmPage'
+import ConfigPage from './pages/config/ConfigPage'
 
 const ALL = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
 
@@ -47,9 +58,20 @@ export const router = createBrowserRouter([
       { path: 'clientes/nuevo',         element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'rrhh', 'solo_lectura']}><ClientesFormPage /></ProtectedRoute> },
       { path: 'clientes/:id/editar',    element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'rrhh', 'solo_lectura']}><ClientesFormPage /></ProtectedRoute> },
       { path: 'cobranza/*',     element: <ProtectedRoute allowedRoles={['admin', 'cajero', 'solo_lectura']}><CobranzaPage /></ProtectedRoute> },
-      { path: 'licitaciones/*', element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><LicitacionesPage /></ProtectedRoute> },
+      { path: 'licitaciones',     element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><LicitacionesPage /></ProtectedRoute> },
+      { path: 'licitaciones/:id', element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><LicitacionDetallePage /></ProtectedRoute> },
+      { path: 'ordenes-compra',     element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><OrdenesCompraPage /></ProtectedRoute> },
+      { path: 'ordenes-compra/:id', element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><OrdenCompraDetallePage /></ProtectedRoute> },
+      { path: 'pagos-proveedores',     element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'solo_lectura']}><PagosProveedoresPage /></ProtectedRoute> },
+      { path: 'pagos-proveedores/:id', element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'solo_lectura']}><PagoProveedorDetallePage /></ProtectedRoute> },
+      { path: 'telas',     element: <ProtectedRoute allowedRoles={['admin', 'taller', 'solo_lectura']}><TelasPage /></ProtectedRoute> },
+      { path: 'telas/:id', element: <ProtectedRoute allowedRoles={['admin', 'taller', 'solo_lectura']}><TelaDetallePage /></ProtectedRoute> },
+      { path: 'bodega-taller', element: <ProtectedRoute allowedRoles={['admin', 'taller', 'bodeguero', 'solo_lectura']}><BodegaTallerPage /></ProtectedRoute> },
+      { path: 'accesos',    element: <ProtectedRoute allowedRoles={['admin']}><AccesosPage /></ProtectedRoute> },
+      { path: 'descuentos', element: <ProtectedRoute allowedRoles={['admin', 'vendedor']}><DescuentosPage /></ProtectedRoute> },
       { path: 'proveedores',   element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'solo_lectura']}><ProveedoresPage /></ProtectedRoute> },
       { path: 'crm',           element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><CrmPage /></ProtectedRoute> },
+      { path: 'config',        element: <ProtectedRoute allowedRoles={['admin']}><ConfigPage /></ProtectedRoute> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

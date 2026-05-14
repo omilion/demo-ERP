@@ -14,6 +14,16 @@ import dashboardStats from './routes/dashboard/stats.js'
 import proveedoresRoutes from './routes/proveedores/index.js'
 import crmRoutes from './routes/crm/index.js'
 import cobranzaHistoricoRoutes from './routes/cobranza/index.js'
+import locationsRoutes from './routes/locations/index.js'
+import categoriasRoutes from './routes/categorias/index.js'
+import cotizacionesRoutes from './routes/cotizaciones/index.js'
+import ordenesCompraRoutes from './routes/ordenes-compra/index.js'
+import pagosProveedoresRoutes from './routes/pagos-proveedores/index.js'
+import telasRoutes from './routes/telas/index.js'
+import bodegaTallerRoutes from './routes/bodega-taller/index.js'
+import accesosRoutes from './routes/accesos/index.js'
+import descuentosRoutes from './routes/descuentos/index.js'
+import configRoutes from './routes/config/index.js'
 import { decorateRbac } from './middleware/rbac.js'
 
 export function buildApp(opts = {}) {
@@ -43,6 +53,16 @@ export function buildApp(opts = {}) {
   app.register(proveedoresRoutes, { prefix: '/api/proveedores' })
   app.register(crmRoutes, { prefix: '/api/crm' })
   app.register(cobranzaHistoricoRoutes, { prefix: '/api/cobranza-historico' })
+  app.register(locationsRoutes, { prefix: '/api/locations' })
+  app.register(categoriasRoutes, { prefix: '/api/categorias' })
+  app.register(cotizacionesRoutes, { prefix: '/api/cotizaciones' })
+  app.register(ordenesCompraRoutes, { prefix: '/api/ordenes-compra' })
+  app.register(pagosProveedoresRoutes, { prefix: '/api/pagos-proveedores' })
+  app.register(telasRoutes, { prefix: '/api/telas' })
+  app.register(bodegaTallerRoutes, { prefix: '/api/bodega-taller' })
+  app.register(accesosRoutes, { prefix: '/api/accesos' })
+  app.register(descuentosRoutes, { prefix: '/api/descuentos' })
+  app.register(configRoutes, { prefix: '/api/config' })
 
   app.get('/api/health', async () => ({ status: 'ok' }))
 

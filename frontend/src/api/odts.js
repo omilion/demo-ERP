@@ -42,3 +42,19 @@ export const useOdtEstado = () => {
     },
   })
 }
+
+export const useAddBitacora = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ odtId, texto }) => api.post(`/odts/${odtId}/bitacora`, { texto }).then(r => r.data),
+    onSuccess: (_, { odtId }) => qc.invalidateQueries({ queryKey: ['odts', odtId] }),
+  })
+}
+
+export const useDeleteBitacora = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ odtId, entryId }) => api.delete(`/odts/${odtId}/bitacora/${entryId}`),
+    onSuccess: (_, { odtId }) => qc.invalidateQueries({ queryKey: ['odts', odtId] }),
+  })
+}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon, Badge, KpiCard, PageHeader, Btn, SearchBar, Tabs } from '../../components/shared'
-import { useOdts, useOdt, useOdtEstado } from '../../api/odts'
+import { useOdts, useOdt, useOdtEstado, useAddBitacora, useDeleteBitacora } from '../../api/odts'
 
 const ESTADO_TONE = {
   Prioritaria: 'red',
@@ -76,11 +76,75 @@ const OdtCard = ({ odt, onSelect }) => {
   )
 }
 
+function BitacoraSection({ odtId, entries = [] }) {
+  const [texto, setTexto] = useState('')
+  const addBitacora = useAddBitacora()
+  const delBitacora = useDeleteBitacora()
+
+  const handleAdd = () => {
+    if (!texto.trim()) return
+    addBitacora.mutate({ odtId, texto }, { onSuccess: () => setTexto('') })
+  }
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>
+        Bitácora ({entries.length})
+      </div>
+
+      {entries.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+          {entries.map(e => (
+            <div key={e.id} style={{ background: 'var(--bg)', borderRadius: 8, padding: '9px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 3, alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)' }}>{e.usuario}</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>
+                    {new Date(e.createdAt).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.5 }}>{e.texto}</div>
+              </div>
+              <button
+                onClick={() => delBitacora.mutate({ odtId, entryId: e.id })}
+                style={{ color: 'var(--text-3)', padding: '2px 4px', marginLeft: 8, flexShrink: 0 }}
+                title="Eliminar entrada"
+              >
+                <Icon name="x" size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12, padding: '8px 0' }}>Sin entradas de bitácora</div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input
+          value={texto}
+          onChange={e => setTexto(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleAdd()}
+          placeholder="Agregar nota…"
+          style={{ flex: 1, padding: '8px 12px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
+        />
+        <button
+          onClick={handleAdd}
+          disabled={!texto.trim() || addBitacora.isPending}
+          style={{ padding: '8px 14px', borderRadius: 7, background: 'var(--green-600)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: !texto.trim() ? 0.5 : 1 }}
+        >
+          {addBitacora.isPending ? '…' : 'Agregar'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function OdtModal({ odt, onClose, onEdit, onEstadoChange }) {
   const navigate = useNavigate()
   const { data: full } = useOdt(odt.id)
   const o = full || odt
   const orden = full?.orden ?? null
+  const bitacora = full?.bitacora ?? []
 
   const estadoActions = [
     { from: ['Pendiente'], to: 'En proceso', label: 'Iniciar trabajo', tone: 'blue' },
@@ -91,6 +155,8 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange }) {
   ]
   const available = estadoActions.filter(a => a.from.includes(o.estado))
 
+  const fmtDate = d => d ? new Date(d).toLocaleDateString('es-CL') : '—'
+
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'oklch(0 0 0 / 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -98,7 +164,7 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange }) {
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background: '#fff', borderRadius: 16, width: 500, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px oklch(0 0 0 / 0.20)', animation: 'dropIn 0.18s ease' }}
+        style={{ background: '#fff', borderRadius: 16, width: 540, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 20px 60px oklch(0 0 0 / 0.20)', animation: 'dropIn 0.18s ease' }}
       >
         <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -133,15 +199,17 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange }) {
 
           <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Descripción</div>
           <div style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.6, marginBottom: 18, background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
-            {o.descripcion}
+            {o.descripcion || '—'}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
             {[
-              ['Tipo',      o.tipo || '—'],
-              ['Prioridad', o.prioridad || 'normal'],
-              ['Creada',    new Date(o.createdAt).toLocaleDateString('es-CL')],
-              ['Plazo',     o.plazo ? new Date(o.plazo).toLocaleDateString('es-CL') : '—'],
+              ['Tipo',         o.tipo || '—'],
+              ['Prioridad',    o.prioridad || 'normal'],
+              ['Creada',       fmtDate(o.createdAt)],
+              ['Plazo',        fmtDate(o.plazo)],
+              ['Inicio',       fmtDate(o.fechaInicio)],
+              ['Término',      fmtDate(o.fechaTermino)],
             ].map(([l, v], i) => (
               <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>{l}</div>
@@ -152,7 +220,7 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange }) {
 
           {/* Estado transitions */}
           {available.length > 0 && (
-            <div style={{ marginTop: 18, padding: '12px 14px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)' }}>
+            <div style={{ marginTop: 8, padding: '12px 14px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)' }}>
               <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
                 Cambiar estado
               </div>
@@ -173,6 +241,11 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange }) {
               </div>
             </div>
           )}
+
+          {/* Bitácora */}
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16 }}>
+            <BitacoraSection odtId={o.id} entries={bitacora} />
+          </div>
         </div>
 
         <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>

@@ -86,6 +86,60 @@ export default function TallerFormPage() {
       <FormField label="Plazo de entrega">
         <Input type="date" value={data.plazo} onChange={v => set('plazo', v)} />
       </FormField>
+
+      {isEdit && found?.items?.length > 0 && (
+        <>
+          <FormDivider label={`Items en proceso (${found.items.length})`} />
+          <OdtItemsTable items={found.items} />
+        </>
+      )}
     </FormPage>
+  )
+}
+
+const TALLER_TONE = {
+  pendiente: 'gray', en_proceso: 'blue', 'en proceso': 'blue', listo: 'green', completado: 'green', cancelado: 'red',
+}
+
+function OdtItemsTable({ items }) {
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {items.map(it => (
+        <div key={it.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: '#fff' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{it.nombre || it.codigoInterno || `Item #${it.id}`}</div>
+              {it.codigoInterno && it.nombre && (
+                <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>{it.codigoInterno}</div>
+              )}
+              {it.obs && <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4 }}>{it.obs}</div>}
+            </div>
+            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 600 }}>{it.cantidad} u.</span>
+              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: 'var(--bg-muted)', textTransform: 'uppercase' }}>{it.estado}</span>
+            </div>
+          </div>
+          {it.talleres && it.talleres.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--border)' }}>
+              {it.talleres.map(t => {
+                const tone = TALLER_TONE[(t.estado || 'pendiente').toLowerCase()] || 'gray'
+                return (
+                  <div key={t.id} style={{ padding: 8, background: 'var(--bg-muted)', borderRadius: 6, fontSize: 11 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <strong style={{ textTransform: 'capitalize', fontSize: 12 }}>{t.taller?.nombre || `Taller ${t.tallerId}`}</strong>
+                      <span style={{ padding: '1px 6px', borderRadius: 3, fontSize: 10, background: `var(--${tone}-100, var(--bg-card))`, color: `var(--${tone}-700, var(--text-2))` }}>{t.estado}</span>
+                    </div>
+                    {t.fechaInicio && <div style={{ color: 'var(--text-3)' }}>Inicio: {new Date(t.fechaInicio).toLocaleDateString('es-CL')}</div>}
+                    {t.fechaListo && <div style={{ color: 'var(--green-700)' }}>Listo: {new Date(t.fechaListo).toLocaleDateString('es-CL')}</div>}
+                    {t.usuario && <div style={{ color: 'var(--text-3)' }}>Por: {t.usuario}{t.usuarioListo && ` → ${t.usuarioListo}`}</div>}
+                    {t.obs && <div style={{ color: 'var(--text-2)', marginTop: 4, fontStyle: 'italic' }}>{t.obs}</div>}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   )
 }

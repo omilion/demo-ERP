@@ -4,22 +4,27 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["auth", "clientes", "catalogo", "ventas", "caja", "taller", "bodega"]
+  schemas  = ["auth", "clientes", "catalogo", "ventas", "caja", "taller", "bodega", "config"]
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────────
 
 model User {
-  id           Int       @id @default(autoincrement())
-  email        String    @unique
-  passwordHash String    @map("password_hash")
-  role         Role
-  nombre       String
-  sucursalId   Int?      @map("sucursal_id")
-  activo       Boolean   @default(true)
-  createdAt    DateTime  @default(now()) @map("created_at")
-  sessions     Session[]
+  id                Int         @id @default(autoincrement())
+  email             String      @unique
+  passwordHash      String      @map("password_hash")
+  role              Role
+  nombre            String
+  rut               String?
+  codigoVendedor    String?     @unique @map("codigo_vendedor")
+  permisoDescuentos Boolean     @default(false) @map("permiso_descuentos")
+  sucursalId        Int?        @map("sucursal_id")
+  activo            Boolean     @default(true)
+  createdAt         DateTime    @default(now()) @map("created_at")
+  sessions          Session[]
+  accesos           AccesoLog[]
 
+  @@index([codigoVendedor])
   @@map("users")
   @@schema("auth")
 }
@@ -47,6 +52,80 @@ enum Role {
   @@schema("auth")
 }
 
+model Sucursal {
+  id        Int     @id @default(autoincrement())
+  nombre    String
+  direccion String?
+  comuna    String?
+  region    String?
+  telefono  String?
+  activo    Boolean @default(true)
+
+  @@map("sucursales")
+  @@schema("auth")
+}
+
+model AccesoLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  usuario   String
+  origen    String   @default("erp")
+  estado    String
+  ip        String?
+  userAgent String?  @map("user_agent")
+  fecha     DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([fecha])
+  @@map("accesos")
+  @@schema("auth")
+}
+
+// ── CONFIG ────────────────────────────────────────────────────────────
+
+model EmpresaConfig {
+  id            Int      @id @default(autoincrement())
+  nombre        String
+  rut           String
+  razonSocial   String?  @map("razon_social")
+  giro          String?
+  email         String?
+  telefono      String?
+  direccion     String?
+  region        String?
+  comuna        String?
+  codigoEmpresa Int?     @map("codigo_empresa")
+  logoUrl       String?  @map("logo_url")
+  textoPie      String?  @map("texto_pie")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("empresa")
+  @@schema("config")
+}
+
+model FirmaEmail {
+  id      Int     @id @default(autoincrement())
+  alias   String
+  email   String
+  firma   String
+  fotoUrl String? @map("foto_url")
+  activo  Boolean @default(true)
+
+  @@map("firmas_email")
+  @@schema("config")
+}
+
+model BloqueoPagina {
+  id     Int     @id @default(autoincrement())
+  modulo String  @unique
+  estado String
+  texto  String?
+
+  @@map("bloqueo_pagina")
+  @@schema("config")
+}
+
 // ── CLIENTES ─────────────────────────────────────────────────────────
 
 model Cliente {
@@ -55,6 +134,10 @@ model Cliente {
   nombre             String
   email              String?
   telefono           String?
+  giro               String?
+  direccion          String?
+  region             String?
+  comuna             String?
   ciudad             String?
   tipo               String?
   razonSocial        String? @map("razon_social")
@@ -67,26 +150,69 @@ model Cliente {
   @@schema("clientes")
 }
 
+model Region {
+  id     Int     @id @default(autoincrement())
+  codigo Int?    @unique
+  nombre String
+  activo Boolean @default(true)
+
+  @@map("regiones")
+  @@schema("clientes")
+}
+
+model Comuna {
+  id              Int     @id @default(autoincrement())
+  codigoComuna    Int?    @unique @map("codigo_comuna")
+  codigoRegion    Int?    @map("codigo_region")
+  codigoProvincia Int?    @map("codigo_provincia")
+  nombre          String
+  activo          Boolean @default(true)
+
+  @@index([codigoRegion])
+  @@map("comunas")
+  @@schema("clientes")
+}
+
+model Competencia {
+  id          Int     @id @default(autoincrement())
+  rut         String?
+  email       String?
+  nombre      String?
+  razonSocial String? @map("razon_social")
+
+  @@map("competencia")
+  @@schema("clientes")
+}
+
 // ── CATALOGO ─────────────────────────────────────────────────────────
 
 model Producto {
-  id            Int     @id @default(autoincrement())
-  codigoInterno String  @unique @map("codigo_interno")
-  codigoBarra   String? @map("codigo_barra")
-  nombre        String
-  categoria     String?
-  proveedor     String?
-  bodega        String  @default("Inventario")
-  categoriaId   Int?    @map("categoria_id")
-  proveedorId   Int?    @map("proveedor_id")
-  precioLista   Float   @default(0) @map("precio_lista")
-  precioMarco   Float   @default(0) @map("precio_marco")
-  stock         Int     @default(0)
-  stockCritico  Int     @default(0) @map("stock_critico")
-  ubicacion     String?
-  visibleWeb    Boolean @default(false) @map("visible_web")
-  activo        Boolean @default(true)
+  id               Int           @id @default(autoincrement())
+  codigoInterno    String        @unique @map("codigo_interno")
+  codigoBarra      String?       @map("codigo_barra")
+  nombre           String
+  descripcion      String?
+  categoria        String?
+  proveedor        String?
+  bodega           String        @default("Inventario")
+  categoriaId      Int?          @map("categoria_id")
+  subcategoriaId   Int?          @map("subcategoria_id")
+  proveedorId      Int?          @map("proveedor_id")
+  unidadMedida     String?       @map("unidad_medida")
+  idMarco          String?       @map("id_marco")
+  precioLista      Float         @default(0) @map("precio_lista")
+  precioMarco      Float         @default(0) @map("precio_marco")
+  porcDesc         Float         @default(0) @map("porc_desc")
+  stock            Int           @default(0)
+  stockCritico     Int           @default(0) @map("stock_critico")
+  ubicacion        String?
+  visibleWeb       Boolean       @default(false) @map("visible_web")
+  estadoInventario String?       @map("estado_inventario")
+  activo           Boolean       @default(true)
+  subcategoria     Subcategoria? @relation(fields: [subcategoriaId], references: [id])
 
+  @@index([subcategoriaId])
+  @@index([categoriaId])
   @@map("productos")
   @@schema("catalogo")
 }
@@ -106,9 +232,34 @@ model Proveedor {
   porcVentaSala   Int     @default(0) @map("porc_venta_sala")
   porcMarco       Int     @default(0) @map("porc_marco")
   porcLicitacion  Int     @default(0) @map("porc_licitacion")
+  pagoFactura     String? @map("pago_factura")
   activo          Boolean @default(true)
 
   @@map("proveedores")
+  @@schema("catalogo")
+}
+
+model PagoProveedor {
+  id               Int       @id @default(autoincrement())
+  proveedorId      Int?      @map("proveedor_id")
+  codigoProveedor  Int?      @map("codigo_proveedor")
+  sucursalId       Int?      @map("sucursal_id")
+  documento        String?
+  nDoc             String?   @map("n_doc")
+  fechaDoc         DateTime? @map("fecha_doc")
+  fechaPago        DateTime? @map("fecha_pago")
+  fechaVencimiento DateTime? @map("fecha_vencimiento")
+  estado           String    @default("Pendiente")
+  total            Float     @default(0)
+  usuario          String?
+  bodega           String?
+  nc               Boolean   @default(false)
+  ncNumero         String?   @map("nc_numero")
+  ncMonto          Float?    @map("nc_monto")
+  obs              String?
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  @@map("pagos_proveedores")
   @@schema("catalogo")
 }
 
@@ -125,41 +276,134 @@ model PrecioHistorial {
   @@schema("catalogo")
 }
 
+model Categoria {
+  id            Int            @id @default(autoincrement())
+  nombre        String
+  porcDesc      Float          @default(0) @map("porc_desc")
+  mostrar       Boolean        @default(true)
+  activo        Boolean        @default(true)
+  subcategorias Subcategoria[]
+
+  @@map("categorias")
+  @@schema("catalogo")
+}
+
+model Subcategoria {
+  id          Int        @id @default(autoincrement())
+  nombre      String
+  categoriaId Int        @map("categoria_id")
+  activo      Boolean    @default(true)
+  categoria   Categoria  @relation(fields: [categoriaId], references: [id])
+  productos   Producto[]
+
+  @@index([categoriaId])
+  @@map("subcategorias")
+  @@schema("catalogo")
+}
+
+model CargoTransporte {
+  id     Int     @id @default(autoincrement())
+  nombre String
+  valor  Float
+  activo Boolean @default(true)
+
+  @@map("cargo_transporte")
+  @@schema("catalogo")
+}
+
+model DetalleFacturaProveedor {
+  id            Int    @id @default(autoincrement())
+  pagoId        Int    @map("pago_id")
+  codigoInterno String @map("codigo_interno")
+  cantidad      Float
+  precio        Float
+
+  @@index([pagoId])
+  @@map("detalle_facturas_proveedor")
+  @@schema("catalogo")
+}
+
+model RelacionProducto {
+  id            Int      @id @default(autoincrement())
+  productoId    Int      @map("producto_id")
+  relacionadoId Int      @map("relacionado_id")
+  tipo          String   @default("relacionado")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([productoId, relacionadoId])
+  @@index([productoId])
+  @@map("relacion_productos")
+  @@schema("catalogo")
+}
+
 // ── VENTAS ───────────────────────────────────────────────────────────
 
 model Orden {
-  id                 Int         @id @default(autoincrement())
+  id                 Int          @id @default(autoincrement())
+  nInterno           Int?         @unique @map("n_interno")
   tipo               String
-  estado             String      @default("Activa")
-  estadoPago         String      @default("No pagada") @map("estado_pago")
-  estadoEntrega      String      @default("Pendiente entrega") @map("estado_entrega")
-  clienteId          Int?        @map("cliente_id")
-  userId             Int         @map("user_id")
-  sucursalId         Int?        @map("sucursal_id")
-  descuentoPct       Float       @default(0) @map("descuento_pct")
-  abono              Float       @default(0)
+  estado             String       @default("Activa")
+  estadoPago         String       @default("No pagada") @map("estado_pago")
+  estadoEntrega      String       @default("Pendiente entrega") @map("estado_entrega")
+  fechaEstadoEntrega DateTime?    @map("fecha_estado_entrega")
+  clienteId          Int?         @map("cliente_id")
+  rutCliente         String?      @map("rut_cliente")
+  emailCliente       String?      @map("email_cliente")
+  userId             Int          @map("user_id")
+  sucursalId         Int?         @map("sucursal_id")
+  descuentoPct       Float        @default(0) @map("descuento_pct")
+  abono              Float        @default(0)
   facturado          Float?
   guias              Int?
   licitacion         String?
   observaciones      String?
-  creadorNombre      String?     @map("creador_nombre")
-  requiereAprobacion Boolean     @default(false) @map("requiere_aprobacion")
-  createdAt          DateTime    @default(now()) @map("created_at")
+  creadorNombre      String?      @map("creador_nombre")
+  requiereAprobacion Boolean      @default(false) @map("requiere_aprobacion")
+  nImpresiones       Int          @default(0) @map("n_impresiones")
+  eliminada          Boolean      @default(false)
+  userMod            String?      @map("user_mod")
+  fecham             DateTime?
+  createdAt          DateTime     @default(now()) @map("created_at")
   items              OrdenItem[]
+  cargos             OrdenCargo[]
 
+  @@index([nInterno])
+  @@index([rutCliente])
   @@map("ordenes")
   @@schema("ventas")
 }
 
 model OrdenItem {
-  id             Int   @id @default(autoincrement())
-  ordenId        Int   @map("orden_id")
-  productoId     Int   @map("producto_id")
-  cantidad       Int
-  precioUnitario Float @map("precio_unitario")
-  orden          Orden @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  id              Int       @id @default(autoincrement())
+  ordenId         Int       @map("orden_id")
+  productoId      Int       @map("producto_id")
+  codigoInterno   String?   @map("codigo_interno")
+  nombre          String?
+  descripcion     String?
+  cantidad        Int
+  nEntregados     Int       @default(0) @map("n_entregados")
+  precioUnitario  Float     @map("precio_unitario")
+  precioConIva    Float?    @map("precio_con_iva")
+  cargoTransporte Float     @default(0) @map("cargo_transporte")
+  eliminado       Boolean   @default(false)
+  userMod         String?   @map("user_mod")
+  fecham          DateTime?
+  orden           Orden     @relation(fields: [ordenId], references: [id], onDelete: Cascade)
 
+  @@index([ordenId])
   @@map("orden_items")
+  @@schema("ventas")
+}
+
+model OrdenCargo {
+  id      Int    @id @default(autoincrement())
+  ordenId Int    @map("orden_id")
+  nombre  String
+  valor   Float
+  orden   Orden  @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+
+  @@index([ordenId])
+  @@map("orden_cargos")
   @@schema("ventas")
 }
 
@@ -189,6 +433,157 @@ model CobranzaHistorico {
   observacion  String?
 
   @@map("cobranza_historico")
+  @@schema("ventas")
+}
+
+model CotizacionLicitacion {
+  id            Int                        @id @default(autoincrement())
+  idLicitacion  String                     @map("id_licitacion")
+  fecha         DateTime?
+  fechaCreacion DateTime                   @default(now()) @map("fecha_creacion")
+  usuario       String?
+  estado        String                     @default("Pendiente")
+  rutCliente    String?                    @map("rut_cliente")
+  obs           String?
+  plazo         String?
+  ordenCompra   String?                    @map("orden_compra")
+  sucursalId    Int?                       @map("sucursal_id")
+  referencia    String?
+  items         CotizacionLicitacionItem[]
+
+  @@index([idLicitacion])
+  @@index([rutCliente])
+  @@map("cotizacion_licitacion")
+  @@schema("ventas")
+}
+
+model CotizacionLicitacionItem {
+  id              Int                  @id @default(autoincrement())
+  cotizacionId    Int                  @map("cotizacion_id")
+  codigoInterno   String?              @map("codigo_interno")
+  nombre          String?
+  descripcion     String?
+  cantidad        Int                  @default(0)
+  cantAdjudicados Int                  @default(0) @map("cant_adjudicados")
+  precio          Float                @default(0)
+  cotizacion      CotizacionLicitacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+
+  @@index([cotizacionId])
+  @@map("cotizacion_licitacion_items")
+  @@schema("ventas")
+}
+
+model OrdenCompraOnline {
+  id              Int                     @id @default(autoincrement())
+  nCompra         String                  @unique @map("n_compra")
+  fechaHora       DateTime                @map("fecha_hora")
+  fechaCotizacion DateTime?               @map("fecha_cotizacion")
+  emailComprador  String?                 @map("email_comprador")
+  total           Float                   @default(0)
+  estadoCompra    String?                 @map("estado_compra")
+  tipoDocumento   String?                 @map("tipo_documento")
+  codigoVendedor  String?                 @map("codigo_vendedor")
+  sucursalId      Int?                    @map("sucursal_id")
+  obsCliente      String?                 @map("obs_cliente")
+  canal           String?
+  textoPie        String?                 @map("texto_pie")
+  tipoCotizacion  String?                 @map("tipo_cotizacion")
+  costoEnvio      Float                   @default(0) @map("costo_envio")
+  cargoServicio   String?                 @map("cargo_servicio")
+  historialCargo  String?                 @map("historial_cargo")
+  nImpresiones    Int                     @default(0) @map("n_impresiones")
+  crmId           Int?                    @map("crm_id")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  items           OrdenCompraOnlineItem[]
+
+  @@index([emailComprador])
+  @@index([codigoVendedor])
+  @@index([estadoCompra])
+  @@map("orden_compra_online")
+  @@schema("ventas")
+}
+
+model OrdenCompraOnlineItem {
+  id            Int               @id @default(autoincrement())
+  ordenCompraId Int               @map("orden_compra_id")
+  codigoInterno String?           @map("codigo_interno")
+  nombre        String?
+  descripcion   String?
+  cantidad      Int
+  precio        Float             @default(0)
+  ordenCompra   OrdenCompraOnline @relation(fields: [ordenCompraId], references: [id], onDelete: Cascade)
+
+  @@index([ordenCompraId])
+  @@map("orden_compra_online_items")
+  @@schema("ventas")
+}
+
+model Multa {
+  id         Int       @id @default(autoincrement())
+  ordenId    Int?      @map("orden_id")
+  interno    String?
+  monto      Int?
+  nDocumento String?   @map("n_documento")
+  fecha      DateTime?
+  numero     String?
+  usuario    String?
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([ordenId])
+  @@map("multas")
+  @@schema("ventas")
+}
+
+model DescuentoMarco {
+  id         Int   @id @default(autoincrement())
+  ordenId    Int   @map("orden_id")
+  porcentaje Float
+
+  @@index([ordenId])
+  @@map("descuentos_marco")
+  @@schema("ventas")
+}
+
+model DescuentoVenta {
+  id         Int   @id @default(autoincrement())
+  ordenId    Int   @map("orden_id")
+  porcentaje Float
+
+  @@index([ordenId])
+  @@map("descuentos_ventas")
+  @@schema("ventas")
+}
+
+model DescuentoPorc {
+  id     Int     @id @default(autoincrement())
+  valor  Float
+  activo Boolean @default(true)
+
+  @@map("descuentos_porc")
+  @@schema("ventas")
+}
+
+model DescuentoPorcMarco {
+  id     Int     @id @default(autoincrement())
+  valor  Float
+  activo Boolean @default(true)
+
+  @@map("descuentos_porc_marco")
+  @@schema("ventas")
+}
+
+model HistorialEmail {
+  id        Int      @id @default(autoincrement())
+  nCompra   String?  @map("n_compra")
+  ordenId   Int?     @map("orden_id")
+  situacion String?
+  obs       String?
+  usuario   String?
+  fechaHora DateTime @map("fecha_hora")
+
+  @@index([nCompra])
+  @@index([ordenId])
+  @@map("historial_email")
   @@schema("ventas")
 }
 
@@ -231,65 +626,257 @@ model Caja {
 }
 
 model Turno {
-  id          Int              @id @default(autoincrement())
-  cajaId      Int              @map("caja_id")
-  userId      Int              @map("user_id")
-  estado      String           @default("abierto")
-  apertura    DateTime         @default(now())
-  cierre      DateTime?
-  caja        Caja             @relation(fields: [cajaId], references: [id])
-  movimientos MovimientoCaja[]
+  id             Int              @id @default(autoincrement())
+  cajaId         Int              @map("caja_id")
+  userId         Int              @map("user_id")
+  estado         String           @default("abierto")
+  apertura       DateTime         @default(now())
+  cierre         DateTime?
+  caja           Caja             @relation(fields: [cajaId], references: [id])
+  movimientos    MovimientoCaja[]
+  cierreSnapshot CierreCaja?
 
   @@map("turnos")
   @@schema("caja")
 }
 
 model MovimientoCaja {
-  id         Int       @id @default(autoincrement())
-  turnoId    Int?      @map("turno_id")
-  tipo       String
-  monto      Float
-  medioPago  String    @map("medio_pago")
-  referencia String?
-  ordenId    Int?      @map("orden_id")
-  usuario    String?
-  fecha      DateTime?
-  createdAt  DateTime  @default(now()) @map("created_at")
-  turno      Turno?    @relation(fields: [turnoId], references: [id])
+  id              Int       @id @default(autoincrement())
+  turnoId         Int?      @map("turno_id")
+  tipo            String
+  monto           Float
+  medioPago       String    @map("medio_pago")
+  cuotas          Int?
+  referencia      String?
+  ordenId         Int?      @map("orden_id")
+  documento       String?
+  nDoc            String?   @map("n_doc")
+  tipoDocumento   String?   @map("tipo_documento")
+  estadoDoc       String?   @map("estado_doc")
+  estadoPagoDoc   String?   @map("estado_pago_doc")
+  pagaCon         Float?    @map("paga_con")
+  nMedioPago      String?   @map("n_medio_pago")
+  origenMedioPago String?   @map("origen_medio_pago")
+  numeroNCInterna String?   @map("numero_nc_interna")
+  gastoTipoId     Int?      @map("gasto_tipo_id")
+  usuario         String?
+  fecha           DateTime?
+  eliminado       Boolean   @default(false)
+  fecham          DateTime?
+  userMod         String?   @map("user_mod")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  turno           Turno?    @relation(fields: [turnoId], references: [id])
+  gastoTipo       Gasto?    @relation(fields: [gastoTipoId], references: [id])
 
+  @@index([gastoTipoId])
   @@map("movimientos_caja")
+  @@schema("caja")
+}
+
+model CierreCaja {
+  id            Int      @id @default(autoincrement())
+  turnoId       Int      @unique @map("turno_id")
+  efectivo      Float    @default(0)
+  debito        Float    @default(0)
+  credito       Float    @default(0)
+  chequeDia     Float    @default(0) @map("cheque_dia")
+  chequeFecha   Float    @default(0) @map("cheque_fecha")
+  transferencia Float    @default(0)
+  webpay        Float    @default(0)
+  transbank     Float    @default(0)
+  comision      Float    @default(0)
+  otros         Float    @default(0)
+  total         Float    @default(0)
+  obs           String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  turno         Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+
+  @@map("cierres_caja")
+  @@schema("caja")
+}
+
+model Gasto {
+  id          Int              @id @default(autoincrement())
+  nombre      String           @unique
+  activo      Boolean          @default(true)
+  movimientos MovimientoCaja[]
+
+  @@map("gastos")
   @@schema("caja")
 }
 
 // ── TALLER ───────────────────────────────────────────────────────────
 
 model Odt {
-  id            Int       @id @default(autoincrement())
+  id            Int              @id @default(autoincrement())
   tipo          String?
-  clienteNombre String?   @map("cliente_nombre")
+  clienteNombre String?          @map("cliente_nombre")
   descripcion   String?
+  obsGeneral    String?          @map("obs_general")
   plazo         DateTime?
-  ordenId       Int?      @map("orden_id")
-  estado        String    @default("Pendiente")
-  prioridad     String    @default("normal")
-  vendedorId    Int?      @map("vendedor_id")
-  operarioId    Int?      @map("operario_id")
-  createdAt     DateTime  @default(now()) @map("created_at")
+  fechaIngreso  DateTime?        @map("fecha_ingreso")
+  fechaInicio   DateTime?        @map("fecha_inicio")
+  fechaTermino  DateTime?        @map("fecha_termino")
+  ordenId       Int?             @map("orden_id")
+  sucursalId    Int?             @map("sucursal_id")
+  estado        String           @default("Pendiente")
+  prioridad     String           @default("normal")
+  emergencia    Boolean          @default(false)
+  vendedorId    Int?             @map("vendedor_id")
+  operarioId    Int?             @map("operario_id")
+  eliminado     Boolean          @default(false)
+  createdAt     DateTime         @default(now()) @map("created_at")
   items         OdtItem[]
+  bitacora      BitacoraTaller[]
 
   @@map("odts")
   @@schema("taller")
 }
 
-model OdtItem {
-  id         Int    @id @default(autoincrement())
-  odtId      Int    @map("odt_id")
-  productoId Int    @map("producto_id")
-  estado     String @default("pendiente")
-  cantidad   Int
-  odt        Odt    @relation(fields: [odtId], references: [id], onDelete: Cascade)
+model BitacoraTaller {
+  id             Int       @id @default(autoincrement())
+  odtId          Int       @map("odt_id")
+  usuario        String
+  usuarioReporta String?   @map("usuario_reporta")
+  sucursalId     Int?      @map("sucursal_id")
+  fecha          DateTime?
+  texto          String
+  createdAt      DateTime  @default(now()) @map("created_at")
+  odt            Odt       @relation(fields: [odtId], references: [id], onDelete: Cascade)
 
+  @@map("bitacora_taller")
+  @@schema("taller")
+}
+
+model BodegaTaller {
+  id             Int     @id @default(autoincrement())
+  codigoInterno  String  @unique @map("codigo_interno")
+  codigoBarra    String? @map("codigo_barra")
+  nombre         String
+  unidadMedida   String? @map("unidad_medida")
+  categoriaId    Int?    @map("categoria_id")
+  subcategoriaId Int?    @map("subcategoria_id")
+  stockCritico   Float   @default(0) @map("stock_critico")
+  stock          Float   @default(0)
+  proveedorId    Int?    @map("proveedor_id")
+  sucursalId     Int?    @map("sucursal_id")
+  precio         Float   @default(0)
+  activo         Boolean @default(true)
+
+  @@map("bodega_taller")
+  @@schema("taller")
+}
+
+model TallerMaterial {
+  id            Int     @id @default(autoincrement())
+  odtId         Int?    @map("odt_id")
+  codigoInterno String? @map("codigo_interno")
+  nombre        String?
+  cantidad      Float
+  unidad        String?
+  taller        String?
+
+  @@index([odtId])
+  @@map("taller_materiales")
+  @@schema("taller")
+}
+
+model TallerHistorialMaterial {
+  id            Int      @id @default(autoincrement())
+  odtId         Int?     @map("odt_id")
+  codigoInterno String?  @map("codigo_interno")
+  nombre        String?
+  egreso        Float    @default(0)
+  ingreso       Float    @default(0)
+  unidad        String?
+  usuario       String?
+  fecha         DateTime
+  taller        String?
+  sucursalId    Int?     @map("sucursal_id")
+
+  @@index([odtId])
+  @@map("taller_historial_materiales")
+  @@schema("taller")
+}
+
+model Taller {
+  id      Int             @id @default(autoincrement())
+  nombre  String          @unique
+  activo  Boolean         @default(true)
+  estados OdtItemTaller[]
+
+  @@map("talleres")
+  @@schema("taller")
+}
+
+model OdtItem {
+  id            Int             @id @default(autoincrement())
+  odtId         Int             @map("odt_id")
+  productoId    Int             @map("producto_id")
+  codigoInterno String?         @map("codigo_interno")
+  nombre        String?
+  obs           String?
+  estado        String          @default("pendiente")
+  cantidad      Int
+  fechaListo    DateTime?       @map("fecha_listo")
+  usuario       String?
+  eliminado     Boolean         @default(false)
+  odt           Odt             @relation(fields: [odtId], references: [id], onDelete: Cascade)
+  talleres      OdtItemTaller[]
+
+  @@index([odtId])
   @@map("odt_items")
+  @@schema("taller")
+}
+
+model OdtItemTaller {
+  id           Int       @id @default(autoincrement())
+  odtItemId    Int       @map("odt_item_id")
+  tallerId     Int       @map("taller_id")
+  estado       String    @default("pendiente")
+  obs          String?
+  fechaInicio  DateTime? @map("fecha_inicio")
+  fechaListo   DateTime? @map("fecha_listo")
+  usuario      String?
+  usuarioListo String?   @map("usuario_listo")
+  odtItem      OdtItem   @relation(fields: [odtItemId], references: [id], onDelete: Cascade)
+  taller       Taller    @relation(fields: [tallerId], references: [id])
+
+  @@unique([odtItemId, tallerId])
+  @@index([tallerId])
+  @@map("odt_item_talleres")
+  @@schema("taller")
+}
+
+model Tela {
+  id          Int              @id @default(autoincrement())
+  codigo      String           @unique
+  tipo        String?
+  nombre      String?
+  ubicacion   String?
+  stock       Float            @default(0)
+  activo      Boolean          @default(true)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  movimientos TelaMovimiento[]
+
+  @@map("telas")
+  @@schema("taller")
+}
+
+model TelaMovimiento {
+  id        Int      @id @default(autoincrement())
+  telaId    Int      @map("tela_id")
+  tipo      String
+  cantidad  Float
+  factura   String?
+  cortador  String?
+  ubicacion String?
+  usuario   String?
+  fecha     DateTime @default(now())
+  tela      Tela     @relation(fields: [telaId], references: [id], onDelete: Cascade)
+
+  @@index([telaId])
+  @@map("tela_movimientos")
   @@schema("taller")
 }
 
@@ -305,5 +892,44 @@ model MovimientoBodega {
   createdAt  DateTime @default(now()) @map("created_at")
 
   @@map("movimientos")
+  @@schema("bodega")
+}
+
+model GuiaDespacho {
+  id        Int      @id @default(autoincrement())
+  ordenId   Int?     @map("orden_id")
+  nInterno  Int?     @map("n_interno")
+  nGuia     String   @map("n_guia")
+  fechaGuia DateTime @map("fecha_guia")
+  origen    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([nInterno])
+  @@index([ordenId])
+  @@map("guias_despachos")
+  @@schema("bodega")
+}
+
+model Despacho {
+  id           Int       @id @default(autoincrement())
+  ordenId      Int?      @map("orden_id")
+  interno      String?
+  plazoEntrega String?   @map("plazo_entrega")
+  fechaInterno DateTime? @map("fecha_interno")
+  fechaEntrega DateTime? @map("fecha_entrega")
+  tipoDespacho String?   @map("tipo_despacho")
+  transporte   String?
+  montoEnvio   Int?      @map("monto_envio")
+  direccion    String?
+  contacto     String?
+  region       String?
+  comuna       String?
+  parcial      Boolean   @default(false)
+  tieneMulta   Boolean   @default(false) @map("tiene_multa")
+  usuario      String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([ordenId])
+  @@map("despachos")
   @@schema("bodega")
 }
