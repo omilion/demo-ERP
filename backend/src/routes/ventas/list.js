@@ -4,13 +4,14 @@ export default async function listVentas(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request, reply) => {
-    const { estadoPago, estadoEntrega, tipo, search, orderBy: orderParam } = request.query
+    const { estadoPago, estadoEntrega, tipo, search, orderBy: orderParam, clienteId } = request.query
     const LIMIT = 100
 
     const where = {}
     if (estadoPago) where.estadoPago = estadoPago
     if (estadoEntrega) where.estadoEntrega = estadoEntrega
     if (tipo) where.tipo = tipo
+    if (clienteId) where.clienteId = parseInt(clienteId, 10)
     if (search) {
       const isNum = /^\d+$/.test(search.trim())
       where.OR = [

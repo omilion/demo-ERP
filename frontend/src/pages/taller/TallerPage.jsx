@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon, Badge, KpiCard, PageHeader, Btn, SearchBar, Tabs } from '../../components/shared'
-import { useOdts, useOdtEstado } from '../../api/odts'
+import { useOdts, useOdt, useOdtEstado } from '../../api/odts'
 
 const ESTADO_TONE = {
   Prioritaria: 'red',
@@ -77,7 +77,10 @@ const OdtCard = ({ odt, onSelect }) => {
 }
 
 function OdtModal({ odt, onClose, onEdit, onEstadoChange }) {
-  const [confirming, setConfirming] = useState(false)
+  const navigate = useNavigate()
+  const { data: full } = useOdt(odt.id)
+  const o = full || odt
+  const orden = full?.orden ?? null
 
   const estadoActions = [
     { from: ['Pendiente'], to: 'En proceso', label: 'Iniciar trabajo', tone: 'blue' },
@@ -86,7 +89,7 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange }) {
     { from: ['Pendiente', 'En proceso', 'Prioritaria'], to: 'Terminada', label: 'Marcar Terminada', tone: 'green' },
     { from: ['Terminada'], to: 'Pendiente', label: 'Reabrir ODT', tone: 'amber' },
   ]
-  const available = estadoActions.filter(a => a.from.includes(odt.estado))
+  const available = estadoActions.filter(a => a.from.includes(o.estado))
 
   return (
     <div
@@ -99,30 +102,46 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange }) {
       >
         <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <span style={{ fontWeight: 700, fontSize: 16 }}>ODT #{odt.id}</span>
-            {odt.prioridad && odt.prioridad !== 'normal' && (
-              <Badge tone={odt.prioridad === 'urgente' ? 'red' : 'amber'}>{odt.prioridad}</Badge>
+            <span style={{ fontWeight: 700, fontSize: 16 }}>ODT #{o.id}</span>
+            {o.prioridad && o.prioridad !== 'normal' && (
+              <Badge tone={o.prioridad === 'urgente' ? 'red' : 'amber'}>{o.prioridad}</Badge>
             )}
-            <Badge tone={ESTADO_TONE[odt.estado]}>{odt.estado}</Badge>
+            <Badge tone={ESTADO_TONE[o.estado]}>{o.estado}</Badge>
           </div>
           <button onClick={onClose} style={{ color: 'var(--text-3)', padding: 4 }}><Icon name="x" size={18} /></button>
         </div>
 
         <div style={{ padding: '20px 22px' }}>
+          {/* Venta origen */}
+          {orden && (
+            <div style={{ background: 'var(--green-50)', border: '1px solid var(--green-100)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--green-700)', marginBottom: 3 }}>Venta origen</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>
+                  #{orden.id} · {orden.cliente?.nombre || 'Sin cliente'}
+                </div>
+                {orden.cliente?.rut && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>{orden.cliente.rut}</div>}
+              </div>
+              <button onClick={() => { navigate('/ventas/' + orden.id + '/editar'); onClose() }} style={{ fontSize: 11, color: 'var(--green-700)', background: '#fff', border: '1px solid var(--green-600)', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                Ver Venta →
+              </button>
+            </div>
+          )}
+
           <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Cliente</div>
-          <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 14 }}>{odt.clienteNombre || '—'}</div>
+          <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 14 }}>{o.clienteNombre || '—'}</div>
 
           <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Descripción</div>
           <div style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.6, marginBottom: 18, background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
-            {odt.descripcion}
+            {o.descripcion}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
             {[
-              ['Tipo',      odt.tipo || '—'],
-              ['Prioridad', odt.prioridad || 'normal'],
-              ['Creada',    new Date(odt.createdAt).toLocaleDateString('es-CL')],
-              ['Plazo',     odt.plazo ? new Date(odt.plazo).toLocaleDateString('es-CL') : '—'],
+              ['Tipo',      o.tipo || '—'],
+              ['Prioridad', o.prioridad || 'normal'],
+              ['Creada',    new Date(o.createdAt).toLocaleDateString('es-CL')],
+              ['Plazo',     o.plazo ? new Date(o.plazo).toLocaleDateString('es-CL') : '—'],
             ].map(([l, v], i) => (
               <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>{l}</div>

@@ -195,6 +195,45 @@ function TabTaller({ odts, onGoTaller }) {
   )
 }
 
+// ── Tab: Pagos ─────────────────────────────────────────────────────────────────
+function TabPagos({ pagos }) {
+  if (!pagos?.length) {
+    return (
+      <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-3)' }}>
+        <Icon name="creditCard" size={26} color="var(--border)" />
+        <p style={{ marginTop: 12, fontSize: 13 }}>Sin movimientos de caja vinculados</p>
+      </div>
+    )
+  }
+  const totalPagado = pagos.filter(p => p.tipo === 'Ingreso').reduce((s, p) => s + Math.abs(p.monto), 0)
+  return (
+    <div>
+      <div style={{ background: 'var(--green-50)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 12, color: 'var(--green-700)', fontWeight: 600 }}>Total recibido en caja</span>
+        <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: 700, color: 'var(--green-700)', fontSize: 14 }}>${totalPagado.toLocaleString('es-CL')}</span>
+      </div>
+      {pagos.map(p => (
+        <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-1)' }}>{p.medioPago}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+              {p.fecha ? new Date(p.fecha).toLocaleDateString('es-CL') : new Date(p.createdAt).toLocaleDateString('es-CL')}
+              {p.referencia && <span> · {p.referencia}</span>}
+              {p.usuario && <span> · {p.usuario}</span>}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: "'DM Mono',monospace", fontWeight: 700, fontSize: 13, color: p.tipo === 'Ingreso' ? 'var(--green-600)' : 'var(--red)' }}>
+              {p.tipo === 'Ingreso' ? '+' : '−'}${Math.abs(p.monto).toLocaleString('es-CL')}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{p.tipo}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Tab: Documentos ────────────────────────────────────────────────────────────
 function TabDocumentos({ v }) {
   const Row = ({ label, value, mono }) => value ? (
@@ -260,7 +299,8 @@ export function ViewVentaPanel({ venta, onClose, onEdit }) {
   const deleteVenta = useDeleteVenta()
 
   const v = full || venta
-  const odts = full?.odts ?? []
+  const odts  = full?.odts  ?? []
+  const pagos = full?.pagos ?? []
   const fecha = v.createdAt
     ? new Date(v.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—'
@@ -283,6 +323,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit }) {
       <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 16, marginTop: -6 }}>
         <TabBtn active={tab === 'detalle'}    onClick={() => setTab('detalle')}>Detalle</TabBtn>
         <TabBtn active={tab === 'taller'}     onClick={() => setTab('taller')}  badge={odts.length}>Taller</TabBtn>
+        <TabBtn active={tab === 'pagos'}      onClick={() => setTab('pagos')}   badge={pagos.length}>Pagos</TabBtn>
         <TabBtn active={tab === 'documentos'} onClick={() => setTab('documentos')}>Documentos</TabBtn>
       </div>
 
@@ -292,6 +333,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit }) {
 
       {tab === 'detalle'    && <TabDetalle v={v} />}
       {tab === 'taller'     && <TabTaller odts={odts} onGoTaller={() => navigate('/taller')} />}
+      {tab === 'pagos'      && <TabPagos pagos={pagos} />}
       {tab === 'documentos' && <TabDocumentos v={v} />}
 
       {/* Delete confirmation */}
