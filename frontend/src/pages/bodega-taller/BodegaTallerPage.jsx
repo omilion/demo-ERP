@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { FormField, Input } from '../../components/forms'
 import { useBodegaTaller, useCreateBodegaTaller, useUpdateBodegaTaller } from '../../api/bodegaTaller'
+import { useCategoriasBodegaTaller } from '../../api/categoriasBodegaTaller'
 
 const TABS = [
   { id: 'all',          label: 'Todos' },
@@ -15,11 +16,15 @@ export default function BodegaTallerPage() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [categoriaId, setCategoriaId] = useState('')
+  const [subcategoriaId, setSubcategoriaId] = useState('')
   const [editing, setEditing] = useState(null) // row being edited
   const [creating, setCreating] = useState(false)
   const debounceRef = useRef(null)
   const createMut = useCreateBodegaTaller()
   const updateMut = useUpdateBodegaTaller()
+  const { data: categorias = [] } = useCategoriasBodegaTaller()
+  const subcategorias = categorias.find(c => String(c.id) === categoriaId)?.subcategorias ?? []
 
   useEffect(() => {
     clearTimeout(debounceRef.current)
@@ -30,6 +35,8 @@ export default function BodegaTallerPage() {
   const params = { page: String(page) }
   if (debouncedSearch) params.search = debouncedSearch
   if (tab === 'true') params.stockCritico = 'true'
+  if (categoriaId) params.categoriaId = categoriaId
+  if (subcategoriaId) params.subcategoriaId = subcategoriaId
 
   const { data: result = { items: [], total: 0, limit: 200 }, isLoading } = useBodegaTaller(params)
   const items = result.items ?? []
@@ -80,7 +87,20 @@ export default function BodegaTallerPage() {
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
         <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Tabs tabs={TABS} active={tab} onChange={t => { setTab(t); setPage(1) }} />
-          <SearchBar placeholder="Buscar código, nombre…" value={search} onChange={setSearch} style={{ width: 280, marginBottom: 10 }} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+            <select value={categoriaId} onChange={e => { setCategoriaId(e.target.value); setSubcategoriaId(''); setPage(1) }}
+              style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12 }}>
+              <option value="">Todas las categorías</option>
+              {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+            <select value={subcategoriaId} onChange={e => { setSubcategoriaId(e.target.value); setPage(1) }}
+              disabled={!categoriaId}
+              style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12 }}>
+              <option value="">Todas las subcategorías</option>
+              {subcategorias.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </select>
+            <SearchBar placeholder="Buscar código, nombre…" value={search} onChange={setSearch} style={{ width: 280 }} />
+          </div>
         </div>
         <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
           <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}>‹ Anterior</button>

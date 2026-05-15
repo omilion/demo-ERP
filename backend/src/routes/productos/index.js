@@ -5,6 +5,7 @@ import updateRoute from './update.js'
 import deleteRoute from './delete.js'
 import historialRoute from './historial.js'
 import publicWebRoute from './publicWeb.js'
+import autocompleteRoute from './autocomplete.js'
 
 export default async function productosRoutes(fastify) {
   fastify.register(listRoute)
@@ -14,4 +15,5 @@ export default async function productosRoutes(fastify) {
   fastify.register(deleteRoute)
   fastify.register(historialRoute)
   fastify.register(publicWebRoute)
+  fastify.register(autocompleteRoute)
 }

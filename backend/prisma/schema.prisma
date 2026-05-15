@@ -754,6 +754,28 @@ model BitacoraTaller {
   @@schema("taller")
 }
 
+model CategoriaBodegaTaller {
+  id            Int                       @id @default(autoincrement())
+  nombre        String                    @unique
+  activo        Boolean                   @default(true)
+  subcategorias SubcategoriaBodegaTaller[]
+
+  @@map("categorias_bodega_taller")
+  @@schema("taller")
+}
+
+model SubcategoriaBodegaTaller {
+  id          Int                  @id @default(autoincrement())
+  nombre      String
+  categoriaId Int                  @map("categoria_id")
+  activo      Boolean              @default(true)
+  categoria   CategoriaBodegaTaller @relation(fields: [categoriaId], references: [id])
+
+  @@index([categoriaId])
+  @@map("subcategorias_bodega_taller")
+  @@schema("taller")
+}
+
 model BodegaTaller {
   id             Int     @id @default(autoincrement())
   codigoInterno  String  @unique @map("codigo_interno")

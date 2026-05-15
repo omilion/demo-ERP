@@ -13,7 +13,8 @@
     "test": "vitest run",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "node prisma/seed.js"
+    "db:seed": "node prisma/seed.js",
+    "job:stock-critico": "node src/jobs/stockCritico.mjs"
   },
   "keywords": [],
   "author": "",
