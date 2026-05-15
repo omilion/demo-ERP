@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
-import { FormField, FormDivider, Input, Select, useForm } from '../../components/forms/index'
+import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../components/forms/index'
 import { useAuthStore } from '../../store/auth'
 import { useProducto, useUpdateProducto, useCreateProducto, useHistorialPrecios, useAddPrecio } from '../../api/productos'
 
@@ -63,6 +63,8 @@ export default function BodegaFormPage() {
 
   const { data, set, errors, validate } = useForm({
     cod: '', nombre: '', cat: 'Espumas', bodega: 'Inventario', stock: '', minimo: '', precio: '',
+    visibleWeb: false, destacadoWeb: false, fotoUrl: '', fotoUrlGrande: '',
+    descripcionWeb: '', precioWeb: '', ordenWeb: '',
   })
 
   useEffect(() => {
@@ -74,6 +76,13 @@ export default function BodegaFormPage() {
       set('stock', String(found.stock))
       set('minimo', String(found.stockCritico))
       set('precio', String(found.precioLista))
+      set('visibleWeb', !!found.visibleWeb)
+      set('destacadoWeb', !!found.destacadoWeb)
+      set('fotoUrl', found.fotoUrl || '')
+      set('fotoUrlGrande', found.fotoUrlGrande || '')
+      set('descripcionWeb', found.descripcionWeb || '')
+      set('precioWeb', found.precioWeb != null ? String(found.precioWeb) : '')
+      set('ordenWeb', found.ordenWeb != null ? String(found.ordenWeb) : '')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [found?.id])
@@ -89,6 +98,13 @@ export default function BodegaFormPage() {
       stock: Number(data.stock),
       stockCritico: Number(data.minimo),
       precioLista: Number(data.precio),
+      visibleWeb: !!data.visibleWeb,
+      destacadoWeb: !!data.destacadoWeb,
+      fotoUrl: data.fotoUrl || undefined,
+      fotoUrlGrande: data.fotoUrlGrande || undefined,
+      descripcionWeb: data.descripcionWeb || undefined,
+      precioWeb: data.precioWeb !== '' ? Number(data.precioWeb) : undefined,
+      ordenWeb: data.ordenWeb !== '' ? Number(data.ordenWeb) : undefined,
     }
     if (isEdit) {
       updateProducto.mutate({ id: found.id, data: payload }, {
@@ -156,6 +172,41 @@ export default function BodegaFormPage() {
           <Input value={data.precio} onChange={v => set('precio', v)} type="number" prefix="$" placeholder="0" />
         </FormField>
       </div>
+
+      <FormDivider label="Tienda Web" />
+      <div style={{ display: 'flex', gap: 24, marginBottom: 8 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-2)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={!!data.visibleWeb} onChange={e => set('visibleWeb', e.target.checked)} />
+          Visible en tienda web
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-2)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={!!data.destacadoWeb} onChange={e => set('destacadoWeb', e.target.checked)} disabled={!data.visibleWeb} />
+          Destacado
+        </label>
+      </div>
+      {data.visibleWeb && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <FormField label="Foto (URL miniatura)" hint="JPG/PNG público">
+              <Input value={data.fotoUrl} onChange={v => set('fotoUrl', v)} placeholder="https://..." />
+            </FormField>
+            <FormField label="Foto grande (URL)">
+              <Input value={data.fotoUrlGrande} onChange={v => set('fotoUrlGrande', v)} placeholder="https://..." />
+            </FormField>
+          </div>
+          <FormField label="Descripción web" hint="Texto largo para tienda">
+            <Textarea value={data.descripcionWeb} onChange={v => set('descripcionWeb', v)} rows={3} />
+          </FormField>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <FormField label="Precio web" hint="Vacío = usa precio lista">
+              <Input value={data.precioWeb} onChange={v => set('precioWeb', v)} type="number" prefix="$" placeholder="0" />
+            </FormField>
+            <FormField label="Orden" hint="Menor primero">
+              <Input value={data.ordenWeb} onChange={v => set('ordenWeb', v)} type="number" placeholder="0" />
+            </FormField>
+          </div>
+        </>
+      )}
 
       <PrecioHistorial historial={historial} />
     </FormPage>

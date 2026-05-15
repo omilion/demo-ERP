@@ -3,6 +3,8 @@ import { computeEstado } from './helpers.js'
 
 const Schema = z.object({
   nombre: z.string().min(1).optional(),
+  codigoBarra: z.string().optional(),
+  descripcion: z.string().optional(),
   categoria: z.string().optional(),
   proveedor: z.string().optional(),
   bodega: z.enum(['Inventario', 'Taller']).optional(),
@@ -12,6 +14,13 @@ const Schema = z.object({
   precioMarco: z.number().min(0).optional(),
   ubicacion: z.string().optional(),
   activo: z.boolean().optional(),
+  visibleWeb: z.boolean().optional(),
+  fotoUrl: z.string().url().optional().or(z.literal('')),
+  fotoUrlGrande: z.string().url().optional().or(z.literal('')),
+  descripcionWeb: z.string().optional(),
+  precioWeb: z.number().min(0).optional(),
+  ordenWeb: z.number().int().optional(),
+  destacadoWeb: z.boolean().optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'El cuerpo no puede estar vacío' })
 
 export default async function updateProducto(fastify) {

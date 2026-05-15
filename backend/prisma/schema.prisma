@@ -207,6 +207,12 @@ model Producto {
   stockCritico     Int           @default(0) @map("stock_critico")
   ubicacion        String?
   visibleWeb       Boolean       @default(false) @map("visible_web")
+  fotoUrl          String?       @map("foto_url")
+  fotoUrlGrande    String?       @map("foto_url_grande")
+  descripcionWeb   String?       @map("descripcion_web")
+  precioWeb        Float?        @map("precio_web")
+  ordenWeb         Int?          @map("orden_web")
+  destacadoWeb     Boolean       @default(false) @map("destacado_web")
   estadoInventario String?       @map("estado_inventario")
   activo           Boolean       @default(true)
   subcategoria     Subcategoria? @relation(fields: [subcategoriaId], references: [id])

@@ -3,7 +3,9 @@ import { computeEstado } from './helpers.js'
 
 const Schema = z.object({
   codigoInterno: z.string().min(1),
+  codigoBarra: z.string().optional(),
   nombre: z.string().min(1),
+  descripcion: z.string().optional(),
   categoria: z.string().optional(),
   proveedor: z.string().optional(),
   bodega: z.enum(['Inventario', 'Taller']).default('Inventario'),
@@ -12,6 +14,13 @@ const Schema = z.object({
   precioLista: z.number().min(0).default(0),
   precioMarco: z.number().min(0).default(0),
   ubicacion: z.string().optional(),
+  visibleWeb: z.boolean().optional(),
+  fotoUrl: z.string().url().optional().or(z.literal('')),
+  fotoUrlGrande: z.string().url().optional().or(z.literal('')),
+  descripcionWeb: z.string().optional(),
+  precioWeb: z.number().min(0).optional(),
+  ordenWeb: z.number().int().optional(),
+  destacadoWeb: z.boolean().optional(),
 })
 
 export default async function createProducto(fastify) {
