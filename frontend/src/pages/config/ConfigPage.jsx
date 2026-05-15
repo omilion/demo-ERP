@@ -8,6 +8,12 @@ import {
 } from '../../api/config'
 import { useCargosTransporte, useCreateCargoTransporte, useUpdateCargoTransporte, useDeleteCargoTransporte } from '../../api/cargoTransporte'
 import { useGastos, useCreateGasto, useUpdateGasto, useDeleteGasto } from '../../api/gastos'
+import {
+  useCategoriasBodegaTaller, useCreateCategoriaBT, useUpdateCategoriaBT, useDeleteCategoriaBT,
+  useCreateSubcategoriaBT, useUpdateSubcategoriaBT, useDeleteSubcategoriaBT,
+} from '../../api/categoriasBodegaTaller'
+import api from '../../api/client'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 const TABS = [
   { id: 'empresa', label: 'Empresa' },
@@ -15,6 +21,9 @@ const TABS = [
   { id: 'bloqueos', label: 'Bloqueos' },
   { id: 'transporte', label: 'Cargo transporte' },
   { id: 'gastos', label: 'Gastos' },
+  { id: 'cat-bt', label: 'Cat. Bodega Taller' },
+  { id: 'banners', label: 'Banners Web' },
+  { id: 'usuarios-web', label: 'Usuarios Web' },
 ]
 
 export default function ConfigPage() {
@@ -33,6 +42,9 @@ export default function ConfigPage() {
         {tab === 'bloqueos' && <BloqueosSection />}
         {tab === 'transporte' && <CargoTransporteSection />}
         {tab === 'gastos' && <GastosSection />}
+        {tab === 'cat-bt' && <CategoriasBTSection />}
+        {tab === 'banners' && <BannersSection />}
+        {tab === 'usuarios-web' && <UsuariosWebSection />}
       </div>
     </main>
   )
@@ -307,6 +319,162 @@ function BloqueosSection() {
               </tr>
             )
           })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function CategoriasBTSection() {
+  const { data: categorias = [], isLoading } = useCategoriasBodegaTaller()
+  const createCat = useCreateCategoriaBT()
+  const updateCat = useUpdateCategoriaBT()
+  const deleteCat = useDeleteCategoriaBT()
+  const createSub = useCreateSubcategoriaBT()
+  const updateSub = useUpdateSubcategoriaBT()
+  const deleteSub = useDeleteSubcategoriaBT()
+  const [nuevaCat, setNuevaCat] = useState('')
+  const [subNombres, setSubNombres] = useState({})
+
+  if (isLoading) return <div>Cargando…</div>
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16 }}>
+      <div style={{ fontWeight: 600, marginBottom: 12 }}>Categorías Bodega Taller</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end', marginBottom: 16 }}>
+        <FormField label="Nueva categoría"><Input value={nuevaCat} onChange={setNuevaCat} /></FormField>
+        <Btn variant="primary" onClick={() => { if (nuevaCat) createCat.mutate({ nombre: nuevaCat }, { onSuccess: () => setNuevaCat('') }) }}>+ Agregar</Btn>
+      </div>
+      {categorias.map(c => (
+        <div key={c.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Input value={c.nombre} onChange={v => updateCat.mutate({ id: c.id, data: { nombre: v } })} />
+            <button onClick={() => { if (confirm('¿Eliminar categoría?')) deleteCat.mutate(c.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer' }}>Borrar</button>
+          </div>
+          <div style={{ marginLeft: 20 }}>
+            {(c.subcategorias || []).map(s => (
+              <div key={s.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-3)' }}>↳</span>
+                <Input value={s.nombre} onChange={v => updateSub.mutate({ id: s.id, data: { nombre: v } })} />
+                <button onClick={() => { if (confirm('¿Eliminar subcategoría?')) deleteSub.mutate(s.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer', fontSize: 12 }}>×</button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <Input placeholder="Nueva subcategoría" value={subNombres[c.id] || ''} onChange={v => setSubNombres(s => ({ ...s, [c.id]: v }))} />
+              <Btn size="sm" onClick={() => {
+                const n = subNombres[c.id]
+                if (n) createSub.mutate({ categoriaId: c.id, data: { nombre: n } }, { onSuccess: () => setSubNombres(s => ({ ...s, [c.id]: '' })) })
+              }}>+ Sub</Btn>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function BannersSection() {
+  const qc = useQueryClient()
+  const { data: banners = [], isLoading } = useQuery({
+    queryKey: ['banners'],
+    queryFn: () => api.get('/banners').then(r => r.data),
+  })
+  const createMut = useMutation({
+    mutationFn: (d) => api.post('/banners', d).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['banners'] }),
+  })
+  const updateMut = useMutation({
+    mutationFn: ({ id, data }) => api.put(`/banners/${id}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['banners'] }),
+  })
+  const deleteMut = useMutation({
+    mutationFn: (id) => api.delete(`/banners/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['banners'] }),
+  })
+  const [nuevo, setNuevo] = useState({ titulo: '', subtitulo: '', imagenUrl: '', link: '', orden: 0 })
+
+  if (isLoading) return <div>Cargando…</div>
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16 }}>
+      <div style={{ fontWeight: 600, marginBottom: 12 }}>Banners web</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr) auto', gap: 8, alignItems: 'end', marginBottom: 16 }}>
+        <FormField label="Título"><Input value={nuevo.titulo} onChange={v => setNuevo(s => ({ ...s, titulo: v }))} /></FormField>
+        <FormField label="Subtítulo"><Input value={nuevo.subtitulo} onChange={v => setNuevo(s => ({ ...s, subtitulo: v }))} /></FormField>
+        <FormField label="Imagen URL"><Input value={nuevo.imagenUrl} onChange={v => setNuevo(s => ({ ...s, imagenUrl: v }))} /></FormField>
+        <FormField label="Link"><Input value={nuevo.link} onChange={v => setNuevo(s => ({ ...s, link: v }))} /></FormField>
+        <FormField label="Orden"><Input type="number" value={nuevo.orden} onChange={v => setNuevo(s => ({ ...s, orden: v }))} /></FormField>
+        <Btn variant="primary" onClick={() => {
+          if (!nuevo.titulo) return
+          createMut.mutate(nuevo, { onSuccess: () => setNuevo({ titulo: '', subtitulo: '', imagenUrl: '', link: '', orden: 0 }) })
+        }}>+ Agregar</Btn>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead><tr style={{ background: 'var(--bg-muted)' }}>
+          <th style={{ padding: 10, textAlign: 'left' }}>Título</th>
+          <th style={{ padding: 10 }}>Imagen</th>
+          <th style={{ padding: 10 }}>Link</th>
+          <th style={{ padding: 10 }}>Orden</th>
+          <th style={{ padding: 10 }}>Activo</th>
+          <th style={{ padding: 10 }}></th>
+        </tr></thead>
+        <tbody>
+          {banners.map(b => (
+            <tr key={b.id} style={{ borderTop: '1px solid var(--border)' }}>
+              <td style={{ padding: 10 }}>{b.titulo}<br /><span style={{ fontSize: 11, color: 'var(--text-3)' }}>{b.subtitulo}</span></td>
+              <td style={{ padding: 10 }}>{b.imagenUrl ? <img src={b.imagenUrl} alt="" style={{ height: 32 }} /> : '—'}</td>
+              <td style={{ padding: 10, fontSize: 11 }}>{b.link || '—'}</td>
+              <td style={{ padding: 10, textAlign: 'center' }}>{b.orden}</td>
+              <td style={{ padding: 10, textAlign: 'center' }}>
+                <input type="checkbox" checked={b.activo} onChange={e => updateMut.mutate({ id: b.id, data: { activo: e.target.checked } })} />
+              </td>
+              <td style={{ padding: 10, textAlign: 'right' }}>
+                <button onClick={() => { if (confirm('¿Eliminar?')) deleteMut.mutate(b.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer' }}>Borrar</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function UsuariosWebSection() {
+  const qc = useQueryClient()
+  const { data: users = [], isLoading } = useQuery({
+    queryKey: ['usuarios-web'],
+    queryFn: () => api.get('/usuarios-web').then(r => r.data),
+  })
+  const updateMut = useMutation({
+    mutationFn: ({ id, data }) => api.put(`/usuarios-web/${id}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['usuarios-web'] }),
+  })
+
+  if (isLoading) return <div>Cargando…</div>
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16 }}>
+      <div style={{ fontWeight: 600, marginBottom: 12 }}>Usuarios web tienda ({users.length})</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead><tr style={{ background: 'var(--bg-muted)' }}>
+          <th style={{ padding: 10, textAlign: 'left' }}>Email</th>
+          <th style={{ padding: 10, textAlign: 'left' }}>Nombre</th>
+          <th style={{ padding: 10 }}>RUT</th>
+          <th style={{ padding: 10 }}>Teléfono</th>
+          <th style={{ padding: 10 }}>Activo</th>
+        </tr></thead>
+        <tbody>
+          {users.map(u => (
+            <tr key={u.id} style={{ borderTop: '1px solid var(--border)' }}>
+              <td style={{ padding: 10 }}>{u.email}</td>
+              <td style={{ padding: 10 }}>{u.nombre}</td>
+              <td style={{ padding: 10 }}>{u.rut || '—'}</td>
+              <td style={{ padding: 10 }}>{u.telefono || '—'}</td>
+              <td style={{ padding: 10, textAlign: 'center' }}>
+                <input type="checkbox" checked={u.activo} onChange={e => updateMut.mutate({ id: u.id, data: { activo: e.target.checked } })} />
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

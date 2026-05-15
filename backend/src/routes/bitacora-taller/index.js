@@ -5,12 +5,24 @@ export default async function bitacoraTallerRoutes(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
   }, async (request) => {
-    const { desde, hasta, operario, odtId, page = '1' } = request.query
+    const { desde, hasta, operario, odtId, taller, estadoOdt, search, page = '1' } = request.query
     const LIMIT = 100
     const skip = (parseInt(page, 10) - 1) * LIMIT
     const where = {}
     if (operario) where.usuario = { contains: operario, mode: 'insensitive' }
     if (odtId) where.odtId = parseInt(odtId, 10)
+    if (taller || estadoOdt) {
+      where.odt = {}
+      if (taller) where.odt.tipo = taller
+      if (estadoOdt) where.odt.estado = estadoOdt
+    }
+    if (search) {
+      where.OR = [
+        { texto: { contains: search, mode: 'insensitive' } },
+        { usuario: { contains: search, mode: 'insensitive' } },
+        { usuarioReporta: { contains: search, mode: 'insensitive' } },
+      ]
+    }
     if (desde || hasta) {
       where.fecha = {}
       if (desde) where.fecha.gte = new Date(desde)
@@ -18,7 +30,9 @@ export default async function bitacoraTallerRoutes(fastify) {
     }
     const [items, total] = await Promise.all([
       fastify.prisma.bitacoraTaller.findMany({
-        where, orderBy: { fecha: 'desc' }, take: LIMIT, skip,
+        where,
+        include: { odt: { select: { id: true, nombre: true, tipo: true, estado: true } } },
+        orderBy: { fecha: 'desc' }, take: LIMIT, skip,
       }),
       fastify.prisma.bitacoraTaller.count({ where }),
     ])
