@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon, Badge, KpiCard, PageHeader, Btn, SearchBar, Tabs } from '../../components/shared'
-import { useOdts, useOdt, useOdtEstado, useAddBitacora, useDeleteBitacora } from '../../api/odts'
+import { useOdts, useOdt, useOdtEstado, useAddBitacora, useDeleteBitacora, useDeleteOdt } from '../../api/odts'
 
 const ESTADO_TONE = {
   Prioritaria: 'red',
@@ -141,12 +141,14 @@ function BitacoraSection({ odtId, entries = [] }) {
   )
 }
 
-function OdtModal({ odt, onClose, onEdit, onEstadoChange }) {
+function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete }) {
   const navigate = useNavigate()
   const { data: full } = useOdt(odt.id)
   const o = full || odt
   const orden = full?.orden ?? null
   const bitacora = full?.bitacora ?? []
+
+  const handleImprimir = () => window.print()
 
   const estadoActions = [
     { from: ['Pendiente'], to: 'En proceso', label: 'Iniciar trabajo', tone: 'blue' },
@@ -250,9 +252,12 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange }) {
           </div>
         </div>
 
-        <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
-          <Btn variant="primary" icon="edit" onClick={onEdit}>Editar ODT</Btn>
-          <Btn variant="ghost" icon="printer">Imprimir</Btn>
+        <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn variant="primary" icon="edit" onClick={onEdit}>Editar ODT</Btn>
+            <Btn variant="ghost" icon="printer" onClick={handleImprimir}>Imprimir</Btn>
+          </div>
+          <Btn variant="ghost" icon="trash2" onClick={() => onDelete(o.id)} style={{ color: 'var(--red)' }}>Eliminar</Btn>
         </div>
       </div>
     </div>
@@ -268,6 +273,7 @@ export default function TallerPage() {
   const [selected, setSelected]     = useState(null)
   const debRef = useRef(null)
   const cambiarEstado = useOdtEstado()
+  const deleteOdt = useDeleteOdt()
 
   useEffect(() => {
     clearTimeout(debRef.current)
@@ -279,15 +285,16 @@ export default function TallerPage() {
   if (estadoFilter !== 'all') apiParams.estado = estadoFilter
   if (debouncedSearch) apiParams.search = debouncedSearch
 
-  const { data: odtResult = { items: [], total: 0, limit: 100 }, isLoading } = useOdts(apiParams)
+  const { data: odtResult = { items: [], total: 0, limit: 100, stats: {} }, isLoading } = useOdts(apiParams)
   const odts  = odtResult.items ?? []
   const total = odtResult.total ?? 0
   const LIMIT = odtResult.limit ?? 100
+  const stats = odtResult.stats ?? {}
 
-  const prioritarias = odts.filter(o => o.estado === 'Prioritaria').length
-  const enProceso    = odts.filter(o => o.estado === 'En proceso').length
-  const pendientes   = odts.filter(o => o.estado === 'Pendiente').length
-  const terminadas   = odts.filter(o => o.estado === 'Terminada').length
+  const prioritarias = stats['Prioritaria'] ?? 0
+  const enProceso    = stats['En proceso'] ?? 0
+  const pendientes   = stats['Pendiente'] ?? 0
+  const terminadas   = stats['Terminada'] ?? 0
 
   function handleEstadoChange(id, estado) {
     cambiarEstado.mutate({ id, estado }, {
@@ -297,6 +304,38 @@ export default function TallerPage() {
     })
   }
 
+  function handleDelete(id) {
+    if (!confirm('¿Eliminar ODT #' + id + '? Acción irreversible.')) return
+    deleteOdt.mutate(id, {
+      onSuccess: () => setSelected(null),
+      onError: () => alert('Error al eliminar (puede tener items asociados)'),
+    })
+  }
+
+  function handleExport() {
+    if (!odts.length) { alert('Nada para exportar'); return }
+    const headers = ['ID', 'Tipo', 'Cliente', 'Descripción', 'Estado', 'Prioridad', 'Creada', 'Plazo']
+    const esc = v => {
+      const s = (v ?? '').toString().replace(/"/g, '""')
+      return /[",\n;]/.test(s) ? `"${s}"` : s
+    }
+    const lines = [headers.join(';')]
+    for (const o of odts) {
+      lines.push([
+        o.id, o.tipo, o.clienteNombre, o.descripcion, o.estado, o.prioridad,
+        o.createdAt ? new Date(o.createdAt).toLocaleDateString('es-CL') : '',
+        o.plazo ? new Date(o.plazo).toLocaleDateString('es-CL') : '',
+      ].map(esc).join(';'))
+    }
+    const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `odts-${new Date().toISOString().slice(0,10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px' }}>
       <PageHeader
@@ -304,7 +343,7 @@ export default function TallerPage() {
         subtitle={`${total.toLocaleString('es-CL')} ODTs en total`}
         breadcrumb={['Inicio', 'Taller', 'ODTs']}
         actions={<>
-          <Btn variant="secondary" icon="download" size="sm">Exportar</Btn>
+          <Btn variant="secondary" icon="download" size="sm" onClick={handleExport}>Exportar</Btn>
           <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/taller/nueva')}>Nueva ODT</Btn>
         </>}
       />
@@ -313,7 +352,7 @@ export default function TallerPage() {
         <KpiCard label="Prioritarias" value={isLoading ? '…' : prioritarias.toLocaleString('es-CL')} icon="zap" tone={prioritarias > 0 ? 'red' : 'neutral'} sublabel="Urgencia máxima" onClick={() => setEst('Prioritaria')} />
         <KpiCard label="En Proceso"   value={isLoading ? '…' : enProceso.toLocaleString('es-CL')}    icon="tool"  tone="blue"   sublabel="Trabajos activos"   onClick={() => setEst('En proceso')} />
         <KpiCard label="Pendientes"   value={isLoading ? '…' : pendientes.toLocaleString('es-CL')}   icon="clock" tone="amber"  sublabel="Por iniciar"       onClick={() => setEst('Pendiente')} />
-        <KpiCard label="Terminadas"   value={isLoading ? '…' : terminadas.toLocaleString('es-CL')}   icon="checkCircle" tone="neutral" sublabel="Completadas en vista" onClick={() => setEst('Terminada')} />
+        <KpiCard label="Terminadas"   value={isLoading ? '…' : terminadas.toLocaleString('es-CL')}   icon="checkCircle" tone="neutral" sublabel="Completadas" onClick={() => setEst('Terminada')} />
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
@@ -365,6 +404,7 @@ export default function TallerPage() {
           onClose={() => setSelected(null)}
           onEdit={() => { navigate('/taller/' + selected.id + '/editar'); setSelected(null) }}
           onEstadoChange={handleEstadoChange}
+          onDelete={handleDelete}
         />
       )}
     </main>

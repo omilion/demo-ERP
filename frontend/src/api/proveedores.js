@@ -16,6 +16,33 @@ export const useProveedor = (id) =>
     enabled: !!id,
   })
 
+export const useCreateProveedor = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data) => api.post('/proveedores', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['proveedores'] }),
+  })
+}
+
+export const useUpdateProveedor = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.put(`/proveedores/${id}`, data).then(r => r.data),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['proveedores'] })
+      qc.invalidateQueries({ queryKey: ['proveedores', id] })
+    },
+  })
+}
+
+export const useDeleteProveedor = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/proveedores/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['proveedores'] }),
+  })
+}
+
 export const useCreatePagoProveedor = () => {
   const qc = useQueryClient()
   return useMutation({

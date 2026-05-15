@@ -64,7 +64,7 @@ export default function TallerFormPage() {
       <FormDivider label="Trabajo" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
         <FormField label="Tipo de Trabajo">
-          <Select value={data.tipo} onChange={v => set('tipo', v)} options={['Espumas', 'Confecciones', 'Madera']} />
+          <Select value={data.tipo} onChange={v => set('tipo', v)} options={['Espumas', 'Confecciones', 'Madera', 'Externo']} />
         </FormField>
         <FormField label="Estado">
           <Select value={data.estado} onChange={v => set('estado', v)} options={['Pendiente', 'En proceso', 'Prioritaria', 'Terminada']} />

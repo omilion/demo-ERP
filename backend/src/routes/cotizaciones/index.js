@@ -191,6 +191,28 @@ export default async function cotizacionesRoutes(fastify) {
     return reply.code(201).send(item)
   })
 
+  fastify.put('/:id/items/:itemId', {
+    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+  }, async (request, reply) => {
+    const itemId = parseInt(request.params.itemId, 10)
+    if (isNaN(itemId)) return reply.code(400).send({ error: 'ID inválido' })
+    const body = request.body || {}
+    const data = {}
+    if (body.codigoInterno !== undefined) data.codigoInterno = body.codigoInterno
+    if (body.nombre !== undefined) data.nombre = body.nombre
+    if (body.descripcion !== undefined) data.descripcion = body.descripcion
+    if (body.cantidad !== undefined) data.cantidad = parseInt(body.cantidad, 10) || 0
+    if (body.cantAdjudicados !== undefined) data.cantAdjudicados = parseInt(body.cantAdjudicados, 10) || 0
+    if (body.precio !== undefined) data.precio = parseFloat(body.precio) || 0
+    try {
+      const item = await fastify.prisma.cotizacionLicitacionItem.update({ where: { id: itemId }, data })
+      return item
+    } catch (e) {
+      if (e.code === 'P2025') return reply.code(404).send({ error: 'Item no encontrado' })
+      throw e
+    }
+  })
+
   fastify.delete('/:id/items/:itemId', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
   }, async (request, reply) => {
@@ -203,5 +225,66 @@ export default async function cotizacionesRoutes(fastify) {
       if (e.code === 'P2025') return reply.code(404).send({ error: 'Item no encontrado' })
       throw e
     }
+  })
+
+  // Crear venta desde licitación adjudicada
+  fastify.post('/:id/crear-venta', {
+    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
+    const cot = await fastify.prisma.cotizacionLicitacion.findUnique({
+      where: { id }, include: { items: true },
+    })
+    if (!cot) return reply.code(404).send({ error: 'Licitación no encontrada' })
+    const adjItems = cot.items.filter(i => (i.cantAdjudicados || 0) > 0)
+    if (adjItems.length === 0) return reply.code(400).send({ error: 'No hay items adjudicados' })
+
+    let clienteId = null
+    if (cot.rutCliente) {
+      const cliente = await fastify.prisma.cliente.findUnique({ where: { rut: cot.rutCliente } })
+      clienteId = cliente?.id ?? null
+    }
+
+    const codigos = adjItems.map(i => i.codigoInterno).filter(Boolean)
+    const productos = await fastify.prisma.producto.findMany({
+      where: { codigoInterno: { in: codigos } },
+      select: { id: true, codigoInterno: true, nombre: true, descripcion: true },
+    })
+    const prodMap = Object.fromEntries(productos.map(p => [p.codigoInterno, p]))
+
+    const ordenItems = []
+    const faltantes = []
+    for (const it of adjItems) {
+      const prod = prodMap[it.codigoInterno]
+      if (!prod) { faltantes.push(it.codigoInterno || it.nombre); continue }
+      ordenItems.push({
+        productoId: prod.id,
+        codigoInterno: it.codigoInterno,
+        nombre: it.nombre || prod.nombre,
+        descripcion: it.descripcion || prod.descripcion,
+        cantidad: it.cantAdjudicados,
+        precioUnitario: it.precio || 0,
+      })
+    }
+    if (ordenItems.length === 0) {
+      return reply.code(400).send({ error: `Ningún producto encontrado en catálogo (faltan: ${faltantes.join(', ')})` })
+    }
+
+    const orden = await fastify.prisma.orden.create({
+      data: {
+        tipo: 'Licitación',
+        clienteId,
+        rutCliente: cot.rutCliente,
+        licitacion: cot.idLicitacion,
+        observaciones: cot.obs || null,
+        userId: request.user.id,
+        creadorNombre: request.user.nombre || request.user.email || 'Sistema',
+        sucursalId: cot.sucursalId,
+        items: { create: ordenItems },
+      },
+      include: { items: true },
+    })
+    return reply.code(201).send({ orden, faltantes })
   })
 }

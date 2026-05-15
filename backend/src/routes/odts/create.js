@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 const Schema = z.object({
-  tipo: z.enum(['Espumas', 'Confecciones', 'Madera']).optional(),
+  tipo: z.enum(['Espumas', 'Confecciones', 'Madera', 'Externo']).optional(),
   clienteNombre: z.string().optional(),
   descripcion: z.string().optional(),
   plazo: z.string().datetime({ offset: true }).optional().or(z.string().date().optional()),

@@ -5,6 +5,7 @@ import LoginPage from './pages/login/LoginPage'
 import DashboardPage from './pages/dashboard/DashboardPage'
 import VentasPage from './pages/ventas/VentasPage'
 import VentasFormPage from './pages/ventas/VentasFormPage'
+import VentaPrintPage from './pages/ventas/VentaPrintPage'
 import BodegaPage from './pages/bodega/BodegaPage'
 import BodegaFormPage from './pages/bodega/BodegaFormPage'
 import TallerPage from './pages/taller/TallerPage'
@@ -55,6 +56,7 @@ export const router = createBrowserRouter([
       { path: 'ventas',             element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><VentasPage /></ProtectedRoute> },
       { path: 'ventas/nueva',       element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><VentasFormPage /></ProtectedRoute> },
       { path: 'ventas/:id/editar',  element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><VentasFormPage /></ProtectedRoute> },
+      { path: 'ventas/:id/imprimir', element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><VentaPrintPage /></ProtectedRoute> },
       { path: 'bodega',             element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'solo_lectura']}><BodegaPage /></ProtectedRoute> },
       { path: 'bodega/nuevo',       element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'solo_lectura']}><BodegaFormPage /></ProtectedRoute> },
       { path: 'bodega/:id/editar', element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'solo_lectura']}><BodegaFormPage /></ProtectedRoute> },

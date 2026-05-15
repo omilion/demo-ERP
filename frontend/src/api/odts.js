@@ -32,6 +32,14 @@ export const useUpdateOdt = () => {
   })
 }
 
+export const useDeleteOdt = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/odts/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['odts'] }),
+  })
+}
+
 export const useOdtEstado = () => {
   const qc = useQueryClient()
   return useMutation({

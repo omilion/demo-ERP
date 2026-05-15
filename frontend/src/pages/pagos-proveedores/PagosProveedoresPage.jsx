@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Badge, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
+import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { usePagosProveedores } from '../../api/pagosProveedores'
+import { downloadCsv } from '../../utils/csv'
 
 const TABS = [
   { id: 'all',       label: 'Todos' },
@@ -21,6 +22,8 @@ export default function PagosProveedoresPage() {
   const [tab, setTab] = useState('all')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [desde, setDesde] = useState('')
+  const [hasta, setHasta] = useState('')
   const [page, setPage] = useState(1)
   const debounceRef = useRef(null)
 
@@ -33,12 +36,32 @@ export default function PagosProveedoresPage() {
   const params = { page: String(page) }
   if (tab !== 'all') params.estado = tab
   if (debouncedSearch) params.search = debouncedSearch
+  if (desde) params.desde = desde
+  if (hasta) params.hasta = hasta
 
-  const { data: result = { items: [], total: 0, limit: 100 }, isLoading } = usePagosProveedores(params)
+  const { data: result = { items: [], total: 0, limit: 100, stats: {} }, isLoading } = usePagosProveedores(params)
   const items = result.items ?? []
   const total = result.total ?? 0
   const limit = result.limit ?? 100
+  const stats = result.stats || {}
   const pages = Math.max(1, Math.ceil(total / limit))
+
+  const handleExport = () => {
+    const csvCols = [
+      { key: 'nDoc', label: 'N° Doc' },
+      { key: 'documento', label: 'Tipo' },
+      { key: r => r.proveedor?.nombre || '', label: 'Proveedor' },
+      { key: r => r.proveedor?.rut || '', label: 'RUT' },
+      { key: 'fechaDoc', label: 'Fecha Doc', fmt: v => v ? new Date(v).toLocaleDateString('es-CL') : '' },
+      { key: 'fechaVencimiento', label: 'Vencimiento', fmt: v => v ? new Date(v).toLocaleDateString('es-CL') : '' },
+      { key: 'fechaPago', label: 'Fecha Pago', fmt: v => v ? new Date(v).toLocaleDateString('es-CL') : '' },
+      { key: 'total', label: 'Total' },
+      { key: 'estado', label: 'Estado' },
+      { key: 'obs', label: 'Observaciones' },
+    ]
+    downloadCsv(`pagos_proveedores_${new Date().toISOString().slice(0, 10)}`, items, csvCols)
+  }
+  const clearFilters = () => { setDesde(''); setHasta(''); setSearch(''); setTab('all'); setPage(1) }
 
   const cols = [
     { key: 'nDoc', label: 'N° Doc',
@@ -75,27 +98,34 @@ export default function PagosProveedoresPage() {
       ) },
   ]
 
-  const montoTotal = items.reduce((s, i) => s + (i.total || 0), 0)
-  const pendientes = items.filter(i => i.estado === 'Pendiente').length
-
   return (
     <main style={{ maxWidth: 1440, margin: '0 auto', padding: 24 }}>
       <PageHeader
         title="Pagos a Proveedores"
         subtitle={`${total.toLocaleString('es-CL')} pagos registrados`}
         breadcrumb={['Inicio', 'Proveedores', 'Pagos']}
+        actions={<Btn variant="secondary" icon="download" size="sm" onClick={handleExport} disabled={!items.length}>Exportar CSV</Btn>}
       />
       <div className="kpi-strip">
-        <KpiCard label="Total pagos" value={total.toLocaleString('es-CL')} icon="creditCard" sublabel="Histórico" />
-        <KpiCard label="En página" value={items.length} icon="list" sublabel={`Página ${page} de ${pages}`} />
-        <KpiCard label="Pendientes (página)" value={pendientes} icon="clock" tone="amber" sublabel="Por pagar" />
-        <KpiCard label="Monto página" value={fmt(montoTotal)} icon="dollarSign" tone="blue" sublabel="Suma página" />
+        <KpiCard label="Total pagos" value={total.toLocaleString('es-CL')} icon="creditCard" sublabel="Filtrado" />
+        <KpiCard label="Pendientes" value={stats.Pendiente || 0} icon="clock" tone="amber" sublabel={fmt(stats.montoPendiente)} />
+        <KpiCard label="Vencidos" value={stats.Vencido || 0} icon="alertTriangle" tone="red" sublabel={fmt(stats.montoVencido)} />
+        <KpiCard label="Monto total" value={fmt(stats.montoTotal)} icon="dollarSign" tone="blue" sublabel="Suma filtrada" />
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
         <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Tabs tabs={TABS} active={tab} onChange={t => { setTab(t); setPage(1); setSearch('') }} />
           <SearchBar placeholder="Buscar N° doc, código…" value={search} onChange={setSearch} style={{ width: 280, marginBottom: 10 }} />
+        </div>
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>Fecha doc:</span>
+          <input type="date" value={desde} onChange={e => { setDesde(e.target.value); setPage(1) }} style={{ padding: '5px 8px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)' }} />
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>—</span>
+          <input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setPage(1) }} style={{ padding: '5px 8px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)' }} />
+          {(desde || hasta || debouncedSearch || tab !== 'all') && (
+            <button onClick={clearFilters} style={{ padding: '5px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Limpiar</button>
+          )}
         </div>
         <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
           <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}>‹ Anterior</button>

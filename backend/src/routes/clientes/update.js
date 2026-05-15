@@ -7,6 +7,13 @@ const Schema = z.object({
   telefono: z.string().optional(),
   ciudad: z.string().optional(),
   tipo: z.enum(['Empresa', 'Institucional', 'Municipal', 'Gobierno', 'Distribuidor']).optional(),
+  razonSocial: z.string().optional(),
+  giro: z.string().optional(),
+  direccion: z.string().optional(),
+  region: z.string().optional(),
+  comuna: z.string().optional(),
+  segmento: z.string().optional(),
+  diasInactivoAlerta: z.number().int().min(0).optional(),
   limiteCredito: z.number().min(0).optional(),
   activo: z.boolean().optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'El cuerpo no puede estar vacío' })

@@ -2,7 +2,7 @@ export default async function pagosProveedoresRoutes(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('proveedores', 'read')],
   }, async (request) => {
-    const { search, estado, proveedorId, page = '1' } = request.query
+    const { search, estado, proveedorId, desde, hasta, page = '1' } = request.query
     const LIMIT = 100
     const offset = (parseInt(page) - 1) * LIMIT
 
@@ -18,8 +18,13 @@ export default async function pagosProveedoresRoutes(fastify) {
         ...(isNum ? [{ codigoProveedor: parseInt(search, 10) }] : []),
       ]
     }
+    if (desde || hasta) {
+      where.fechaDoc = {}
+      if (desde) where.fechaDoc.gte = new Date(desde)
+      if (hasta) where.fechaDoc.lte = new Date(hasta + 'T23:59:59')
+    }
 
-    const [items, total] = await Promise.all([
+    const [items, total, byEstado, sumAgg] = await Promise.all([
       fastify.prisma.pagoProveedor.findMany({
         where,
         orderBy: [{ fechaDoc: 'desc' }, { id: 'desc' }],
@@ -27,7 +32,15 @@ export default async function pagosProveedoresRoutes(fastify) {
         skip: offset,
       }),
       fastify.prisma.pagoProveedor.count({ where }),
+      fastify.prisma.pagoProveedor.groupBy({ by: ['estado'], where, _count: { _all: true }, _sum: { total: true } }),
+      fastify.prisma.pagoProveedor.aggregate({ where, _sum: { total: true } }),
     ])
+    const stats = { Pendiente: 0, Pagado: 0, Vencido: 0, Anulado: 0, montoTotal: sumAgg._sum.total || 0, montoPendiente: 0, montoVencido: 0 }
+    for (const g of byEstado) {
+      stats[g.estado] = g._count._all
+      if (g.estado === 'Pendiente') stats.montoPendiente = g._sum.total || 0
+      if (g.estado === 'Vencido') stats.montoVencido = g._sum.total || 0
+    }
 
     // attach proveedores
     const provIds = [...new Set(items.map(p => p.proveedorId).filter(Boolean))]
@@ -40,7 +53,7 @@ export default async function pagosProveedoresRoutes(fastify) {
       provMap = Object.fromEntries(provs.map(p => [p.id, p]))
     }
     const enriched = items.map(p => ({ ...p, proveedor: p.proveedorId ? provMap[p.proveedorId] || null : null }))
-    return { items: enriched, total, limit: LIMIT }
+    return { items: enriched, total, limit: LIMIT, stats }
   })
 
   fastify.get('/:id', {

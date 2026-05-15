@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, Table, Tabs, SearchBar } from '../../components/shared'
 import { useTurnoActivo, useAbrirTurno, useCerrarTurno, useCajaHistorico, useCajaHistoricoYears } from '../../api/caja'
 import { downloadFromBackend } from '../../utils/csv'
@@ -8,7 +8,10 @@ const MEDIOS_PAGO = ['Todos', 'Efectivo', 'Debito', 'Credito', 'Transferencia', 
 
 export default function CajaPage() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState('hoy')
+  const [urlParams, setUrlParams] = useSearchParams()
+  const nInternoUrl = urlParams.get('nInterno') || ''
+  const [tab, setTab] = useState(nInternoUrl ? 'historico' : 'hoy')
+  const [nInterno, setNInterno] = useState(nInternoUrl)
 
   // Turno actual
   const { data: turno, isLoading } = useTurnoActivo()
@@ -28,6 +31,7 @@ export default function CajaPage() {
   if (histMedio) histParams.medioPago = histMedio
   if (histTipo) histParams.tipo = histTipo
   if (histDebounced) histParams.search = histDebounced
+  if (nInterno) histParams.nInterno = nInterno
   const { data: histResult = { items: [], total: 0, stats: { totalIngresos: 0, totalEgresos: 0 } }, isLoading: histLoading } = useCajaHistorico(histParams)
 
   useEffect(() => {
@@ -129,7 +133,8 @@ export default function CajaPage() {
                 <option value="">Todos los medios</option>
                 {MEDIOS_PAGO.slice(1).map(m => <option key={m} value={m}>{m}</option>)}
               </select>
-              <SearchBar placeholder="Referencia, usuario..." value={histSearch} onChange={setHistSearch} style={{ width: 200 }} />
+              <input value={nInterno} onChange={e => { setNInterno(e.target.value); if (!e.target.value) { urlParams.delete('nInterno'); setUrlParams(urlParams) } }} placeholder="N° Interno venta" type="number" style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', width: 140 }} />
+              <SearchBar placeholder="Referencia, doc, usuario..." value={histSearch} onChange={setHistSearch} style={{ width: 200 }} />
             </div>
           )}
         </div>

@@ -32,13 +32,15 @@ export default async function despachosRoutes(fastify) {
       if (desde) where.fechaEntrega.gte = new Date(desde)
       if (hasta) where.fechaEntrega.lte = new Date(hasta + 'T23:59:59')
     }
-    const [items, total] = await Promise.all([
+    const [items, total, parciales, multas] = await Promise.all([
       fastify.prisma.despacho.findMany({
         where, orderBy: { fechaEntrega: 'desc' }, take: LIMIT, skip,
       }),
       fastify.prisma.despacho.count({ where }),
+      fastify.prisma.despacho.count({ where: { ...where, parcial: true } }),
+      fastify.prisma.despacho.count({ where: { ...where, tieneMulta: true } }),
     ])
-    return { items, total, limit: LIMIT }
+    return { items, total, limit: LIMIT, stats: { parciales, multas } }
   })
 
   fastify.get('/:id', {

@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Btn, PageHeader, Table } from '../../components/shared'
+import { Btn, Badge, PageHeader, Table } from '../../components/shared'
 import { FormField, Input, Select, Textarea } from '../../components/forms'
 import { useTalleres, useEnviarTaller } from '../../api/pasarTaller'
+import { useOdt } from '../../api/odts'
 
 export default function PasarTallerPage() {
   const [odtId, setOdtId] = useState('')
@@ -10,6 +11,8 @@ export default function PasarTallerPage() {
 
   const { data: talleres = [] } = useTalleres()
   const enviarMut = useEnviarTaller()
+  const odtIdNum = odtId && /^\d+$/.test(odtId) ? parseInt(odtId, 10) : null
+  const { data: odtPreview, isError: odtError } = useOdt(odtIdNum)
 
   const addItem = () => {
     if (!draft.nombre && !draft.codigoInterno) return alert('Falta nombre o código')
@@ -60,6 +63,24 @@ export default function PasarTallerPage() {
         <FormField label="ODT destino" required>
           <Input type="number" value={odtId} onChange={setOdtId} placeholder="ID ODT" />
         </FormField>
+        {odtIdNum && odtPreview && (
+          <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--green-50, #f0fdf4)', border: '1px solid var(--green-100, #bbf7d0)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>
+                ODT #{odtPreview.id} · {odtPreview.clienteNombre || 'Sin cliente'}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+                {odtPreview.tipo || '—'} · {odtPreview.descripcion?.slice(0, 80) || 'Sin descripción'}
+              </div>
+            </div>
+            <Badge tone={odtPreview.estado === 'Terminada' ? 'green' : odtPreview.estado === 'Prioritaria' ? 'red' : 'blue'}>{odtPreview.estado}</Badge>
+          </div>
+        )}
+        {odtIdNum && odtError && (
+          <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--red-bg, #fef2f2)', border: '1px solid var(--red, #fca5a5)', borderRadius: 8, fontSize: 12, color: 'var(--red, #991b1b)' }}>
+            ODT #{odtIdNum} no encontrada
+          </div>
+        )}
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>

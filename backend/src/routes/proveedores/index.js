@@ -41,6 +41,68 @@ export default async function proveedoresRoutes(fastify) {
       return { ...p, pagos }
     })
 
+    f.post('/', {
+      preHandler: [f.authenticate, f.rbac('catalogo', 'write')],
+    }, async (request, reply) => {
+      const b = request.body || {}
+      if (!b.nombre) return reply.code(400).send({ error: 'nombre requerido' })
+      const data = {
+        nombre: b.nombre,
+        razonSocial: b.razonSocial || null,
+        rut: b.rut || null,
+        giro: b.giro || null,
+        email: b.email || null,
+        telefono: b.telefono || null,
+        direccion: b.direccion || null,
+        region: b.region || null,
+        comuna: b.comuna || null,
+        codigoProveedor: b.codigoProveedor ? parseInt(b.codigoProveedor, 10) : null,
+        porcVentaSala: b.porcVentaSala != null ? parseFloat(b.porcVentaSala) : null,
+        porcMarco: b.porcMarco != null ? parseFloat(b.porcMarco) : null,
+        porcLicitacion: b.porcLicitacion != null ? parseFloat(b.porcLicitacion) : null,
+        activo: true,
+      }
+      const created = await f.prisma.proveedor.create({ data })
+      return reply.code(201).send(created)
+    })
+
+    f.put('/:id', {
+      preHandler: [f.authenticate, f.rbac('catalogo', 'write')],
+    }, async (request, reply) => {
+      const id = parseInt(request.params.id)
+      if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
+      const b = request.body || {}
+      const data = {}
+      for (const k of ['nombre', 'razonSocial', 'rut', 'giro', 'email', 'telefono', 'direccion', 'region', 'comuna']) {
+        if (b[k] !== undefined) data[k] = b[k] || null
+      }
+      if (b.codigoProveedor !== undefined) data.codigoProveedor = b.codigoProveedor ? parseInt(b.codigoProveedor, 10) : null
+      if (b.porcVentaSala !== undefined) data.porcVentaSala = b.porcVentaSala === null ? null : parseFloat(b.porcVentaSala)
+      if (b.porcMarco !== undefined) data.porcMarco = b.porcMarco === null ? null : parseFloat(b.porcMarco)
+      if (b.porcLicitacion !== undefined) data.porcLicitacion = b.porcLicitacion === null ? null : parseFloat(b.porcLicitacion)
+      if (b.activo !== undefined) data.activo = !!b.activo
+      try {
+        return await f.prisma.proveedor.update({ where: { id }, data })
+      } catch (e) {
+        if (e.code === 'P2025') return reply.code(404).send({ error: 'No encontrado' })
+        throw e
+      }
+    })
+
+    f.delete('/:id', {
+      preHandler: [f.authenticate, f.rbac('catalogo', 'write')],
+    }, async (request, reply) => {
+      const id = parseInt(request.params.id)
+      if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
+      try {
+        await f.prisma.proveedor.update({ where: { id }, data: { activo: false } })
+        return reply.code(204).send()
+      } catch (e) {
+        if (e.code === 'P2025') return reply.code(404).send({ error: 'No encontrado' })
+        throw e
+      }
+    })
+
     // ── Pagos de Proveedor ────────────────────────────────────────────────
     f.get('/:id/pagos', {
       preHandler: [f.authenticate, f.rbac('catalogo', 'read')],

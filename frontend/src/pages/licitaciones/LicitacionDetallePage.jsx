@@ -2,7 +2,11 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Badge, PageHeader, Btn, Table } from '../../components/shared'
 import { FormField, Input, Select, Textarea } from '../../components/forms'
-import { useCotizacion, useUpdateCotizacion } from '../../api/cotizaciones'
+import {
+  useCotizacion, useUpdateCotizacion, useDeleteCotizacion,
+  useAddCotizacionItem, useUpdateCotizacionItem, useDeleteCotizacionItem,
+  useCrearVentaDesdeLicitacion,
+} from '../../api/cotizaciones'
 
 const ESTADO_TONE = {
   'Pendiente':  'amber', 'Adjudicada': 'green', 'Cerrada': 'neutral',
@@ -17,8 +21,17 @@ export default function LicitacionDetallePage() {
   const navigate = useNavigate()
   const { data, isLoading } = useCotizacion(id)
   const updateMut = useUpdateCotizacion()
+  const deleteMut = useDeleteCotizacion()
+  const addItemMut = useAddCotizacionItem()
+  const updateItemMut = useUpdateCotizacionItem()
+  const deleteItemMut = useDeleteCotizacionItem()
+  const crearVentaMut = useCrearVentaDesdeLicitacion()
+
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({})
+  const [editItemId, setEditItemId] = useState(null)
+  const [itemForm, setItemForm] = useState({})
+  const [newItem, setNewItem] = useState({ codigoInterno: '', nombre: '', descripcion: '', cantidad: '', cantAdjudicados: '', precio: '' })
 
   useEffect(() => {
     if (data) setForm({
@@ -39,26 +52,75 @@ export default function LicitacionDetallePage() {
   const totalAdjudicado = items.reduce((s, i) => s + (i.cantAdjudicados || 0) * (i.precio || 0), 0)
 
   const handleSave = () => {
-    updateMut.mutate({ id: data.id, data: form }, {
-      onSuccess: () => setEditing(false),
-    })
+    updateMut.mutate({ id: data.id, data: form }, { onSuccess: () => setEditing(false) })
   }
 
+  const handleDelete = () => {
+    if (!confirm('¿Eliminar licitación? Esta acción no se puede deshacer.')) return
+    deleteMut.mutate(data.id, { onSuccess: () => navigate('/licitaciones') })
+  }
+
+  const startEditItem = (it) => {
+    setEditItemId(it.id)
+    setItemForm({
+      codigoInterno: it.codigoInterno || '',
+      nombre: it.nombre || '',
+      descripcion: it.descripcion || '',
+      cantidad: it.cantidad ?? '',
+      cantAdjudicados: it.cantAdjudicados ?? '',
+      precio: it.precio ?? '',
+    })
+  }
+  const saveItem = () => {
+    updateItemMut.mutate({ id: data.id, itemId: editItemId, data: itemForm }, {
+      onSuccess: () => setEditItemId(null),
+    })
+  }
+  const deleteItem = (itemId) => {
+    if (!confirm('¿Eliminar item?')) return
+    deleteItemMut.mutate({ id: data.id, itemId })
+  }
+  const addItem = () => {
+    if (!newItem.nombre && !newItem.codigoInterno) { alert('Código o nombre requerido'); return }
+    addItemMut.mutate({ id: data.id, data: newItem }, {
+      onSuccess: () => setNewItem({ codigoInterno: '', nombre: '', descripcion: '', cantidad: '', cantAdjudicados: '', precio: '' }),
+    })
+  }
+  const crearVenta = () => {
+    if (!confirm('¿Crear venta desde esta licitación? Se generará una orden con los items adjudicados.')) return
+    crearVentaMut.mutate(data.id, {
+      onSuccess: (res) => {
+        const msg = res.faltantes?.length
+          ? `Venta creada (#${res.orden.id}). Faltantes en catálogo: ${res.faltantes.join(', ')}`
+          : `Venta creada (#${res.orden.id})`
+        alert(msg)
+        navigate('/ventas/' + res.orden.id)
+      },
+      onError: (err) => alert(err?.response?.data?.error || 'Error al crear venta'),
+    })
+  }
+  const imprimir = () => window.print()
+
+  const hasAdjudicados = items.some(i => (i.cantAdjudicados || 0) > 0)
+
   const cols = [
-    { key: 'codigoInterno', label: 'Código',
-      render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{v || '—'}</span> },
-    { key: 'nombre', label: 'Producto', wrap: true,
-      render: v => <span style={{ fontSize: 13 }}>{v || '—'}</span> },
+    { key: 'codigoInterno', label: 'Código', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{v || '—'}</span> },
+    { key: 'nombre', label: 'Producto', wrap: true, render: v => <span style={{ fontSize: 13 }}>{v || '—'}</span> },
     { key: 'descripcion', label: 'Descripción', wrap: true,
       render: v => <span style={{ fontSize: 12, color: 'var(--text-3)', maxWidth: 280, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v || '—'}</span> },
-    { key: 'cantidad', label: 'Cant.', align: 'right',
-      render: v => <span style={{ fontFamily: "'DM Mono', monospace" }}>{v}</span> },
+    { key: 'cantidad', label: 'Cant.', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace" }}>{v}</span> },
     { key: 'cantAdjudicados', label: 'Adjud.', align: 'right',
       render: v => <span style={{ fontFamily: "'DM Mono', monospace", color: v > 0 ? 'var(--green-700)' : 'var(--text-3)' }}>{v}</span> },
-    { key: 'precio', label: 'Precio', align: 'right',
-      render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{fmt(v)}</span> },
+    { key: 'precio', label: 'Precio', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{fmt(v)}</span> },
     { key: '_total', label: 'Total', align: 'right',
       render: (_, row) => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600, fontSize: 12 }}>{fmt((row.cantidad||0) * (row.precio||0))}</span> },
+    { key: '_acc', label: '', align: 'right',
+      render: (_, row) => (
+        <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+          <button onClick={() => startEditItem(row)} style={btnTiny}>Editar</button>
+          <button onClick={() => deleteItem(row.id)} style={{ ...btnTiny, color: 'var(--red)' }}>×</button>
+        </div>
+      ) },
   ]
 
   return (
@@ -68,8 +130,17 @@ export default function LicitacionDetallePage() {
         subtitle={data.referencia || 'Sin referencia'}
         breadcrumb={['Inicio', 'Ventas', 'Licitaciones', String(data.id)]}
         actions={
-          <div style={{ display: 'flex', gap: 8 }}>
-            {!editing && <Btn variant="primary" size="sm" onClick={() => setEditing(true)}>Editar</Btn>}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {!editing && <>
+              <Btn variant="primary" size="sm" onClick={() => setEditing(true)}>Editar</Btn>
+              {hasAdjudicados && (
+                <Btn variant="secondary" size="sm" onClick={crearVenta} disabled={crearVentaMut.isPending}>
+                  {crearVentaMut.isPending ? 'Creando…' : '→ Crear Venta'}
+                </Btn>
+              )}
+              <Btn variant="secondary" size="sm" onClick={imprimir}>Imprimir</Btn>
+              <Btn variant="secondary" size="sm" onClick={handleDelete} disabled={deleteMut.isPending}>Eliminar</Btn>
+            </>}
             {editing && <>
               <Btn variant="secondary" size="sm" onClick={() => setEditing(false)} disabled={updateMut.isPending}>Cancelar</Btn>
               <Btn variant="primary" size="sm" onClick={handleSave} disabled={updateMut.isPending}>
@@ -143,7 +214,7 @@ export default function LicitacionDetallePage() {
         </>
       )}
 
-      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
+      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontWeight: 600, fontSize: 14 }}>Productos cotizados <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>({items.length})</span></div>
           <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
@@ -152,10 +223,46 @@ export default function LicitacionDetallePage() {
           </div>
         </div>
         <Table columns={cols} rows={items} emptyMessage="Sin productos cotizados" />
+
+        {editItemId && (
+          <div style={{ padding: 12, borderTop: '1px solid var(--border)', background: 'var(--bg-2)' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Editar item</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 80px 80px 100px auto', gap: 6 }}>
+              <input value={itemForm.codigoInterno} onChange={e => setItemForm(f => ({ ...f, codigoInterno: e.target.value }))} placeholder="Código" style={inputSm} />
+              <input value={itemForm.nombre} onChange={e => setItemForm(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre" style={inputSm} />
+              <input value={itemForm.cantidad} onChange={e => setItemForm(f => ({ ...f, cantidad: e.target.value }))} type="number" placeholder="Cant" style={inputSm} />
+              <input value={itemForm.cantAdjudicados} onChange={e => setItemForm(f => ({ ...f, cantAdjudicados: e.target.value }))} type="number" placeholder="Adj" style={inputSm} />
+              <input value={itemForm.precio} onChange={e => setItemForm(f => ({ ...f, precio: e.target.value }))} type="number" placeholder="Precio" style={inputSm} />
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button onClick={saveItem} disabled={updateItemMut.isPending} style={btnSmPrim}>Guardar</button>
+                <button onClick={() => setEditItemId(null)} style={btnSm}>Cancelar</button>
+              </div>
+            </div>
+            <input value={itemForm.descripcion} onChange={e => setItemForm(f => ({ ...f, descripcion: e.target.value }))} placeholder="Descripción" style={{ ...inputSm, marginTop: 6, width: '100%' }} />
+          </div>
+        )}
+
+        <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Agregar item</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 80px 80px 100px auto', gap: 6 }}>
+            <input value={newItem.codigoInterno} onChange={e => setNewItem(f => ({ ...f, codigoInterno: e.target.value }))} placeholder="Código" style={inputSm} />
+            <input value={newItem.nombre} onChange={e => setNewItem(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre producto" style={inputSm} />
+            <input value={newItem.cantidad} onChange={e => setNewItem(f => ({ ...f, cantidad: e.target.value }))} type="number" placeholder="Cant" style={inputSm} />
+            <input value={newItem.cantAdjudicados} onChange={e => setNewItem(f => ({ ...f, cantAdjudicados: e.target.value }))} type="number" placeholder="Adj" style={inputSm} />
+            <input value={newItem.precio} onChange={e => setNewItem(f => ({ ...f, precio: e.target.value }))} type="number" placeholder="Precio" style={inputSm} />
+            <button onClick={addItem} disabled={addItemMut.isPending} style={btnSmPrim}>+ Agregar</button>
+          </div>
+          <input value={newItem.descripcion} onChange={e => setNewItem(f => ({ ...f, descripcion: e.target.value }))} placeholder="Descripción (opcional)" style={{ ...inputSm, marginTop: 6, width: '100%' }} />
+        </div>
       </div>
     </main>
   )
 }
+
+const inputSm = { padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, background: '#fff' }
+const btnTiny = { padding: '3px 6px', fontSize: 11, borderRadius: 4, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer' }
+const btnSm = { padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer' }
+const btnSmPrim = { padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--green-600)', background: 'var(--green-600)', color: '#fff', cursor: 'pointer', fontWeight: 500 }
 
 function InfoCard({ label, value, children }) {
   return (

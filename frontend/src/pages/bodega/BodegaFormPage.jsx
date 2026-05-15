@@ -1,9 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../components/forms/index'
 import { useAuthStore } from '../../store/auth'
-import { useProducto, useUpdateProducto, useCreateProducto, useHistorialPrecios, useAddPrecio } from '../../api/productos'
+import { useProducto, useUpdateProducto, useCreateProducto, useHistorialPrecios, useAddPrecio, useMovimientos, useAddMovimiento } from '../../api/productos'
 
 function PrecioHistorial({ historial }) {
   if (!historial.length) return null
@@ -63,6 +63,8 @@ export default function BodegaFormPage() {
 
   const { data, set, errors, validate } = useForm({
     cod: '', nombre: '', cat: 'Espumas', bodega: 'Inventario', stock: '', minimo: '', precio: '',
+    codigoBarra: '', proveedor: '', ubicacion: '', descripcion: '', precioMarco: '',
+    idMarco: '', unidadMedida: '', estadoInventario: '',
     visibleWeb: false, destacadoWeb: false, fotoUrl: '', fotoUrlGrande: '',
     descripcionWeb: '', precioWeb: '', ordenWeb: '',
   })
@@ -83,6 +85,14 @@ export default function BodegaFormPage() {
       set('descripcionWeb', found.descripcionWeb || '')
       set('precioWeb', found.precioWeb != null ? String(found.precioWeb) : '')
       set('ordenWeb', found.ordenWeb != null ? String(found.ordenWeb) : '')
+      set('codigoBarra', found.codigoBarra || '')
+      set('proveedor', found.proveedor || '')
+      set('ubicacion', found.ubicacion || '')
+      set('descripcion', found.descripcion || '')
+      set('precioMarco', found.precioMarco != null ? String(found.precioMarco) : '')
+      set('idMarco', found.idMarco || '')
+      set('unidadMedida', found.unidadMedida || '')
+      set('estadoInventario', found.estadoInventario || '')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [found?.id])
@@ -98,6 +108,14 @@ export default function BodegaFormPage() {
       stock: Number(data.stock),
       stockCritico: Number(data.minimo),
       precioLista: Number(data.precio),
+      codigoBarra: data.codigoBarra || undefined,
+      proveedor: data.proveedor || undefined,
+      ubicacion: data.ubicacion || undefined,
+      descripcion: data.descripcion || undefined,
+      precioMarco: data.precioMarco !== '' ? Number(data.precioMarco) : undefined,
+      idMarco: data.idMarco || undefined,
+      unidadMedida: data.unidadMedida || undefined,
+      estadoInventario: data.estadoInventario || undefined,
       visibleWeb: !!data.visibleWeb,
       destacadoWeb: !!data.destacadoWeb,
       fotoUrl: data.fotoUrl || undefined,
@@ -145,33 +163,61 @@ export default function BodegaFormPage() {
       saving={saving}
     >
       <FormDivider label="Identificación" />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
         <FormField label="Código" required error={errors.cod}>
           <Input value={data.cod} onChange={v => set('cod', v)} placeholder="ESP-001" error={errors.cod} disabled={isEdit} />
+        </FormField>
+        <FormField label="Código de barra">
+          <Input value={data.codigoBarra} onChange={v => set('codigoBarra', v)} placeholder="7800000000000" />
         </FormField>
         <FormField label="Categoría">
           <Select value={data.cat} onChange={v => set('cat', v)} options={['Espumas','Viscoelástico','Telas','Maderas','Colchones','Fibras','Accesorios','Látex','Bases','Protectores']} />
         </FormField>
       </div>
-      <FormField label="Nombre / Descripción" required error={errors.nombre}>
+      <FormField label="Nombre / Descripción corta" required error={errors.nombre}>
         <Input value={data.nombre} onChange={v => set('nombre', v)} placeholder="Espuma Alta Densidad 15cm 2x1" error={errors.nombre} />
       </FormField>
-      <FormField label="Bodega">
-        <Select value={data.bodega} onChange={v => set('bodega', v)} options={['Inventario','Taller']} />
+      <FormField label="Descripción larga" hint="Detalles internos">
+        <Textarea value={data.descripcion} onChange={v => set('descripcion', v)} rows={2} />
       </FormField>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+        <FormField label="Bodega">
+          <Select value={data.bodega} onChange={v => set('bodega', v)} options={['Inventario','Taller']} />
+        </FormField>
+        <FormField label="Unidad medida" hint="ej. UN, MT, KG">
+          <Input value={data.unidadMedida} onChange={v => set('unidadMedida', v)} placeholder="UN" />
+        </FormField>
+        <FormField label="Ubicación física" hint="Pasillo/Rack">
+          <Input value={data.ubicacion} onChange={v => set('ubicacion', v)} placeholder="A-12" />
+        </FormField>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <FormField label="Proveedor habitual">
+          <Input value={data.proveedor} onChange={v => set('proveedor', v)} placeholder="Nombre proveedor" />
+        </FormField>
+        <FormField label="Estado inventario" hint="Activo/Descontinuado/etc">
+          <Select value={data.estadoInventario} onChange={v => set('estadoInventario', v)} options={['', 'Activo', 'Descontinuado', 'En tránsito', 'Reserva']} />
+        </FormField>
+      </div>
 
       <FormDivider label="Stock y Precio" />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14 }}>
         <FormField label="Stock actual" hint="Unidades">
           <Input value={data.stock} onChange={v => set('stock', v)} type="number" placeholder="0" />
         </FormField>
         <FormField label="Stock mínimo" hint="Alerta bajo">
           <Input value={data.minimo} onChange={v => set('minimo', v)} type="number" placeholder="0" />
         </FormField>
-        <FormField label="Precio">
+        <FormField label="Precio lista">
           <Input value={data.precio} onChange={v => set('precio', v)} type="number" prefix="$" placeholder="0" />
         </FormField>
+        <FormField label="Precio marco" hint="Convenio">
+          <Input value={data.precioMarco} onChange={v => set('precioMarco', v)} type="number" prefix="$" placeholder="0" />
+        </FormField>
       </div>
+      <FormField label="ID Convenio Marco" hint="Código del rubro/línea en CM">
+        <Input value={data.idMarco} onChange={v => set('idMarco', v)} placeholder="123456" />
+      </FormField>
 
       <FormDivider label="Tienda Web" />
       <div style={{ display: 'flex', gap: 24, marginBottom: 8 }}>
@@ -208,7 +254,74 @@ export default function BodegaFormPage() {
         </>
       )}
 
+      {isEdit && found && <MovimientosSection productoId={found.id} stockActual={found.stock} />}
+
       <PrecioHistorial historial={historial} />
     </FormPage>
+  )
+}
+
+function MovimientosSection({ productoId, stockActual }) {
+  const { data: movs = [] } = useMovimientos(productoId)
+  const addMov = useAddMovimiento()
+  const [tipo, setTipo] = useState('ingreso')
+  const [cantidad, setCantidad] = useState('')
+  const [motivo, setMotivo] = useState('')
+
+  const submit = () => {
+    const c = parseInt(cantidad, 10)
+    if (isNaN(c)) { alert('Cantidad inválida'); return }
+    if (!motivo.trim()) { alert('Motivo requerido'); return }
+    addMov.mutate({ productoId, tipo, cantidad: c, motivo: motivo.trim() }, {
+      onSuccess: () => { setCantidad(''); setMotivo('') },
+      onError: e => alert(e.response?.data?.error || 'Error'),
+    })
+  }
+
+  const fmtDate = iso => new Date(iso).toLocaleString('es-CL', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+  return (
+    <>
+      <FormDivider label="Movimientos manuales de stock" />
+      <div style={{ background: 'var(--bg)', padding: 12, borderRadius: 8, marginBottom: 10, fontSize: 12, color: 'var(--text-2)' }}>
+        Stock actual: <b style={{ color: 'var(--text-1)', fontFamily: "'DM Mono', monospace" }}>{stockActual}</b>
+        {' · '}Ingreso suma · Egreso resta · Ajuste fija stock al valor indicado
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '120px 110px 1fr auto', gap: 8, marginBottom: 12 }}>
+        <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}>
+          <option value="ingreso">Ingreso</option>
+          <option value="egreso">Egreso</option>
+          <option value="ajuste">Ajuste</option>
+        </select>
+        <Input value={cantidad} onChange={setCantidad} type="number" placeholder="0" />
+        <Input value={motivo} onChange={setMotivo} placeholder="Motivo (obligatorio)" />
+        <button onClick={submit} disabled={addMov.isPending} style={{ padding: '7px 14px', borderRadius: 6, border: 'none', background: 'var(--green-700)', color: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+          {addMov.isPending ? '…' : 'Aplicar'}
+        </button>
+      </div>
+      {movs.length > 0 && (
+        <div style={{ borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden', maxHeight: 240, overflowY: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: 'var(--bg)' }}>
+                {['Fecha', 'Tipo', 'Cantidad', 'Motivo'].map(h => (
+                  <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--text-3)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.3, borderBottom: '1px solid var(--border)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {movs.map((m, i) => (
+                <tr key={m.id} style={{ borderBottom: i < movs.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                  <td style={{ padding: '8px 14px', color: 'var(--text-2)', fontFamily: "'DM Mono', monospace" }}>{fmtDate(m.createdAt)}</td>
+                  <td style={{ padding: '8px 14px', textTransform: 'capitalize' }}>{m.tipo}</td>
+                  <td style={{ padding: '8px 14px', fontFamily: "'DM Mono', monospace", fontWeight: 600, color: m.cantidad >= 0 ? 'var(--green-700)' : 'var(--red)' }}>{m.cantidad > 0 ? '+' : ''}{m.cantidad}</td>
+                  <td style={{ padding: '8px 14px', color: 'var(--text-2)' }}>{m.motivo}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
   )
 }

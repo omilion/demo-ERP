@@ -6,18 +6,31 @@ export default async function matrizVentasRoutes(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request) => {
-    const { tipo, desde, hasta, rut, nInterno, oc, idLicitacion, search, page = '1' } = request.query
+    const { tipo, desde, hasta, rut, nInterno, oc, idLicitacion, guia, odt, estadoPago, estadoEntrega, search, page = '1' } = request.query
     const LIMIT = 100
     const skip = (parseInt(page, 10) - 1) * LIMIT
     const dateDesde = desde ? new Date(desde) : null
     const dateHasta = hasta ? new Date(hasta + 'T23:59:59') : null
 
+    // Si filtran por odt, lookup ordenId
+    let ordenIdsByOdt = null
+    if (odt) {
+      const odts = await fastify.prisma.odt.findMany({
+        where: { id: parseInt(odt, 10) },
+        select: { ordenId: true },
+      })
+      ordenIdsByOdt = odts.map(o => o.ordenId).filter(Boolean)
+      if (ordenIdsByOdt.length === 0) return { items: [], total: 0, limit: LIMIT, totalMonto: 0 }
+    }
+
     const results = []
 
     // Tipo: 'venta-sala' | 'venta-web' | 'convenio-marco' | 'licitacion' | undefined (todos)
+    // Filtros odt/guia/estadoPago/estadoEntrega solo aplican a ordenes
+    const restrictToOrden = !!(odt || guia || estadoPago || estadoEntrega)
     const inOrden = !tipo || ['venta-sala', 'convenio-marco', 'venta-directa'].includes(tipo)
-    const inOcOnline = !tipo || tipo === 'venta-web'
-    const inLicitacion = !tipo || tipo === 'licitacion'
+    const inOcOnline = !restrictToOrden && (!tipo || tipo === 'venta-web')
+    const inLicitacion = !restrictToOrden && (!tipo || tipo === 'licitacion')
 
     if (inOrden) {
       const where = { eliminada: false }
@@ -29,6 +42,10 @@ export default async function matrizVentasRoutes(fastify) {
       if (rut) where.rutCliente = { contains: rut, mode: 'insensitive' }
       if (nInterno) where.nInterno = parseInt(nInterno, 10)
       if (oc) where.licitacion = { contains: oc, mode: 'insensitive' }
+      if (guia) where.guias = parseInt(guia, 10)
+      if (estadoPago) where.estadoPago = estadoPago
+      if (estadoEntrega) where.estadoEntrega = estadoEntrega
+      if (ordenIdsByOdt) where.id = { in: ordenIdsByOdt }
       if (search) {
         const isNum = /^\d+$/.test(search.trim())
         where.OR = [

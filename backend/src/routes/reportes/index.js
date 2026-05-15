@@ -83,12 +83,35 @@ export default async function reportesRoutes(fastify) {
   fastify.get('/export/ventas', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request, reply) => {
-    const { desde, hasta } = request.query
+    const { desde, hasta, tipo, rut, nInterno, oc, guia, odt, estadoPago, estadoEntrega, search } = request.query
     const where = { eliminada: false }
     if (desde || hasta) {
       where.createdAt = {}
       if (desde) where.createdAt.gte = new Date(desde)
       if (hasta) where.createdAt.lte = new Date(hasta + 'T23:59:59')
+    }
+    if (tipo === 'venta-sala' || tipo === 'venta-directa') where.tipo = { in: ['Venta sala', 'Venta directa'] }
+    else if (tipo === 'convenio-marco') where.tipo = 'Convenio Marco'
+    else if (tipo === 'licitacion') where.tipo = 'Licitación'
+    if (rut) where.rutCliente = { contains: rut, mode: 'insensitive' }
+    if (nInterno) where.nInterno = parseInt(nInterno, 10)
+    if (oc) where.licitacion = { contains: oc, mode: 'insensitive' }
+    if (guia) where.guias = parseInt(guia, 10)
+    if (estadoPago) where.estadoPago = estadoPago
+    if (estadoEntrega) where.estadoEntrega = estadoEntrega
+    if (odt) {
+      const odts = await fastify.prisma.odt.findMany({ where: { id: parseInt(odt, 10) }, select: { ordenId: true } })
+      const ids = odts.map(o => o.ordenId).filter(Boolean)
+      where.id = ids.length ? { in: ids } : -1
+    }
+    if (search) {
+      const isNum = /^\d+$/.test(search.trim())
+      where.OR = [
+        { creadorNombre: { contains: search, mode: 'insensitive' } },
+        { rutCliente: { contains: search, mode: 'insensitive' } },
+        { observaciones: { contains: search, mode: 'insensitive' } },
+        ...(isNum ? [{ nInterno: parseInt(search, 10) }, { id: parseInt(search, 10) }] : []),
+      ]
     }
     const ventas = await fastify.prisma.orden.findMany({
       where, include: { items: true }, orderBy: { createdAt: 'desc' },
@@ -106,8 +129,43 @@ export default async function reportesRoutes(fastify) {
       { key: 'total', label: 'Total' },
       { key: 'estadoPago', label: 'Pago' },
       { key: 'estadoEntrega', label: 'Entrega' },
+      { key: 'licitacion', label: 'OC / Ref' },
+      { key: 'observaciones', label: 'Observaciones' },
     ])
     return sendCsv(reply, `ventas_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+  })
+
+  fastify.get('/export/cobranza', {
+    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
+  }, async (request, reply) => {
+    const { ejecutiva, estado, mes, search } = request.query
+    const where = {}
+    if (ejecutiva) where.ejecutiva = { contains: ejecutiva, mode: 'insensitive' }
+    if (estado) where.estado = { equals: estado, mode: 'insensitive' }
+    if (mes) where.mesAnio = { contains: mes, mode: 'insensitive' }
+    if (search) {
+      where.OR = [
+        { cliente: { contains: search, mode: 'insensitive' } },
+        { rut: { contains: search, mode: 'insensitive' } },
+      ]
+    }
+    const items = await fastify.prisma.cobranzaHistorico.findMany({
+      where, orderBy: { fechaFactura: 'desc' },
+    })
+    const csv = rowsToCsv(items, [
+      { key: 'fechaFactura', label: 'Fecha Factura' },
+      { key: 'ndoc', label: 'N° Doc' },
+      { key: 'cliente', label: 'Cliente' },
+      { key: 'rut', label: 'RUT' },
+      { key: 'valorFactura', label: 'Valor Factura' },
+      { key: 'monto', label: 'Monto Cobrado' },
+      { key: 'estado', label: 'Estado' },
+      { key: 'ejecutiva', label: 'Ejecutiva' },
+      { key: 'fechaPago', label: 'Fecha Pago' },
+      { key: 'banco', label: 'Banco' },
+      { key: 'mesAnio', label: 'Período' },
+    ])
+    return sendCsv(reply, `cobranza_historico_${new Date().toISOString().slice(0, 10)}.csv`, csv)
   })
 
   fastify.get('/export/caja', {

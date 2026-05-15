@@ -2,11 +2,14 @@ export default async function listClientes(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('clientes', 'read')],
   }, async (request, reply) => {
-    const { search, tipo } = request.query
+    const { search, tipo, region, ciudad, segmento, conDeuda } = request.query
     const LIMIT = 500
 
     const where = { activo: true }
     if (tipo) where.tipo = tipo
+    if (region) where.region = { contains: region, mode: 'insensitive' }
+    if (ciudad) where.ciudad = { contains: ciudad, mode: 'insensitive' }
+    if (segmento) where.segmento = segmento
     if (search) where.OR = [
       { nombre: { contains: search, mode: 'insensitive' } },
       { rut: { contains: search } },
@@ -36,9 +39,11 @@ export default async function listClientes(fastify) {
     const saldoMap = {}
     for (const row of saldos) saldoMap[Number(row.cliente_id)] = Number(row.saldo)
 
+    let items = clientes.map(c => ({ ...c, saldo: saldoMap[c.id] ?? 0 }))
+    if (conDeuda === 'true') items = items.filter(c => c.saldo > 0)
     return {
-      items: clientes.map(c => ({ ...c, saldo: saldoMap[c.id] ?? 0 })),
-      total,
+      items,
+      total: conDeuda === 'true' ? items.length : total,
       limit: LIMIT,
     }
   })

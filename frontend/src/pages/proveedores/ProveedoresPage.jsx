@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
-import { useProveedores, useProveedor, useCreatePagoProveedor, useUpdatePagoProveedor, useDeletePagoProveedor } from '../../api/proveedores'
+import { useProveedores, useProveedor, useCreatePagoProveedor, useUpdatePagoProveedor, useDeletePagoProveedor, useCreateProveedor, useUpdateProveedor, useDeleteProveedor } from '../../api/proveedores'
 import { downloadFromBackend } from '../../utils/csv'
 
 const fmt = n => n ? `${n}%` : '—'
@@ -199,11 +199,16 @@ function TabBtn({ active, onClick, children, badge }) {
   )
 }
 
-function ViewProveedorPanel({ proveedor, onClose }) {
+function ViewProveedorPanel({ proveedor, onClose, onEdit }) {
   const [tab, setTab] = useState('datos')
   const { data: full, isLoading } = useProveedor(proveedor.id)
   const p = full || proveedor
   const pagos = full?.pagos ?? []
+  const deleteProv = useDeleteProveedor()
+  const handleDelete = () => {
+    if (!confirm(`¿Eliminar proveedor "${p.nombre}"? (soft delete)`)) return
+    deleteProv.mutate(p.id, { onSuccess: onClose })
+  }
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex', justifyContent: 'flex-end' }} onClick={onClose}>
@@ -217,7 +222,11 @@ function ViewProveedorPanel({ proveedor, onClose }) {
             <div style={{ fontWeight: 700, fontSize: 15 }}>{p.nombre}</div>
             <div style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace", marginTop: 2 }}>{p.rut}</div>
           </div>
-          <button onClick={onClose} style={{ color: 'var(--text-3)', padding: 4 }}><Icon name="x" size={18} /></button>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button onClick={() => onEdit(p)} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Editar</button>
+            <button onClick={handleDelete} disabled={deleteProv.isPending} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--red, #fca5a5)', background: '#fff', cursor: 'pointer', color: 'var(--red, #991b1b)' }}>Eliminar</button>
+            <button onClick={onClose} style={{ color: 'var(--text-3)', padding: 4 }}><Icon name="x" size={18} /></button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -238,11 +247,71 @@ function ViewProveedorPanel({ proveedor, onClose }) {
   )
 }
 
+// ── ProveedorFormModal ──────────────────────────────────────────────────────────
+function ProveedorFormModal({ proveedor, onClose }) {
+  const isEdit = !!proveedor?.id
+  const [form, setForm] = useState({
+    nombre: proveedor?.nombre || '',
+    razonSocial: proveedor?.razonSocial || '',
+    rut: proveedor?.rut || '',
+    giro: proveedor?.giro || '',
+    email: proveedor?.email || '',
+    telefono: proveedor?.telefono || '',
+    direccion: proveedor?.direccion || '',
+    region: proveedor?.region || '',
+    comuna: proveedor?.comuna || '',
+    codigoProveedor: proveedor?.codigoProveedor || '',
+    porcVentaSala: proveedor?.porcVentaSala || '',
+    porcMarco: proveedor?.porcMarco || '',
+    porcLicitacion: proveedor?.porcLicitacion || '',
+  })
+  const create = useCreateProveedor()
+  const update = useUpdateProveedor()
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const handleSave = () => {
+    if (!form.nombre.trim()) return alert('Nombre requerido')
+    const payload = { ...form }
+    if (isEdit) update.mutate({ id: proveedor.id, ...payload }, { onSuccess: onClose })
+    else create.mutate(payload, { onSuccess: onClose })
+  }
+  const pending = create.isPending || update.isPending
+  const inp = { width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box' }
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'oklch(0 0 0 / 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 560, maxHeight: '90vh', overflowY: 'auto', background: '#fff', borderRadius: 12, padding: '20px 22px' }}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>{isEdit ? 'Editar proveedor' : 'Nuevo proveedor'}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+          {[
+            ['Nombre *', 'nombre'], ['Razón social', 'razonSocial'],
+            ['RUT', 'rut'], ['Código', 'codigoProveedor'],
+            ['Giro', 'giro'], ['Email', 'email'],
+            ['Teléfono', 'telefono'], ['Dirección', 'direccion'],
+            ['Región', 'region'], ['Comuna', 'comuna'],
+            ['Mg. Sala %', 'porcVentaSala'], ['Mg. Marco %', 'porcMarco'],
+            ['Mg. Lic. %', 'porcLicitacion'],
+          ].map(([label, key]) => (
+            <div key={key}>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>{label}</div>
+              <input value={form[key]} onChange={e => set(key, e.target.value)} style={inp} />
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={onClose} style={{ padding: '7px 14px', background: 'none', border: '1px solid var(--border)', borderRadius: 7, fontSize: 12, cursor: 'pointer', color: 'var(--text-2)' }}>Cancelar</button>
+          <button onClick={handleSave} disabled={pending} style={{ padding: '7px 14px', background: 'var(--green-600)', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{pending ? 'Guardando…' : 'Guardar'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Page ───────────────────────────────────────────────────────────────────
 export default function ProveedoresPage() {
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
   const [selected, setSelected] = useState(null)
+  const [editing, setEditing] = useState(null)
+  const [creating, setCreating] = useState(false)
   const ref = useRef(null)
 
   useEffect(() => {
@@ -303,9 +372,12 @@ export default function ProveedoresPage() {
         title="Proveedores"
         subtitle={`${total.toLocaleString('es-CL')} proveedores registrados`}
         breadcrumb={['Inicio', 'Catálogo', 'Proveedores']}
-        actions={<Btn variant="secondary" icon="download" size="sm"
-          onClick={() => downloadFromBackend('/reportes/export/proveedores', `proveedores_${new Date().toISOString().slice(0, 10)}.csv`)}
-        >Exportar CSV</Btn>}
+        actions={<div style={{ display: 'flex', gap: 8 }}>
+          <Btn variant="secondary" icon="download" size="sm"
+            onClick={() => downloadFromBackend('/reportes/export/proveedores', `proveedores_${new Date().toISOString().slice(0, 10)}.csv`)}
+          >Exportar CSV</Btn>
+          <Btn variant="primary" icon="plus" size="sm" onClick={() => setCreating(true)}>Nuevo proveedor</Btn>
+        </div>}
       />
 
       <div className="kpi-strip">
@@ -333,7 +405,9 @@ export default function ProveedoresPage() {
         )}
       </div>
 
-      {selected && <ViewProveedorPanel proveedor={selected} onClose={() => setSelected(null)} />}
+      {selected && <ViewProveedorPanel proveedor={selected} onClose={() => setSelected(null)} onEdit={p => { setSelected(null); setEditing(p) }} />}
+      {creating && <ProveedorFormModal onClose={() => setCreating(false)} />}
+      {editing && <ProveedorFormModal proveedor={editing} onClose={() => setEditing(null)} />}
     </main>
   )
 }

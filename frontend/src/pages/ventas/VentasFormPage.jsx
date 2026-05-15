@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../components/forms/index'
 import { Icon } from '../../components/shared'
-import { useVenta, useCreateVenta, useUpdateVenta } from '../../api/ventas'
+import { useVenta, useCreateVenta, useUpdateVenta, useAnularVenta, useActivarVenta, useVentaCargos, useAddCargo, useDeleteCargo, useUpdateItemEntregados } from '../../api/ventas'
+import { useAuthStore } from '../../store/auth'
 import { useClientes } from '../../api/clientes'
 import { useProductos } from '../../api/productos'
 import { useMultas, useCreateMulta, useUpdateMulta, useDeleteMulta } from '../../api/multas'
@@ -145,6 +146,111 @@ function ItemsTable({ items, onChange }) {
   )
 }
 
+function CargosSection({ ordenId }) {
+  const { data: cargos = [], isLoading } = useVentaCargos(ordenId)
+  const addCargo = useAddCargo()
+  const delCargo = useDeleteCargo()
+  const [draft, setDraft] = useState({ nombre: '', valor: '' })
+  const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
+  const total = cargos.reduce((s, c) => s + (c.valor || 0), 0)
+
+  function add() {
+    if (!draft.nombre || !draft.valor) { alert('Nombre y valor requeridos'); return }
+    addCargo.mutate({ ordenId, nombre: draft.nombre, valor: Number(draft.valor) }, {
+      onSuccess: () => setDraft({ nombre: '', valor: '' }),
+      onError: e => alert(e.response?.data?.error || 'Error'),
+    })
+  }
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+      <div style={{ background: 'var(--bg)', padding: '10px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>Cargos transporte ({cargos.length})</span>
+        <span style={{ fontSize: 13, fontFamily: "'DM Mono',monospace" }}>Total: {fmt(total)}</span>
+      </div>
+      {isLoading
+        ? <div style={{ padding: 14, fontSize: 12, color: 'var(--text-3)' }}>Cargando…</div>
+        : cargos.length === 0
+          ? <div style={{ padding: 14, fontSize: 12, color: 'var(--text-3)' }}>Sin cargos</div>
+          : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <tbody>
+                {cargos.map(c => (
+                  <tr key={c.id} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ padding: '7px 12px' }}>{c.nombre}</td>
+                    <td style={{ padding: '7px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>{fmt(c.valor)}</td>
+                    <td style={{ padding: '4px 8px', textAlign: 'center', width: 36 }}>
+                      <button onClick={() => delCargo.mutate({ ordenId, cargoId: c.id })} style={{ padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-3)' }}>
+                        <Icon name="trash" size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+      <div style={{ background: '#fafafa', borderTop: '1px solid var(--border)', padding: '10px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8 }}>
+        <input placeholder="Nombre cargo (ej. Despacho Santiago)" value={draft.nombre} onChange={e => setDraft({ ...draft, nombre: e.target.value })}
+          style={{ padding: '6px 8px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12 }} />
+        <input type="number" placeholder="Valor" value={draft.valor} onChange={e => setDraft({ ...draft, valor: e.target.value })}
+          style={{ padding: '6px 8px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right' }} />
+        <button onClick={add} disabled={addCargo.isPending}
+          style={{ padding: '6px 12px', borderRadius: 5, border: '1px solid var(--green-700)', background: 'var(--green-700)', color: '#fff', fontSize: 12, cursor: 'pointer' }}>
+          {addCargo.isPending ? '...' : 'Agregar'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function EntregaSection({ items }) {
+  const updateEnt = useUpdateItemEntregados()
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead>
+          <tr style={{ background: 'var(--bg)' }}>
+            {['Producto', 'Cant.', 'Entregados', 'Pendiente', ''].map((h, i) => (
+              <th key={i} style={{ padding: '7px 12px', textAlign: i >= 1 ? 'right' : 'left', fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase' }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(it => {
+            const cant = it.cantidad
+            const ent = it.nEntregados ?? 0
+            const pend = cant - ent
+            return (
+              <tr key={it.id} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: '7px 12px' }}>{it.nombre || it.producto?.nombre || `#${it.productoId}`}</td>
+                <td style={{ padding: '7px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace" }}>{cant}</td>
+                <td style={{ padding: '4px 12px', textAlign: 'right' }}>
+                  <input type="number" min={0} max={cant} defaultValue={ent}
+                    onBlur={e => {
+                      const n = parseInt(e.target.value || '0', 10)
+                      if (n !== ent) updateEnt.mutate({ itemId: it.id, nEntregados: n }, {
+                        onError: er => alert(er.response?.data?.error || 'Error'),
+                      })
+                    }}
+                    style={{ width: 70, padding: '4px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right' }} />
+                </td>
+                <td style={{ padding: '7px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: pend > 0 ? 'var(--amber)' : 'var(--green-600)', fontWeight: 600 }}>{pend}</td>
+                <td style={{ padding: '7px 12px', textAlign: 'center' }}>
+                  {ent === cant
+                    ? <Icon name="check" size={14} color="var(--green-600)" />
+                    : ent === 0
+                      ? <span style={{ color: 'var(--text-3)', fontSize: 11 }}>—</span>
+                      : <span style={{ color: 'var(--amber)', fontSize: 11, fontWeight: 600 }}>parcial</span>}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function MultasSection({ ordenId }) {
   const { data = { items: [], total: 0 }, isLoading } = useMultas({ ordenId })
   const createM = useCreateMulta()
@@ -237,12 +343,31 @@ export default function VentasFormPage() {
   const navigate = useNavigate()
   const { id } = useParams()
   const isEdit = !!id
+  const user = useAuthStore(s => s.user)
+  const isAdmin = user?.role === 'admin'
 
   const { data: found, isLoading } = useVenta(isEdit ? Number(id) : null)
   const { data: clientesResult } = useClientes()
   const clientesData = clientesResult?.items ?? []
   const createVenta = useCreateVenta()
   const updateVenta = useUpdateVenta()
+  const anularVenta = useAnularVenta()
+  const activarVenta = useActivarVenta()
+
+  function handleAnular() {
+    if (!confirm(`¿Anular venta #${id}? Quedará marcada como Nula y eliminada.`)) return
+    anularVenta.mutate(Number(id), { onSuccess: () => navigate('/ventas'), onError: e => alert(e.response?.data?.error || 'Error') })
+  }
+  function handleActivar() {
+    activarVenta.mutate(Number(id), { onError: e => alert(e.response?.data?.error || 'Error') })
+  }
+  function handleImprimir() {
+    const w = window.open(`${window.location.origin}/ventas/${id}/imprimir`, '_blank')
+    if (!w) alert('Habilita popups para imprimir')
+  }
+  function handlePasarTaller() {
+    navigate(`/pasar-taller?ordenId=${id}`)
+  }
 
   const { data, set, errors, validate } = useForm({
     clienteId: '', tipo: 'Normal', estado: 'Activa',
@@ -402,6 +527,44 @@ export default function VentasFormPage() {
         </>}
       </div>
 
+      {isEdit && (
+        <>
+          <FormDivider label="Acciones" />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <button onClick={handleImprimir} style={actionBtn('var(--green-700)')}>
+              <Icon name="printer" size={13} /> Imprimir nota
+            </button>
+            <button onClick={handlePasarTaller} style={actionBtn('var(--blue)')}>
+              <Icon name="tool" size={13} /> Pasar a taller
+            </button>
+            {found?.estado !== 'Nula' && (
+              <button onClick={handleAnular} disabled={anularVenta.isPending} style={actionBtn('var(--red)')}>
+                <Icon name="x" size={13} /> Anular
+              </button>
+            )}
+            {found?.estado === 'Nula' && (
+              <button onClick={handleActivar} disabled={activarVenta.isPending} style={actionBtn('var(--green-700)')}>
+                <Icon name="check" size={13} /> Reactivar
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
+      {isEdit && found?.items?.length > 0 && (
+        <>
+          <FormDivider label="Entrega de productos" />
+          <EntregaSection items={found.items} />
+        </>
+      )}
+
+      {isEdit && (
+        <>
+          <FormDivider label="Cargos transporte" />
+          <CargosSection ordenId={Number(id)} />
+        </>
+      )}
+
       {isEdit && data.tipo === 'Licitación' && (
         <>
           <FormDivider label="Multas" />
@@ -416,3 +579,10 @@ export default function VentasFormPage() {
     </FormPage>
   )
 }
+
+const actionBtn = (color) => ({
+  display: 'flex', alignItems: 'center', gap: 6,
+  padding: '7px 14px', fontSize: 12, fontWeight: 500,
+  borderRadius: 6, border: `1px solid ${color}`,
+  background: '#fff', color, cursor: 'pointer',
+})

@@ -10,6 +10,10 @@ export default function ClientesPage() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [tipoFilter, setTipoFilter] = useState('all')
+  const [region, setRegion] = useState('')
+  const [ciudad, setCiudad] = useState('')
+  const [segmento, setSegmento] = useState('')
+  const [conDeuda, setConDeuda] = useState(false)
   const [selected, setSelected] = useState(null)
   const debounceRef = useRef(null)
 
@@ -22,6 +26,10 @@ export default function ClientesPage() {
   const params = {}
   if (debouncedSearch) params.search = debouncedSearch
   if (tipoFilter !== 'all') params.tipo = tipoFilter
+  if (region) params.region = region
+  if (ciudad) params.ciudad = ciudad
+  if (segmento) params.segmento = segmento
+  if (conDeuda) params.conDeuda = 'true'
   const { data: result = { items: [], total: 0, limit: 500 }, isLoading } = useClientes(params)
 
   if (isLoading && !result.items?.length) return <main style={{ padding: 24 }}><p>Cargando...</p></main>
@@ -32,7 +40,7 @@ export default function ClientesPage() {
 
   const shown = clientes
 
-  const tipos = [...new Set(clientes.map(c => c.tipo).filter(Boolean))]
+  const tipos = ['Empresa', 'Institucional', 'Municipal', 'Gobierno', 'Distribuidor']
   const fmt = n => '$' + Number(n).toLocaleString('es-CL')
 
   const cols = [
@@ -73,19 +81,38 @@ export default function ClientesPage() {
         <KpiCard label="Institucional / Gob." value={clientes.filter(c => ['Institucional', 'Gobierno', 'Municipal'].includes(c.tipo)).length} icon="clipboard" sublabel="Clientes públicos" />
       </div>
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {['all', ...tipos].map(t => (
-              <button key={t} onClick={() => setTipoFilter(t)} style={{
-                padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                background: tipoFilter === t ? 'var(--green-900)' : '#fff',
-                color: tipoFilter === t ? '#fff' : 'var(--text-2)',
-                border: `1px solid ${tipoFilter === t ? 'var(--green-900)' : 'var(--border)'}`,
-                transition: 'all 0.15s',
-              }}>{t === 'all' ? 'Todos' : t}</button>
-            ))}
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {['all', ...tipos].map(t => (
+                <button key={t} onClick={() => setTipoFilter(t)} style={{
+                  padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                  background: tipoFilter === t ? 'var(--green-900)' : '#fff',
+                  color: tipoFilter === t ? '#fff' : 'var(--text-2)',
+                  border: `1px solid ${tipoFilter === t ? 'var(--green-900)' : 'var(--border)'}`,
+                  transition: 'all 0.15s',
+                }}>{t === 'all' ? 'Todos' : t}</button>
+              ))}
+            </div>
+            <SearchBar placeholder="Buscar por nombre, RUT o ciudad…" value={search} onChange={setSearch} style={{ width: 280 }} />
           </div>
-          <SearchBar placeholder="Buscar por nombre, RUT o ciudad…" value={search} onChange={setSearch} style={{ width: 280 }} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input value={region} onChange={e => setRegion(e.target.value)} placeholder="Región" style={miniInput} />
+            <input value={ciudad} onChange={e => setCiudad(e.target.value)} placeholder="Ciudad" style={miniInput} />
+            <select value={segmento} onChange={e => setSegmento(e.target.value)} style={{ ...miniInput, cursor: 'pointer' }}>
+              <option value="">Segmento</option>
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+            </select>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-2)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={conDeuda} onChange={e => setConDeuda(e.target.checked)} />
+              Solo con deuda
+            </label>
+            {(region || ciudad || segmento || conDeuda) && (
+              <button onClick={() => { setRegion(''); setCiudad(''); setSegmento(''); setConDeuda(false) }} style={{ padding: '5px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Limpiar</button>
+            )}
+          </div>
         </div>
         <Table columns={cols} rows={shown} />
       </div>
@@ -93,3 +120,5 @@ export default function ClientesPage() {
     </main>
   )
 }
+
+const miniInput = { padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff', width: 130 }

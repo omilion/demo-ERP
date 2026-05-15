@@ -47,3 +47,25 @@ export const useCreateMovimiento = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['caja'] }),
   })
 }
+
+export const useDeleteMovimiento = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/caja/movimientos/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['caja'] }),
+  })
+}
+
+export const useGastos = () =>
+  useQuery({
+    queryKey: ['gastos'],
+    queryFn: () => api.get('/gastos').then(r => r.data),
+    staleTime: 300_000,
+  })
+
+export const useCierreTurno = (turnoId) =>
+  useQuery({
+    queryKey: ['caja', 'cierre', turnoId],
+    queryFn: () => api.get(`/caja/turno/${turnoId}/cierre`).then(r => r.data),
+    enabled: !!turnoId,
+  })

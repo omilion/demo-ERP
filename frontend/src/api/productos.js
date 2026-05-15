@@ -56,3 +56,22 @@ export const useAddPrecio = () => {
       qc.invalidateQueries({ queryKey: ['historial-precios', productoId] }),
   })
 }
+
+export const useMovimientos = (productoId) =>
+  useQuery({
+    queryKey: ['movimientos', productoId],
+    queryFn: () => api.get(`/productos/${productoId}/movimientos`).then(r => r.data),
+    enabled: !!productoId,
+  })
+
+export const useAddMovimiento = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ productoId, tipo, cantidad, motivo }) =>
+      api.post(`/productos/${productoId}/movimientos`, { tipo, cantidad, motivo }).then(r => r.data),
+    onSuccess: (_, { productoId }) => {
+      qc.invalidateQueries({ queryKey: ['movimientos', productoId] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+    },
+  })
+}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { FormField, Input, Textarea } from '../../components/forms'
 import { useDespachos, useGuias, useCreateDespacho, useUpdateDespacho, useDeleteDespacho, useCreateGuia, useDeleteGuia } from '../../api/despachos'
@@ -12,10 +13,16 @@ const TABS = [
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
 export default function DespachosPage() {
+  const navigate = useNavigate()
   const [tab, setTab] = useState('despachos')
   const [search, setSearch] = useState('')
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
+  const [tipo, setTipo] = useState('')
+  const [region, setRegion] = useState('')
+  const [comuna, setComuna] = useState('')
+  const [parcial, setParcial] = useState(false)
+  const [tieneMulta, setTieneMulta] = useState(false)
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState(null)
   const [creatingGuia, setCreatingGuia] = useState(false)
@@ -23,10 +30,23 @@ export default function DespachosPage() {
   const params = {}
   if (desde) params.desde = desde
   if (hasta) params.hasta = hasta
-  if (search) params.contacto = search
+  if (search) params.search = search
+  if (tipo) params.tipo = tipo
+  if (region) params.region = region
+  if (comuna) params.comuna = comuna
+  if (parcial) params.parcial = 'true'
+  if (tieneMulta) params.tieneMulta = 'true'
+
+  const guiaParams = {}
+  if (desde) guiaParams.desde = desde
+  if (hasta) guiaParams.hasta = hasta
+  if (search) guiaParams.nGuia = search
 
   const despachos = useDespachos(tab === 'despachos' ? params : {})
-  const guias = useGuias(tab === 'guias' ? { ...params, nGuia: search || undefined } : {})
+  const guias = useGuias(tab === 'guias' ? guiaParams : {})
+
+  const clearFilters = () => { setTipo(''); setRegion(''); setComuna(''); setParcial(false); setTieneMulta(false) }
+  const hasFilters = tipo || region || comuna || parcial || tieneMulta
 
   const createMut = useCreateDespacho()
   const updateMut = useUpdateDespacho()
@@ -54,6 +74,9 @@ export default function DespachosPage() {
     ) },
     { key: '_acc', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 8 }}>
+        {row.ordenId && (
+          <button onClick={(e) => { e.stopPropagation(); navigate('/ventas/' + row.ordenId) }} style={{ background: 'transparent', border: 'none', color: 'var(--blue, #2563eb)', cursor: 'pointer', fontSize: 12 }}>Ver Orden</button>
+        )}
         <button onClick={(e) => { e.stopPropagation(); setEditing(row) }} style={{ background: 'transparent', border: 'none', color: 'var(--green-700)', cursor: 'pointer', fontSize: 12 }}>Editar</button>
         <button onClick={(e) => { e.stopPropagation(); if (confirm('¿Eliminar?')) delMut.mutate(row.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer', fontSize: 12 }}>Borrar</button>
       </div>
@@ -69,7 +92,12 @@ export default function DespachosPage() {
     { key: 'ordenId', label: 'Orden' },
     { key: 'origen', label: 'Origen' },
     { key: '_acc', label: '', render: (_, row) => (
-      <button onClick={(e) => { e.stopPropagation(); if (confirm('¿Eliminar guía?')) delGuiaMut.mutate(row.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer', fontSize: 12 }}>Borrar</button>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {row.ordenId && (
+          <button onClick={(e) => { e.stopPropagation(); navigate('/ventas/' + row.ordenId) }} style={{ background: 'transparent', border: 'none', color: 'var(--blue, #2563eb)', cursor: 'pointer', fontSize: 12 }}>Ver Orden</button>
+        )}
+        <button onClick={(e) => { e.stopPropagation(); if (confirm('¿Eliminar guía?')) delGuiaMut.mutate(row.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer', fontSize: 12 }}>Borrar</button>
+      </div>
     ) },
   ]
 
@@ -103,6 +131,7 @@ export default function DespachosPage() {
         breadcrumb={['Inicio', 'Logística', 'Despachos']}
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
+            <Btn variant="secondary" size="sm" onClick={() => window.print()}>Imprimir</Btn>
             <Btn variant="secondary" size="sm" onClick={exportar}>Exportar CSV</Btn>
             {tab === 'despachos'
               ? <Btn variant="primary" size="sm" onClick={() => setCreating(true)}>+ Nuevo despacho</Btn>
@@ -111,8 +140,10 @@ export default function DespachosPage() {
         }
       />
       <div className="kpi-strip">
-        <KpiCard label="Despachos" value={despachos.data?.total || 0} icon="truck" />
-        <KpiCard label="Guías" value={guias.data?.total || 0} icon="fileText" />
+        <KpiCard label="Despachos" value={despachos.data?.total || 0} icon="truck" sublabel="Filtros aplicados" />
+        <KpiCard label="Parciales" value={despachos.data?.stats?.parciales || 0} icon="package" tone="amber" sublabel="Entrega parcial" />
+        <KpiCard label="Con multa" value={despachos.data?.stats?.multas || 0} icon="alertTriangle" tone="red" sublabel="Multados" />
+        <KpiCard label="Guías" value={guias.data?.total || 0} icon="fileText" sublabel="Total guías" />
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
@@ -120,9 +151,25 @@ export default function DespachosPage() {
           <FormField label="Desde"><Input type="date" value={desde} onChange={setDesde} /></FormField>
           <FormField label="Hasta"><Input type="date" value={hasta} onChange={setHasta} /></FormField>
         </div>
+        {tab === 'despachos' && (
+          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input value={tipo} onChange={e => setTipo(e.target.value)} placeholder="Tipo (Retiro/Despacho)" style={inputFilter} />
+            <input value={region} onChange={e => setRegion(e.target.value)} placeholder="Región" style={inputFilter} />
+            <input value={comuna} onChange={e => setComuna(e.target.value)} placeholder="Comuna" style={inputFilter} />
+            <label style={lblCheck}>
+              <input type="checkbox" checked={parcial} onChange={e => setParcial(e.target.checked)} /> Solo parciales
+            </label>
+            <label style={lblCheck}>
+              <input type="checkbox" checked={tieneMulta} onChange={e => setTieneMulta(e.target.checked)} /> Solo con multa
+            </label>
+            {hasFilters && (
+              <button onClick={clearFilters} style={{ padding: '5px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Limpiar filtros</button>
+            )}
+          </div>
+        )}
         <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Tabs tabs={TABS} active={tab} onChange={setTab} />
-          <SearchBar placeholder={tab === 'despachos' ? 'Buscar contacto…' : 'Buscar N° guía…'} value={search} onChange={setSearch} style={{ width: 280 }} />
+          <SearchBar placeholder={tab === 'despachos' ? 'Buscar contacto, dirección, transporte, interno…' : 'Buscar N° guía…'} value={search} onChange={setSearch} style={{ width: 320 }} />
         </div>
         {tab === 'despachos'
           ? (despachos.isLoading
@@ -157,6 +204,9 @@ export default function DespachosPage() {
     </main>
   )
 }
+
+const inputFilter = { padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, background: '#fff', minWidth: 140 }
+const lblCheck = { display: 'flex', gap: 5, fontSize: 12, alignItems: 'center', cursor: 'pointer' }
 
 function DespachoModal({ initial, onClose, onSave, saving }) {
   const [form, setForm] = useState({

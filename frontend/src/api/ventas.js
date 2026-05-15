@@ -41,3 +41,50 @@ export const useDeleteVenta = () => {
     },
   })
 }
+
+export const useAnularVenta = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.post(`/ventas/${id}/anular`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ventas'] }),
+  })
+}
+
+export const useActivarVenta = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.post(`/ventas/${id}/activar`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ventas'] }),
+  })
+}
+
+export const useVentaCargos = (ordenId) =>
+  useQuery({
+    queryKey: ['ventas', ordenId, 'cargos'],
+    queryFn: () => api.get(`/ventas/${ordenId}/cargos`).then(r => r.data),
+    enabled: !!ordenId,
+  })
+
+export const useAddCargo = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ordenId, nombre, valor }) => api.post(`/ventas/${ordenId}/cargos`, { nombre, valor }).then(r => r.data),
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['ventas', vars.ordenId, 'cargos'] }),
+  })
+}
+
+export const useDeleteCargo = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ordenId, cargoId }) => api.delete(`/ventas/cargos/${cargoId}`),
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['ventas', vars.ordenId, 'cargos'] }),
+  })
+}
+
+export const useUpdateItemEntregados = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ itemId, nEntregados }) => api.put(`/ventas/items/${itemId}/entregados`, { nEntregados }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ventas'] }),
+  })
+}

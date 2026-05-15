@@ -14,6 +14,10 @@ export default function BodegaPage() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [filter, setFilter] = useState('all')
+  const [proveedor, setProveedor] = useState('')
+  const [categoria, setCategoria] = useState('')
+  const [ubicacion, setUbicacion] = useState('')
+  const [idMarco, setIdMarco] = useState('')
   const debounceRef = useRef(null)
 
   useEffect(() => {
@@ -23,18 +27,22 @@ export default function BodegaPage() {
   }, [search])
 
   const bodegaParam = tab === 'taller' ? 'Taller' : 'Inventario'
-  const { data: result = { items: [], total: 0, limit: 500 }, isLoading } = useProductos({
-    bodega: bodegaParam,
-    ...(debouncedSearch ? { search: debouncedSearch } : {}),
-  })
+  const queryParams = { bodega: bodegaParam }
+  if (debouncedSearch) queryParams.search = debouncedSearch
+  if (proveedor) queryParams.proveedor = proveedor
+  if (categoria) queryParams.categoria = categoria
+  if (ubicacion) queryParams.ubicacion = ubicacion
+  if (idMarco) queryParams.idMarco = idMarco
+  if (filter === 'critico') queryParams.estado = 'critico'
+  else if (filter === 'sin-stock') queryParams.estado = 'sin-stock'
+
+  const { data: result = { items: [], total: 0, limit: 500 }, isLoading } = useProductos(queryParams)
 
   const productos = result.items ?? []
   const totalEnBodega = result.total ?? 0
   const LIMIT = result.limit ?? 500
 
-  const displayed = filter === 'critico'
-    ? productos.filter(p => p.estado === 'Crítico' || p.estado === 'Sin stock')
-    : productos
+  const displayed = productos
 
   const valorInventario = productos.reduce((sum, p) => sum + p.precioLista * p.stock, 0)
 
@@ -101,11 +109,16 @@ export default function BodegaPage() {
               { id: 'inventario', label: 'Bodega Inventario' },
               { id: 'taller', label: 'Bodega Taller' },
             ]} active={tab} onChange={t => { setTab(t); setSearch('') }} />
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
               <select value={filter} onChange={e => setFilter(e.target.value)} style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', color: 'var(--text-1)', background: '#fff', cursor: 'pointer' }}>
-                <option value="all">Todos</option>
+                <option value="all">Todos los estados</option>
                 <option value="critico">Solo críticos</option>
+                <option value="sin-stock">Sin stock</option>
               </select>
+              <input value={proveedor} onChange={e => setProveedor(e.target.value)} placeholder="Proveedor" style={miniInput} />
+              <input value={categoria} onChange={e => setCategoria(e.target.value)} placeholder="Categoría" style={miniInput} />
+              <input value={ubicacion} onChange={e => setUbicacion(e.target.value)} placeholder="Ubicación" style={miniInput} />
+              <input value={idMarco} onChange={e => setIdMarco(e.target.value)} placeholder="ID Marco" style={miniInput} />
               <SearchBar placeholder="Buscar código o producto…" value={search} onChange={setSearch} style={{ width: 240 }} />
             </div>
           </div>
@@ -125,6 +138,8 @@ export default function BodegaPage() {
     </main>
   )
 }
+
+const miniInput = { padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff', width: 120 }
 
 function ImportModal({ onClose, onDone }) {
   const [tipo, setTipo] = useState('precios')

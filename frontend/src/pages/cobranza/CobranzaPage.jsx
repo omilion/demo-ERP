@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs } from '../../components/shared'
 import { useVentas } from '../../api/ventas'
 import { useCobranzaHistorico, useCobranzaEjecutivas, useCobranzaMeses } from '../../api/cobranzaHistorico'
+import { downloadFromBackend } from '../../utils/csv'
 
 const ESTADO_TABS = [
   { id: 'No pagada', label: 'No Pagadas' },
@@ -207,8 +208,20 @@ export default function CobranzaPage() {
         subtitle={mainTab === 'activo' ? `${total.toLocaleString('es-CL')} documentos por cobrar` : `${histResult.total.toLocaleString('es-CL')} registros históricos`}
         breadcrumb={['Inicio', 'Caja', 'Cobranza']}
         actions={<>
-          <Btn variant="secondary" icon="download" size="sm">Exportar</Btn>
-          {mainTab === 'activo' && <Btn variant="primary" icon="send" size="sm">Enviar Recordatorios</Btn>}
+          <Btn variant="secondary" icon="download" size="sm"
+            onClick={() => {
+              if (mainTab === 'activo') {
+                downloadFromBackend('/reportes/export/ventas', `cobranza_${new Date().toISOString().slice(0,10)}.csv`, { estadoPago: estadoTab })
+              } else {
+                const params = {}
+                if (histEjecutiva) params.ejecutiva = histEjecutiva
+                if (histEstado) params.estado = histEstado
+                if (histMes) params.mes = histMes
+                if (histDebounced) params.search = histDebounced
+                downloadFromBackend('/reportes/export/cobranza', `cobranza_historico_${new Date().toISOString().slice(0,10)}.csv`, params)
+              }
+            }}
+          >Exportar</Btn>
         </>}
       />
 
