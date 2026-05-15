@@ -150,3 +150,51 @@ Cada commit:
 - Backend routes + tests
 - Frontend hooks + página/UI
 - Sin Co-Authored-By Claude
+
+---
+
+## Estado final (2026-05-14)
+
+**Todos los gaps aplicados** (43 tests pasando).
+
+| Gap | Estado | Commit |
+|---|---|---|
+| G1 producto web | ✅ | 9ff1095 |
+| G2 reportes licitaciones | ✅ | 530cd0d |
+| G3 consulta precios | ✅ | 530cd0d |
+| G4 taller externo | ✅ | 530cd0d |
+| G5 categorías bodega-taller | ✅ | a68b4a2 |
+| G6 cron stock crítico | ✅ | a68b4a2 |
+| G7 autocomplete | ✅ | a68b4a2 |
+| G8 cobranza cliente | ✅ | 9d36e8f |
+| G9 búsquedas avanzadas | ✅ | 9d36e8f |
+| G10 importadores Excel | ✅ | 9d36e8f |
+| G11 exports CSV | ✅ | 9d36e8f |
+| G12 multas | ✅ | 9d36e8f |
+| G13 permisos granulares | ✅ | 9d36e8f |
+| G14 usuarios web + banners | ✅ | 9d36e8f + f6cd9fb |
+| G15 factura proveedor detalles | ✅ | 9d36e8f |
+| G16 filtros bitácora | ✅ | f6cd9fb |
+| G17 exports restantes | ✅ | 9d36e8f (reportes/export/*) |
+| G18 verificar flujos | ✅ | matriz-ventas ya soporta convenio + web |
+
+### Nuevos endpoints clave
+- `GET /api/productos/autocomplete?q=`
+- `GET /api/bodega-taller/autocomplete?q=`
+- `GET /api/productos/web/catalogo` (público, sin auth)
+- `POST /api/productos/importar/{precios,stock,nuevo}`
+- `GET /api/categorias-bodega-taller`
+- `GET /api/reportes/stock-critico`
+- `GET /api/reportes/export/{productos,clientes,proveedores,ventas,caja,bodega-taller}` (CSV)
+- `GET /api/cobranza-historico/cliente/:rut`
+- `POST /api/multas` + CRUD
+- `POST /api/pagos-proveedores` (con detalles + opcional `ingresaStock:true`)
+- `GET /api/usuarios` + `PUT /:id/permisos`
+- `GET /api/banners` + `/banners/public`
+- `POST /api/usuarios-web/register` + login + admin CRUD
+
+### Migrations añadidas
+- `20260515010400_add_producto_web_fields`
+- `20260515011054_add_bodega_taller_categorias`
+- `20260515012000_add_user_permisos_extra`
+- `20260515013000_add_usuarios_web_banners`
