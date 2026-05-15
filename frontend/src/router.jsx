@@ -34,6 +34,8 @@ import BitacoraTallerPage from './pages/bitacora-taller/BitacoraTallerPage'
 import HistorialMaterialesPage from './pages/historial-materiales/HistorialMaterialesPage'
 import StockIngresosPage from './pages/stock-ingresos/StockIngresosPage'
 import PasarTallerPage from './pages/pasar-taller/PasarTallerPage'
+import ConsultaPreciosPage from './pages/consulta-precios/ConsultaPreciosPage'
+import ReportesLicitacionesPage from './pages/reportes-licitaciones/ReportesLicitacionesPage'
 
 const ALL = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
 
@@ -84,6 +86,8 @@ export const router = createBrowserRouter([
       { path: 'historial-materiales', element: <ProtectedRoute allowedRoles={['admin', 'taller', 'solo_lectura']}><HistorialMaterialesPage /></ProtectedRoute> },
       { path: 'stock-ingresos', element: <ProtectedRoute allowedRoles={['admin', 'bodeguero']}><StockIngresosPage /></ProtectedRoute> },
       { path: 'pasar-taller',  element: <ProtectedRoute allowedRoles={['admin', 'taller', 'vendedor']}><PasarTallerPage /></ProtectedRoute> },
+      { path: 'consulta-precios', element: <ProtectedRoute allowedRoles={ALL}><ConsultaPreciosPage /></ProtectedRoute> },
+      { path: 'reportes/licitaciones', element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><ReportesLicitacionesPage /></ProtectedRoute> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

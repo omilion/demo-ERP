@@ -3,13 +3,19 @@ export default async function cotizacionesRoutes(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request) => {
-    const { search, estado, rutCliente, page = '1' } = request.query
+    const { search, estado, rutCliente, idLicitacion, fechaDesde, fechaHasta, page = '1' } = request.query
     const LIMIT = 100
     const offset = (parseInt(page) - 1) * LIMIT
 
     const where = {}
     if (estado) where.estado = estado
     if (rutCliente) where.rutCliente = rutCliente
+    if (idLicitacion) where.idLicitacion = idLicitacion
+    if (fechaDesde || fechaHasta) {
+      where.fechaCreacion = {}
+      if (fechaDesde) where.fechaCreacion.gte = new Date(fechaDesde)
+      if (fechaHasta) where.fechaCreacion.lte = new Date(fechaHasta + 'T23:59:59')
+    }
     if (search) {
       where.OR = [
         { idLicitacion: { contains: search, mode: 'insensitive' } },
@@ -29,6 +35,42 @@ export default async function cotizacionesRoutes(fastify) {
       fastify.prisma.cotizacionLicitacion.count({ where }),
     ])
     return { items, total, limit: LIMIT }
+  })
+
+  // ── Reportes (agregados por estado/cliente/mes) ──────────────────────────
+  fastify.get('/reportes', {
+    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
+  }, async (request) => {
+    const { fechaDesde, fechaHasta, rutCliente } = request.query
+    const where = {}
+    if (rutCliente) where.rutCliente = rutCliente
+    if (fechaDesde || fechaHasta) {
+      where.fechaCreacion = {}
+      if (fechaDesde) where.fechaCreacion.gte = new Date(fechaDesde)
+      if (fechaHasta) where.fechaCreacion.lte = new Date(fechaHasta + 'T23:59:59')
+    }
+    const items = await fastify.prisma.cotizacionLicitacion.findMany({
+      where,
+      include: { items: { select: { cantidad: true, cantAdjudicados: true, precio: true } } },
+      orderBy: { fechaCreacion: 'desc' },
+    })
+    const porEstado = {}
+    const porCliente = {}
+    let totalCotizado = 0
+    let totalAdjudicado = 0
+    for (const c of items) {
+      porEstado[c.estado] = (porEstado[c.estado] || 0) + 1
+      if (c.rutCliente) porCliente[c.rutCliente] = (porCliente[c.rutCliente] || 0) + 1
+      for (const it of c.items) {
+        totalCotizado += (it.cantidad || 0) * (it.precio || 0)
+        totalAdjudicado += (it.cantAdjudicados || 0) * (it.precio || 0)
+      }
+    }
+    return {
+      items: items.map(({ items: _i, ...c }) => ({ ...c, nItems: _i.length })),
+      total: items.length,
+      stats: { porEstado, porCliente, totalCotizado, totalAdjudicado },
+    }
   })
 
   // ── Get by id ─────────────────────────────────────────────────────────────

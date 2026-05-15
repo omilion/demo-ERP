@@ -15,12 +15,14 @@ const TALLER_TABS = [
   { id: 'Espumas',      label: 'Espumas' },
   { id: 'Confecciones', label: 'Confecciones' },
   { id: 'Madera',       label: 'Madera' },
+  { id: 'Externo',      label: 'Externo' },
 ]
 
 const TAB_PARAMS = {
   Espumas:      { tipo: 'Espumas' },
   Confecciones: { tipo: 'Confecciones' },
   Madera:       { tipo: 'Madera' },
+  Externo:      { tipo: 'Externo' },
 }
 
 const OdtCard = ({ odt, onSelect }) => {

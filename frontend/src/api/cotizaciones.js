@@ -31,6 +31,13 @@ export const useUpdateCotizacion = () => {
   })
 }
 
+export const useReportesLicitaciones = (params = {}) =>
+  useQuery({
+    queryKey: ['cotizaciones-reportes', params],
+    queryFn: () => api.get('/cotizaciones/reportes', { params }).then(r => r.data),
+    staleTime: 30_000,
+  })
+
 export const useDeleteCotizacion = () => {
   const qc = useQueryClient()
   return useMutation({

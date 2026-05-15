@@ -9,10 +9,12 @@ const NAV_GROUPS = [
     { label: 'Ventas', route: '/ventas' },
     { label: 'Matriz Ventas', route: '/matriz-ventas' },
     { label: 'Licitaciones', route: '/licitaciones' },
+    { label: 'Reportes Licitaciones', route: '/reportes/licitaciones' },
     { label: 'CRM', route: '/crm' },
   ]},
   { label: 'Bodega', items: [
     { label: 'Inventario', route: '/bodega' },
+    { label: 'Consulta Precios', route: '/consulta-precios' },
     { label: 'Ingreso Mercadería', route: '/stock-ingresos' },
     { label: 'Despachos', route: '/despachos' },
     { label: 'Proveedores', route: '/proveedores' },
