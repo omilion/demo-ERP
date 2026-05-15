@@ -61,6 +61,67 @@ export default async function pagosProveedoresRoutes(fastify) {
     return { ...pago, proveedor, detalles }
   })
 
+  // G15: POST con detalles - crea factura proveedor con ítems + actualiza stock
+  fastify.post('/', {
+    preHandler: [fastify.authenticate, fastify.rbac('proveedores', 'write')],
+  }, async (request, reply) => {
+    const b = request.body || {}
+    if (!b.proveedorId && !b.codigoProveedor) return reply.code(400).send({ error: 'proveedorId o codigoProveedor requerido' })
+    if (!b.total && !Array.isArray(b.detalles)) return reply.code(400).send({ error: 'total o detalles requerido' })
+
+    const detalles = Array.isArray(b.detalles) ? b.detalles : []
+    const totalCalc = detalles.length
+      ? detalles.reduce((s, d) => s + (parseFloat(d.cantidad) || 0) * (parseFloat(d.precio) || 0), 0)
+      : (parseFloat(b.total) || 0)
+
+    const result = await fastify.prisma.$transaction(async (tx) => {
+      const pago = await tx.pagoProveedor.create({
+        data: {
+          proveedorId: b.proveedorId ? parseInt(b.proveedorId, 10) : null,
+          codigoProveedor: b.codigoProveedor ? parseInt(b.codigoProveedor, 10) : null,
+          sucursalId: b.sucursalId ? parseInt(b.sucursalId, 10) : null,
+          documento: b.documento || null,
+          nDoc: b.nDoc || null,
+          fechaDoc: b.fechaDoc ? new Date(b.fechaDoc) : new Date(),
+          fechaPago: b.fechaPago ? new Date(b.fechaPago) : null,
+          fechaVencimiento: b.fechaVencimiento ? new Date(b.fechaVencimiento) : null,
+          estado: b.estado || 'Pendiente',
+          total: totalCalc,
+          usuario: request.user?.nombre || request.user?.username || null,
+          bodega: b.bodega || null,
+          nc: !!b.nc,
+          ncNumero: b.ncNumero || null,
+          ncMonto: b.ncMonto != null ? parseFloat(b.ncMonto) : null,
+          obs: b.obs || null,
+        },
+      })
+
+      // Crear detalles + sumar stock si ingresa mercadería
+      for (const d of detalles) {
+        if (!d.codigoInterno) continue
+        await tx.detalleFacturaProveedor.create({
+          data: {
+            pagoId: pago.id,
+            codigoInterno: String(d.codigoInterno),
+            cantidad: parseFloat(d.cantidad) || 0,
+            precio: parseFloat(d.precio) || 0,
+          },
+        })
+        // Si el flag ingresaStock está, sumar al producto matching código
+        if (b.ingresaStock) {
+          await tx.producto.updateMany({
+            where: { codigo: String(d.codigoInterno) },
+            data: { stock: { increment: parseFloat(d.cantidad) || 0 } },
+          })
+        }
+      }
+
+      return pago
+    })
+
+    return reply.code(201).send(result)
+  })
+
   fastify.put('/:id', {
     preHandler: [fastify.authenticate, fastify.rbac('proveedores', 'write')],
   }, async (request, reply) => {

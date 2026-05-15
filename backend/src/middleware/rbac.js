@@ -40,11 +40,18 @@ const PERMISSIONS = {
   },
 }
 
-export function can(role, module, permission) {
+export function can(role, module, permission, extraPerms = null) {
   const rolePerms = PERMISSIONS[role]
-  if (!rolePerms) return false
-  if (rolePerms['*']) return true
-  return (rolePerms[module] || []).includes(permission)
+  if (rolePerms) {
+    if (rolePerms['*']) return true
+    if ((rolePerms[module] || []).includes(permission)) return true
+  }
+  // G13: permisos extra por usuario (objeto { modulo: ['read', 'write', ...] })
+  if (extraPerms && typeof extraPerms === 'object') {
+    if (Array.isArray(extraPerms[module]) && extraPerms[module].includes(permission)) return true
+    if (Array.isArray(extraPerms['*']) && extraPerms['*'].includes(permission)) return true
+  }
+  return false
 }
 
 export default fp(async (fastify) => {
@@ -53,7 +60,8 @@ export default fp(async (fastify) => {
 
 export function decorateRbac(app) {
   app.decorate('rbac', (module, permission) => async (request, reply) => {
-    if (!can(request.user.role, module, permission)) {
+    const extra = request.user?.permisosExtra
+    if (!can(request.user.role, module, permission, extra)) {
       return reply.status(403).send({ error: 'Forbidden' })
     }
   })

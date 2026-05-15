@@ -24,6 +24,7 @@ export default async function loginRoute(fastify) {
       id: user.id,
       role: user.role,
       nombre: user.nombre,
+      permisosExtra: user.permisosExtra || null,
     })
 
     const refreshToken = jwt.sign(

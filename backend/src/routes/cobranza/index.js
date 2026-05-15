@@ -51,6 +51,26 @@ export default async function cobranzaHistoricoRoutes(fastify) {
       return { items, total, limit: LIMIT, stats }
     })
 
+    // GET /api/cobranza-historico/cliente/:rut — historial por cliente (G8)
+    f.get('/cliente/:rut', {
+      preHandler: [f.authenticate, f.rbac('ventas', 'read')],
+    }, async (request) => {
+      const { rut } = request.params
+      const items = await f.prisma.cobranzaHistorico.findMany({
+        where: { rut },
+        orderBy: { fechaFactura: 'desc' },
+      })
+      const totales = items.reduce((acc, r) => {
+        const monto = r.monto || 0
+        const valor = r.valorFactura || 0
+        const est = (r.estado || '').toUpperCase()
+        if (est === 'CANCELADA') acc.cobrado += monto
+        if (est === 'PENDIENTE') acc.pendiente += valor
+        return acc
+      }, { cobrado: 0, pendiente: 0 })
+      return { rut, cliente: items[0]?.cliente, items, totales, count: items.length }
+    })
+
     // GET /api/cobranza-historico/ejecutivas
     f.get('/ejecutivas', {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],

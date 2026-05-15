@@ -24,6 +24,7 @@ export default async function refreshRoute(fastify) {
       id: user.id,
       role: user.role,
       nombre: user.nombre,
+      permisosExtra: user.permisosExtra || null,
     })
 
     return { accessToken }

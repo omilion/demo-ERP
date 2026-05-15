@@ -5,13 +5,28 @@ export default async function despachosRoutes(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request) => {
-    const { desde, hasta, ordenId, tipo, contacto, page = '1' } = request.query
+    const { desde, hasta, ordenId, tipo, contacto, transporte, region, comuna, parcial, tieneMulta, search, page = '1' } = request.query
     const LIMIT = 100
     const skip = (parseInt(page, 10) - 1) * LIMIT
     const where = {}
     if (ordenId) where.ordenId = parseInt(ordenId, 10)
     if (tipo) where.tipoDespacho = { contains: tipo, mode: 'insensitive' }
     if (contacto) where.contacto = { contains: contacto, mode: 'insensitive' }
+    if (transporte) where.transporte = { contains: transporte, mode: 'insensitive' }
+    if (region) where.region = { contains: region, mode: 'insensitive' }
+    if (comuna) where.comuna = { contains: comuna, mode: 'insensitive' }
+    if (parcial === 'true') where.parcial = true
+    if (tieneMulta === 'true') where.tieneMulta = true
+    if (search) {
+      const isNum = /^\d+$/.test(search.trim())
+      where.OR = [
+        { contacto: { contains: search, mode: 'insensitive' } },
+        { direccion: { contains: search, mode: 'insensitive' } },
+        { transporte: { contains: search, mode: 'insensitive' } },
+        { interno: { contains: search, mode: 'insensitive' } },
+        ...(isNum ? [{ ordenId: parseInt(search, 10) }] : []),
+      ]
+    }
     if (desde || hasta) {
       where.fechaEntrega = {}
       if (desde) where.fechaEntrega.gte = new Date(desde)

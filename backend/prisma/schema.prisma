@@ -18,6 +18,7 @@ model User {
   rut               String?
   codigoVendedor    String?     @unique @map("codigo_vendedor")
   permisoDescuentos Boolean     @default(false) @map("permiso_descuentos")
+  permisosExtra     Json?       @map("permisos_extra")
   sucursalId        Int?        @map("sucursal_id")
   activo            Boolean     @default(true)
   createdAt         DateTime    @default(now()) @map("created_at")
@@ -762,6 +763,40 @@ model CategoriaBodegaTaller {
 
   @@map("categorias_bodega_taller")
   @@schema("taller")
+}
+
+// G14: usuarios externos web tienda + banners promocionales
+model UsuarioWeb {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  nombre       String
+  rut          String?
+  telefono     String?
+  direccion    String?
+  comuna       String?
+  region       String?
+  activo       Boolean   @default(true)
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@map("usuarios_web")
+  @@schema("catalogo")
+}
+
+model Banner {
+  id          Int       @id @default(autoincrement())
+  titulo      String
+  subtitulo   String?
+  imagenUrl   String?   @map("imagen_url")
+  link        String?
+  orden       Int       @default(0)
+  activo      Boolean   @default(true)
+  desde       DateTime?
+  hasta       DateTime?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@map("banners")
+  @@schema("catalogo")
 }
 
 model SubcategoriaBodegaTaller {

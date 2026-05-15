@@ -34,6 +34,10 @@ import pasarTallerRoutes from './routes/pasar-taller/index.js'
 import stockIngresosRoutes from './routes/stock-ingresos/index.js'
 import categoriasBodegaTallerRoutes from './routes/categorias-bodega-taller/index.js'
 import reportesRoutes from './routes/reportes/index.js'
+import multasRoutes from './routes/multas/index.js'
+import usuariosRoutes from './routes/usuarios/index.js'
+import bannersRoutes from './routes/banners/index.js'
+import usuariosWebRoutes from './routes/usuarios-web/index.js'
 import { decorateRbac } from './middleware/rbac.js'
 
 export function buildApp(opts = {}) {
@@ -83,6 +87,10 @@ export function buildApp(opts = {}) {
   app.register(stockIngresosRoutes, { prefix: '/api/stock-ingresos' })
   app.register(categoriasBodegaTallerRoutes, { prefix: '/api/categorias-bodega-taller' })
   app.register(reportesRoutes, { prefix: '/api/reportes' })
+  app.register(multasRoutes, { prefix: '/api/multas' })
+  app.register(usuariosRoutes, { prefix: '/api/usuarios' })
+  app.register(bannersRoutes, { prefix: '/api/banners' })
+  app.register(usuariosWebRoutes, { prefix: '/api/usuarios-web' })
 
   app.get('/api/health', async () => ({ status: 'ok' }))
 
