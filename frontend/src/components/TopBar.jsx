@@ -32,6 +32,12 @@ const NAV_GROUPS = [
   { label: 'Clientes', items: [
     { label: 'Clientes', route: '/clientes' },
   ]},
+  { label: 'Admin', items: [
+    { label: 'Usuarios', route: '/usuarios' },
+    { label: 'Accesos', route: '/accesos' },
+    { label: 'Configuración', route: '/config' },
+    { label: 'Descuentos', route: '/descuentos' },
+  ]},
 ]
 
 const ROLE_GROUPS = {

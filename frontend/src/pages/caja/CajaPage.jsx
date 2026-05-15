@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, Table, Tabs, SearchBar } from '../../components/shared'
 import { useTurnoActivo, useAbrirTurno, useCerrarTurno, useCajaHistorico, useCajaHistoricoYears } from '../../api/caja'
+import { downloadFromBackend } from '../../utils/csv'
 
 const MEDIOS_PAGO = ['Todos', 'Efectivo', 'Debito', 'Credito', 'Transferencia', 'Referencial']
 
@@ -78,6 +79,9 @@ export default function CajaPage() {
         subtitle={turno ? `Turno abierto · Caja ${turno.caja?.nombre ?? ''}` : 'Sin turno activo'}
         breadcrumb={['Inicio', 'Caja']}
         actions={<>
+          <Btn variant="secondary" icon="download" size="sm"
+            onClick={() => downloadFromBackend('/reportes/export/caja', `caja_${new Date().toISOString().slice(0, 10)}.csv`)}
+          >Exportar CSV</Btn>
           {turno ? (
             <>
               <Btn variant="secondary" icon="printer" size="sm" onClick={() => cerrarTurno.mutate(turno.id, { onError: (e) => alert(e?.response?.data?.error || 'Error') })} disabled={cerrarTurno.isPending}>Cerrar Turno</Btn>

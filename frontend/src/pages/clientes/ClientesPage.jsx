@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../components/shared'
 import { ViewClientePanel } from '../../components/forms/FormCliente'
 import { useClientes } from '../../api/clientes'
+import { downloadFromBackend } from '../../utils/csv'
 
 export default function ClientesPage() {
   const navigate = useNavigate()
@@ -59,7 +60,9 @@ export default function ClientesPage() {
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px' }}>
       <PageHeader title="Clientes" subtitle={`${shown.length} de ${totalClientes.toLocaleString('es-CL')} clientes`} breadcrumb={['Inicio', 'Clientes']}
         actions={<>
-          <Btn variant="secondary" icon="download" size="sm">Exportar</Btn>
+          <Btn variant="secondary" icon="download" size="sm"
+            onClick={() => downloadFromBackend('/reportes/export/clientes', `clientes_${new Date().toISOString().slice(0, 10)}.csv`)}
+          >Exportar CSV</Btn>
           <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/clientes/nuevo')}>Nuevo Cliente</Btn>
         </>}
       />

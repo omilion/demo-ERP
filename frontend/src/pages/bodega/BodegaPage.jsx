@@ -2,10 +2,15 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs } from '../../components/shared'
 import { useProductos } from '../../api/productos'
+import { downloadFromBackend, parseCsv } from '../../utils/csv'
+import api from '../../api/client'
+import { useQueryClient } from '@tanstack/react-query'
 
 export default function BodegaPage() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const [tab, setTab] = useState('inventario')
+  const [importing, setImporting] = useState(false)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [filter, setFilter] = useState('all')
@@ -74,7 +79,10 @@ export default function BodegaPage() {
         subtitle="Control de stock e inventario"
         breadcrumb={['Inicio', 'Bodega']}
         actions={<>
-          <Btn variant="secondary" icon="download" size="sm">Exportar Excel</Btn>
+          <Btn variant="secondary" icon="download" size="sm"
+            onClick={() => downloadFromBackend('/reportes/export/productos', `productos_${new Date().toISOString().slice(0, 10)}.csv`)}
+          >Exportar CSV</Btn>
+          <Btn variant="secondary" icon="upload" size="sm" onClick={() => setImporting(true)}>Importar</Btn>
           <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/bodega/nuevo')}>Ingreso Mercadería</Btn>
         </>}
       />
@@ -112,6 +120,81 @@ export default function BodegaPage() {
           : <Table columns={cols} rows={displayed} emptyMessage="No hay productos con ese criterio" />
         }
       </div>
+
+      {importing && <ImportModal onClose={() => setImporting(false)} onDone={() => qc.invalidateQueries({ queryKey: ['productos'] })} />}
     </main>
+  )
+}
+
+function ImportModal({ onClose, onDone }) {
+  const [tipo, setTipo] = useState('precios')
+  const [rows, setRows] = useState([])
+  const [filename, setFilename] = useState('')
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const text = await file.text()
+    const { headers, rows } = parseCsv(text)
+    setRows(rows)
+    setFilename(`${file.name} (${rows.length} filas, columnas: ${headers.join(', ')})`)
+    setResult(null)
+  }
+
+  const submit = async () => {
+    if (!rows.length) return
+    setLoading(true)
+    try {
+      const { data } = await api.post(`/productos/importar/${tipo}`, { rows })
+      setResult(data)
+      onDone()
+    } catch (e) {
+      setResult({ error: e.response?.data?.error || e.message })
+    } finally { setLoading(false) }
+  }
+
+  const cols = tipo === 'precios' ? 'codigo, precioLista, precioOferta, precioWeb'
+    : tipo === 'stock' ? 'codigo, stock, stockCritico'
+    : 'codigo, nombre, unidadMedida, precioLista, stock, stockCritico, codigoBarra, descripcion'
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 20, width: 600, maxWidth: '90vw' }}>
+        <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 16 }}>Importar productos (CSV)</div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 12, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>Tipo de importación</label>
+          <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, width: '100%' }}>
+            <option value="precios">Actualizar precios</option>
+            <option value="stock">Actualizar stock</option>
+            <option value="nuevo">Crear nuevos productos</option>
+          </select>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Columnas esperadas: {cols}</div>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <input type="file" accept=".csv,text/csv" onChange={handleFile} style={{ fontSize: 12 }} />
+          {filename && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>{filename}</div>}
+        </div>
+        {result && (
+          <div style={{ background: result.error ? 'var(--red-bg)' : 'var(--green-50)', padding: 10, borderRadius: 6, fontSize: 12, marginBottom: 12 }}>
+            {result.error
+              ? <span style={{ color: 'var(--red)' }}>{result.error}</span>
+              : <span>
+                  {result.actualizados != null && <>Actualizados: <b>{result.actualizados}</b> / </>}
+                  {result.creados != null && <>Creados: <b>{result.creados}</b> / Ignorados: <b>{result.ignorados}</b> / </>}
+                  Total: <b>{result.total}</b>
+                  {result.errores?.length > 0 && <><br />Errores: {result.errores.length} ({result.errores.slice(0, 3).map(e => e.codigo || 'fila').join(', ')}…)</>}
+                </span>}
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <Btn variant="secondary" size="sm" onClick={onClose} disabled={loading}>Cerrar</Btn>
+          <Btn variant="primary" size="sm" onClick={submit} disabled={loading || !rows.length}>
+            {loading ? 'Importando…' : `Importar ${rows.length} filas`}
+          </Btn>
+        </div>
+      </div>
+    </div>
   )
 }

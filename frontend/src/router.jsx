@@ -36,6 +36,7 @@ import StockIngresosPage from './pages/stock-ingresos/StockIngresosPage'
 import PasarTallerPage from './pages/pasar-taller/PasarTallerPage'
 import ConsultaPreciosPage from './pages/consulta-precios/ConsultaPreciosPage'
 import ReportesLicitacionesPage from './pages/reportes-licitaciones/ReportesLicitacionesPage'
+import UsuariosPage from './pages/usuarios/UsuariosPage'
 
 const ALL = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
 
@@ -76,6 +77,7 @@ export const router = createBrowserRouter([
       { path: 'telas/:id', element: <ProtectedRoute allowedRoles={['admin', 'taller', 'solo_lectura']}><TelaDetallePage /></ProtectedRoute> },
       { path: 'bodega-taller', element: <ProtectedRoute allowedRoles={['admin', 'taller', 'bodeguero', 'solo_lectura']}><BodegaTallerPage /></ProtectedRoute> },
       { path: 'accesos',    element: <ProtectedRoute allowedRoles={['admin']}><AccesosPage /></ProtectedRoute> },
+      { path: 'usuarios',   element: <ProtectedRoute allowedRoles={['admin']}><UsuariosPage /></ProtectedRoute> },
       { path: 'descuentos', element: <ProtectedRoute allowedRoles={['admin', 'vendedor']}><DescuentosPage /></ProtectedRoute> },
       { path: 'proveedores',   element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'solo_lectura']}><ProveedoresPage /></ProtectedRoute> },
       { path: 'crm',           element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><CrmPage /></ProtectedRoute> },

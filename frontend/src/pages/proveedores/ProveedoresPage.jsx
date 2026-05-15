@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
 import { useProveedores, useProveedor, useCreatePagoProveedor, useUpdatePagoProveedor, useDeletePagoProveedor } from '../../api/proveedores'
+import { downloadFromBackend } from '../../utils/csv'
 
 const fmt = n => n ? `${n}%` : '—'
 const fmtPeso = n => '$' + (n || 0).toLocaleString('es-CL')
@@ -302,7 +303,9 @@ export default function ProveedoresPage() {
         title="Proveedores"
         subtitle={`${total.toLocaleString('es-CL')} proveedores registrados`}
         breadcrumb={['Inicio', 'Catálogo', 'Proveedores']}
-        actions={<Btn variant="secondary" icon="download" size="sm">Exportar</Btn>}
+        actions={<Btn variant="secondary" icon="download" size="sm"
+          onClick={() => downloadFromBackend('/reportes/export/proveedores', `proveedores_${new Date().toISOString().slice(0, 10)}.csv`)}
+        >Exportar CSV</Btn>}
       />
 
       <div className="kpi-strip">

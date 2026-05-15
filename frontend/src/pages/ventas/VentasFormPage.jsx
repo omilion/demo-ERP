@@ -6,6 +6,7 @@ import { Icon } from '../../components/shared'
 import { useVenta, useCreateVenta, useUpdateVenta } from '../../api/ventas'
 import { useClientes } from '../../api/clientes'
 import { useProductos } from '../../api/productos'
+import { useMultas, useCreateMulta, useUpdateMulta, useDeleteMulta } from '../../api/multas'
 
 const TIPOS = ['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala']
 
@@ -140,6 +141,94 @@ function ItemsTable({ items, onChange }) {
           </tr>
         </tfoot>
       </table>
+    </div>
+  )
+}
+
+function MultasSection({ ordenId }) {
+  const { data = { items: [], total: 0 }, isLoading } = useMultas({ ordenId })
+  const createM = useCreateMulta()
+  const updateM = useUpdateMulta()
+  const deleteM = useDeleteMulta()
+  const [draft, setDraft] = useState({ monto: '', nDocumento: '', numero: '', fecha: '', interno: '' })
+
+  const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
+
+  function add() {
+    if (!draft.monto) { alert('Monto requerido'); return }
+    createM.mutate({
+      ordenId,
+      monto: Number(draft.monto),
+      nDocumento: draft.nDocumento || undefined,
+      numero: draft.numero || undefined,
+      fecha: draft.fecha || undefined,
+      interno: draft.interno || undefined,
+    }, {
+      onSuccess: () => setDraft({ monto: '', nDocumento: '', numero: '', fecha: '', interno: '' }),
+      onError: e => alert(e.response?.data?.error || 'Error'),
+    })
+  }
+
+  function remove(id) {
+    if (!confirm('¿Eliminar esta multa?')) return
+    deleteM.mutate(id, { onError: e => alert(e.response?.data?.error || 'Error') })
+  }
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+      <div style={{ background: 'var(--bg)', padding: '10px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>Multas aplicadas ({data.items.length})</span>
+        <span style={{ fontSize: 13, fontFamily: "'DM Mono',monospace", color: 'var(--red)' }}>Total: {fmt(data.total)}</span>
+      </div>
+
+      {isLoading
+        ? <div style={{ padding: 16, fontSize: 12, color: 'var(--text-3)' }}>Cargando…</div>
+        : data.items.length === 0
+          ? <div style={{ padding: 16, fontSize: 12, color: 'var(--text-3)' }}>Sin multas registradas</div>
+          : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: '#fafafa' }}>
+                  {['Fecha', 'N° Doc', 'N° Multa', 'Interno', 'Monto', ''].map((h, i) => (
+                    <th key={i} style={{ padding: '6px 10px', textAlign: i === 4 ? 'right' : 'left', fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.items.map(m => (
+                  <tr key={m.id} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ padding: '6px 10px', fontFamily: "'DM Mono',monospace" }}>{m.fecha ? new Date(m.fecha).toLocaleDateString('es-CL') : '—'}</td>
+                    <td style={{ padding: '6px 10px' }}>{m.nDocumento || '—'}</td>
+                    <td style={{ padding: '6px 10px' }}>{m.numero || '—'}</td>
+                    <td style={{ padding: '6px 10px', color: 'var(--text-3)' }}>{m.interno || '—'}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600, color: 'var(--red)' }}>{fmt(m.monto)}</td>
+                    <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                      <button onClick={() => remove(m.id)} disabled={deleteM.isPending} style={{ padding: 4, borderRadius: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-3)' }}>
+                        <Icon name="trash" size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+      <div style={{ background: '#fafafa', borderTop: '1px solid var(--border)', padding: '10px 12px', display: 'grid', gridTemplateColumns: '110px 1fr 1fr 1fr 1fr auto', gap: 8, alignItems: 'center' }}>
+        <input type="date" value={draft.fecha} onChange={e => setDraft({ ...draft, fecha: e.target.value })}
+          style={{ padding: '6px 8px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit' }} />
+        <input placeholder="N° documento" value={draft.nDocumento} onChange={e => setDraft({ ...draft, nDocumento: e.target.value })}
+          style={{ padding: '6px 8px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit' }} />
+        <input placeholder="N° multa" value={draft.numero} onChange={e => setDraft({ ...draft, numero: e.target.value })}
+          style={{ padding: '6px 8px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit' }} />
+        <input placeholder="Interno" value={draft.interno} onChange={e => setDraft({ ...draft, interno: e.target.value })}
+          style={{ padding: '6px 8px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit' }} />
+        <input type="number" placeholder="Monto" value={draft.monto} onChange={e => setDraft({ ...draft, monto: e.target.value })}
+          style={{ padding: '6px 8px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right' }} />
+        <button onClick={add} disabled={createM.isPending}
+          style={{ padding: '6px 12px', borderRadius: 5, border: '1px solid var(--green-700)', background: 'var(--green-700)', color: '#fff', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>
+          {createM.isPending ? '...' : 'Agregar'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -312,6 +401,13 @@ export default function VentasFormPage() {
           </FormField>
         </>}
       </div>
+
+      {isEdit && data.tipo === 'Licitación' && (
+        <>
+          <FormDivider label="Multas" />
+          <MultasSection ordenId={Number(id)} />
+        </>
+      )}
 
       <FormDivider label="Observaciones" />
       <FormField label="Notas internas">

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Icon, Badge, PageHeader, Btn, SearchBar, Table, Tabs, StatusDot } from '../../components/shared'
 import { ViewVentaPanel } from '../../components/forms/ViewVentaPanel'
 import { useVentas } from '../../api/ventas'
+import { downloadFromBackend } from '../../utils/csv'
 
 const FILTER_TABS = [
   { id: 'all',          label: 'Todas' },
@@ -83,7 +84,9 @@ export default function VentasPage() {
         subtitle={`${total.toLocaleString('es-CL')} ventas en total`}
         breadcrumb={['Inicio', 'Ventas', 'Matriz Ventas']}
         actions={<>
-          <Btn variant="secondary" icon="download" size="sm">Excel</Btn>
+          <Btn variant="secondary" icon="download" size="sm"
+            onClick={() => downloadFromBackend('/reportes/export/ventas', `ventas_${new Date().toISOString().slice(0, 10)}.csv`)}
+          >Exportar CSV</Btn>
           <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/ventas/nueva')}>Nueva Venta</Btn>
         </>}
       />
