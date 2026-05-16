@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { computeTotal, attachCliente } from './helpers.js'
+import { ESTADO_PAGO_VALUES, ESTADO_ENTREGA_VALUES } from './update.js'
 
 const ItemSchema = z.object({
   productoId: z.number().int(),
@@ -17,6 +18,8 @@ const Schema = z.object({
   licitacion: z.string().optional(),
   observaciones: z.string().optional(),
   creadorNombre: z.string().optional(),
+  estadoPago: z.enum(ESTADO_PAGO_VALUES).optional(),
+  estadoEntrega: z.enum(ESTADO_ENTREGA_VALUES).optional(),
   items: z.array(ItemSchema).min(1),
 })
 

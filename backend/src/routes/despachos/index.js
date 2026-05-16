@@ -1,4 +1,30 @@
 // Gestión de despachos y guías
+import { z } from 'zod'
+
+const DespachoCreate = z.object({
+  ordenId: z.union([z.number().int(), z.string()]).optional().nullable(),
+  interno: z.string().optional().nullable(),
+  plazoEntrega: z.string().optional().nullable(),
+  fechaInterno: z.string().optional().nullable(),
+  fechaEntrega: z.string().optional().nullable(),
+  tipoDespacho: z.string().optional().nullable(),
+  transporte: z.string().optional().nullable(),
+  montoEnvio: z.union([z.number(), z.string()]).optional().nullable(),
+  direccion: z.string().optional().nullable(),
+  contacto: z.string().optional().nullable(),
+  region: z.string().optional().nullable(),
+  comuna: z.string().optional().nullable(),
+  parcial: z.boolean().optional(),
+  tieneMulta: z.boolean().optional(),
+})
+
+const GuiaCreate = z.object({
+  ordenId: z.union([z.number().int(), z.string()]).optional().nullable(),
+  nInterno: z.union([z.number().int(), z.string()]).optional().nullable(),
+  nGuia: z.string().min(1),
+  fechaGuia: z.string().optional().nullable(),
+  origen: z.string().optional().nullable(),
+})
 
 export default async function despachosRoutes(fastify) {
   // GET /api/despachos?desde=&hasta=&ordenId=&tipo=&page=1
@@ -58,7 +84,9 @@ export default async function despachosRoutes(fastify) {
   fastify.post('/', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
   }, async (request, reply) => {
-    const b = request.body || {}
+    const parsed = DespachoCreate.safeParse(request.body || {})
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
+    const b = parsed.data
     return fastify.prisma.despacho.create({
       data: {
         ordenId: b.ordenId ? parseInt(b.ordenId, 10) : null,
@@ -84,7 +112,9 @@ export default async function despachosRoutes(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
-    const b = request.body || {}
+    const parsed = DespachoCreate.partial().safeParse(request.body || {})
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
+    const b = parsed.data
     const data = {}
     for (const f of ['interno', 'plazoEntrega', 'tipoDespacho', 'transporte', 'direccion', 'contacto', 'region', 'comuna', 'usuario']) {
       if (b[f] !== undefined) data[f] = b[f]
@@ -134,8 +164,9 @@ export default async function despachosRoutes(fastify) {
   fastify.post('/guias', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
   }, async (request, reply) => {
-    const { ordenId, nInterno, nGuia, fechaGuia, origen } = request.body || {}
-    if (!nGuia) return reply.code(400).send({ error: 'nGuia requerido' })
+    const parsed = GuiaCreate.safeParse(request.body || {})
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
+    const { ordenId, nInterno, nGuia, fechaGuia, origen } = parsed.data
     return fastify.prisma.guiaDespacho.create({
       data: {
         ordenId: ordenId ? parseInt(ordenId, 10) : null,

@@ -1,11 +1,14 @@
 import { z } from 'zod'
 import { computeTotal, attachCliente } from './helpers.js'
 
+export const ESTADO_PAGO_VALUES = ['No pagada', 'Pagada', 'Parcial']
+export const ESTADO_ENTREGA_VALUES = ['Pendiente entrega', 'En despacho', 'Entregada', 'Parcial']
+
 const Schema = z.object({
   tipo: z.enum(['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala']).optional(),
   estado: z.string().optional(),
-  estadoPago: z.string().optional(),
-  estadoEntrega: z.string().optional(),
+  estadoPago: z.enum(ESTADO_PAGO_VALUES).optional(),
+  estadoEntrega: z.enum(ESTADO_ENTREGA_VALUES).optional(),
   abono: z.number().min(0).optional(),
   facturado: z.number().min(0).optional(),
   guias: z.number().int().optional(),

@@ -7,7 +7,7 @@ export default async function listVentas(fastify) {
     const { estadoPago, estadoEntrega, tipo, search, orderBy: orderParam, clienteId } = request.query
     const LIMIT = 100
 
-    const where = {}
+    const where = { eliminada: false }
     if (estadoPago) where.estadoPago = estadoPago
     if (estadoEntrega) where.estadoEntrega = estadoEntrega
     if (tipo) where.tipo = tipo
