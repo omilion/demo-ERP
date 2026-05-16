@@ -8,7 +8,7 @@ export default async function reportesRoutes(fastify) {
     const [productos, materiales] = await Promise.all([
       fastify.prisma.producto.findMany({
         where: { activo: true },
-        select: { id: true, codigo: true, nombre: true, stock: true, stockCritico: true, precioLista: true, bodegaId: true },
+        select: { id: true, codigoInterno: true, nombre: true, stock: true, stockCritico: true, precioLista: true, bodega: true },
       }),
       fastify.prisma.bodegaTaller.findMany({
         where: { activo: true },
@@ -35,10 +35,10 @@ export default async function reportesRoutes(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('bodega', 'read')],
   }, async (request, reply) => {
     const productos = await fastify.prisma.producto.findMany({
-      where: { activo: true }, orderBy: { codigo: 'asc' },
+      where: { activo: true }, orderBy: { codigoInterno: 'asc' },
     })
     const csv = rowsToCsv(productos, [
-      { key: 'codigo', label: 'Código' },
+      { key: 'codigoInterno', label: 'Código' },
       { key: 'nombre', label: 'Nombre' },
       { key: 'unidadMedida', label: 'Unidad' },
       { key: 'stock', label: 'Stock' },

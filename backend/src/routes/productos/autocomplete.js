@@ -9,14 +9,14 @@ export default async function autocompleteRoute(fastify) {
       where: {
         activo: true,
         OR: [
-          { codigo: { contains: q, mode: 'insensitive' } },
+          { codigoInterno: { contains: q, mode: 'insensitive' }},
           { nombre: { contains: q, mode: 'insensitive' } },
           { codigoBarra: { contains: q, mode: 'insensitive' } },
         ],
       },
       select: {
-        id: true, codigo: true, nombre: true, unidadMedida: true,
-        stock: true, precioLista: true, bodegaId: true,
+        id: true, codigoInterno: true, nombre: true, unidadMedida: true,
+        stock: true, precioLista: true, bodega: true,
       },
       orderBy: { nombre: 'asc' },
       take: 20,
