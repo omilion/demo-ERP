@@ -5,20 +5,25 @@ export default async function reportesRoutes(fastify) {
   fastify.get('/stock-critico', {
     preHandler: [fastify.authenticate, fastify.rbac('bodega', 'read')],
   }, async () => {
-    // Filtra en SQL (stock <= stock_critico) — evita cargar 32k productos a memoria
+    // Filtra en SQL (stock <= stock_critico, solo items con threshold > 0)
+    // — sin el filtro stock_critico>0, casi todos los items con stock=0 matchearían
     const [productosCriticos, materialesCriticos] = await Promise.all([
       fastify.prisma.$queryRaw`
         SELECT id, codigo_interno AS "codigoInterno", nombre, stock,
                stock_critico AS "stockCritico", precio_lista AS "precioLista", bodega
         FROM catalogo.productos
-        WHERE activo = true AND COALESCE(stock, 0) <= COALESCE(stock_critico, 0)
+        WHERE activo = true
+          AND COALESCE(stock_critico, 0) > 0
+          AND COALESCE(stock, 0) <= COALESCE(stock_critico, 0)
         ORDER BY nombre ASC
       `,
       fastify.prisma.$queryRaw`
         SELECT id, codigo_interno AS "codigoInterno", nombre, stock,
                stock_critico AS "stockCritico", precio, categoria_id AS "categoriaId"
         FROM taller.bodega_taller
-        WHERE activo = true AND COALESCE(stock, 0) <= COALESCE(stock_critico, 0)
+        WHERE activo = true
+          AND COALESCE(stock_critico, 0) > 0
+          AND COALESCE(stock, 0) <= COALESCE(stock_critico, 0)
         ORDER BY nombre ASC
       `,
     ])
