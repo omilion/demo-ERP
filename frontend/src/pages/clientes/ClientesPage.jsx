@@ -57,6 +57,7 @@ export default function ClientesPage() {
     { key: '_acc', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 4 }}>
         <button onClick={e => { e.stopPropagation(); setSelected(row) }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}>Ver</button>
+        <button onClick={e => { e.stopPropagation(); navigate('/matriz-ventas?rut=' + encodeURIComponent(row.rut || '')) }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--blue, #2563eb)', fontWeight: 500 }} title="Ver ventas históricas">Ventas</button>
         <button onClick={e => { e.stopPropagation(); navigate('/clientes/' + row.id + '/editar') }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)', fontWeight: 500 }}>Editar</button>
       </div>
     )},

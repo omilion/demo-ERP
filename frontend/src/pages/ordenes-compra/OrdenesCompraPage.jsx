@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, SearchBar, Table } from '../../components/shared'
-import { useOrdenesCompra } from '../../api/ordenesCompra'
+import { useOrdenesCompra, useUpdateOrdenCompra } from '../../api/ordenesCompra'
 
 const ESTADO_TONE = {
   'Procesada':  'green', 'Pendiente':  'amber', 'Entregada': 'green',
@@ -27,6 +27,7 @@ export default function OrdenesCompraPage() {
   if (debouncedSearch) params.search = debouncedSearch
 
   const { data: result = { items: [], total: 0, limit: 100 }, isLoading } = useOrdenesCompra(params)
+  const updateMut = useUpdateOrdenCompra()
   const items = result.items ?? []
   const total = result.total ?? 0
   const limit = result.limit ?? 100
@@ -51,10 +52,26 @@ export default function OrdenesCompraPage() {
       render: v => v ? <Badge tone={ESTADO_TONE[v] || 'gray'}>{v}</Badge> : <span style={{ color: 'var(--text-3)' }}>—</span> },
     { key: '_acc', label: '',
       render: (_, row) => (
-        <button
-          onClick={e => { e.stopPropagation(); navigate('/ordenes-compra/' + row.id) }}
-          style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}
-        >Ver</button>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            onClick={e => { e.stopPropagation(); navigate('/ordenes-compra/' + row.id) }}
+            style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}
+          >Ver</button>
+          {row.estadoCompra !== 'Recepcionada' && row.estadoCompra !== 'Anulada' && (
+            <button
+              onClick={e => {
+                e.stopPropagation()
+                if (!confirm(`Marcar OC ${row.nCompra || row.id} como recepcionada?`)) return
+                updateMut.mutate({ id: row.id, data: { estadoCompra: 'Recepcionada' } }, {
+                  onError: err => alert(err.response?.data?.error || 'Error'),
+                })
+              }}
+              disabled={updateMut.isPending}
+              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--green-700)', background: 'var(--green-700)', cursor: 'pointer', color: '#fff', fontWeight: 500 }}
+              title="Marcar recepcionada"
+            >Recepcionar</button>
+          )}
+        </div>
       ) },
   ]
 

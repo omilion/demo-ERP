@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { FormField, Input, Textarea } from '../../components/forms'
 import { useDespachos, useGuias, useCreateDespacho, useUpdateDespacho, useDeleteDespacho, useCreateGuia, useDeleteGuia } from '../../api/despachos'
+import { useUpdateVenta } from '../../api/ventas'
 import { downloadCsv } from '../../utils/csv'
 
 const TABS = [
@@ -53,6 +54,7 @@ export default function DespachosPage() {
   const delMut = useDeleteDespacho()
   const createGuiaMut = useCreateGuia()
   const delGuiaMut = useDeleteGuia()
+  const updateVentaMut = useUpdateVenta()
 
   const colsDespacho = [
     { key: 'fechaEntrega', label: 'Fecha entrega',
@@ -76,6 +78,15 @@ export default function DespachosPage() {
       <div style={{ display: 'flex', gap: 8 }}>
         {row.ordenId && (
           <button onClick={(e) => { e.stopPropagation(); navigate('/ventas/' + row.ordenId) }} style={{ background: 'transparent', border: 'none', color: 'var(--blue, #2563eb)', cursor: 'pointer', fontSize: 12 }}>Ver Orden</button>
+        )}
+        {row.ordenId && (
+          <button onClick={(e) => {
+            e.stopPropagation()
+            if (!confirm(`Marcar orden #${row.ordenId} como entregada?`)) return
+            updateVentaMut.mutate({ id: row.ordenId, data: { estadoEntrega: 'Entregada' } }, {
+              onError: err => alert(err.response?.data?.error || 'Error'),
+            })
+          }} disabled={updateVentaMut.isPending} style={{ background: 'transparent', border: 'none', color: 'var(--green-700)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }} title="Marcar orden como entregada">Entregado</button>
         )}
         <button onClick={(e) => { e.stopPropagation(); setEditing(row) }} style={{ background: 'transparent', border: 'none', color: 'var(--green-700)', cursor: 'pointer', fontSize: 12 }}>Editar</button>
         <button onClick={(e) => { e.stopPropagation(); if (confirm('¿Eliminar?')) delMut.mutate(row.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer', fontSize: 12 }}>Borrar</button>

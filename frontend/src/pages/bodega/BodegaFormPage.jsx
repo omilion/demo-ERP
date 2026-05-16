@@ -254,7 +254,7 @@ export default function BodegaFormPage() {
         </>
       )}
 
-      {isEdit && found && <MovimientosSection productoId={found.id} stockActual={found.stock} />}
+      {isEdit && found && <div id="movimientos"><MovimientosSection productoId={found.id} stockActual={found.stock} /></div>}
 
       <PrecioHistorial historial={historial} />
     </FormPage>

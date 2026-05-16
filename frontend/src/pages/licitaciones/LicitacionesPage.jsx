@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../components/shared'
-import { useCotizaciones, useReportesLicitaciones } from '../../api/cotizaciones'
+import { useCotizaciones, useReportesLicitaciones, useCrearVentaDesdeLicitacion } from '../../api/cotizaciones'
 
 const ESTADO_TONE = {
   'Pendiente':    'amber',
@@ -62,6 +62,7 @@ export default function LicitacionesPage() {
   if (fechaHasta) params.fechaHasta = fechaHasta
 
   const { data: result = { items: [], total: 0, limit: 100 }, isLoading } = useCotizaciones(params)
+  const crearVenta = useCrearVentaDesdeLicitacion()
   const reportesParams = {}
   if (fechaDesde) reportesParams.fechaDesde = fechaDesde
   if (fechaHasta) reportesParams.fechaHasta = fechaHasta
@@ -100,10 +101,36 @@ export default function LicitacionesPage() {
       render: v => <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{v || '—'}</span> },
     { key: '_acc', label: '',
       render: (_, row) => (
-        <button
-          onClick={e => { e.stopPropagation(); navigate('/licitaciones/' + row.id) }}
-          style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}
-        >Ver</button>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            onClick={e => { e.stopPropagation(); navigate('/licitaciones/' + row.id) }}
+            style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}
+          >Ver</button>
+          {row.estado === 'Adjudicada' && !row.ordenId && (
+            <button
+              onClick={e => {
+                e.stopPropagation()
+                if (!confirm(`Crear venta desde licitación ${row.idLicitacion || row.id}?`)) return
+                crearVenta.mutate(row.id, {
+                  onSuccess: (data) => {
+                    if (data?.ordenId) navigate(`/ventas/${data.ordenId}/editar`)
+                  },
+                  onError: e => alert(e.response?.data?.error || 'Error al crear venta'),
+                })
+              }}
+              disabled={crearVenta.isPending}
+              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--green-700)', background: 'var(--green-700)', cursor: 'pointer', color: '#fff', fontWeight: 500 }}
+              title="Crear orden de venta desde adjudicación"
+            >Crear venta</button>
+          )}
+          {row.ordenId && (
+            <button
+              onClick={e => { e.stopPropagation(); navigate(`/ventas/${row.ordenId}/editar`) }}
+              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--blue, #2563eb)', fontWeight: 500 }}
+              title="Ver venta vinculada"
+            >Venta</button>
+          )}
+        </div>
       ) },
   ]
 

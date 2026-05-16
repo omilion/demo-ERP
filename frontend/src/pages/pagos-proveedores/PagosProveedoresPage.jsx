@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
-import { usePagosProveedores } from '../../api/pagosProveedores'
+import { usePagosProveedores, useUpdatePagoProveedor } from '../../api/pagosProveedores'
 import { downloadCsv } from '../../utils/csv'
 
 const TABS = [
@@ -40,6 +40,7 @@ export default function PagosProveedoresPage() {
   if (hasta) params.hasta = hasta
 
   const { data: result = { items: [], total: 0, limit: 100, stats: {} }, isLoading } = usePagosProveedores(params)
+  const updateMut = useUpdatePagoProveedor()
   const items = result.items ?? []
   const total = result.total ?? 0
   const limit = result.limit ?? 100
@@ -91,10 +92,26 @@ export default function PagosProveedoresPage() {
       render: (v, row) => v ? <Badge tone="amber">{row.ncNumero || 'Sí'}</Badge> : <span style={{ color: 'var(--text-3)' }}>—</span> },
     { key: '_acc', label: '',
       render: (_, row) => (
-        <button
-          onClick={e => { e.stopPropagation(); navigate('/pagos-proveedores/' + row.id) }}
-          style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}
-        >Ver</button>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            onClick={e => { e.stopPropagation(); navigate('/pagos-proveedores/' + row.id) }}
+            style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}
+          >Ver</button>
+          {row.estado !== 'Pagado' && row.estado !== 'Anulado' && (
+            <button
+              onClick={e => {
+                e.stopPropagation()
+                if (!confirm(`Marcar pago #${row.nDoc || row.id} como pagado (hoy)?`)) return
+                updateMut.mutate({ id: row.id, data: { estado: 'Pagado', fechaPago: new Date().toISOString().slice(0, 10) } }, {
+                  onError: err => alert(err.response?.data?.error || 'Error'),
+                })
+              }}
+              disabled={updateMut.isPending}
+              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--green-700)', background: 'var(--green-700)', cursor: 'pointer', color: '#fff', fontWeight: 500 }}
+              title="Marcar pagado hoy"
+            >Pagar</button>
+          )}
+        </div>
       ) },
   ]
 

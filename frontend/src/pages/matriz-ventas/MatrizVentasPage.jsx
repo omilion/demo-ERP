@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { FormField, Input } from '../../components/forms'
 import { useMatrizVentas, useMatrizTotales } from '../../api/matrizVentas'
@@ -22,6 +22,7 @@ const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
 export default function MatrizVentasPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const user = useAuthStore(s => s.user)
   const isAdmin = user?.role === 'admin'
   const deleteVenta = useDeleteVenta()
@@ -38,6 +39,15 @@ export default function MatrizVentasPage() {
   const [estadoPago, setEstadoPago] = useState('')
   const [estadoEntrega, setEstadoEntrega] = useState('')
   const [page, setPage] = useState(1)
+
+  useEffect(() => {
+    const r = searchParams.get('rut')
+    if (r) setRut(r)
+    const n = searchParams.get('nInterno')
+    if (n) setNInterno(n)
+    const o = searchParams.get('oc')
+    if (o) setOc(o)
+  }, [searchParams])
 
   const params = { page: String(page) }
   if (tab !== 'all') params.tipo = tab

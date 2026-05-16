@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs } from '../../components/shared'
-import { useVentas } from '../../api/ventas'
+import { useVentas, useUpdateVenta } from '../../api/ventas'
 import { useCobranzaHistorico, useCobranzaEjecutivas, useCobranzaMeses } from '../../api/cobranzaHistorico'
 import { downloadFromBackend } from '../../utils/csv'
 
@@ -66,6 +66,7 @@ export default function CobranzaPage() {
   const activeParams = { orderBy: 'asc', estadoPago: estadoTab }
   if (debounced) activeParams.search = debounced
   const { data: activeResult = { items: [], total: 0 }, isLoading } = useVentas(activeParams)
+  const updateVentaMut = useUpdateVenta()
   const ventas = activeResult.items ?? []
   const total = activeResult.total ?? 0
 
@@ -142,14 +143,34 @@ export default function CobranzaPage() {
     },
     {
       key: '_acc', label: '',
-      render: (_, row) => (
-        <button
-          onClick={e => { e.stopPropagation(); navigate('/ventas/' + row.id + '/editar') }}
-          style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500, whiteSpace: 'nowrap' }}
-        >
-          Gestionar
-        </button>
-      )
+      render: (_, row) => {
+        const saldo = (row.total || 0) - (row.abono || 0)
+        return (
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              onClick={e => {
+                e.stopPropagation()
+                const monto = prompt(`Abono para venta #${row.id} (saldo: $${saldo.toLocaleString('es-CL')})`, String(saldo))
+                if (!monto) return
+                const n = parseInt(monto, 10)
+                if (!n || n <= 0) return alert('Monto inválido')
+                const nuevoAbono = (row.abono || 0) + n
+                const estadoPago = nuevoAbono >= (row.total || 0) ? 'Pagada' : 'Parcial'
+                updateVentaMut.mutate({ id: row.id, data: { abono: nuevoAbono, estadoPago } }, {
+                  onError: err => alert(err.response?.data?.error || 'Error al registrar abono'),
+                })
+              }}
+              disabled={updateVentaMut.isPending}
+              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--green-700)', background: 'var(--green-700)', cursor: 'pointer', color: '#fff', fontWeight: 500, whiteSpace: 'nowrap' }}
+              title="Registrar abono"
+            >Pagar</button>
+            <button
+              onClick={e => { e.stopPropagation(); navigate('/ventas/' + row.id + '/editar') }}
+              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500, whiteSpace: 'nowrap' }}
+            >Gestionar</button>
+          </div>
+        )
+      }
     },
   ]
 
