@@ -207,7 +207,7 @@ async function main() {
   }
 
   // gastos
-  r = await call('POST', '/api/gastos', { descripcion: `${TAG} gasto`, monto: 500, fecha: new Date().toISOString().slice(0, 10) })
+  r = await call('POST', '/api/gastos', { nombre: `${TAG} gasto`, monto: 500, fecha: new Date().toISOString().slice(0, 10) })
   const gastoId = r.body?.id
   if (gastoId) {
     check('POST /api/gastos', true, `id=${gastoId}`)
@@ -227,7 +227,7 @@ async function main() {
   } else warn('POST /api/categorias', `status=${r.status}`)
 
   // tela
-  r = await call('POST', '/api/telas', { nombre: `${TAG} tela`, ancho: 150, gramaje: 200 })
+  r = await call('POST', '/api/telas', { codigo: `${TAG}-TELA-${Date.now()}`, nombre: `${TAG} tela`, ancho: 150, gramaje: 200 })
   const telaId = r.body?.id
   if (telaId) {
     check('POST /api/telas', true, `id=${telaId}`)
@@ -246,13 +246,16 @@ async function main() {
     check('DELETE /api/proveedores/:id', [200, 204].includes(r.status))
   } else warn('POST /api/proveedores', `status=${r.status} ${JSON.stringify(r.body).slice(0, 80)}`)
 
-  // cliente
-  r = await call('POST', '/api/clientes', { nombre: `${TAG} cliente`, rut: '11111111-1' })
+  // cliente (rut único pseudoaleatorio)
+  const rutTest = `${Date.now().toString().slice(-7)}-K`
+  r = await call('POST', '/api/clientes', { nombre: `${TAG} cliente`, rut: rutTest })
   const cliId = r.body?.id
   if (cliId) {
     check('POST /api/clientes', true, `id=${cliId}`)
     r = await call('PUT', `/api/clientes/${cliId}`, { nombre: `${TAG} cliente upd` })
     check('PUT /api/clientes/:id', [200, 204].includes(r.status))
+    // cleanup
+    await call('DELETE', `/api/clientes/${cliId}`)
   } else warn('POST /api/clientes', `status=${r.status} ${JSON.stringify(r.body).slice(0, 80)}`)
 
   // banner
@@ -281,7 +284,7 @@ async function main() {
   const matsRes = await call('GET', '/api/bodega-taller?page=1')
   const mat = matsRes.body?.items?.[0]
   if (mat) {
-    r = await call('POST', '/api/historial-materiales', { materialId: mat.id, tipo: 'ingreso', cantidad: 1, usuario: 'e2e' })
+    r = await call('POST', '/api/historial-materiales', { codigoInterno: mat.codigoInterno, materialId: mat.id, tipo: 'ingreso', cantidad: 1, usuario: 'e2e' })
     const hmId = r.body?.id
     if (hmId) {
       check('POST /api/historial-materiales', true, `id=${hmId}`)

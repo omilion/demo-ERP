@@ -57,9 +57,9 @@ export default async function proveedoresRoutes(fastify) {
         region: b.region || null,
         comuna: b.comuna || null,
         codigoProveedor: b.codigoProveedor ? parseInt(b.codigoProveedor, 10) : null,
-        porcVentaSala: b.porcVentaSala != null ? parseFloat(b.porcVentaSala) : null,
-        porcMarco: b.porcMarco != null ? parseFloat(b.porcMarco) : null,
-        porcLicitacion: b.porcLicitacion != null ? parseFloat(b.porcLicitacion) : null,
+        porcVentaSala: b.porcVentaSala != null ? parseInt(b.porcVentaSala, 10) : 0,
+        porcMarco: b.porcMarco != null ? parseInt(b.porcMarco, 10) : 0,
+        porcLicitacion: b.porcLicitacion != null ? parseInt(b.porcLicitacion, 10) : 0,
         activo: true,
       }
       const created = await f.prisma.proveedor.create({ data })
