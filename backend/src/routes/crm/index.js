@@ -72,8 +72,10 @@ export default async function crmRoutes(fastify) {
       const id = parseInt(request.params.id)
       const c = await f.prisma.crmRegistro.findUnique({ where: { id }, select: { ncotizacion: true } })
       if (!c?.ncotizacion) return { orden: null }
-      const ni = parseInt(String(c.ncotizacion).trim(), 10)
-      if (!Number.isFinite(ni)) return { orden: null }
+      const raw = String(c.ncotizacion).trim()
+      // ncotizacion legacy a veces es timestamp YYYYMMDDHHmmss (14 dígitos) — fuera de int4
+      if (!/^\d{1,9}$/.test(raw)) return { orden: null }
+      const ni = parseInt(raw, 10)
       const orden = await f.prisma.orden.findFirst({
         where: { nInterno: ni },
         select: { id: true, nInterno: true, tipo: true, estado: true, estadoPago: true, estadoEntrega: true, createdAt: true, clienteId: true },
