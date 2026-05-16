@@ -5,19 +5,23 @@ export default async function reportesRoutes(fastify) {
   fastify.get('/stock-critico', {
     preHandler: [fastify.authenticate, fastify.rbac('bodega', 'read')],
   }, async () => {
-    const [productos, materiales] = await Promise.all([
-      fastify.prisma.producto.findMany({
-        where: { activo: true },
-        select: { id: true, codigoInterno: true, nombre: true, stock: true, stockCritico: true, precioLista: true, bodega: true },
-      }),
-      fastify.prisma.bodegaTaller.findMany({
-        where: { activo: true },
-        select: { id: true, codigoInterno: true, nombre: true, stock: true, stockCritico: true, precio: true, categoriaId: true },
-      }),
+    // Filtra en SQL (stock <= stock_critico) — evita cargar 32k productos a memoria
+    const [productosCriticos, materialesCriticos] = await Promise.all([
+      fastify.prisma.$queryRaw`
+        SELECT id, codigo_interno AS "codigoInterno", nombre, stock,
+               stock_critico AS "stockCritico", precio_lista AS "precioLista", bodega
+        FROM catalogo.productos
+        WHERE activo = true AND COALESCE(stock, 0) <= COALESCE(stock_critico, 0)
+        ORDER BY nombre ASC
+      `,
+      fastify.prisma.$queryRaw`
+        SELECT id, codigo_interno AS "codigoInterno", nombre, stock,
+               stock_critico AS "stockCritico", precio, categoria_id AS "categoriaId"
+        FROM taller.bodega_taller
+        WHERE activo = true AND COALESCE(stock, 0) <= COALESCE(stock_critico, 0)
+        ORDER BY nombre ASC
+      `,
     ])
-
-    const productosCriticos = productos.filter(p => (p.stock ?? 0) <= (p.stockCritico ?? 0))
-    const materialesCriticos = materiales.filter(m => (m.stock ?? 0) <= (m.stockCritico ?? 0))
 
     return {
       generadoEn: new Date().toISOString(),

@@ -49,27 +49,46 @@ export default async function cotizacionesRoutes(fastify) {
       if (fechaDesde) where.fechaCreacion.gte = new Date(fechaDesde)
       if (fechaHasta) where.fechaCreacion.lte = new Date(fechaHasta + 'T23:59:59')
     }
-    const items = await fastify.prisma.cotizacionLicitacion.findMany({
-      where,
-      include: { items: { select: { cantidad: true, cantAdjudicados: true, precio: true } } },
-      orderBy: { fechaCreacion: 'desc' },
-    })
-    const porEstado = {}
-    const porCliente = {}
-    let totalCotizado = 0
-    let totalAdjudicado = 0
-    for (const c of items) {
-      porEstado[c.estado] = (porEstado[c.estado] || 0) + 1
-      if (c.rutCliente) porCliente[c.rutCliente] = (porCliente[c.rutCliente] || 0) + 1
-      for (const it of c.items) {
-        totalCotizado += (it.cantidad || 0) * (it.precio || 0)
-        totalAdjudicado += (it.cantAdjudicados || 0) * (it.precio || 0)
-      }
-    }
+    // Agregaciones en SQL — evita cargar 17k cotizaciones + items a memoria
+    const cond = []
+    const params = []
+    if (rutCliente) { params.push(rutCliente); cond.push(`c.rut_cliente = $${params.length}`) }
+    if (fechaDesde) { params.push(new Date(fechaDesde)); cond.push(`c.fecha_creacion >= $${params.length}`) }
+    if (fechaHasta) { params.push(new Date(fechaHasta + 'T23:59:59')); cond.push(`c.fecha_creacion <= $${params.length}`) }
+    const whereSql = cond.length ? `WHERE ${cond.join(' AND ')}` : ''
+    const [byEstado, byCliente, totalsRows, items] = await Promise.all([
+      fastify.prisma.cotizacionLicitacion.groupBy({
+        by: ['estado'], where, _count: { _all: true },
+      }),
+      fastify.prisma.cotizacionLicitacion.groupBy({
+        by: ['rutCliente'], where, _count: { _all: true },
+      }),
+      fastify.prisma.$queryRawUnsafe(`
+        SELECT
+          COALESCE(SUM(i.cantidad * i.precio), 0)::float AS "totalCotizado",
+          COALESCE(SUM(i.cant_adjudicados * i.precio), 0)::float AS "totalAdjudicado"
+        FROM ventas.cotizacion_licitacion c
+        LEFT JOIN ventas.cotizacion_licitacion_items i ON i.cotizacion_id = c.id
+        ${whereSql}
+      `, ...params),
+      fastify.prisma.cotizacionLicitacion.findMany({
+        where,
+        select: {
+          id: true, idLicitacion: true, fecha: true, fechaCreacion: true, rutCliente: true,
+          estado: true, obs: true, plazo: true, ordenCompra: true, referencia: true, ordenId: true,
+          _count: { select: { items: true } },
+        },
+        orderBy: { fechaCreacion: 'desc' },
+        take: 500,
+      }),
+    ])
+    const totals = totalsRows[0] || { totalCotizado: 0, totalAdjudicado: 0 }
+    const porEstado = Object.fromEntries(byEstado.map(g => [g.estado, g._count._all]))
+    const porCliente = Object.fromEntries(byCliente.filter(g => g.rutCliente).map(g => [g.rutCliente, g._count._all]))
     return {
-      items: items.map(({ items: _i, ...c }) => ({ ...c, nItems: _i.length })),
+      items: items.map(({ _count, ...c }) => ({ ...c, nItems: _count.items })),
       total: items.length,
-      stats: { porEstado, porCliente, totalCotizado, totalAdjudicado },
+      stats: { porEstado, porCliente, totalCotizado: totals.totalCotizado, totalAdjudicado: totals.totalAdjudicado },
     }
   })
 
