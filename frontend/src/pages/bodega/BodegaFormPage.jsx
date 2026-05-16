@@ -4,6 +4,7 @@ import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../components/forms/index'
 import { useAuthStore } from '../../store/auth'
 import { useProducto, useUpdateProducto, useCreateProducto, useHistorialPrecios, useAddPrecio, useMovimientos, useAddMovimiento } from '../../api/productos'
+import { useCategorias } from '../../api/categorias'
 
 function PrecioHistorial({ historial }) {
   if (!historial.length) return null
@@ -56,6 +57,7 @@ export default function BodegaFormPage() {
   const user = useAuthStore(s => s.user)
 
   const { data: found } = useProducto(isEdit ? Number(id) : null)
+  const { data: categoriasApi = [] } = useCategorias()
   const createProducto = useCreateProducto()
   const updateProducto = useUpdateProducto()
   const { data: historial = [] } = useHistorialPrecios(found?.id)
@@ -73,7 +75,7 @@ export default function BodegaFormPage() {
     if (found) {
       set('cod', found.codigoInterno)
       set('nombre', found.nombre)
-      set('cat', found.categoria || 'Espumas')
+      set('cat', found.categoria || '')
       set('bodega', found.bodega)
       set('stock', String(found.stock))
       set('minimo', String(found.stockCritico))
@@ -171,7 +173,17 @@ export default function BodegaFormPage() {
           <Input value={data.codigoBarra} onChange={v => set('codigoBarra', v)} placeholder="7800000000000" />
         </FormField>
         <FormField label="Categoría">
-          <Select value={data.cat} onChange={v => set('cat', v)} options={['Espumas','Viscoelástico','Telas','Maderas','Colchones','Fibras','Accesorios','Látex','Bases','Protectores']} />
+          <Select
+            value={data.cat}
+            onChange={v => set('cat', v)}
+            options={(() => {
+              const fromApi = categoriasApi.map(c => c.nombre).filter(Boolean)
+              const fallback = ['Espumas','Viscoelástico','Telas','Maderas','Colchones','Fibras','Accesorios','Látex','Bases','Protectores']
+              const all = fromApi.length ? fromApi : fallback
+              if (data.cat && !all.includes(data.cat)) return [data.cat, ...all]
+              return all
+            })()}
+          />
         </FormField>
       </div>
       <FormField label="Nombre / Descripción corta" required error={errors.nombre}>
