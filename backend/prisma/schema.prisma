@@ -416,6 +416,7 @@ model OrdenCargo {
 
 model CobranzaHistorico {
   id           Int       @id @default(autoincrement())
+  ordenId      Int?      @map("orden_id")
   ejecutiva    String?
   interno      Int?
   ndoc         Int?
@@ -439,6 +440,8 @@ model CobranzaHistorico {
   reclamo      String?
   observacion  String?
 
+  @@index([ordenId])
+  @@index([interno])
   @@map("cobranza_historico")
   @@schema("ventas")
 }
@@ -454,12 +457,14 @@ model CotizacionLicitacion {
   obs           String?
   plazo         String?
   ordenCompra   String?                    @map("orden_compra")
+  ordenId       Int?                       @map("orden_id")
   sucursalId    Int?                       @map("sucursal_id")
   referencia    String?
   items         CotizacionLicitacionItem[]
 
   @@index([idLicitacion])
   @@index([rutCliente])
+  @@index([ordenId])
   @@map("cotizacion_licitacion")
   @@schema("ventas")
 }
@@ -742,14 +747,14 @@ model Odt {
 
 model BitacoraTaller {
   id             Int       @id @default(autoincrement())
-  odtId          Int       @map("odt_id")
+  odtId          Int?      @map("odt_id")
   usuario        String
   usuarioReporta String?   @map("usuario_reporta")
   sucursalId     Int?      @map("sucursal_id")
   fecha          DateTime?
   texto          String
   createdAt      DateTime  @default(now()) @map("created_at")
-  odt            Odt       @relation(fields: [odtId], references: [id], onDelete: Cascade)
+  odt            Odt?      @relation(fields: [odtId], references: [id], onDelete: Cascade)
 
   @@map("bitacora_taller")
   @@schema("taller")

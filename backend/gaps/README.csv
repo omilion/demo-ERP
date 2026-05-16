@@ -1,0 +1,7 @@
+archivo,filas,descripcion
+odt_items_sin_taller.csv,2708,OdtItems sin asignación de taller (no clasificables por texto)
+odts_sin_orden.csv,18,ODTs sin orden de venta vinculada
+despachos_sin_orden.csv,0,Despachos sin orden vinculada (apuntan a órdenes nunca migradas)
+guias_sin_orden.csv,2,Guías de despacho sin orden vinculada
+licitaciones_con_ref_sin_orden.csv,14735,Licitaciones con OC/idLicitacion pero sin Orden cruzable
+licitaciones_sin_referencia.csv,0,Licitaciones sin OC/idLicitacion (cotizaciones nunca adjudicadas)

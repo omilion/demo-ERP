@@ -214,6 +214,63 @@ export default function LicitacionDetallePage() {
         </>
       )}
 
+      {data.orden && (
+        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Cadena vinculada</div>
+            <button onClick={() => navigate('/ventas/' + data.orden.id + '/editar')} style={btnSm}>Ver orden →</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, fontSize: 13 }}>
+            <div><span style={{ color: 'var(--text-3)' }}>Orden:</span> <strong>#{data.orden.nInterno || data.orden.id}</strong></div>
+            <div><span style={{ color: 'var(--text-3)' }}>Total:</span> <strong style={{ fontFamily: "'DM Mono', monospace" }}>{fmt(data.orden.total)}</strong></div>
+            <div><span style={{ color: 'var(--text-3)' }}>Estado pago:</span> {data.orden.estadoPago || '—'}</div>
+            <div><span style={{ color: 'var(--text-3)' }}>Estado entrega:</span> {data.orden.estadoEntrega || '—'}</div>
+            <div><span style={{ color: 'var(--text-3)' }}>ODTs:</span> <strong>{(data.odts || []).length}</strong></div>
+            <div><span style={{ color: 'var(--text-3)' }}>Despachos:</span> <strong>{(data.despachos || []).length}</strong></div>
+            <div><span style={{ color: 'var(--text-3)' }}>Guías:</span> <strong>{(data.guias || []).length}</strong></div>
+          </div>
+
+          {(data.odts || []).length > 0 && (
+            <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 6 }}>ODTs ({data.odts.length})</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {data.odts.map(o => (
+                  <button key={o.id} onClick={() => navigate('/taller/' + o.id + '/editar')} style={chip}>
+                    #{o.nInterno || o.id} · {o.estado || '—'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(data.despachos || []).length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 6 }}>Despachos ({data.despachos.length})</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {data.despachos.map(d => (
+                  <span key={d.id} style={chip}>
+                    {d.interno || '#' + d.id} {d.fechaEntrega ? '· ' + new Date(d.fechaEntrega).toLocaleDateString('es-CL') : ''}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(data.guias || []).length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 6 }}>Guías ({data.guias.length})</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {data.guias.map(g => (
+                  <span key={g.id} style={chip}>
+                    Guía {g.folio || '#' + g.id} {g.fechaGuia ? '· ' + new Date(g.fechaGuia).toLocaleDateString('es-CL') : ''}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontWeight: 600, fontSize: 14 }}>Productos cotizados <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>({items.length})</span></div>
@@ -263,6 +320,7 @@ const inputSm = { padding: '6px 8px', borderRadius: 6, border: '1px solid var(--
 const btnTiny = { padding: '3px 6px', fontSize: 11, borderRadius: 4, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer' }
 const btnSm = { padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer' }
 const btnSmPrim = { padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--green-600)', background: 'var(--green-600)', color: '#fff', cursor: 'pointer', fontWeight: 500 }
+const chip = { padding: '4px 10px', fontSize: 12, borderRadius: 999, border: '1px solid var(--border)', background: 'var(--bg-2)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: "'DM Mono', monospace" }
 
 function InfoCard({ label, value, children }) {
   return (

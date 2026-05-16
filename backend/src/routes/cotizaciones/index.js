@@ -93,7 +93,25 @@ export default async function cotizacionesRoutes(fastify) {
         select: { id: true, nombre: true, rut: true, email: true, telefono: true, razonSocial: true },
       })
     }
-    return { ...c, cliente }
+
+    // Attach orden vinculada + ODTs + despachos + guías (vista 360°)
+    let orden = null, odts = [], despachos = [], guias = []
+    if (c.ordenId) {
+      orden = await fastify.prisma.orden.findUnique({
+        where: { id: c.ordenId },
+        include: { items: true },
+      })
+      if (orden) {
+        const total = (orden.items || []).reduce((s, i) => s + (i.cantidad || 0) * (i.precioUnitario || 0), 0) * (1 - (orden.descuentoPct || 0) / 100)
+        orden = { ...orden, total }
+        ;[odts, despachos, guias] = await Promise.all([
+          fastify.prisma.odt.findMany({ where: { ordenId: c.ordenId }, orderBy: { createdAt: 'desc' } }),
+          fastify.prisma.despacho.findMany({ where: { ordenId: c.ordenId }, orderBy: { fechaEntrega: 'desc' } }),
+          fastify.prisma.guiaDespacho.findMany({ where: { ordenId: c.ordenId }, orderBy: { fechaGuia: 'desc' } }),
+        ])
+      }
+    }
+    return { ...c, cliente, orden, odts, despachos, guias }
   })
 
   // ── Create ────────────────────────────────────────────────────────────────
@@ -284,6 +302,9 @@ export default async function cotizacionesRoutes(fastify) {
         items: { create: ordenItems },
       },
       include: { items: true },
+    })
+    await fastify.prisma.cotizacionLicitacion.update({
+      where: { id }, data: { ordenId: orden.id },
     })
     return reply.code(201).send({ orden, faltantes })
   })
