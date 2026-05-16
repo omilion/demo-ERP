@@ -31,7 +31,7 @@ export default async function bitacoraTallerRoutes(fastify) {
     const [items, total] = await Promise.all([
       fastify.prisma.bitacoraTaller.findMany({
         where,
-        include: { odt: { select: { id: true, nombre: true, tipo: true, estado: true } } },
+        include: { odt: { select: { id: true, descripcion: true, tipo: true, estado: true } } },
         orderBy: { fecha: 'desc' }, take: LIMIT, skip,
       }),
       fastify.prisma.bitacoraTaller.count({ where }),

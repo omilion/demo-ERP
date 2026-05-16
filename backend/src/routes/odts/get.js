@@ -18,8 +18,16 @@ export default async function getOdt(fastify) {
     if (o.ordenId) {
       orden = await fastify.prisma.orden.findUnique({
         where: { id: o.ordenId },
-        select: { id: true, tipo: true, estado: true, estadoPago: true, estadoEntrega: true, clienteId: true, createdAt: true, total: true },
+        select: {
+          id: true, nInterno: true, tipo: true, estado: true, estadoPago: true, estadoEntrega: true,
+          clienteId: true, createdAt: true, descuentoPct: true,
+          items: { select: { cantidad: true, precioUnitario: true } },
+        },
       })
+      if (orden) {
+        const subtotal = (orden.items || []).reduce((s, i) => s + (i.cantidad || 0) * (i.precioUnitario || 0), 0)
+        orden = { ...orden, total: subtotal * (1 - (orden.descuentoPct || 0) / 100) }
+      }
       if (orden?.clienteId) {
         const cliente = await fastify.prisma.cliente.findUnique({
           where: { id: orden.clienteId },
