@@ -107,8 +107,21 @@ export default function MatrizVentasPage() {
         : '—' },
     { key: 'estadoEntrega', label: 'Entrega',
       render: v => v ? <Badge tone={toneEntrega(v)}>{v}</Badge> : '—' },
-    { key: 'guias', label: 'Guía',
-      render: v => v ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11 }}>#{v}</span> : '—' },
+    { key: 'guiasCount', label: 'Guías', align: 'center',
+      render: (v, row) => {
+        const list = row.guias || []
+        if (!list.length) return row.guiasLegacy ? <span style={{ fontSize: 11 }}>#{row.guiasLegacy}</span> : '—'
+        const tip = list.map(g => `${g.nGuia} (${new Date(g.fechaGuia).toLocaleDateString('es-CL')})`).join('\n')
+        return <span title={tip} style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, fontWeight: 600 }}>{list.length}× {list[0]?.nGuia}</span>
+      } },
+    { key: 'documentosCount', label: 'Docs', align: 'center',
+      render: (v, row) => {
+        const list = row.documentos || []
+        if (!list.length) return '—'
+        const tipos = [...new Set(list.map(d => d.tipoDocumento).filter(Boolean))].join(', ')
+        const tip = list.map(d => `${d.tipoDocumento || '?'} ${d.nDoc || ''} ${d.estadoPagoDoc || ''}`).join('\n')
+        return <span title={tip} style={{ fontSize: 11, fontWeight: 600 }}>{list.length} <span style={{ color: 'var(--text-3)', fontSize: 10 }}>{tipos}</span></span>
+      } },
     { key: '_acc', label: 'Acciones', render: (_, row) => (
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         <button onClick={e => { e.stopPropagation(); openVenta(row) }} style={btnSm('var(--green-700)')} title="Ver detalle">Ver</button>
@@ -119,7 +132,10 @@ export default function MatrizVentasPage() {
           <button onClick={e => { e.stopPropagation(); navigate(`/ventas/${row.ordenVinculadaId}/editar`) }} style={btnSm('var(--green-700)')} title="Ver venta vinculada">Venta</button>
         )}
         {row.fuente === 'orden' && row.odtCount > 0 && (
-          <button onClick={e => { e.stopPropagation(); navigate(`/odt?ordenId=${row.id}`) }} style={btnSm('var(--amber)')} title={`${row.odtCount} ODT`}>ODT {row.odtCount}</button>
+          <button onClick={e => { e.stopPropagation(); navigate(`/odt?ordenId=${row.id}`) }} style={btnSm('var(--amber)')} title={`${row.odtCount} ODT — ${row.odts.map(o => `#${o.id} ${o.estado || ''}`).join(', ')}`}>ODT {row.odtCount}</button>
+        )}
+        {row.fuente === 'orden' && row.guiasCount > 0 && (
+          <button onClick={e => { e.stopPropagation(); navigate(`/despachos?ordenId=${row.id}`) }} style={btnSm('var(--blue)')} title={`${row.guiasCount} guía(s)`}>Guías</button>
         )}
         {row.fuente === 'orden' && row.nInterno && (
           <button onClick={e => { e.stopPropagation(); navigate(`/caja?nInterno=${row.nInterno}`) }} style={btnSm('var(--text-2)')} title="Pagos / facturación">Pagos</button>
