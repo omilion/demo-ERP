@@ -235,8 +235,9 @@ async function main() {
     check('DELETE /api/telas/:id', [200, 204].includes(r.status))
   } else warn('POST /api/telas', `status=${r.status} ${JSON.stringify(r.body).slice(0, 80)}`)
 
-  // proveedor
-  r = await call('POST', '/api/proveedores', { nombre: `${TAG} prov`, rut: '99999999-9' })
+  // proveedor (rut único)
+  const rutProv = `${Date.now().toString().slice(-7)}-K`
+  r = await call('POST', '/api/proveedores', { nombre: `${TAG} prov`, rut: rutProv })
   const provId = r.body?.id
   if (provId) {
     check('POST /api/proveedores', true, `id=${provId}`)
