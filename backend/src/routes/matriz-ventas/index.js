@@ -58,12 +58,39 @@ export default async function matrizVentasRoutes(fastify) {
       const ordenes = await fastify.prisma.orden.findMany({
         where, include: { items: true }, orderBy: { createdAt: 'desc' }, take: LIMIT,
       })
+      // Lookup clientes + ODT counts en batch
+      const ruts = [...new Set(ordenes.map(o => o.rutCliente).filter(Boolean))]
+      const ordenIds = ordenes.map(o => o.id)
+      const [clientesArr, odtsCount, cotizArr] = await Promise.all([
+        ruts.length ? fastify.prisma.cliente.findMany({
+          where: { rut: { in: ruts } }, select: { rut: true, razonSocial: true, nombre: true },
+        }) : [],
+        ordenIds.length ? fastify.prisma.odt.groupBy({
+          by: ['ordenId'], where: { ordenId: { in: ordenIds } }, _count: { _all: true },
+        }) : [],
+        ordenIds.length ? fastify.prisma.cotizacionLicitacion.findMany({
+          where: { ordenId: { in: ordenIds } }, select: { id: true, idLicitacion: true, ordenId: true },
+        }) : [],
+      ])
+      const clienteMap = Object.fromEntries(clientesArr.map(c => [c.rut, c.razonSocial || c.nombre]))
+      const odtMap = Object.fromEntries(odtsCount.map(o => [o.ordenId, o._count._all]))
+      const cotizMap = Object.fromEntries(cotizArr.map(c => [c.ordenId, { id: c.id, idLicitacion: c.idLicitacion }]))
       for (const o of ordenes) {
         const total = (o.items || []).reduce((s, i) => s + (i.cantidad || 0) * (i.precio || 0), 0) * (1 - (o.descuentoPct || 0) / 100)
+        const abono = o.abono || 0
+        const facturado = o.facturado || 0
+        const saldo = Math.max(0, total - abono)
         results.push({
           fuente: 'orden', id: o.id, nInterno: o.nInterno, fecha: o.createdAt,
-          tipo: o.tipo, cliente: o.rutCliente, ref: o.licitacion || '',
-          total, estado: o.estadoEntrega, pago: o.estadoPago,
+          tipo: o.tipo, cliente: o.rutCliente,
+          nombreCliente: clienteMap[o.rutCliente] || null,
+          ref: o.licitacion || '',
+          total, abono, facturado, saldo,
+          estado: o.estado, estadoEntrega: o.estadoEntrega, pago: o.estadoPago,
+          creadorNombre: o.creadorNombre || null,
+          guias: o.guias || null,
+          odtCount: odtMap[o.id] || 0,
+          cotizacion: cotizMap[o.id] || null,
         })
       }
     }
@@ -114,12 +141,22 @@ export default async function matrizVentasRoutes(fastify) {
       const lics = await fastify.prisma.cotizacionLicitacion.findMany({
         where, include: { items: true }, orderBy: { fecha: 'desc' }, take: LIMIT,
       })
+      const rutsLic = [...new Set(lics.map(l => l.rutCliente).filter(Boolean))]
+      const clientesLic = rutsLic.length ? await fastify.prisma.cliente.findMany({
+        where: { rut: { in: rutsLic } }, select: { rut: true, razonSocial: true, nombre: true },
+      }) : []
+      const clienteMapLic = Object.fromEntries(clientesLic.map(c => [c.rut, c.razonSocial || c.nombre]))
       for (const l of lics) {
         const total = (l.items || []).reduce((s, i) => s + (i.cantAdjudicados || i.cantidad || 0) * (i.precio || 0), 0)
         results.push({
           fuente: 'licitacion', id: l.id, nInterno: null, fecha: l.fecha,
-          tipo: 'Licitación', cliente: l.rutCliente, ref: l.idLicitacion || '',
-          total, estado: l.estado, pago: null,
+          tipo: 'Licitación', cliente: l.rutCliente,
+          nombreCliente: clienteMapLic[l.rutCliente] || null,
+          ref: l.idLicitacion || '',
+          total, abono: 0, facturado: 0, saldo: total,
+          estado: l.estado, estadoEntrega: null, pago: null,
+          creadorNombre: l.usuario || null,
+          ordenVinculadaId: l.ordenId || null,
         })
       }
     }

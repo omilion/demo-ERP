@@ -73,33 +73,59 @@ export default function MatrizVentasPage() {
     })
   }
 
+  const toneEntrega = v => v === 'Entregada' ? 'green' : v === 'Parcial' ? 'amber' : v === 'En despacho' ? 'blue' : 'gray'
+
   const cols = [
     { key: 'fecha', label: 'Fecha',
       render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11 }}>{v ? new Date(v).toLocaleDateString('es-CL') : '—'}</span> },
+    { key: 'nInterno', label: 'N° Int',
+      render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{v || '—'}</span> },
     { key: 'tipo', label: 'Tipo',
       render: v => <Badge tone={v?.includes('Licit') ? 'blue' : v === 'Venta Web' ? 'amber' : v === 'Convenio Marco' ? 'neutral' : 'gray'}>{v}</Badge> },
-    { key: 'nInterno', label: 'N° Interno',
-      render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{v || '—'}</span> },
-    { key: 'ref', label: 'Ref / OC',
+    { key: 'ref', label: 'OC / Ref',
       render: v => <span style={{ fontSize: 12 }}>{v || '—'}</span> },
-    { key: 'cliente', label: 'Cliente / RUT',
-      render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{v || '—'}</span> },
-    { key: 'estado', label: 'Estado',
-      render: v => v ? <Badge tone="neutral">{v}</Badge> : '—' },
+    { key: 'cliente', label: 'Cliente',
+      render: (_, row) => (
+        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+          <span style={{ fontSize: 12, fontWeight: 500 }}>{row.nombreCliente || '—'}</span>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: 'var(--text-3)' }}>{row.cliente || ''}</span>
+        </div>
+      ) },
+    { key: 'creadorNombre', label: 'Vendedor',
+      render: v => <span style={{ fontSize: 11 }}>{v || '—'}</span> },
+    { key: 'total', label: 'Total', align: 'right',
+      render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600, color: 'var(--green-700)' }}>{fmt(v)}</span> },
+    { key: 'abono', label: 'Abono', align: 'right',
+      render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11 }}>{v ? fmt(v) : '—'}</span> },
+    { key: 'facturado', label: 'Facturado', align: 'right',
+      render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11 }}>{v ? fmt(v) : '—'}</span> },
+    { key: 'saldo', label: 'Saldo', align: 'right',
+      render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: v > 0 ? 'var(--red)' : 'var(--text-3)' }}>{v != null ? fmt(v) : '—'}</span> },
     { key: 'pago', label: 'Pago',
       render: v => v
         ? <Badge tone={v === 'Pagada' ? 'green' : v === 'Parcial' ? 'amber' : 'red'}>{v}</Badge>
         : '—' },
-    { key: 'total', label: 'Total', align: 'right',
-      render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600, color: 'var(--green-700)' }}>{fmt(v)}</span> },
-    { key: '_acc', label: '', render: (_, row) => (
-      <div style={{ display: 'flex', gap: 4 }}>
-        <button onClick={e => { e.stopPropagation(); openVenta(row) }} style={btnSm('var(--green-700)')}>Ver</button>
+    { key: 'estadoEntrega', label: 'Entrega',
+      render: v => v ? <Badge tone={toneEntrega(v)}>{v}</Badge> : '—' },
+    { key: 'guias', label: 'Guía',
+      render: v => v ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11 }}>#{v}</span> : '—' },
+    { key: '_acc', label: 'Acciones', render: (_, row) => (
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        <button onClick={e => { e.stopPropagation(); openVenta(row) }} style={btnSm('var(--green-700)')} title="Ver detalle">Ver</button>
+        {row.fuente === 'orden' && row.cotizacion && (
+          <button onClick={e => { e.stopPropagation(); navigate(`/licitaciones/${row.cotizacion.id}`) }} style={btnSm('var(--blue)')} title={`Licitación ${row.cotizacion.idLicitacion}`}>Lic</button>
+        )}
+        {row.fuente === 'licitacion' && row.ordenVinculadaId && (
+          <button onClick={e => { e.stopPropagation(); navigate(`/ventas/${row.ordenVinculadaId}/editar`) }} style={btnSm('var(--green-700)')} title="Ver venta vinculada">Venta</button>
+        )}
+        {row.fuente === 'orden' && row.odtCount > 0 && (
+          <button onClick={e => { e.stopPropagation(); navigate(`/odt?ordenId=${row.id}`) }} style={btnSm('var(--amber)')} title={`${row.odtCount} ODT`}>ODT {row.odtCount}</button>
+        )}
         {row.fuente === 'orden' && row.nInterno && (
-          <button onClick={e => { e.stopPropagation(); navigate(`/caja?nInterno=${row.nInterno}`) }} style={btnSm('var(--text-2)')} title="Seguimiento pagos">Pagos</button>
+          <button onClick={e => { e.stopPropagation(); navigate(`/caja?nInterno=${row.nInterno}`) }} style={btnSm('var(--text-2)')} title="Pagos / facturación">Pagos</button>
         )}
         {isAdmin && row.fuente === 'orden' && (
-          <button onClick={e => { e.stopPropagation(); eliminarFila(row) }} style={btnSm('var(--red)')}>×</button>
+          <button onClick={e => { e.stopPropagation(); eliminarFila(row) }} style={btnSm('var(--red)')} title="Eliminar">×</button>
         )}
       </div>
     )},
