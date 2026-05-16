@@ -346,33 +346,35 @@ model RelacionProducto {
 // ── VENTAS ───────────────────────────────────────────────────────────
 
 model Orden {
-  id                 Int          @id @default(autoincrement())
-  nInterno           Int?         @unique @map("n_interno")
+  id                 Int            @id @default(autoincrement())
+  nInterno           Int?           @unique @map("n_interno")
   tipo               String
-  estado             String       @default("Activa")
-  estadoPago         String       @default("No pagada") @map("estado_pago")
-  estadoEntrega      String       @default("Pendiente entrega") @map("estado_entrega")
-  fechaEstadoEntrega DateTime?    @map("fecha_estado_entrega")
-  clienteId          Int?         @map("cliente_id")
-  rutCliente         String?      @map("rut_cliente")
-  emailCliente       String?      @map("email_cliente")
-  userId             Int          @map("user_id")
-  sucursalId         Int?         @map("sucursal_id")
-  descuentoPct       Float        @default(0) @map("descuento_pct")
-  abono              Float        @default(0)
+  estado             String         @default("Activa")
+  estadoPago         String         @default("No pagada") @map("estado_pago")
+  estadoEntrega      String         @default("Pendiente entrega") @map("estado_entrega")
+  fechaEstadoEntrega DateTime?      @map("fecha_estado_entrega")
+  clienteId          Int?           @map("cliente_id")
+  rutCliente         String?        @map("rut_cliente")
+  emailCliente       String?        @map("email_cliente")
+  userId             Int            @map("user_id")
+  sucursalId         Int?           @map("sucursal_id")
+  descuentoPct       Float          @default(0) @map("descuento_pct")
+  abono              Float          @default(0)
   facturado          Float?
   guias              Int?
   licitacion         String?
   observaciones      String?
-  creadorNombre      String?      @map("creador_nombre")
-  requiereAprobacion Boolean      @default(false) @map("requiere_aprobacion")
-  nImpresiones       Int          @default(0) @map("n_impresiones")
-  eliminada          Boolean      @default(false)
-  userMod            String?      @map("user_mod")
+  creadorNombre      String?        @map("creador_nombre")
+  requiereAprobacion Boolean        @default(false) @map("requiere_aprobacion")
+  nImpresiones       Int            @default(0) @map("n_impresiones")
+  eliminada          Boolean        @default(false)
+  userMod            String?        @map("user_mod")
   fecham             DateTime?
-  createdAt          DateTime     @default(now()) @map("created_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
   items              OrdenItem[]
   cargos             OrdenCargo[]
+  despachos          Despacho[]
+  guiasDespacho      GuiaDespacho[]
 
   @@index([nInterno])
   @@index([rutCliente])
@@ -420,11 +422,11 @@ model CobranzaHistorico {
   ejecutiva    String?
   interno      Int?
   ndoc         Int?
-  monto        Int?
-  montoMenos   Int?      @map("monto_menos")
-  nc           Int?
-  valorFactura Int?      @map("valor_factura")
-  multas       Int?
+  monto        Float?
+  montoMenos   Float?    @map("monto_menos")
+  nc           Float?
+  valorFactura Float?    @map("valor_factura")
+  multas       Float?
   cliente      String?
   rut          String?
   fechaFactura DateTime? @map("fecha_factura")
@@ -460,6 +462,7 @@ model CotizacionLicitacion {
   ordenId       Int?                       @map("orden_id")
   sucursalId    Int?                       @map("sucursal_id")
   referencia    String?
+  descuentoPct  Float                      @default(0) @map("descuento_pct")
   items         CotizacionLicitacionItem[]
 
   @@index([idLicitacion])
@@ -616,7 +619,7 @@ model CrmRegistro {
   fechaCotizacion DateTime? @map("fecha_cotizacion")
   resultado       String?
   comentarios     String?
-  estado          Int?
+  estado          String?
   usuario         String?
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
@@ -762,9 +765,9 @@ model BitacoraTaller {
 }
 
 model CategoriaBodegaTaller {
-  id            Int                       @id @default(autoincrement())
-  nombre        String                    @unique
-  activo        Boolean                   @default(true)
+  id            Int                        @id @default(autoincrement())
+  nombre        String                     @unique
+  activo        Boolean                    @default(true)
   subcategorias SubcategoriaBodegaTaller[]
 
   @@map("categorias_bodega_taller")
@@ -773,43 +776,43 @@ model CategoriaBodegaTaller {
 
 // G14: usuarios externos web tienda + banners promocionales
 model UsuarioWeb {
-  id           Int       @id @default(autoincrement())
-  email        String    @unique
-  passwordHash String    @map("password_hash")
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
   nombre       String
   rut          String?
   telefono     String?
   direccion    String?
   comuna       String?
   region       String?
-  activo       Boolean   @default(true)
-  createdAt    DateTime  @default(now()) @map("created_at")
+  activo       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
 
   @@map("usuarios_web")
   @@schema("catalogo")
 }
 
 model Banner {
-  id          Int       @id @default(autoincrement())
-  titulo      String
-  subtitulo   String?
-  imagenUrl   String?   @map("imagen_url")
-  link        String?
-  orden       Int       @default(0)
-  activo      Boolean   @default(true)
-  desde       DateTime?
-  hasta       DateTime?
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id        Int       @id @default(autoincrement())
+  titulo    String
+  subtitulo String?
+  imagenUrl String?   @map("imagen_url")
+  link      String?
+  orden     Int       @default(0)
+  activo    Boolean   @default(true)
+  desde     DateTime?
+  hasta     DateTime?
+  createdAt DateTime  @default(now()) @map("created_at")
 
   @@map("banners")
   @@schema("catalogo")
 }
 
 model SubcategoriaBodegaTaller {
-  id          Int                  @id @default(autoincrement())
+  id          Int                   @id @default(autoincrement())
   nombre      String
-  categoriaId Int                  @map("categoria_id")
-  activo      Boolean              @default(true)
+  categoriaId Int                   @map("categoria_id")
+  activo      Boolean               @default(true)
   categoria   CategoriaBodegaTaller @relation(fields: [categoriaId], references: [id])
 
   @@index([categoriaId])
@@ -978,6 +981,7 @@ model GuiaDespacho {
   fechaGuia DateTime @map("fecha_guia")
   origen    String?
   createdAt DateTime @default(now()) @map("created_at")
+  orden     Orden?   @relation(fields: [ordenId], references: [id], onDelete: SetNull)
 
   @@index([nInterno])
   @@index([ordenId])
@@ -1003,6 +1007,7 @@ model Despacho {
   tieneMulta   Boolean   @default(false) @map("tiene_multa")
   usuario      String?
   createdAt    DateTime  @default(now()) @map("created_at")
+  orden        Orden?    @relation(fields: [ordenId], references: [id], onDelete: SetNull)
 
   @@index([ordenId])
   @@map("despachos")

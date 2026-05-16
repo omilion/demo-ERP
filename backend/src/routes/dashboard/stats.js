@@ -38,8 +38,8 @@ export default async function dashboardStats(fastify) {
         WHERE activo = true
         GROUP BY bodega
       `,
-      p.crmRegistro.count({ where: { estado: 0 } }),
-      p.crmRegistro.count({ where: { estado: 1 } }),
+      p.crmRegistro.count({ where: { estado: '0' } }),
+      p.crmRegistro.count({ where: { estado: '1' } }),
       p.crmRegistro.count({ where: { prioridad: { equals: 'Alta', mode: 'insensitive' } } }),
       p.proveedor.count({ where: { activo: true } }),
       p.$queryRaw`
