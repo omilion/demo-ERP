@@ -14,6 +14,7 @@ const PERMISSIONS = {
     bodega:   ['read', 'write', 'delete'],
     catalogo: ['read', 'write'],
     despacho: ['read', 'write'],
+    ventas:   ['read'],
     clientes: ['read'],
   },
   cajero:       {
