@@ -127,7 +127,7 @@ export default async function reportesRoutes(fastify) {
     })
     const rows = ventas.map(o => ({
       ...o,
-      total: (o.items || []).reduce((s, i) => s + (i.cantidad || 0) * (i.precio || 0), 0) * (1 - (o.descuentoPct || 0) / 100),
+      total: (o.items || []).reduce((s, i) => s + (i.cantidad || 0) * (i.precioUnitario || 0), 0) * (1 - (o.descuentoPct || 0) / 100),
     }))
     const csv = rowsToCsv(rows, [
       { key: 'nInterno', label: 'N° Interno' },

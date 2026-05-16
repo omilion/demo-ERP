@@ -88,7 +88,7 @@ export default async function matrizVentasRoutes(fastify) {
       const docsMap = {}; for (const m of movsArr) (docsMap[m.ordenId] ||= []).push({ tipoDocumento: m.tipoDocumento, nDoc: m.nDoc, monto: m.monto, estadoPagoDoc: m.estadoPagoDoc })
       const cotizMap = Object.fromEntries(cotizArr.map(c => [c.ordenId, { id: c.id, idLicitacion: c.idLicitacion }]))
       for (const o of ordenes) {
-        const total = (o.items || []).reduce((s, i) => s + (i.cantidad || 0) * (i.precio || 0), 0) * (1 - (o.descuentoPct || 0) / 100)
+        const total = (o.items || []).reduce((s, i) => s + (i.cantidad || 0) * (i.precioUnitario || 0), 0) * (1 - (o.descuentoPct || 0) / 100)
         const abono = o.abono || 0
         const facturado = o.facturado || 0
         const saldo = Math.max(0, total - abono)
@@ -203,7 +203,7 @@ export default async function matrizVentasRoutes(fastify) {
       fastify.prisma.ordenCompraOnline.findMany({ where: dateFilter('fechaHora') }),
       fastify.prisma.cotizacionLicitacion.findMany({ where: dateFilter('fecha'), include: { items: true } }),
     ])
-    const tOrden = ordenes.reduce((s, o) => s + (o.items || []).reduce((a, i) => a + (i.cantidad || 0) * (i.precio || 0), 0) * (1 - (o.descuentoPct || 0) / 100), 0)
+    const tOrden = ordenes.reduce((s, o) => s + (o.items || []).reduce((a, i) => a + (i.cantidad || 0) * (i.precioUnitario || 0), 0) * (1 - (o.descuentoPct || 0) / 100), 0)
     const tOc = ocs.reduce((s, o) => s + (o.total || 0), 0)
     const tLic = lics.reduce((s, l) => s + (l.items || []).reduce((a, i) => a + (i.cantAdjudicados || 0) * (i.precio || 0), 0), 0)
     return {
