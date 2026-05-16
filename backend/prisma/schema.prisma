@@ -922,8 +922,14 @@ model Tela {
   codigo      String           @unique
   tipo        String?
   nombre      String?
+  color       String?
+  proveedor   String?
   ubicacion   String?
+  ancho       Float?
+  gramaje     Float?
+  precio      Float?
   stock       Float            @default(0)
+  stockMin    Float            @default(0) @map("stock_min")
   activo      Boolean          @default(true)
   createdAt   DateTime         @default(now()) @map("created_at")
   movimientos TelaMovimiento[]
