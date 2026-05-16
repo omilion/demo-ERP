@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, closestCenter } from '@dnd-kit/core'
 import { useDroppable, useDraggable } from '@dnd-kit/core'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../components/shared'
-import { useCrm, useCrmEjecutivas, useCrmPatch } from '../../api/crm'
+import { useCrm, useCrmEjecutivas, useCrmPatch, useCrmOrdenLink } from '../../api/crm'
+import { Link } from 'react-router-dom'
 
 const ESTADOS = [
   { id: 0, label: 'Pendiente',   tone: 'amber', color: '#f59e0b', bg: '#fffbeb' },
@@ -86,17 +87,169 @@ function CrmCard({ item, isDragging }) {
 }
 
 // ── Draggable wrapper ──────────────────────────────────────────────────────────
-function DraggableCard({ item }) {
+function DraggableCard({ item, onOpen }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: item.id })
+  const downRef = useRef({ x: 0, y: 0, t: 0 })
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes} style={{ marginBottom: 8 }}>
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      onPointerDown={e => { downRef.current = { x: e.clientX, y: e.clientY, t: Date.now() } }}
+      onPointerUp={e => {
+        const d = downRef.current
+        const dx = Math.abs(e.clientX - d.x), dy = Math.abs(e.clientY - d.y)
+        if (dx < 5 && dy < 5 && Date.now() - d.t < 300) onOpen(item)
+      }}
+      style={{ marginBottom: 8 }}
+    >
       <CrmCard item={item} isDragging={isDragging} />
     </div>
   )
 }
 
+// ── Detail modal ───────────────────────────────────────────────────────────────
+function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
+  const [form, setForm] = useState(() => ({
+    estado:          item.estado ?? 0,
+    prioridad:       item.prioridad || '',
+    ejecutiva:       item.ejecutiva || '',
+    fechaProximo:    item.fechaProximo ? item.fechaProximo.slice(0, 10) : '',
+    fechaCotizacion: item.fechaCotizacion ? item.fechaCotizacion.slice(0, 10) : '',
+    nombre:          item.nombre || '',
+    rsocial:         item.rsocial || '',
+    rut:             item.rut || '',
+    email:           item.email || '',
+    telefono:        item.telefono || '',
+    ncotizacion:     item.ncotizacion || '',
+    accion:          item.accion || '',
+    resultado:       item.resultado || '',
+    comentarios:     item.comentarios || '',
+  }))
+  const patch = useCrmPatch()
+  const { data: ordenLink } = useCrmOrdenLink(item.id, true)
+
+  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  async function save() {
+    await patch.mutateAsync({ id: item.id, ...form, estado: parseInt(form.estado) })
+    onSaved?.()
+    onClose()
+  }
+
+  const Field = ({ label, children, full }) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: full ? '1 / -1' : 'auto' }}>
+      <label style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>{label}</label>
+      {children}
+    </div>
+  )
+  const inputStyle = { padding: '7px 10px', fontSize: 13, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)', width: '100%', fontFamily: 'inherit' }
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'oklch(0 0 0/0.45)', zIndex: 9000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: '#fff', borderRadius: 14, maxWidth: 700, width: '100%',
+        maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 64px oklch(0 0 0/0.25)',
+      }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-1)' }}>Detalle registro CRM</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>#{item.id}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-3)', padding: 0, width: 28, height: 28 }}>×</button>
+        </div>
+
+        {ordenLink?.orden && (
+          <div style={{ padding: '10px 20px', background: 'var(--green-50, #f0fdf4)', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
+            <span style={{ color: 'var(--text-2)' }}>Cotización vinculada a orden: </span>
+            <Link to={`/ventas/${ordenLink.orden.id}/editar`} style={{ color: 'var(--green-700)', fontWeight: 600, fontFamily: "'DM Mono', monospace" }}>
+              #{ordenLink.orden.nInterno} → ver orden
+            </Link>
+            <span style={{ marginLeft: 10, fontSize: 11, color: 'var(--text-3)' }}>
+              {ordenLink.orden.estado} · pago: {ordenLink.orden.estadoPago} · entrega: {ordenLink.orden.estadoEntrega}
+            </span>
+          </div>
+        )}
+
+        <div style={{ padding: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <Field label="Estado">
+            <select value={form.estado} onChange={set('estado')} style={inputStyle}>
+              {ESTADOS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Prioridad">
+            <select value={form.prioridad} onChange={set('prioridad')} style={inputStyle}>
+              <option value="">—</option>
+              <option value="Alta">Alta</option>
+              <option value="Media">Media</option>
+              <option value="Baja">Baja</option>
+            </select>
+          </Field>
+
+          <Field label="Ejecutiva">
+            <input list="crm-ejecutivas" value={form.ejecutiva} onChange={set('ejecutiva')} style={inputStyle} />
+            <datalist id="crm-ejecutivas">
+              {ejecutivas.map(e => <option key={e.ejecutiva} value={e.ejecutiva} />)}
+            </datalist>
+          </Field>
+          <Field label="N° cotización">
+            <input value={form.ncotizacion} onChange={set('ncotizacion')} style={{ ...inputStyle, fontFamily: "'DM Mono', monospace" }} />
+          </Field>
+
+          <Field label="Fecha cotización">
+            <input type="date" value={form.fechaCotizacion} onChange={set('fechaCotizacion')} style={inputStyle} />
+          </Field>
+          <Field label="Próximo contacto">
+            <input type="date" value={form.fechaProximo} onChange={set('fechaProximo')} style={inputStyle} />
+          </Field>
+
+          <Field label="Contacto">
+            <input value={form.nombre} onChange={set('nombre')} style={inputStyle} />
+          </Field>
+          <Field label="Razón social">
+            <input value={form.rsocial} onChange={set('rsocial')} style={inputStyle} />
+          </Field>
+
+          <Field label="RUT">
+            <input value={form.rut} disabled style={{ ...inputStyle, background: 'var(--surface)', color: 'var(--text-3)' }} />
+          </Field>
+          <Field label="Teléfono">
+            <input value={form.telefono} onChange={set('telefono')} style={inputStyle} />
+          </Field>
+
+          <Field label="Email" full>
+            <input type="email" value={form.email} onChange={set('email')} style={inputStyle} />
+          </Field>
+
+          <Field label="Acción / siguiente paso" full>
+            <textarea value={form.accion} onChange={set('accion')} rows={2} style={{ ...inputStyle, resize: 'vertical' }} />
+          </Field>
+
+          <Field label="Resultado última gestión" full>
+            <textarea value={form.resultado} onChange={set('resultado')} rows={2} style={{ ...inputStyle, resize: 'vertical' }} />
+          </Field>
+
+          <Field label="Comentarios internos" full>
+            <textarea value={form.comentarios} onChange={set('comentarios')} rows={3} style={{ ...inputStyle, resize: 'vertical' }} placeholder="Notas privadas del equipo…" />
+          </Field>
+        </div>
+
+        <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <Btn variant="secondary" size="sm" onClick={onClose}>Cancelar</Btn>
+          <Btn variant="primary" size="sm" onClick={save} disabled={patch.isPending}>
+            {patch.isPending ? 'Guardando…' : 'Guardar'}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Kanban column ──────────────────────────────────────────────────────────────
-function KanbanColumn({ estado, items, isOver }) {
+function KanbanColumn({ estado, items, isOver, onOpen }) {
   const { setNodeRef } = useDroppable({ id: String(estado.id) })
   return (
     <div ref={setNodeRef} style={{
@@ -138,14 +291,14 @@ function KanbanColumn({ estado, items, isOver }) {
             Sin registros
           </div>
         )}
-        {items.map(item => <DraggableCard key={item.id} item={item} />)}
+        {items.map(item => <DraggableCard key={item.id} item={item} onOpen={onOpen} />)}
       </div>
     </div>
   )
 }
 
 // ── Table view ─────────────────────────────────────────────────────────────────
-function TableView({ items, total, limit }) {
+function TableView({ items, total, limit, onOpen }) {
   const cols = [
     {
       key: 'fecha', label: 'Fecha',
@@ -183,7 +336,7 @@ function TableView({ items, total, limit }) {
   ]
   return (
     <>
-      <Table columns={cols} rows={items} emptyMessage="Sin registros para este filtro" />
+      <Table columns={cols} rows={items} onRowClick={onOpen} emptyMessage="Sin registros para este filtro" />
       {total > limit && (
         <div style={{ padding: '10px 20px', textAlign: 'center', fontSize: 12, color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>
           Mostrando {limit} de {total.toLocaleString('es-CL')} registros. Usa los filtros para acotar.
@@ -204,6 +357,7 @@ export default function CrmPage() {
   const [fechaHasta, setFechaHasta]   = useState('')
   const [activeId, setActiveId]       = useState(null)
   const [overId, setOverId]           = useState(null)
+  const [selected, setSelected]       = useState(null)
   const ref = useRef(null)
 
   useEffect(() => {
@@ -347,6 +501,7 @@ export default function CrmPage() {
                   estado={estado}
                   items={byEstado[estado.id] ?? []}
                   isOver={overId === String(estado.id)}
+                  onOpen={setSelected}
                 />
               ))}
             </div>
@@ -363,9 +518,17 @@ export default function CrmPage() {
         <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
           {isLoading
             ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-            : <TableView items={items} total={total} limit={result.limit} />
+            : <TableView items={items} total={total} limit={result.limit} onOpen={setSelected} />
           }
         </div>
+      )}
+
+      {selected && (
+        <CrmDetailModal
+          item={selected}
+          ejecutivas={ejecutivas}
+          onClose={() => setSelected(null)}
+        />
       )}
     </main>
   )

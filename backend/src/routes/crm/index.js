@@ -39,20 +39,45 @@ export default async function crmRoutes(fastify) {
       return { items, total, limit: LIMIT }
     })
 
-    // PATCH /api/crm/:id — update estado (and optionally other fields)
+    // PATCH /api/crm/:id — update editable fields
     f.patch('/:id', {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],
     }, async (request, reply) => {
       const { id } = request.params
-      const { estado, prioridad, fechaProximo, resultado } = request.body ?? {}
+      const b = request.body ?? {}
       const data = {}
-      if (estado !== undefined) data.estado = parseInt(estado)
-      if (prioridad !== undefined) data.prioridad = prioridad
-      if (fechaProximo !== undefined) data.fechaProximo = fechaProximo ? new Date(fechaProximo) : null
-      if (resultado !== undefined) data.resultado = resultado
+      if (b.estado !== undefined) data.estado = b.estado === null ? null : parseInt(b.estado)
+      if (b.prioridad !== undefined) data.prioridad = b.prioridad || null
+      if (b.fechaProximo !== undefined) data.fechaProximo = b.fechaProximo ? new Date(b.fechaProximo) : null
+      if (b.fecha !== undefined) data.fecha = b.fecha ? new Date(b.fecha) : null
+      if (b.fechaCotizacion !== undefined) data.fechaCotizacion = b.fechaCotizacion ? new Date(b.fechaCotizacion) : null
+      if (b.resultado !== undefined) data.resultado = b.resultado || null
+      if (b.comentarios !== undefined) data.comentarios = b.comentarios || null
+      if (b.accion !== undefined) data.accion = b.accion || null
+      if (b.ejecutiva !== undefined) data.ejecutiva = b.ejecutiva || null
+      if (b.nombre !== undefined) data.nombre = b.nombre || null
+      if (b.rsocial !== undefined) data.rsocial = b.rsocial || null
+      if (b.email !== undefined) data.email = b.email || null
+      if (b.telefono !== undefined) data.telefono = b.telefono || null
+      if (b.ncotizacion !== undefined) data.ncotizacion = b.ncotizacion || null
       if (Object.keys(data).length === 0) return reply.status(400).send({ error: 'Nothing to update' })
       const updated = await f.prisma.crmRegistro.update({ where: { id: parseInt(id) }, data })
       return updated
+    })
+
+    // GET /api/crm/:id/orden — buscar orden v2 por nInterno = ncotizacion
+    f.get('/:id/orden', {
+      preHandler: [f.authenticate, f.rbac('ventas', 'read')],
+    }, async (request) => {
+      const id = parseInt(request.params.id)
+      const c = await f.prisma.crmRegistro.findUnique({ where: { id }, select: { ncotizacion: true } })
+      if (!c?.ncotizacion) return { orden: null }
+      const ni = c.ncotizacion.trim()
+      const orden = await f.prisma.orden.findFirst({
+        where: { nInterno: ni },
+        select: { id: true, nInterno: true, tipo: true, estado: true, estadoPago: true, estadoEntrega: true, createdAt: true, clienteId: true },
+      })
+      return { orden }
     })
 
     // GET /api/crm/ejecutivas — unique list

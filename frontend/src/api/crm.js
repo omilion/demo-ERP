@@ -23,3 +23,11 @@ export const useCrmPatch = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['crm'] }),
   })
 }
+
+export const useCrmOrdenLink = (id, enabled) =>
+  useQuery({
+    queryKey: ['crm', 'orden-link', id],
+    queryFn: () => api.get(`/crm/${id}/orden`).then(r => r.data),
+    enabled: !!id && enabled,
+    staleTime: 60_000,
+  })

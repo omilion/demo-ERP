@@ -615,6 +615,7 @@ model CrmRegistro {
   ejecutiva       String?
   fechaCotizacion DateTime? @map("fecha_cotizacion")
   resultado       String?
+  comentarios     String?
   estado          Int?
   usuario         String?
   createdAt       DateTime  @default(now()) @map("created_at")
