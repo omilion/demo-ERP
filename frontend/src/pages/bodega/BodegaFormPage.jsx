@@ -246,10 +246,12 @@ export default function BodegaFormPage() {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <FormField label="Foto (URL miniatura)" hint="JPG/PNG público">
-              <Input value={data.fotoUrl} onChange={v => set('fotoUrl', v)} placeholder="https://..." />
+              <Input value={data.fotoUrl} onChange={v => set('fotoUrl', v)} placeholder="/uploads/productos/chicas/123-1.jpeg" />
+              {data.fotoUrl && <img src={data.fotoUrl} alt="" style={{ marginTop: 8, maxWidth: 120, maxHeight: 120, borderRadius: 6, border: '1px solid var(--border)' }} onError={e => { e.currentTarget.style.display = 'none' }} />}
             </FormField>
             <FormField label="Foto grande (URL)">
-              <Input value={data.fotoUrlGrande} onChange={v => set('fotoUrlGrande', v)} placeholder="https://..." />
+              <Input value={data.fotoUrlGrande} onChange={v => set('fotoUrlGrande', v)} placeholder="/uploads/productos/grandes/123-1.jpeg" />
+              {data.fotoUrlGrande && <img src={data.fotoUrlGrande} alt="" style={{ marginTop: 8, maxWidth: 200, maxHeight: 200, borderRadius: 6, border: '1px solid var(--border)' }} onError={e => { e.currentTarget.style.display = 'none' }} />}
             </FormField>
           </div>
           <FormField label="Descripción web" hint="Texto largo para tienda">

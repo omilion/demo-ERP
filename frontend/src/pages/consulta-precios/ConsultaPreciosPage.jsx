@@ -57,20 +57,23 @@ export default function ConsultaPreciosPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--bg)' }}>
-              {['Código', 'Cód. Barra', 'Nombre', 'Categoría', 'Proveedor', 'Stock', 'Precio Lista', 'Precio Marco'].map(h => (
+              {['', 'Código', 'Cód. Barra', 'Nombre', 'Categoría', 'Proveedor', 'Stock', 'Precio Lista', 'Precio Marco'].map(h => (
                 <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--text-3)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.3, borderBottom: '1px solid var(--border)' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {isLoading && (
-              <tr><td colSpan={8} style={{ padding: 30, textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</td></tr>
+              <tr><td colSpan={9} style={{ padding: 30, textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</td></tr>
             )}
             {!isLoading && items.length === 0 && (
-              <tr><td colSpan={8} style={{ padding: 30, textAlign: 'center', color: 'var(--text-3)' }}>Sin resultados</td></tr>
+              <tr><td colSpan={9} style={{ padding: 30, textAlign: 'center', color: 'var(--text-3)' }}>Sin resultados</td></tr>
             )}
             {items.map(p => (
               <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: '6px 10px' }}>{p.fotoUrl
+                  ? <img src={p.fotoUrl} alt="" loading="lazy" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} onError={e => { e.currentTarget.style.display = 'none' }} />
+                  : <div style={{ width: 36, height: 36, borderRadius: 4, background: 'var(--border)' }} />}</td>
                 <td style={{ padding: '9px 14px', fontFamily: "'DM Mono', monospace", color: 'var(--text-2)' }}>{p.codigoInterno}</td>
                 <td style={{ padding: '9px 14px', fontFamily: "'DM Mono', monospace", color: 'var(--text-3)' }}>{p.codigoBarra || '—'}</td>
                 <td style={{ padding: '9px 14px', color: 'var(--text-1)' }}>{p.nombre}</td>

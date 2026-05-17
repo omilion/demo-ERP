@@ -47,6 +47,9 @@ export default function BodegaPage() {
   const valorInventario = productos.reduce((sum, p) => sum + p.precioLista * p.stock, 0)
 
   const cols = [
+    { key: 'fotoUrl', label: '', render: v => v
+      ? <img src={v} alt="" loading="lazy" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} onError={e => { e.currentTarget.style.display = 'none' }} />
+      : <div style={{ width: 36, height: 36, borderRadius: 4, background: 'var(--border)' }} /> },
     { key: 'codigoInterno', label: 'Código', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--text-2)' }}>{v}</span> },
     { key: 'nombre', label: 'Producto', wrap: true },
     { key: 'categoria', label: 'Categoría', render: v => v ? <Badge tone="gray">{v}</Badge> : null },
