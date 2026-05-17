@@ -39,6 +39,8 @@ import ConsultaPreciosPage from './pages/consulta-precios/ConsultaPreciosPage'
 import ReportesLicitacionesPage from './pages/reportes-licitaciones/ReportesLicitacionesPage'
 import UsuariosPage from './pages/usuarios/UsuariosPage'
 import RrhhPage from './pages/rrhh/RrhhPage'
+import IntegridadPage from './pages/admin/IntegridadPage'
+import AuditoriaPage from './pages/admin/AuditoriaPage'
 
 const ALL = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
 
@@ -94,6 +96,8 @@ export const router = createBrowserRouter([
       { path: 'consulta-precios', element: <ProtectedRoute allowedRoles={ALL}><ConsultaPreciosPage /></ProtectedRoute> },
       { path: 'reportes/licitaciones', element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><ReportesLicitacionesPage /></ProtectedRoute> },
       { path: 'rrhh', element: <ProtectedRoute allowedRoles={['admin', 'rrhh', 'solo_lectura']}><RrhhPage /></ProtectedRoute> },
+      { path: 'admin/integridad', element: <ProtectedRoute allowedRoles={['admin']}><IntegridadPage /></ProtectedRoute> },
+      { path: 'admin/auditoria',  element: <ProtectedRoute allowedRoles={['admin']}><AuditoriaPage /></ProtectedRoute> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

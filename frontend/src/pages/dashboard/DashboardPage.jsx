@@ -252,6 +252,9 @@ export default function DashboardPage() {
             <ActionRow icon="lock" label="Accesos" onClick={() => navigate('/accesos')} />
             <ActionRow icon="settings" label="Configuración" onClick={() => navigate('/config')} />
             <ActionRow icon="user" label="RRHH Trabajadores" onClick={() => navigate('/rrhh')} />
+            <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
+            <ActionRow icon="alertTriangle" label="Integridad de Datos" onClick={() => navigate('/admin/integridad')} />
+            <ActionRow icon="fileText" label="Auditoría de Actividad" onClick={() => navigate('/admin/auditoria')} />
           </SectionCard>
         )}
       </div>

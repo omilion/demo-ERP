@@ -4,6 +4,7 @@ import corsPlugin from './plugins/cors.js'
 import cookiePlugin from './plugins/cookie.js'
 import jwtPlugin from './plugins/jwt.js'
 import prismaPlugin from './plugins/prisma.js'
+import auditPlugin from './plugins/audit.js'
 import authRoutes from './routes/auth/index.js'
 import productosRoutes from './routes/productos/index.js'
 import clientesRoutes from './routes/clientes/index.js'
@@ -39,6 +40,7 @@ import usuariosRoutes from './routes/usuarios/index.js'
 import bannersRoutes from './routes/banners/index.js'
 import usuariosWebRoutes from './routes/usuarios-web/index.js'
 import rrhhRoutes from './routes/rrhh/index.js'
+import adminRoutes from './routes/admin/index.js'
 import { decorateRbac } from './middleware/rbac.js'
 
 export function buildApp(opts = {}) {
@@ -58,6 +60,7 @@ export function buildApp(opts = {}) {
   app.register(cookiePlugin)
   app.register(jwtPlugin)
   app.register(prismaPlugin)
+  app.register(auditPlugin)
   app.register(authRoutes, { prefix: '/api/auth' })
   app.register(productosRoutes, { prefix: '/api/productos' })
   app.register(clientesRoutes, { prefix: '/api/clientes' })
@@ -93,6 +96,7 @@ export function buildApp(opts = {}) {
   app.register(bannersRoutes, { prefix: '/api/banners' })
   app.register(usuariosWebRoutes, { prefix: '/api/usuarios-web' })
   app.register(rrhhRoutes, { prefix: '/api/rrhh' })
+  app.register(adminRoutes, { prefix: '/api/admin' })
 
   app.get('/api/health', async () => ({ status: 'ok' }))
 
