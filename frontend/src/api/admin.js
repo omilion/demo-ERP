@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from './client'
 
 export function useIntegridadResumen() {
@@ -14,6 +14,38 @@ export function useIntegridadDetalle(tipo, enabled = true) {
     queryKey: ['admin', 'integridad', tipo],
     queryFn: () => api.get(`/admin/integridad/${tipo}`).then(r => r.data),
     enabled: !!tipo && enabled,
+  })
+}
+
+export function useReasignarOrdenItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, producto_id }) => api.patch(`/admin/integridad/orden-item/${id}`, { producto_id }).then(r => r.data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin'] }) },
+  })
+}
+
+export function useEliminarOrdenItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/admin/integridad/orden-item/${id}`).then(r => r.data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin'] }) },
+  })
+}
+
+export function useReasignarOdtItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, producto_id }) => api.patch(`/admin/integridad/odt-item/${id}`, { producto_id }).then(r => r.data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin'] }) },
+  })
+}
+
+export function useEliminarOdtItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/admin/integridad/odt-item/${id}`).then(r => r.data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin'] }) },
   })
 }
 

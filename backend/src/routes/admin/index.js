@@ -87,6 +87,40 @@ export default async function adminRoutes(fastify) {
     }
   })
 
+  fastify.patch('/integridad/orden-item/:id', { preHandler: [fastify.authenticate, onlyAdmin] }, async (req, reply) => {
+    const id = Number(req.params.id)
+    const productoId = Number(req.body?.producto_id)
+    if (!id || !productoId) return reply.code(400).send({ error: 'id y producto_id requeridos' })
+    const [prod] = await fastify.prisma.$queryRaw`SELECT id, nombre, precio_lista FROM catalogo.productos WHERE id = ${productoId}`
+    if (!prod) return reply.code(404).send({ error: 'Producto no existe' })
+    await fastify.prisma.$executeRaw`UPDATE ventas.orden_items SET producto_id = ${productoId}, nombre = ${prod.nombre} WHERE id = ${id}`
+    return { ok: true, producto: prod }
+  })
+
+  fastify.delete('/integridad/orden-item/:id', { preHandler: [fastify.authenticate, onlyAdmin] }, async (req, reply) => {
+    const id = Number(req.params.id)
+    if (!id) return reply.code(400).send({ error: 'id requerido' })
+    await fastify.prisma.$executeRaw`DELETE FROM ventas.orden_items WHERE id = ${id}`
+    return { ok: true }
+  })
+
+  fastify.patch('/integridad/odt-item/:id', { preHandler: [fastify.authenticate, onlyAdmin] }, async (req, reply) => {
+    const id = Number(req.params.id)
+    const productoId = Number(req.body?.producto_id)
+    if (!id || !productoId) return reply.code(400).send({ error: 'id y producto_id requeridos' })
+    const [prod] = await fastify.prisma.$queryRaw`SELECT id, nombre FROM catalogo.productos WHERE id = ${productoId}`
+    if (!prod) return reply.code(404).send({ error: 'Producto no existe' })
+    await fastify.prisma.$executeRaw`UPDATE taller.odt_items SET producto_id = ${productoId}, nombre = ${prod.nombre} WHERE id = ${id}`
+    return { ok: true, producto: prod }
+  })
+
+  fastify.delete('/integridad/odt-item/:id', { preHandler: [fastify.authenticate, onlyAdmin] }, async (req, reply) => {
+    const id = Number(req.params.id)
+    if (!id) return reply.code(400).send({ error: 'id requerido' })
+    await fastify.prisma.$executeRaw`DELETE FROM taller.odt_items WHERE id = ${id}`
+    return { ok: true }
+  })
+
   fastify.get('/auditoria', { preHandler: [fastify.authenticate, onlyAdmin] }, async (req) => {
     const limit = Math.min(Number(req.query.limit) || 100, 500)
     const offset = Number(req.query.offset) || 0
