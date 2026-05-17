@@ -38,6 +38,7 @@ const PERMISSIONS = {
     caja:         ['read'],
     cobranza:     ['read'],
     licitaciones: ['read'],
+    rrhh:         ['read'],
   },
 }
 

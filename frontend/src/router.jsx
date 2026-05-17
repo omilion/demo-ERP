@@ -38,6 +38,7 @@ import PasarTallerPage from './pages/pasar-taller/PasarTallerPage'
 import ConsultaPreciosPage from './pages/consulta-precios/ConsultaPreciosPage'
 import ReportesLicitacionesPage from './pages/reportes-licitaciones/ReportesLicitacionesPage'
 import UsuariosPage from './pages/usuarios/UsuariosPage'
+import RrhhPage from './pages/rrhh/RrhhPage'
 
 const ALL = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
 
@@ -92,6 +93,7 @@ export const router = createBrowserRouter([
       { path: 'pasar-taller',  element: <ProtectedRoute allowedRoles={['admin', 'taller', 'vendedor']}><PasarTallerPage /></ProtectedRoute> },
       { path: 'consulta-precios', element: <ProtectedRoute allowedRoles={ALL}><ConsultaPreciosPage /></ProtectedRoute> },
       { path: 'reportes/licitaciones', element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><ReportesLicitacionesPage /></ProtectedRoute> },
+      { path: 'rrhh', element: <ProtectedRoute allowedRoles={['admin', 'rrhh', 'solo_lectura']}><RrhhPage /></ProtectedRoute> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

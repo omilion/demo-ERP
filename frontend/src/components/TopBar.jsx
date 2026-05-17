@@ -32,6 +32,9 @@ const NAV_GROUPS = [
   { label: 'Clientes', items: [
     { label: 'Clientes', route: '/clientes' },
   ]},
+  { label: 'RRHH', items: [
+    { label: 'Trabajadores', route: '/rrhh' },
+  ]},
   { label: 'Admin', items: [
     { label: 'Usuarios', route: '/usuarios' },
     { label: 'Accesos', route: '/accesos' },
@@ -46,7 +49,7 @@ const ROLE_GROUPS = {
   bodeguero:    ['Bodega'],
   cajero:       ['Caja'],
   taller:       ['Taller'],
-  rrhh:         ['Clientes'],
+  rrhh:         ['Clientes', 'RRHH'],
   solo_lectura: ['Ventas', 'Bodega', 'Taller', 'Caja', 'Clientes'],
 }
 

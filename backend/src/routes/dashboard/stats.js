@@ -13,12 +13,19 @@ export default async function dashboardStats(fastify) {
       espumasPendientes,
       confeccionesPendientes,
       maderaPendientes,
+      espumasUrgentes,
+      confeccionesUrgentes,
+      maderaUrgentes,
       stockRows,
       crmPendientes,
       crmEnGestion,
       crmAltaPrioridad,
       proveedoresTotal,
       cobranzaStats,
+      ordenesWebPendientes,
+      facturasProvNoPagadas,
+      boletasProvNoPagadas,
+      productosCalidadRows,
     ] = await Promise.all([
       p.orden.count({ where: { estadoPago: 'No pagada' } }),
       p.orden.count({ where: { estadoEntrega: 'Pendiente entrega' } }),
@@ -28,6 +35,9 @@ export default async function dashboardStats(fastify) {
       p.odt.count({ where: { tipo: 'Espumas', estado: { in: ['Pendiente', 'En proceso'] } } }),
       p.odt.count({ where: { tipo: 'Confecciones', estado: { in: ['Pendiente', 'En proceso'] } } }),
       p.odt.count({ where: { tipo: 'Madera', estado: { in: ['Pendiente', 'En proceso'] } } }),
+      p.odt.count({ where: { tipo: 'Espumas', estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] } }),
+      p.odt.count({ where: { tipo: 'Confecciones', estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] } }),
+      p.odt.count({ where: { tipo: 'Madera', estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] } }),
       p.$queryRaw`
         SELECT
           bodega,
@@ -48,6 +58,17 @@ export default async function dashboardStats(fastify) {
           COUNT(CASE WHEN UPPER(estado) = 'PENDIENTE' THEN 1 END)::int AS n_pendientes
         FROM ventas.cobranza_historico
       `,
+      p.ordenCompraOnline.count({ where: { estadoCompra: { in: ['Pendiente', 'Activa', 'Nueva'] } } }).catch(() => 0),
+      p.pagoProveedor.count({ where: { documento: 'Factura', estado: { in: ['Pendiente', 'No pagada'] } } }).catch(() => 0),
+      p.pagoProveedor.count({ where: { documento: 'Boleta', estado: { in: ['Pendiente', 'No pagada'] } } }).catch(() => 0),
+      p.$queryRaw`
+        SELECT
+          COUNT(*) FILTER (WHERE (codigo_barra IS NULL OR codigo_barra = '') AND activo = true)::int AS sin_codigo_barra,
+          COUNT(*) FILTER (WHERE (codigo_interno IS NULL OR codigo_interno = '') AND activo = true)::int AS sin_codigo_interno,
+          COUNT(*) FILTER (WHERE categoria_id IS NULL AND activo = true)::int AS sin_categoria,
+          COUNT(*) FILTER (WHERE proveedor_id IS NULL AND activo = true)::int AS sin_proveedor
+        FROM catalogo.productos
+      `,
     ])
 
     const stockByBodega = {}
@@ -60,10 +81,22 @@ export default async function dashboardStats(fastify) {
     }
 
     const cs = cobranzaStats[0]
+    const cal = productosCalidadRows[0]
     return {
       ventas: {
         noPagadas: ventasNoPagadas,
         pendienteEntrega: ventasPendienteEntrega,
+        webPendientes: ordenesWebPendientes,
+      },
+      proveedoresPagos: {
+        facturasNoPagadas: facturasProvNoPagadas,
+        boletasNoPagadas: boletasProvNoPagadas,
+      },
+      productosCalidad: {
+        sinCodigoBarra: cal?.sin_codigo_barra ?? 0,
+        sinCodigoInterno: cal?.sin_codigo_interno ?? 0,
+        sinCategoria: cal?.sin_categoria ?? 0,
+        sinProveedor: cal?.sin_proveedor ?? 0,
       },
       odts: {
         pendientes: odtsPendientes,
@@ -72,9 +105,9 @@ export default async function dashboardStats(fastify) {
         total: odtsPendientes + odtsEnProceso,
       },
       talleres: [
-        { tipo: 'Espumas',      activas: espumasPendientes },
-        { tipo: 'Confecciones', activas: confeccionesPendientes },
-        { tipo: 'Madera',       activas: maderaPendientes },
+        { tipo: 'Espumas',      activas: espumasPendientes,      urgentes: espumasUrgentes },
+        { tipo: 'Confecciones', activas: confeccionesPendientes, urgentes: confeccionesUrgentes },
+        { tipo: 'Madera',       activas: maderaPendientes,       urgentes: maderaUrgentes },
       ],
       stock: stockByBodega,
       crm: {

@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["auth", "clientes", "catalogo", "ventas", "caja", "taller", "bodega", "config"]
+  schemas  = ["auth", "clientes", "catalogo", "ventas", "caja", "taller", "bodega", "config", "rrhh"]
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────────
@@ -1012,4 +1012,326 @@ model Despacho {
   @@index([ordenId])
   @@map("despachos")
   @@schema("bodega")
+}
+
+// ── RRHH ─────────────────────────────────────────────────────────────
+
+model Trabajador {
+  id                 Int           @id @default(autoincrement())
+  empresa            String
+  apellidoPaterno    String        @map("apellido_paterno")
+  apellidoMaterno    String        @map("apellido_materno")
+  nombres            String
+  rut                String
+  fechaNacimiento    String?       @map("fecha_nacimiento")
+  estadoCivil        String?       @map("estado_civil")
+  cargasFamiliares   String?       @map("cargas_familiares")
+  direccion          String?
+  comuna             String?
+  nacionalidad       String?
+  afp                String?
+  salud              String?
+  telefono           String?
+  contactoEmergencia String?       @map("contacto_emergencia")
+  numeroEmergencia   String?       @map("numero_emergencia")
+  email              String?
+  banco              String?
+  tipoCuenta         String?       @map("tipo_cuenta")
+  numeroCuenta       String?       @map("numero_cuenta")
+  cargo              String?
+  fechaIngreso       String?       @map("fecha_ingreso")
+  fechaTermino       DateTime?     @map("fecha_termino") @db.Date
+  tipoContrato       String?       @map("tipo_contrato")
+  sueldoLiquido      String?       @map("sueldo_liquido")
+  observacion        String?
+  user               String?
+  estado             Boolean       @default(true)
+  foto               String?
+  createdAt          DateTime?     @default(now()) @map("created_at")
+  updatedAt          DateTime?     @updatedAt @map("updated_at")
+  contratos          Contrato[]
+  liquidaciones      Liquidacion[]
+  anticipos          Anticipo[]
+  asistencias        Asistencia[]
+  horasExtras        HoraExtra[]
+  licencias          Licencia[]
+  vacaciones         Vacacion[]
+  epps               Epp[]
+  hojasVida          HojaVida[]
+  reglamentos        Reglamento[]
+
+  @@index([empresa])
+  @@index([rut])
+  @@map("trabajadores")
+  @@schema("rrhh")
+}
+
+model Contrato {
+  id           Int        @id @default(autoincrement())
+  trabajadorId Int        @map("trabajador_id")
+  contrato     String
+  plazo        String?
+  inicio       DateTime?  @db.Date
+  termino      DateTime?  @db.Date
+  estado       Boolean    @default(true)
+  imagen       String?
+  createdAt    DateTime?  @default(now()) @map("created_at")
+  updatedAt    DateTime?  @updatedAt @map("updated_at")
+  trabajador   Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+
+  @@index([trabajadorId])
+  @@map("contratos")
+  @@schema("rrhh")
+}
+
+model Liquidacion {
+  id              Int        @id @default(autoincrement())
+  trabajadorId    Int        @map("trabajador_id")
+  anio            String?
+  mes             String?
+  sueldoBase      Int?       @map("sueldo_base")
+  totalImponible  Int?       @map("total_imponible")
+  totalHaberes    Int?       @map("total_haberes")
+  totalDescuentos Int?       @map("total_descuentos")
+  liquidoPagar    Int?       @map("liquido_pagar")
+  horasExtras     Float?     @map("horas_extras")
+  totalExtras     Int?       @map("total_extras")
+  imagen          String?
+  estado          Boolean    @default(true)
+  createdAt       DateTime?  @default(now()) @map("created_at")
+  updatedAt       DateTime?  @updatedAt @map("updated_at")
+  trabajador      Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+
+  @@index([trabajadorId])
+  @@index([anio, mes])
+  @@map("liquidaciones")
+  @@schema("rrhh")
+}
+
+model Anticipo {
+  id           Int        @id @default(autoincrement())
+  trabajadorId Int        @map("trabajador_id")
+  anio         String?
+  mes          String?
+  banco        String?
+  tipoCuenta   String?    @map("tipo_cuenta")
+  cuenta       String?
+  fecha        DateTime?  @db.Date
+  monto        Int?
+  createdAt    DateTime?  @default(now()) @map("created_at")
+  updatedAt    DateTime?  @updatedAt @map("updated_at")
+  trabajador   Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+
+  @@index([trabajadorId])
+  @@map("anticipos")
+  @@schema("rrhh")
+}
+
+model Asistencia {
+  id            Int        @id @default(autoincrement())
+  trabajadorId  Int        @map("trabajador_id")
+  anio          String
+  mes           String
+  dia           String
+  tipoDiaId     Int?       @map("tipo_dia_id")
+  jornadaId     Int        @map("jornada_id")
+  horaIngresoAm DateTime   @map("hora_ingreso_am") @db.Time
+  horaSalidaAm  DateTime   @map("hora_salida_am") @db.Time
+  horaIngresoPm DateTime   @map("hora_ingreso_pm") @db.Time
+  horaSalidaPm  DateTime   @map("hora_salida_pm") @db.Time
+  totalHoras    Float?     @map("total_horas")
+  horasExtras   Float?     @map("horas_extras")
+  createdAt     DateTime?  @default(now()) @map("created_at")
+  updatedAt     DateTime?  @updatedAt @map("updated_at")
+  trabajador    Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+  jornada       Jornada    @relation(fields: [jornadaId], references: [id])
+  tipoDia       TipoDia?   @relation(fields: [tipoDiaId], references: [id])
+
+  @@index([trabajadorId])
+  @@index([anio, mes])
+  @@map("asistencias")
+  @@schema("rrhh")
+}
+
+model HoraExtra {
+  id           Int        @id @default(autoincrement())
+  trabajadorId Int        @map("trabajador_id")
+  contrato     String?
+  plazo        String?
+  inicio       DateTime?  @db.Date
+  termino      DateTime?  @db.Date
+  estado       Boolean    @default(true)
+  imagen       String?
+  createdAt    DateTime?  @default(now()) @map("created_at")
+  updatedAt    DateTime?  @updatedAt @map("updated_at")
+  trabajador   Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+
+  @@index([trabajadorId])
+  @@map("horas_extras")
+  @@schema("rrhh")
+}
+
+model Licencia {
+  id           Int        @id @default(autoincrement())
+  trabajadorId Int        @map("trabajador_id")
+  fecha        DateTime?  @db.Date
+  inicio       DateTime?  @db.Date
+  termino      DateTime?  @db.Date
+  dias         Int?
+  tipo         String?
+  reposo       String?
+  imagen       String?
+  estado       Boolean    @default(true)
+  createdAt    DateTime?  @default(now()) @map("created_at")
+  updatedAt    DateTime?  @updatedAt @map("updated_at")
+  trabajador   Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+
+  @@index([trabajadorId])
+  @@map("licencias")
+  @@schema("rrhh")
+}
+
+model Vacacion {
+  id             Int        @id @default(autoincrement())
+  trabajadorId   Int        @map("trabajador_id")
+  inicioContrato DateTime?  @map("inicio_contrato") @db.Date
+  diasPendientes String?    @map("dias_pendientes")
+  periodo        String?
+  dias           Int?
+  saldo          Int?
+  fechaInicio    DateTime   @map("fecha_inicio") @db.Date
+  fechaTermino   DateTime   @map("fecha_termino") @db.Date
+  imagen         String?
+  estado         Boolean    @default(true)
+  createdAt      DateTime?  @default(now()) @map("created_at")
+  updatedAt      DateTime?  @updatedAt @map("updated_at")
+  trabajador     Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+
+  @@index([trabajadorId])
+  @@map("vacaciones")
+  @@schema("rrhh")
+}
+
+model Epp {
+  id           Int        @id @default(autoincrement())
+  trabajadorId Int        @map("trabajador_id")
+  epp          String
+  marca        String?
+  cantidad     Int
+  fechaEntrega DateTime   @map("fecha_entrega") @db.Date
+  documento    String?
+  observacion  String?
+  createdAt    DateTime?  @default(now()) @map("created_at")
+  updatedAt    DateTime?  @updatedAt @map("updated_at")
+  trabajador   Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+
+  @@index([trabajadorId])
+  @@map("epps")
+  @@schema("rrhh")
+}
+
+model HojaVida {
+  id           Int        @id @default(autoincrement())
+  trabajadorId Int        @map("trabajador_id")
+  fecha        DateTime?  @db.Date
+  documento    String?
+  imagen       String?
+  estado       Boolean    @default(true)
+  createdAt    DateTime?  @default(now()) @map("created_at")
+  updatedAt    DateTime?  @updatedAt @map("updated_at")
+  trabajador   Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+
+  @@index([trabajadorId])
+  @@map("hojas_vida")
+  @@schema("rrhh")
+}
+
+model RegistroEmpresa {
+  id        Int       @id @default(autoincrement())
+  empresa   String
+  anio      String?
+  mes       String?
+  imagen    String?
+  createdAt DateTime? @default(now()) @map("created_at")
+  updatedAt DateTime? @updatedAt @map("updated_at")
+
+  @@index([empresa])
+  @@index([anio, mes])
+  @@map("registros")
+  @@schema("rrhh")
+}
+
+model Reglamento {
+  id           Int        @id @default(autoincrement())
+  trabajadorId Int        @map("trabajador_id")
+  nombre       String
+  documento    String?
+  link         String?
+  fechaEntrega String?    @map("fecha_entrega")
+  estado       Boolean    @default(true)
+  createdAt    DateTime?  @default(now()) @map("created_at")
+  updatedAt    DateTime?  @updatedAt @map("updated_at")
+  trabajador   Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+
+  @@index([trabajadorId])
+  @@map("reglamentos")
+  @@schema("rrhh")
+}
+
+model Jornada {
+  id          Int          @id @default(autoincrement())
+  jornada     String
+  ingreso     DateTime     @db.Time
+  salida      DateTime     @db.Time
+  createdAt   DateTime?    @default(now()) @map("created_at")
+  updatedAt   DateTime?    @updatedAt @map("updated_at")
+  asistencias Asistencia[]
+
+  @@map("jornadas")
+  @@schema("rrhh")
+}
+
+model DiaSemana {
+  id        Int       @id @default(autoincrement())
+  dia       String
+  createdAt DateTime? @default(now()) @map("created_at")
+  updatedAt DateTime? @updatedAt @map("updated_at")
+
+  @@map("dias")
+  @@schema("rrhh")
+}
+
+model TipoDia {
+  id          Int          @id @default(autoincrement())
+  tipo        String
+  estado      Boolean      @default(true)
+  createdAt   DateTime?    @default(now()) @map("created_at")
+  updatedAt   DateTime?    @updatedAt @map("updated_at")
+  asistencias Asistencia[]
+
+  @@map("tipodias")
+  @@schema("rrhh")
+}
+
+model LibroRemuneracion {
+  id                   Int       @id @default(autoincrement())
+  documento            String
+  empresa              String?
+  anio                 String?
+  mes                  String?
+  totalImponible       Int?      @map("total_imponible")
+  totalNoImponible     Int?      @map("total_no_imponible")
+  totalDescuentos      Int?      @map("total_descuentos")
+  anticipos            Int?
+  liquidoPagar         Int?      @map("liquido_pagar")
+  totalHorasExtras     Int?      @map("total_horas_extras")
+  cantidadTrabajadores Int?      @map("cantidad_trabajadores")
+  imagen               String?
+  createdAt            DateTime? @default(now()) @map("created_at")
+  updatedAt            DateTime? @updatedAt @map("updated_at")
+
+  @@index([empresa])
+  @@index([anio, mes])
+  @@map("libros_remuneracion")
+  @@schema("rrhh")
 }
