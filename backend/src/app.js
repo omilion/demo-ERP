@@ -112,7 +112,7 @@ const __filename = new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1'
 if (process.argv[1].replace(/\\/g, '/') === __filename.replace(/\\/g, '/')) {
   const app = buildApp()
   try {
-    await app.listen({ port: Number(process.env.PORT) || 3001, host: '0.0.0.0' })
+    await app.listen({ port: Number(process.env.PORT) || 3001, host: process.env.HOST || '0.0.0.0' })
   } catch (err) {
     app.log.error(err)
     process.exit(1)

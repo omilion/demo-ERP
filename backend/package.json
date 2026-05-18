@@ -19,6 +19,7 @@
     "data:cleanup-products": "node scripts/cleanup-producto-orphans.mjs",
     "data:cleanup-ruts": "node scripts/rut-duplicates-cleanup.mjs",
     "data:cleanup-stock-dates": "node scripts/stock-negative-dates-audit.mjs",
+    "smoke:staging": "node scripts/staging-smoke.mjs",
     "job:stock-critico": "node src/jobs/stockCritico.mjs"
   },
   "keywords": [],
