@@ -1,18 +1,70 @@
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3101'
 
+const DEFAULT_INTEGRITY_EXPECTATIONS = {
+  orden_items_huerfanos: 6143,
+  odt_items_huerfanos: 200,
+  productos_stock_negativo: 167,
+}
+
+function optionalInteger(value, name) {
+  if (value == null || value === '') return undefined
+
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`${name} must be a non-negative integer`)
+  }
+  return parsed
+}
+
 function parseArgs(argv = process.argv.slice(2)) {
+  const expectedIntegrity = {
+    orden_items_huerfanos: optionalInteger(
+      process.env.SMOKE_EXPECT_ORDEN_ITEMS_HUERFANOS,
+      'SMOKE_EXPECT_ORDEN_ITEMS_HUERFANOS',
+    ) ?? DEFAULT_INTEGRITY_EXPECTATIONS.orden_items_huerfanos,
+    odt_items_huerfanos: optionalInteger(
+      process.env.SMOKE_EXPECT_ODT_ITEMS_HUERFANOS,
+      'SMOKE_EXPECT_ODT_ITEMS_HUERFANOS',
+    ) ?? DEFAULT_INTEGRITY_EXPECTATIONS.odt_items_huerfanos,
+    productos_stock_negativo: optionalInteger(
+      process.env.SMOKE_EXPECT_PRODUCTOS_STOCK_NEGATIVO,
+      'SMOKE_EXPECT_PRODUCTOS_STOCK_NEGATIVO',
+    ) ?? DEFAULT_INTEGRITY_EXPECTATIONS.productos_stock_negativo,
+  }
+
   const options = {
     baseUrl: process.env.SMOKE_BASE_URL || DEFAULT_BASE_URL,
     email: process.env.SMOKE_EMAIL || 'admin@plastimar.cl',
     password: process.env.SMOKE_PASSWORD || 'dev1234',
+    expectedIntegrity,
     json: false,
   }
 
   for (const arg of argv) {
     if (arg === '--json') options.json = true
+    else if (arg === '--skip-integrity-counts') options.expectedIntegrity = null
     else if (arg.startsWith('--base-url=')) options.baseUrl = arg.slice('--base-url='.length)
     else if (arg.startsWith('--email=')) options.email = arg.slice('--email='.length)
     else if (arg.startsWith('--password=')) options.password = arg.slice('--password='.length)
+    else if (arg.startsWith('--expect-orden-items-huerfanos=')) {
+      options.expectedIntegrity ??= {}
+      options.expectedIntegrity.orden_items_huerfanos = optionalInteger(
+        arg.slice('--expect-orden-items-huerfanos='.length),
+        '--expect-orden-items-huerfanos',
+      )
+    } else if (arg.startsWith('--expect-odt-items-huerfanos=')) {
+      options.expectedIntegrity ??= {}
+      options.expectedIntegrity.odt_items_huerfanos = optionalInteger(
+        arg.slice('--expect-odt-items-huerfanos='.length),
+        '--expect-odt-items-huerfanos',
+      )
+    } else if (arg.startsWith('--expect-productos-stock-negativo=')) {
+      options.expectedIntegrity ??= {}
+      options.expectedIntegrity.productos_stock_negativo = optionalInteger(
+        arg.slice('--expect-productos-stock-negativo='.length),
+        '--expect-productos-stock-negativo',
+      )
+    }
   }
 
   options.baseUrl = options.baseUrl.replace(/\/+$/, '')
@@ -149,10 +201,24 @@ async function smoke(options) {
   }
 
   const integridad = responses['admin integridad resumen']
-  assert(integridad.orden_items_huerfanos === 6143, `expected orden_items_huerfanos 6143, got ${integridad.orden_items_huerfanos}`)
-  assert(integridad.odt_items_huerfanos === 200, `expected odt_items_huerfanos 200, got ${integridad.odt_items_huerfanos}`)
-  assert(integridad.productos_stock_negativo === 167, `expected productos_stock_negativo 167, got ${integridad.productos_stock_negativo}`)
-  record('post-cleanup integrity counts', {
+
+  if (options.expectedIntegrity) {
+    const expected = options.expectedIntegrity
+    assert(
+      integridad.orden_items_huerfanos === expected.orden_items_huerfanos,
+      `expected orden_items_huerfanos ${expected.orden_items_huerfanos}, got ${integridad.orden_items_huerfanos}`,
+    )
+    assert(
+      integridad.odt_items_huerfanos === expected.odt_items_huerfanos,
+      `expected odt_items_huerfanos ${expected.odt_items_huerfanos}, got ${integridad.odt_items_huerfanos}`,
+    )
+    assert(
+      integridad.productos_stock_negativo === expected.productos_stock_negativo,
+      `expected productos_stock_negativo ${expected.productos_stock_negativo}, got ${integridad.productos_stock_negativo}`,
+    )
+  }
+
+  record(options.expectedIntegrity ? 'integrity counts expected' : 'integrity counts observed', {
     ordenItemsHuerfanos: integridad.orden_items_huerfanos,
     odtItemsHuerfanos: integridad.odt_items_huerfanos,
     productosStockNegativo: integridad.productos_stock_negativo,
@@ -176,7 +242,7 @@ if (isDirectRun) {
     if (options.json) {
       console.log(JSON.stringify(report, null, 2))
     } else {
-      console.log(`Staging smoke OK: ${report.summary.passed}/${report.summary.total}`)
+      console.log(`API smoke OK: ${report.summary.passed}/${report.summary.total}`)
       for (const check of report.checks) console.log(`- ${check.name}`)
     }
   }).catch((error) => {
