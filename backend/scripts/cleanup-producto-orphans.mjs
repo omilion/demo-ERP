@@ -429,38 +429,36 @@ async function fetchOrphanRows(prisma) {
 
 async function applyChange(tx, change) {
   if (change.table === 'ventas.orden_items') {
-    return tx.$queryRaw`
+    return tx.$executeRaw`
       UPDATE ventas.orden_items i
       SET producto_id = ${change.after.productoId}
       WHERE i.id = ${change.id}
         AND i.producto_id = ${change.before.productoId}
-        AND upper(trim(coalesce(i.codigo_interno, ''))) = ${change.codigoNormalizado}
+        AND upper(regexp_replace(coalesce(i.codigo_interno, ''), '^[[:space:]]+|[[:space:]]+$', '', 'g')) = ${change.codigoNormalizado}
         AND NOT EXISTS (SELECT 1 FROM catalogo.productos old_p WHERE old_p.id = i.producto_id)
         AND EXISTS (
           SELECT 1
           FROM catalogo.productos new_p
           WHERE new_p.id = ${change.after.productoId}
-            AND upper(trim(new_p.codigo_interno)) = ${change.codigoNormalizado}
+            AND upper(regexp_replace(coalesce(new_p.codigo_interno, ''), '^[[:space:]]+|[[:space:]]+$', '', 'g')) = ${change.codigoNormalizado}
         )
-      RETURNING i.id, i.producto_id
     `
   }
 
   if (change.table === 'taller.odt_items') {
-    return tx.$queryRaw`
+    return tx.$executeRaw`
       UPDATE taller.odt_items i
       SET producto_id = ${change.after.productoId}
       WHERE i.id = ${change.id}
         AND i.producto_id = ${change.before.productoId}
-        AND upper(trim(coalesce(i.codigo_interno, ''))) = ${change.codigoNormalizado}
+        AND upper(regexp_replace(coalesce(i.codigo_interno, ''), '^[[:space:]]+|[[:space:]]+$', '', 'g')) = ${change.codigoNormalizado}
         AND NOT EXISTS (SELECT 1 FROM catalogo.productos old_p WHERE old_p.id = i.producto_id)
         AND EXISTS (
           SELECT 1
           FROM catalogo.productos new_p
           WHERE new_p.id = ${change.after.productoId}
-            AND upper(trim(new_p.codigo_interno)) = ${change.codigoNormalizado}
+            AND upper(regexp_replace(coalesce(new_p.codigo_interno, ''), '^[[:space:]]+|[[:space:]]+$', '', 'g')) = ${change.codigoNormalizado}
         )
-      RETURNING i.id, i.producto_id
     `
   }
 
@@ -471,14 +469,14 @@ async function applyChanges(prisma, changes) {
   const applied = []
   await prisma.$transaction(async (tx) => {
     for (const change of changes) {
-      const rows = await applyChange(tx, change)
-      if (rows.length !== 1) {
+      const updated = Number(await applyChange(tx, change))
+      if (updated !== 1) {
         throw new Error(`Refusing partial apply: ${change.table} id=${change.id} no longer matches the audited plan.`)
       }
       applied.push({
         ...change,
         applied: true,
-        appliedRow: toPlain(rows[0]),
+        updated,
       })
     }
   })
@@ -496,7 +494,7 @@ Safety:
   - Dry-run by default.
   - Only updates ventas.orden_items.producto_id and taller.odt_items.producto_id.
   - Only updates rows whose current producto_id is orphaned.
-  - Only matches by exact normalized codigo_interno: upper(trim(value)).
+  - Only matches by exact normalized codigo_interno after trimming surrounding whitespace and uppercasing.
   - Duplicate normalized product codes and missing/no-match codes are skipped.
   - --apply requires --confirm and writes CSV/JSON audit files with reverse SQL.
 `.trim()
@@ -534,7 +532,7 @@ async function main() {
     const report = {
       generatedAt: new Date().toISOString(),
       mode: options.apply ? 'apply' : 'dry-run',
-      matcher: 'upper(trim(codigo_interno)) exact match only',
+      matcher: 'codigo_interno exact match after surrounding whitespace trim and uppercase',
       summary: classified.summary,
       changes: classified.changes,
       skipped: classified.skipped,

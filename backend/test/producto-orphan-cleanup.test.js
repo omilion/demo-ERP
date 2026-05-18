@@ -15,8 +15,9 @@ describe('producto orphan cleanup classification', () => {
     { id: 11, codigo_interno: '  def-2 ', nombre: 'Producto DEF' },
   ]
 
-  it('normalizes codigo_interno with trim and case only', () => {
+  it('normalizes codigo_interno with surrounding whitespace trim and case only', () => {
     expect(normalizeCodigoInterno('  abc-1  ')).toBe('ABC-1')
+    expect(normalizeCodigoInterno('\t abc-1\n')).toBe('ABC-1')
     expect(normalizeCodigoInterno('ab c')).toBe('AB C')
     expect(normalizeCodigoInterno(null)).toBe('')
   })
