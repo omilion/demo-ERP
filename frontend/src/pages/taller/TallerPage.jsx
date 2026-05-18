@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon, Badge, KpiCard, PageHeader, Btn, SearchBar, Tabs } from '../../components/shared'
 import { useOdts, useOdt, useOdtEstado, useAddBitacora, useDeleteBitacora, useDeleteOdt } from '../../api/odts'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 const ESTADO_TONE = {
   Prioritaria: 'red',
@@ -78,7 +80,7 @@ const OdtCard = ({ odt, onSelect }) => {
   )
 }
 
-function BitacoraSection({ odtId, entries = [] }) {
+function BitacoraSection({ odtId, entries = [], canWrite }) {
   const [texto, setTexto] = useState('')
   const addBitacora = useAddBitacora()
   const delBitacora = useDeleteBitacora()
@@ -107,13 +109,13 @@ function BitacoraSection({ odtId, entries = [] }) {
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.5 }}>{e.texto}</div>
               </div>
-              <button
+              {canWrite && <button
                 onClick={() => delBitacora.mutate({ odtId, entryId: e.id })}
                 style={{ color: 'var(--text-3)', padding: '2px 4px', marginLeft: 8, flexShrink: 0 }}
                 title="Eliminar entrada"
               >
                 <Icon name="x" size={13} />
-              </button>
+              </button>}
             </div>
           ))}
         </div>
@@ -121,7 +123,7 @@ function BitacoraSection({ odtId, entries = [] }) {
         <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12, padding: '8px 0' }}>Sin entradas de bitácora</div>
       )}
 
-      <div style={{ display: 'flex', gap: 8 }}>
+      {canWrite && <div style={{ display: 'flex', gap: 8 }}>
         <input
           value={texto}
           onChange={e => setTexto(e.target.value)}
@@ -136,12 +138,12 @@ function BitacoraSection({ odtId, entries = [] }) {
         >
           {addBitacora.isPending ? '…' : 'Agregar'}
         </button>
-      </div>
+      </div>}
     </div>
   )
 }
 
-function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete }) {
+function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete, canWrite }) {
   const navigate = useNavigate()
   const { data: full } = useOdt(odt.id)
   const o = full || odt
@@ -223,7 +225,7 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete }) {
           </div>
 
           {/* Estado transitions */}
-          {available.length > 0 && (
+          {canWrite && available.length > 0 && (
             <div style={{ marginTop: 8, padding: '12px 14px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)' }}>
               <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
                 Cambiar estado
@@ -248,16 +250,16 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete }) {
 
           {/* Bitácora */}
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16 }}>
-            <BitacoraSection odtId={o.id} entries={bitacora} />
+            <BitacoraSection odtId={o.id} entries={bitacora} canWrite={canWrite} />
           </div>
         </div>
 
         <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', gap: 8 }}>
-            <Btn variant="primary" icon="edit" onClick={onEdit}>Editar ODT</Btn>
+            {canWrite && <Btn variant="primary" icon="edit" onClick={onEdit}>Editar ODT</Btn>}
             <Btn variant="ghost" icon="printer" onClick={handleImprimir}>Imprimir</Btn>
           </div>
-          <Btn variant="ghost" icon="trash2" onClick={() => onDelete(o.id)} style={{ color: 'var(--red)' }}>Eliminar</Btn>
+          {canWrite && <Btn variant="ghost" icon="trash2" onClick={() => onDelete(o.id)} style={{ color: 'var(--red)' }}>Eliminar</Btn>}
         </div>
       </div>
     </div>
@@ -266,6 +268,8 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete }) {
 
 export default function TallerPage() {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const canWriteTaller = can(user, 'taller', 'write')
   const [tab, setTab]               = useState('all')
   const [search, setSearch]         = useState('')
   const [debouncedSearch, setDeb]   = useState('')
@@ -344,7 +348,7 @@ export default function TallerPage() {
         breadcrumb={['Inicio', 'Taller', 'ODTs']}
         actions={<>
           <Btn variant="secondary" icon="download" size="sm" onClick={handleExport}>Exportar</Btn>
-          <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/taller/nueva')}>Nueva ODT</Btn>
+          {canWriteTaller && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/taller/nueva')}>Nueva ODT</Btn>}
         </>}
       />
 
@@ -405,6 +409,7 @@ export default function TallerPage() {
           onEdit={() => { navigate('/taller/' + selected.id + '/editar'); setSelected(null) }}
           onEstadoChange={handleEstadoChange}
           onDelete={handleDelete}
+          canWrite={canWriteTaller}
         />
       )}
     </main>

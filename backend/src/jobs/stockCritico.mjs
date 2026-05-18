@@ -2,14 +2,16 @@
 // Uso: node src/jobs/stockCritico.mjs
 import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
 
-const prisma = new PrismaClient()
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
+const prisma = new PrismaClient({ adapter })
 
 async function main() {
   // Productos bodega general
   const productos = await prisma.producto.findMany({
     where: { activo: true },
-    select: { id: true, codigo: true, nombre: true, stock: true, stockCritico: true, bodegaId: true },
+    select: { id: true, codigoInterno: true, nombre: true, stock: true, stockCritico: true, bodega: true },
   })
   const prodCrit = productos.filter(p => (p.stock ?? 0) <= (p.stockCritico ?? 0))
 
@@ -24,24 +26,10 @@ async function main() {
   console.log(`[stockCritico ${fecha}] productos críticos: ${prodCrit.length} / materiales taller críticos: ${matCrit.length}`)
 
   for (const p of prodCrit) {
-    console.log(`  [PROD] ${p.codigo} ${p.nombre} stock=${p.stock} crit=${p.stockCritico}`)
+    console.log(`  [PROD] ${p.codigoInterno} ${p.nombre} bodega=${p.bodega} stock=${p.stock} crit=${p.stockCritico}`)
   }
   for (const m of matCrit) {
     console.log(`  [TALLER] ${m.codigoInterno} ${m.nombre} stock=${m.stock} crit=${m.stockCritico}`)
-  }
-
-  // Persistir en config.LogStockCritico si modelo existe; si no, solo log a stdout
-  try {
-    await prisma.logStockCritico.create({
-      data: {
-        fecha: new Date(),
-        productosCount: prodCrit.length,
-        materialesCount: matCrit.length,
-        detalle: JSON.stringify({ productos: prodCrit, materiales: matCrit }),
-      },
-    })
-  } catch (e) {
-    // tabla no existe: ok, solo log a stdout
   }
 
   return { productos: prodCrit.length, materiales: matCrit.length }

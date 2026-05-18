@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Shell } from './components/Shell'
+import { OdtLegacyRedirect, VentaLegacyRedirect } from './components/LegacyRedirects'
 import LoginPage from './pages/login/LoginPage'
 import DashboardPage from './pages/dashboard/DashboardPage'
 import VentasPage from './pages/ventas/VentasPage'
@@ -16,6 +17,7 @@ import ClientesPage from './pages/clientes/ClientesPage'
 import ClientesFormPage from './pages/clientes/ClientesFormPage'
 import CobranzaPage from './pages/cobranza/CobranzaPage'
 import LicitacionesPage from './pages/licitaciones/LicitacionesPage'
+import LicitacionFormPage from './pages/licitaciones/LicitacionFormPage'
 import LicitacionDetallePage from './pages/licitaciones/LicitacionDetallePage'
 import OrdenesCompraPage from './pages/ordenes-compra/OrdenesCompraPage'
 import OrdenCompraDetallePage from './pages/ordenes-compra/OrdenCompraDetallePage'
@@ -44,6 +46,8 @@ import AuditoriaPage from './pages/admin/AuditoriaPage'
 
 const ALL = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
 
+const protect = (element, props) => <ProtectedRoute {...props}>{element}</ProtectedRoute>
+
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   {
@@ -56,46 +60,51 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
-      { path: 'ventas',             element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><VentasPage /></ProtectedRoute> },
-      { path: 'ventas/nueva',       element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><VentasFormPage /></ProtectedRoute> },
-      { path: 'ventas/:id/editar',  element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><VentasFormPage /></ProtectedRoute> },
-      { path: 'ventas/:id/imprimir', element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><VentaPrintPage /></ProtectedRoute> },
-      { path: 'bodega',             element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'solo_lectura']}><BodegaPage /></ProtectedRoute> },
-      { path: 'bodega/nuevo',       element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'solo_lectura']}><BodegaFormPage /></ProtectedRoute> },
-      { path: 'bodega/:id/editar', element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'solo_lectura']}><BodegaFormPage /></ProtectedRoute> },
-      { path: 'taller',             element: <ProtectedRoute allowedRoles={['admin', 'taller', 'solo_lectura']}><TallerPage /></ProtectedRoute> },
-      { path: 'taller/nueva',       element: <ProtectedRoute allowedRoles={['admin', 'taller', 'solo_lectura']}><TallerFormPage /></ProtectedRoute> },
-      { path: 'taller/:id/editar',  element: <ProtectedRoute allowedRoles={['admin', 'taller', 'solo_lectura']}><TallerFormPage /></ProtectedRoute> },
-      { path: 'caja',               element: <ProtectedRoute allowedRoles={['admin', 'cajero', 'solo_lectura']}><CajaPage /></ProtectedRoute> },
-      { path: 'caja/nuevo',         element: <ProtectedRoute allowedRoles={['admin', 'cajero', 'solo_lectura']}><CajaFormPage /></ProtectedRoute> },
-      { path: 'clientes',               element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'rrhh', 'solo_lectura']}><ClientesPage /></ProtectedRoute> },
-      { path: 'clientes/nuevo',         element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'rrhh', 'solo_lectura']}><ClientesFormPage /></ProtectedRoute> },
-      { path: 'clientes/:id/editar',    element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'rrhh', 'solo_lectura']}><ClientesFormPage /></ProtectedRoute> },
-      { path: 'cobranza/*',     element: <ProtectedRoute allowedRoles={['admin', 'cajero', 'solo_lectura']}><CobranzaPage /></ProtectedRoute> },
-      { path: 'licitaciones',     element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><LicitacionesPage /></ProtectedRoute> },
-      { path: 'licitaciones/:id', element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><LicitacionDetallePage /></ProtectedRoute> },
-      { path: 'ordenes-compra',     element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><OrdenesCompraPage /></ProtectedRoute> },
-      { path: 'ordenes-compra/:id', element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><OrdenCompraDetallePage /></ProtectedRoute> },
-      { path: 'pagos-proveedores',     element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'solo_lectura']}><PagosProveedoresPage /></ProtectedRoute> },
-      { path: 'pagos-proveedores/:id', element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'solo_lectura']}><PagoProveedorDetallePage /></ProtectedRoute> },
-      { path: 'telas',     element: <ProtectedRoute allowedRoles={['admin', 'taller', 'solo_lectura']}><TelasPage /></ProtectedRoute> },
-      { path: 'telas/:id', element: <ProtectedRoute allowedRoles={['admin', 'taller', 'solo_lectura']}><TelaDetallePage /></ProtectedRoute> },
-      { path: 'bodega-taller', element: <ProtectedRoute allowedRoles={['admin', 'taller', 'bodeguero', 'solo_lectura']}><BodegaTallerPage /></ProtectedRoute> },
+      { path: 'ventas', element: protect(<VentasPage />, { module: 'ventas' }) },
+      { path: 'ventas/:id', element: protect(<VentaLegacyRedirect />, { module: 'ventas' }) },
+      { path: 'ventas/nueva', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
+      { path: 'ventas/:id/editar', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
+      { path: 'ventas/:id/imprimir', element: protect(<VentaPrintPage />, { module: 'ventas' }) },
+      { path: 'bodega', element: protect(<BodegaPage />, { module: 'catalogo' }) },
+      { path: 'bodega/nuevo', element: protect(<BodegaFormPage />, { module: 'catalogo', permission: 'write' }) },
+      { path: 'bodega/:id/editar', element: protect(<BodegaFormPage />, { module: 'catalogo', permission: 'write' }) },
+      { path: 'taller', element: protect(<TallerPage />, { module: 'taller' }) },
+      { path: 'taller/nueva', element: protect(<TallerFormPage />, { module: 'taller', permission: 'write' }) },
+      { path: 'taller/:id', element: protect(<OdtLegacyRedirect />, { module: 'taller' }) },
+      { path: 'taller/:id/editar', element: protect(<TallerFormPage />, { module: 'taller', permission: 'write' }) },
+      { path: 'odt', element: protect(<OdtLegacyRedirect />, { module: 'taller' }) },
+      { path: 'odts/:id', element: protect(<OdtLegacyRedirect />, { module: 'taller' }) },
+      { path: 'caja', element: protect(<CajaPage />, { module: 'caja' }) },
+      { path: 'caja/nuevo', element: protect(<CajaFormPage />, { module: 'caja', permission: 'write' }) },
+      { path: 'clientes', element: protect(<ClientesPage />, { module: 'clientes' }) },
+      { path: 'clientes/nuevo', element: protect(<ClientesFormPage />, { module: 'clientes', permission: 'write' }) },
+      { path: 'clientes/:id/editar', element: protect(<ClientesFormPage />, { module: 'clientes', permission: 'write' }) },
+      { path: 'cobranza/*', element: protect(<CobranzaPage />, { module: 'ventas' }) },
+      { path: 'licitaciones', element: protect(<LicitacionesPage />, { module: 'ventas' }) },
+      { path: 'licitaciones/nueva', element: protect(<LicitacionFormPage />, { module: 'ventas', permission: 'write' }) },
+      { path: 'licitaciones/:id', element: protect(<LicitacionDetallePage />, { module: 'ventas' }) },
+      { path: 'ordenes-compra', element: protect(<OrdenesCompraPage />, { module: 'ventas' }) },
+      { path: 'ordenes-compra/:id', element: protect(<OrdenCompraDetallePage />, { module: 'ventas' }) },
+      { path: 'pagos-proveedores', element: protect(<PagosProveedoresPage />, { module: 'proveedores' }) },
+      { path: 'pagos-proveedores/:id', element: protect(<PagoProveedorDetallePage />, { module: 'proveedores' }) },
+      { path: 'telas', element: protect(<TelasPage />, { module: 'taller' }) },
+      { path: 'telas/:id', element: protect(<TelaDetallePage />, { module: 'taller' }) },
+      { path: 'bodega-taller', element: protect(<BodegaTallerPage />, { module: 'taller' }) },
       { path: 'accesos',    element: <ProtectedRoute allowedRoles={['admin']}><AccesosPage /></ProtectedRoute> },
       { path: 'usuarios',   element: <ProtectedRoute allowedRoles={['admin']}><UsuariosPage /></ProtectedRoute> },
-      { path: 'descuentos', element: <ProtectedRoute allowedRoles={['admin', 'vendedor']}><DescuentosPage /></ProtectedRoute> },
-      { path: 'proveedores',   element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'solo_lectura']}><ProveedoresPage /></ProtectedRoute> },
-      { path: 'crm',           element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><CrmPage /></ProtectedRoute> },
+      { path: 'descuentos', element: protect(<DescuentosPage />, { module: 'ventas' }) },
+      { path: 'proveedores', element: protect(<ProveedoresPage />, { module: 'catalogo' }) },
+      { path: 'crm', element: protect(<CrmPage />, { module: 'ventas' }) },
       { path: 'config',        element: <ProtectedRoute allowedRoles={['admin']}><ConfigPage /></ProtectedRoute> },
-      { path: 'matriz-ventas', element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><MatrizVentasPage /></ProtectedRoute> },
-      { path: 'despachos',     element: <ProtectedRoute allowedRoles={['admin', 'bodeguero', 'vendedor', 'solo_lectura']}><DespachosPage /></ProtectedRoute> },
-      { path: 'bitacora-taller', element: <ProtectedRoute allowedRoles={['admin', 'taller', 'solo_lectura']}><BitacoraTallerPage /></ProtectedRoute> },
-      { path: 'historial-materiales', element: <ProtectedRoute allowedRoles={['admin', 'taller', 'solo_lectura']}><HistorialMaterialesPage /></ProtectedRoute> },
-      { path: 'stock-ingresos', element: <ProtectedRoute allowedRoles={['admin', 'bodeguero']}><StockIngresosPage /></ProtectedRoute> },
-      { path: 'pasar-taller',  element: <ProtectedRoute allowedRoles={['admin', 'taller', 'vendedor']}><PasarTallerPage /></ProtectedRoute> },
-      { path: 'consulta-precios', element: <ProtectedRoute allowedRoles={ALL}><ConsultaPreciosPage /></ProtectedRoute> },
-      { path: 'reportes/licitaciones', element: <ProtectedRoute allowedRoles={['admin', 'vendedor', 'solo_lectura']}><ReportesLicitacionesPage /></ProtectedRoute> },
-      { path: 'rrhh', element: <ProtectedRoute allowedRoles={['admin', 'rrhh', 'solo_lectura']}><RrhhPage /></ProtectedRoute> },
+      { path: 'matriz-ventas', element: protect(<MatrizVentasPage />, { module: 'ventas' }) },
+      { path: 'despachos', element: protect(<DespachosPage />, { module: 'despacho' }) },
+      { path: 'bitacora-taller', element: protect(<BitacoraTallerPage />, { module: 'taller' }) },
+      { path: 'historial-materiales', element: protect(<HistorialMaterialesPage />, { module: 'taller' }) },
+      { path: 'stock-ingresos', element: protect(<StockIngresosPage />, { module: 'bodega' }) },
+      { path: 'pasar-taller', element: protect(<PasarTallerPage />, { module: 'taller', permission: 'write' }) },
+      { path: 'consulta-precios', element: protect(<ConsultaPreciosPage />, { module: 'catalogo' }) },
+      { path: 'reportes/licitaciones', element: protect(<ReportesLicitacionesPage />, { module: 'ventas' }) },
+      { path: 'rrhh', element: protect(<RrhhPage />, { module: 'rrhh' }) },
       { path: 'admin/integridad', element: <ProtectedRoute allowedRoles={['admin']}><IntegridadPage /></ProtectedRoute> },
       { path: 'admin/auditoria',  element: <ProtectedRoute allowedRoles={['admin']}><AuditoriaPage /></ProtectedRoute> },
     ],

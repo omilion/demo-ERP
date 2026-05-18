@@ -182,7 +182,7 @@ export const PageHeader = ({ title, subtitle, breadcrumb, actions }) => (
 )
 
 // ── Btn ───────────────────────────────────────────────────────────────────────
-export const Btn = ({ children, variant = 'primary', size = 'md', icon, onClick, disabled }) => {
+export const Btn = ({ children, variant = 'primary', size = 'md', icon, onClick, disabled, type = 'button' }) => {
   const [hov, setHov] = useState(false)
   const isXs = size === 'xs'
   const base = {
@@ -201,7 +201,7 @@ export const Btn = ({ children, variant = 'primary', size = 'md', icon, onClick,
     danger: { background: hov ? 'oklch(0.48 0.20 25)' : 'var(--red)', color: '#fff' },
   }
   return (
-    <button onClick={disabled ? undefined : onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ ...base, ...variants[variant] }}>
+    <button type={type} onClick={disabled ? undefined : onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ ...base, ...variants[variant] }}>
       {icon && <Icon name={icon} size={14} />}{children}
     </button>
   )

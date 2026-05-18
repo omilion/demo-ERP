@@ -220,7 +220,7 @@ function TabTaller({ odts, onOdtClick }) {
 }
 
 // ── ViewClientePanel ───────────────────────────────────────────────────────────
-export function ViewClientePanel({ cliente, onClose, onEdit }) {
+export function ViewClientePanel({ cliente, onClose, onEdit, canWrite = true }) {
   const navigate = useNavigate()
   const [tab, setTab] = useState('datos')
   const { data: full, isLoading } = useCliente(cliente.id)
@@ -234,8 +234,7 @@ export function ViewClientePanel({ cliente, onClose, onEdit }) {
       title={c.nombre}
       subtitle={`RUT: ${c.rut} · ${c.tipo || 'Cliente'}`}
       onClose={onClose}
-      onEdit={onEdit}
-      onDelete={() => {}}
+      onEdit={canWrite ? onEdit : undefined}
     >
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 16, marginTop: -6 }}>

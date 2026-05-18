@@ -94,7 +94,7 @@ export default function LicitacionDetallePage() {
           ? `Venta creada (#${res.orden.id}). Faltantes en catálogo: ${res.faltantes.join(', ')}`
           : `Venta creada (#${res.orden.id})`
         alert(msg)
-        navigate('/ventas/' + res.orden.id)
+        navigate('/ventas/' + res.orden.id + '/editar')
       },
       onError: (err) => alert(err?.response?.data?.error || 'Error al crear venta'),
     })

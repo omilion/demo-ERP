@@ -29,7 +29,7 @@ const GuiaCreate = z.object({
 export default async function despachosRoutes(fastify) {
   // GET /api/despachos?desde=&hasta=&ordenId=&tipo=&page=1
   fastify.get('/', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
   }, async (request) => {
     const { desde, hasta, ordenId, tipo, contacto, transporte, region, comuna, parcial, tieneMulta, search, page = '1' } = request.query
     const LIMIT = 100
@@ -70,7 +70,7 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.get('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     const d = await fastify.prisma.despacho.findUnique({ where: { id } })
@@ -82,7 +82,7 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.post('/', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
   }, async (request, reply) => {
     const parsed = DespachoCreate.safeParse(request.body || {})
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
@@ -109,7 +109,7 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     const parsed = DespachoCreate.partial().safeParse(request.body || {})
@@ -130,7 +130,7 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.delete('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     try { return await fastify.prisma.despacho.delete({ where: { id } }) }
@@ -139,7 +139,7 @@ export default async function despachosRoutes(fastify) {
 
   // Guías
   fastify.get('/guias/list', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
   }, async (request) => {
     const { desde, hasta, nGuia, ordenId, page = '1' } = request.query
     const LIMIT = 100
@@ -162,7 +162,7 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.post('/guias', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
   }, async (request, reply) => {
     const parsed = GuiaCreate.safeParse(request.body || {})
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
@@ -179,7 +179,7 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.delete('/guias/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     try { return await fastify.prisma.guiaDespacho.delete({ where: { id } }) }

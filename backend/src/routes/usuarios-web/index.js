@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt'
+import { createWebAccessTokenPayload } from '../../plugins/jwt.js'
 
 const onlyAdmin = async (req, reply) => {
   if (req.user?.role !== 'admin') return reply.code(403).send({ error: 'Forbidden' })
@@ -34,7 +35,7 @@ export default async function usuariosWebRoutes(fastify) {
     if (!u || !u.activo) return reply.code(401).send({ error: 'credenciales inválidas' })
     const ok = await bcrypt.compare(password, u.passwordHash)
     if (!ok) return reply.code(401).send({ error: 'credenciales inválidas' })
-    const token = fastify.jwt.sign({ id: u.id, email: u.email, scope: 'web' })
+    const token = fastify.jwt.sign(createWebAccessTokenPayload(u))
     return { token, user: { id: u.id, email: u.email, nombre: u.nombre } }
   })
 

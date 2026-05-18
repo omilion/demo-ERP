@@ -5,9 +5,13 @@ import { useProductos } from '../../api/productos'
 import { downloadFromBackend, parseCsv } from '../../utils/csv'
 import api from '../../api/client'
 import { useQueryClient } from '@tanstack/react-query'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 export default function BodegaPage() {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const canWriteCatalogo = can(user, 'catalogo', 'write')
   const qc = useQueryClient()
   const [tab, setTab] = useState('inventario')
   const [importing, setImporting] = useState(false)
@@ -77,8 +81,8 @@ export default function BodegaPage() {
     )},
     { key: '_acc', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 4 }}>
-        <button onClick={e => { e.stopPropagation(); navigate('/bodega/' + row.id + '/editar') }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}>Editar</button>
-        <button onClick={e => { e.stopPropagation(); navigate('/bodega/' + row.id + '/editar#movimientos') }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--blue, #2563eb)', fontWeight: 500 }} title="Ver movimientos de stock">Movs</button>
+        {canWriteCatalogo && <button onClick={e => { e.stopPropagation(); navigate('/bodega/' + row.id + '/editar') }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}>Editar</button>}
+        {canWriteCatalogo && <button onClick={e => { e.stopPropagation(); navigate('/bodega/' + row.id + '/editar#movimientos') }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--blue, #2563eb)', fontWeight: 500 }} title="Ver movimientos de stock">Movs</button>}
       </div>
     )},
   ]
@@ -96,8 +100,8 @@ export default function BodegaPage() {
           <Btn variant="secondary" icon="download" size="sm"
             onClick={() => downloadFromBackend('/reportes/export/productos', `productos_${new Date().toISOString().slice(0, 10)}.csv`)}
           >Exportar CSV</Btn>
-          <Btn variant="secondary" icon="upload" size="sm" onClick={() => setImporting(true)}>Importar</Btn>
-          <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/bodega/nuevo')}>Ingreso Mercadería</Btn>
+          {canWriteCatalogo && <Btn variant="secondary" icon="upload" size="sm" onClick={() => setImporting(true)}>Importar</Btn>}
+          {canWriteCatalogo && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/bodega/nuevo')}>Ingreso Mercadería</Btn>}
         </>}
       />
 

@@ -4,6 +4,8 @@ import { Icon, Badge, PageHeader, Btn, SearchBar, Table, Tabs, StatusDot } from 
 import { ViewVentaPanel } from '../../components/forms/ViewVentaPanel'
 import { useVentas } from '../../api/ventas'
 import { downloadFromBackend } from '../../utils/csv'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 const FILTER_TABS = [
   { id: 'all',          label: 'Todas' },
@@ -21,6 +23,8 @@ const TAB_PARAMS = {
 
 export default function VentasPage() {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const canWriteVentas = can(user, 'ventas', 'write')
   const [tab, setTab] = useState('all')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -87,7 +91,7 @@ export default function VentasPage() {
           <Btn variant="secondary" icon="download" size="sm"
             onClick={() => downloadFromBackend('/reportes/export/ventas', `ventas_${new Date().toISOString().slice(0, 10)}.csv`)}
           >Exportar CSV</Btn>
-          <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/ventas/nueva')}>Nueva Venta</Btn>
+          {canWriteVentas && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/ventas/nueva')}>Nueva Venta</Btn>}
         </>}
       />
 
@@ -122,7 +126,7 @@ export default function VentasPage() {
         }
       </div>
 
-      {selected && <ViewVentaPanel venta={selected} onClose={() => setSelected(null)} onEdit={() => { navigate('/ventas/' + selected.id + '/editar'); setSelected(null) }} />}
+      {selected && <ViewVentaPanel venta={selected} canWrite={canWriteVentas} onClose={() => setSelected(null)} onEdit={() => { navigate('/ventas/' + selected.id + '/editar'); setSelected(null) }} />}
     </main>
   )
 }
