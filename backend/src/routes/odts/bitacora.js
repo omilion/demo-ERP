@@ -5,6 +5,8 @@ export default async function bitacoraRoutes(fastify) {
   }, async (request, reply) => {
     const odtId = parseInt(request.params.id, 10)
     if (isNaN(odtId)) return reply.code(400).send({ error: 'ID inválido' })
+    const odt = await fastify.prisma.odt.findUnique({ where: { id: odtId }, select: { id: true } })
+    if (!odt) return reply.code(404).send({ error: 'ODT no encontrada' })
     const entries = await fastify.prisma.bitacoraTaller.findMany({
       where: { odtId },
       orderBy: { createdAt: 'asc' },
@@ -20,6 +22,8 @@ export default async function bitacoraRoutes(fastify) {
     if (isNaN(odtId)) return reply.code(400).send({ error: 'ID inválido' })
     const { texto } = request.body || {}
     if (!texto?.trim()) return reply.code(400).send({ error: 'texto requerido' })
+    const odt = await fastify.prisma.odt.findUnique({ where: { id: odtId }, select: { id: true } })
+    if (!odt) return reply.code(404).send({ error: 'ODT no encontrada' })
     const usuario = request.user?.nombre || request.user?.email || 'Sistema'
     const entry = await fastify.prisma.bitacoraTaller.create({
       data: { odtId, usuario, texto: texto.trim() },
@@ -33,7 +37,11 @@ export default async function bitacoraRoutes(fastify) {
   }, async (request, reply) => {
     const entryId = parseInt(request.params.entryId, 10)
     if (isNaN(entryId)) return reply.code(400).send({ error: 'ID inválido' })
+    const odtId = parseInt(request.params.id, 10)
+    if (isNaN(odtId)) return reply.code(400).send({ error: 'ID invalido' })
     try {
+      const entry = await fastify.prisma.bitacoraTaller.findFirst({ where: { id: entryId, odtId } })
+      if (!entry) return reply.code(404).send({ error: 'Entrada no encontrada' })
       await fastify.prisma.bitacoraTaller.delete({ where: { id: entryId } })
       return reply.code(204).send()
     } catch (e) {

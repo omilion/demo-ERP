@@ -48,10 +48,19 @@ async function main() {
   console.log(`\n▸ Cobranza`)
   const cobH = await prisma.cobranzaHistorico.count()
   log('CobranzaHistorico total', cobH)
-  // intentar cruzar con orden por ndoc o algo (verificar schema)
+  // Cruzar por relacion directa o por n_interno historico.
   try {
-    const cobConVenta = await prisma.$queryRawUnsafe(`SELECT count(*)::int as c FROM cobranza.cobranza_historico WHERE EXISTS (SELECT 1 FROM ventas.ordenes o WHERE o.licitacion = cobranza_historico.ndoc)`)
-    log('Cobranza con orden cruzable por ndoc', cobConVenta[0]?.c ?? '?')
+    const cobConVenta = await prisma.$queryRawUnsafe(`
+      SELECT count(*)::int as c
+      FROM ventas.cobranza_historico ch
+      WHERE EXISTS (
+        SELECT 1
+        FROM ventas.ordenes o
+        WHERE o.id = ch.orden_id
+           OR (ch.interno IS NOT NULL AND o.n_interno = ch.interno)
+      )
+    `)
+    log('Cobranza con orden cruzable', cobConVenta[0]?.c ?? '?')
   } catch (e) { log('Cobranza cruce', 'n/a') }
 
   // ── ODT / TALLER ─────────────────────────────────────────────────

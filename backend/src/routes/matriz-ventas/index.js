@@ -1,22 +1,33 @@
 // Vista consolidada de TODAS las ventas (Orden + CotizacionLicitacion + OrdenCompraOnline)
 // Filtros: tipo, fechas, RUT, n° interno, OC, ID licitación, búsqueda libre
 
+import { parseDate, parsePage, parsePositiveInt } from '../operational-utils.js'
+
 export default async function matrizVentasRoutes(fastify) {
   // GET /api/matriz-ventas?tipo=&desde=&hasta=&rut=&nInterno=&oc=&idLicitacion=&search=&page=1
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
-  }, async (request) => {
+  }, async (request, reply) => {
     const { tipo, desde, hasta, rut, nInterno, oc, idLicitacion, guia, odt, estadoPago, estadoEntrega, search, page = '1' } = request.query
     const LIMIT = 100
-    const skip = (parseInt(page, 10) - 1) * LIMIT
-    const dateDesde = desde ? new Date(desde) : null
-    const dateHasta = hasta ? new Date(hasta + 'T23:59:59') : null
+    const skip = (parsePage(page) - 1) * LIMIT
+    const scanTake = Math.min(skip + LIMIT, 500)
+    const dateDesde = desde ? parseDate(desde) : null
+    const dateHasta = hasta ? parseDate(hasta, true) : null
+    if (desde && !dateDesde) return reply.code(400).send({ error: 'desde invalido' })
+    if (hasta && !dateHasta) return reply.code(400).send({ error: 'hasta invalido' })
+    const parsedNInterno = nInterno ? parsePositiveInt(nInterno) : null
+    const parsedGuia = guia ? parsePositiveInt(guia) : null
+    if (nInterno && !parsedNInterno) return reply.code(400).send({ error: 'nInterno invalido' })
+    if (guia && !parsedGuia) return reply.code(400).send({ error: 'guia invalida' })
 
     // Si filtran por odt, lookup ordenId
     let ordenIdsByOdt = null
     if (odt) {
+      const parsedOdt = parsePositiveInt(odt)
+      if (!parsedOdt) return reply.code(400).send({ error: 'odt invalida' })
       const odts = await fastify.prisma.odt.findMany({
-        where: { id: parseInt(odt, 10) },
+        where: { id: parsedOdt },
         select: { ordenId: true },
       })
       ordenIdsByOdt = odts.map(o => o.ordenId).filter(Boolean)
@@ -40,9 +51,9 @@ export default async function matrizVentasRoutes(fastify) {
       if (dateDesde) where.createdAt.gte = dateDesde
       if (dateHasta) where.createdAt.lte = dateHasta
       if (rut) where.rutCliente = { contains: rut, mode: 'insensitive' }
-      if (nInterno) where.nInterno = parseInt(nInterno, 10)
+      if (nInterno) where.nInterno = parsedNInterno
       if (oc) where.licitacion = { contains: oc, mode: 'insensitive' }
-      if (guia) where.guias = parseInt(guia, 10)
+      if (guia) where.guias = parsedGuia
       if (estadoPago) where.estadoPago = estadoPago
       if (estadoEntrega) where.estadoEntrega = estadoEntrega
       if (ordenIdsByOdt) where.id = { in: ordenIdsByOdt }
@@ -56,7 +67,7 @@ export default async function matrizVentasRoutes(fastify) {
         ]
       }
       const ordenes = await fastify.prisma.orden.findMany({
-        where, include: { items: true }, orderBy: { createdAt: 'desc' }, take: LIMIT,
+        where, include: { items: true }, orderBy: { createdAt: 'desc' }, take: scanTake,
       })
       // Lookup clientes + ODTs + guías + documentos en batch (todo cruzado)
       const ruts = [...new Set(ordenes.map(o => o.rutCliente).filter(Boolean))]
@@ -127,7 +138,7 @@ export default async function matrizVentasRoutes(fastify) {
         ]
       }
       const ocs = await fastify.prisma.ordenCompraOnline.findMany({
-        where, orderBy: { fechaHora: 'desc' }, take: LIMIT,
+        where, orderBy: { fechaHora: 'desc' }, take: scanTake,
       })
       for (const o of ocs) {
         results.push({
@@ -156,7 +167,7 @@ export default async function matrizVentasRoutes(fastify) {
         ]
       }
       const lics = await fastify.prisma.cotizacionLicitacion.findMany({
-        where, include: { items: true }, orderBy: { fecha: 'desc' }, take: LIMIT,
+        where, include: { items: true }, orderBy: { fecha: 'desc' }, take: scanTake,
       })
       const rutsLic = [...new Set(lics.map(l => l.rutCliente).filter(Boolean))]
       const clientesLic = rutsLic.length ? await fastify.prisma.cliente.findMany({
@@ -188,10 +199,12 @@ export default async function matrizVentasRoutes(fastify) {
   // GET /api/matriz-ventas/totales?desde=&hasta=
   fastify.get('/totales', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
-  }, async (request) => {
+  }, async (request, reply) => {
     const { desde, hasta } = request.query
-    const dateDesde = desde ? new Date(desde) : null
-    const dateHasta = hasta ? new Date(hasta + 'T23:59:59') : null
+    const dateDesde = desde ? parseDate(desde) : null
+    const dateHasta = hasta ? parseDate(hasta, true) : null
+    if (desde && !dateDesde) return reply.code(400).send({ error: 'desde invalido' })
+    if (hasta && !dateHasta) return reply.code(400).send({ error: 'hasta invalido' })
     const dateFilter = (field) => {
       const f = {}
       if (dateDesde) f.gte = dateDesde

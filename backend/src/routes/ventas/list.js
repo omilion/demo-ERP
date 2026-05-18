@@ -1,4 +1,5 @@
 import { computeTotal, attachClientes, attachProductos } from './helpers.js'
+import { parsePositiveInt } from '../operational-utils.js'
 
 export default async function listVentas(fastify) {
   fastify.get('/', {
@@ -11,7 +12,11 @@ export default async function listVentas(fastify) {
     if (estadoPago) where.estadoPago = estadoPago
     if (estadoEntrega) where.estadoEntrega = estadoEntrega
     if (tipo) where.tipo = tipo
-    if (clienteId) where.clienteId = parseInt(clienteId, 10)
+    if (clienteId) {
+      const parsedClienteId = parsePositiveInt(clienteId)
+      if (!parsedClienteId) return reply.code(400).send({ error: 'clienteId invalido' })
+      where.clienteId = parsedClienteId
+    }
     if (search) {
       const isNum = /^\d+$/.test(search.trim())
       where.OR = [

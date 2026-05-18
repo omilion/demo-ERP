@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { useDespachos, useGuias, useCreateDespacho, useUpdateDespacho, useDeleteDespacho, useCreateGuia, useDeleteGuia } from '../../api/despachos'
 import { useUpdateVenta } from '../../api/ventas'
 import { downloadCsv } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
-import { can } from '../../utils/permissions'
+import { can, ventaPath } from '../../utils/permissions'
 
 const TABS = [
   { id: 'despachos', label: 'Despachos' },
@@ -31,6 +31,8 @@ const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
 export default function DespachosPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const ordenIdParam = searchParams.get('ordenId') || ''
   const { user } = useAuthStore()
   const canWriteDespacho = can(user, 'despacho', 'write')
   const canWriteVentas = can(user, 'ventas', 'write')
@@ -46,11 +48,13 @@ export default function DespachosPage() {
   if (desde) params.desde = desde
   if (hasta) params.hasta = hasta
   if (search) params.search = search
+  if (ordenIdParam) params.ordenId = ordenIdParam
 
   const guiaParams = {}
   if (desde) guiaParams.desde = desde
   if (hasta) guiaParams.hasta = hasta
   if (search) guiaParams.nGuia = search
+  if (ordenIdParam) guiaParams.ordenId = ordenIdParam
 
   const despachos = useDespachos(tab === 'despachos' ? params : {})
   const guias = useGuias(tab === 'guias' ? guiaParams : {})
@@ -77,7 +81,7 @@ export default function DespachosPage() {
     ) },
     { key: '_acc', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 8 }}>
-        {row.ordenId && <button onClick={(e) => { e.stopPropagation(); navigate('/ventas/' + row.ordenId) }} style={linkButton('var(--blue, #2563eb)')}>Ver Orden</button>}
+        {row.ordenId && <button onClick={(e) => { e.stopPropagation(); navigate(ventaPath(row.ordenId, user)) }} style={linkButton('var(--blue, #2563eb)')}>Ver Orden</button>}
         {canWriteVentas && row.ordenId && (
           <button
             onClick={(e) => {
@@ -105,7 +109,7 @@ export default function DespachosPage() {
     { key: 'origen', label: 'Origen' },
     { key: '_acc', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 8 }}>
-        {row.ordenId && <button onClick={(e) => { e.stopPropagation(); navigate('/ventas/' + row.ordenId) }} style={linkButton('var(--blue, #2563eb)')}>Ver Orden</button>}
+        {row.ordenId && <button onClick={(e) => { e.stopPropagation(); navigate(ventaPath(row.ordenId, user)) }} style={linkButton('var(--blue, #2563eb)')}>Ver Orden</button>}
         {canWriteDespacho && <button onClick={(e) => { e.stopPropagation(); if (confirm('Eliminar guia?')) delGuiaMut.mutate(row.id) }} style={linkButton('var(--red)')}>Borrar</button>}
       </div>
     ) },
@@ -131,6 +135,13 @@ export default function DespachosPage() {
         { key: 'origen', label: 'Origen' },
       ])
     }
+  }
+
+  function clearFilters() {
+    setDesde('')
+    setHasta('')
+    setSearch('')
+    if (ordenIdParam) setSearchParams({})
   }
 
   return (
@@ -162,14 +173,19 @@ export default function DespachosPage() {
           <input type="date" value={desde} onChange={e => setDesde(e.target.value)} style={inputFilter} />
           <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} style={inputFilter} />
           <SearchBar placeholder={tab === 'despachos' ? 'Buscar despacho...' : 'Buscar guia...'} value={search} onChange={setSearch} style={{ width: 260 }} />
-          {(desde || hasta || search) && <button onClick={() => { setDesde(''); setHasta(''); setSearch('') }} style={smallButton}>Limpiar</button>}
+          {ordenIdParam && <Badge tone="blue">Orden #{ordenIdParam}</Badge>}
+          {(desde || hasta || search || ordenIdParam) && <button onClick={clearFilters} style={smallButton}>Limpiar</button>}
         </div>
         <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)' }}>
           <Tabs tabs={TABS} active={tab} onChange={setTab} />
         </div>
         {tab === 'despachos'
-          ? <Table columns={colsDespacho} rows={despachos.data?.items || []} emptyMessage="Sin despachos" />
-          : <Table columns={colsGuia} rows={guias.data?.items || []} emptyMessage="Sin guias" />
+          ? (despachos.isLoading
+            ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando despachos...</div>
+            : <Table columns={colsDespacho} rows={despachos.data?.items || []} emptyMessage="Sin despachos" />)
+          : (guias.isLoading
+            ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando guias...</div>
+            : <Table columns={colsGuia} rows={guias.data?.items || []} emptyMessage="Sin guias" />)
         }
       </div>
 

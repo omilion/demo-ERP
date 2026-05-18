@@ -66,7 +66,7 @@ export const ViewPanel = ({ title, subtitle, onClose, onEdit, onDelete, children
         <div style={{ flex: 1, overflowY: 'auto', padding: '22px 22px' }}>{children}</div>
         <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, flexShrink: 0 }}>
           {onEdit && <Btn variant="primary" icon="edit" onClick={onEdit}>Editar</Btn>}
-          <Btn variant="secondary" icon="printer">Imprimir</Btn>
+          <Btn variant="secondary" icon="printer" onClick={() => window.print()}>Imprimir</Btn>
           {onDelete && <Btn variant="ghost" icon="trash" onClick={onDelete} style={{ marginLeft: 'auto', color: 'var(--red)' }}>Eliminar</Btn>}
         </div>
       </div>

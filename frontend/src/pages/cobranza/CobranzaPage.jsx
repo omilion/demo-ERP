@@ -4,6 +4,8 @@ import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs } from '../../c
 import { useVentas, useUpdateVenta } from '../../api/ventas'
 import { useCobranzaHistorico, useCobranzaEjecutivas, useCobranzaMeses } from '../../api/cobranzaHistorico'
 import { downloadFromBackend } from '../../utils/csv'
+import { useAuthStore } from '../../store/auth'
+import { can, ventaPath } from '../../utils/permissions'
 
 const ESTADO_TABS = [
   { id: 'No pagada', label: 'No Pagadas' },
@@ -36,6 +38,8 @@ function estadoCobTone(estado) {
 
 export default function CobranzaPage() {
   const navigate = useNavigate()
+  const user = useAuthStore(s => s.user)
+  const canWriteCobranza = can(user, 'cobranza', 'write') || can(user, 'ventas', 'write') || can(user, 'caja', 'write')
   const [mainTab, setMainTab] = useState('activo')
   const [estadoTab, setEstadoTab] = useState('No pagada')
   const [search, setSearch] = useState('')
@@ -147,6 +151,7 @@ export default function CobranzaPage() {
         const saldo = (row.total || 0) - (row.abono || 0)
         return (
           <div style={{ display: 'flex', gap: 4 }}>
+            {canWriteCobranza && (
             <button
               onClick={e => {
                 e.stopPropagation()
@@ -157,17 +162,18 @@ export default function CobranzaPage() {
                 const nuevoAbono = (row.abono || 0) + n
                 const estadoPago = nuevoAbono >= (row.total || 0) ? 'Pagada' : 'Parcial'
                 updateVentaMut.mutate({ id: row.id, data: { abono: nuevoAbono, estadoPago } }, {
-                  onError: err => alert(err.response?.data?.error || 'Error al registrar abono'),
+                  onError: err => alert(err.response?.status === 403 ? 'No tienes permiso para registrar abonos.' : (err.response?.data?.error || 'Error al registrar abono')),
                 })
               }}
               disabled={updateVentaMut.isPending}
               style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--green-700)', background: 'var(--green-700)', cursor: 'pointer', color: '#fff', fontWeight: 500, whiteSpace: 'nowrap' }}
               title="Registrar abono"
             >Pagar</button>
+            )}
             <button
-              onClick={e => { e.stopPropagation(); navigate('/ventas/' + row.id + '/editar') }}
+              onClick={e => { e.stopPropagation(); navigate(ventaPath(row.id, user)) }}
               style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500, whiteSpace: 'nowrap' }}
-            >Gestionar</button>
+            >{can(user, 'ventas', 'write') ? 'Gestionar' : 'Ver'}</button>
           </div>
         )
       }
@@ -299,7 +305,7 @@ export default function CobranzaPage() {
         {mainTab === 'activo' ? (
           isLoading
             ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-            : <Table columns={colsActivo} rows={ventas} onRowClick={row => navigate('/ventas/' + row.id + '/editar')} emptyMessage="Sin documentos pendientes de cobro" />
+            : <Table columns={colsActivo} rows={ventas} onRowClick={row => navigate(ventaPath(row.id, user))} emptyMessage="Sin documentos pendientes de cobro" />
         ) : (
           histLoading
             ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>

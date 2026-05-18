@@ -1,25 +1,38 @@
+import { normalizeTipoMovimiento, parseOptionalInt, parsePage, parsePositiveInt } from '../operational-utils.js'
+
 export default async function historicoRoutes(fastify) {
   // GET /api/caja/historico?year=2024&medioPago=...&search=...&tipo=ingreso
   fastify.get('/historico', {
     preHandler: [fastify.authenticate, fastify.rbac('caja', 'read')],
-  }, async (request) => {
+  }, async (request, reply) => {
     const { year, medioPago, search, tipo, nInterno, ordenId, nDoc, page = '1' } = request.query
     const LIMIT = 100
-    const offset = (parseInt(page) - 1) * LIMIT
+    const offset = (parsePage(page) - 1) * LIMIT
 
     const where = {}
     if (year) {
-      const y = parseInt(year)
+      const y = parseOptionalInt(year)
+      if (!y || y < 2000 || y > 2100) return reply.code(400).send({ error: 'year invalido' })
       where.fecha = { gte: new Date(`${y}-01-01`), lt: new Date(`${y + 1}-01-01`) }
     }
     if (medioPago) where.medioPago = { contains: medioPago, mode: 'insensitive' }
-    if (tipo) where.tipo = tipo
-    if (ordenId) where.ordenId = parseInt(ordenId, 10)
+    if (tipo) {
+      const tipoNormalizado = normalizeTipoMovimiento(tipo)
+      if (!tipoNormalizado) return reply.code(400).send({ error: 'tipo invalido' })
+      where.tipo = tipoNormalizado
+    }
+    if (ordenId) {
+      const parsedOrdenId = parsePositiveInt(ordenId)
+      if (!parsedOrdenId) return reply.code(400).send({ error: 'ordenId invalido' })
+      where.ordenId = parsedOrdenId
+    }
     if (nDoc) where.nDoc = { contains: nDoc, mode: 'insensitive' }
     if (nInterno) {
+      const parsedNInterno = parsePositiveInt(nInterno)
+      if (!parsedNInterno) return reply.code(400).send({ error: 'nInterno invalido' })
       // resolver nInterno → ordenId
       const ordenes = await fastify.prisma.orden.findMany({
-        where: { nInterno: parseInt(nInterno, 10) }, select: { id: true },
+        where: { nInterno: parsedNInterno }, select: { id: true },
       })
       const ids = ordenes.map(o => o.id)
       if (ids.length === 0) return { items: [], total: 0, limit: LIMIT, stats: { totalIngresos: 0, totalEgresos: 0 } }
@@ -44,13 +57,17 @@ export default async function historicoRoutes(fastify) {
       fastify.prisma.movimientoCaja.count({ where }),
     ])
 
-    // Stats for the filtered set
-    const allFiltered = await fastify.prisma.movimientoCaja.findMany({
+    const grouped = await fastify.prisma.movimientoCaja.groupBy({
+      by: ['tipo'],
       where,
-      select: { tipo: true, monto: true },
+      _sum: { monto: true },
     })
-    const totalIngresos = allFiltered.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + m.monto, 0)
-    const totalEgresos = allFiltered.filter(m => m.tipo === 'egreso').reduce((s, m) => s + Math.abs(m.monto), 0)
+    const totalIngresos = grouped
+      .filter(g => (g.tipo || '').toLowerCase() === 'ingreso')
+      .reduce((s, g) => s + (g._sum.monto || 0), 0)
+    const totalEgresos = grouped
+      .filter(g => (g.tipo || '').toLowerCase() === 'egreso')
+      .reduce((s, g) => s + Math.abs(g._sum.monto || 0), 0)
 
     return { items, total, limit: LIMIT, stats: { totalIngresos, totalEgresos } }
   })

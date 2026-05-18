@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon, Badge, KpiCard, PageHeader, Btn, SearchBar, Tabs } from '../../components/shared'
 import { useOdts, useOdt, useOdtEstado, useAddBitacora, useDeleteBitacora, useDeleteOdt } from '../../api/odts'
 import { useAuthStore } from '../../store/auth'
-import { can } from '../../utils/permissions'
+import { can, ventaPath } from '../../utils/permissions'
 
 const ESTADO_TONE = {
   Prioritaria: 'red',
@@ -145,6 +145,7 @@ function BitacoraSection({ odtId, entries = [], canWrite }) {
 
 function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete, canWrite }) {
   const navigate = useNavigate()
+  const user = useAuthStore(s => s.user)
   const { data: full } = useOdt(odt.id)
   const o = full || odt
   const orden = full?.orden ?? null
@@ -194,7 +195,7 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete, canWrite }) 
                 </div>
                 {orden.cliente?.rut && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>{orden.cliente.rut}</div>}
               </div>
-              <button onClick={() => { navigate('/ventas/' + orden.id + '/editar'); onClose() }} style={{ fontSize: 11, color: 'var(--green-700)', background: '#fff', border: '1px solid var(--green-600)', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>
+              <button onClick={() => { navigate(ventaPath(orden.id, user)); onClose() }} style={{ fontSize: 11, color: 'var(--green-700)', background: '#fff', border: '1px solid var(--green-600)', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>
                 Ver Venta →
               </button>
             </div>
@@ -268,12 +269,16 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete, canWrite }) 
 
 export default function TallerPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const initialSearch = searchParams.get('search') || ''
+  const initialTipo = searchParams.get('tipo')
+  const initialPrioridad = searchParams.get('prioridad')
   const { user } = useAuthStore()
   const canWriteTaller = can(user, 'taller', 'write')
-  const [tab, setTab]               = useState('all')
-  const [search, setSearch]         = useState('')
-  const [debouncedSearch, setDeb]   = useState('')
-  const [estadoFilter, setEst]      = useState('all')
+  const [tab, setTab]               = useState(initialTipo && TALLER_TABS.some(t => t.id === initialTipo) ? initialTipo : 'all')
+  const [search, setSearch]         = useState(initialSearch)
+  const [debouncedSearch, setDeb]   = useState(initialSearch)
+  const [estadoFilter, setEst]      = useState(initialPrioridad === 'urgente' ? 'Prioritaria' : 'all')
   const [selected, setSelected]     = useState(null)
   const debRef = useRef(null)
   const cambiarEstado = useOdtEstado()

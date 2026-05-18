@@ -1,3 +1,5 @@
+import { applyDateRange } from '../operational-utils.js'
+
 export default async function listOdts(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
@@ -8,11 +10,7 @@ export default async function listOdts(fastify) {
     const where = {}
     if (tipo) where.tipo = tipo
     if (estado) where.estado = estado
-    if (fechaDesde || fechaHasta) {
-      where.createdAt = {}
-      if (fechaDesde) where.createdAt.gte = new Date(fechaDesde)
-      if (fechaHasta) where.createdAt.lte = new Date(fechaHasta + 'T23:59:59')
-    }
+    if (!applyDateRange(where, 'createdAt', fechaDesde, fechaHasta)) return reply.code(400).send({ error: 'Rango de fechas invalido' })
     if (search) {
       const isNum = /^\d+$/.test(search.trim())
       where.OR = [

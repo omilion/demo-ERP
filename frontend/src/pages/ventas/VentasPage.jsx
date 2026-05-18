@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon, Badge, PageHeader, Btn, SearchBar, Table, Tabs, StatusDot } from '../../components/shared'
 import { ViewVentaPanel } from '../../components/forms/ViewVentaPanel'
 import { useVentas } from '../../api/ventas'
@@ -12,22 +12,36 @@ const FILTER_TABS = [
   { id: 'hoy',          label: 'Hoy' },
   { id: 'no_pagada',    label: 'No Pagadas' },
   { id: 'pend_entrega', label: 'Pend. Entrega' },
+  { id: 'web',          label: 'Web' },
   { id: 'licitacion',   label: 'Lic. / Convenio' },
 ]
 
 const TAB_PARAMS = {
   no_pagada:    { estadoPago: 'No pagada' },
   pend_entrega: { estadoEntrega: 'Pendiente entrega' },
+  web:           { tipo: 'Venta Web' },
   licitacion:   { tipo: 'Licitación' },
+}
+
+const URL_FILTERS = {
+  no_pagadas: 'no_pagada',
+  no_pagada: 'no_pagada',
+  pendiente_entrega: 'pend_entrega',
+  pend_entrega: 'pend_entrega',
+  web: 'web',
+  licitacion: 'licitacion',
 }
 
 export default function VentasPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const initialFiltro = URL_FILTERS[searchParams.get('filtro')] || 'all'
+  const initialSearch = searchParams.get('search') || ''
   const { user } = useAuthStore()
   const canWriteVentas = can(user, 'ventas', 'write')
-  const [tab, setTab] = useState('all')
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [tab, setTab] = useState(initialFiltro)
+  const [search, setSearch] = useState(initialSearch)
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch)
   const [selected, setSelected] = useState(null)
   const debounceRef = useRef(null)
 

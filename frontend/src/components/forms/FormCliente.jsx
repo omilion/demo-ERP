@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FormPanel, ViewPanel, FormField, FormDivider, DetailRow, Input, Select, useForm, useSave } from './index'
-import { Badge, Icon } from '../shared'
+import { Badge } from '../shared'
 import { useCliente } from '../../api/clientes'
+import { useAuthStore } from '../../store/auth'
+import { odtPath, ventaPath } from '../../utils/permissions'
 
 // ── FormCliente ────────────────────────────────────────────────────────────────
 export function FormCliente({ initial, onClose, onSaved }) {
@@ -222,6 +224,7 @@ function TabTaller({ odts, onOdtClick }) {
 // ── ViewClientePanel ───────────────────────────────────────────────────────────
 export function ViewClientePanel({ cliente, onClose, onEdit, canWrite = true }) {
   const navigate = useNavigate()
+  const user = useAuthStore(s => s.user)
   const [tab, setTab] = useState('datos')
   const { data: full, isLoading } = useCliente(cliente.id)
 
@@ -252,14 +255,14 @@ export function ViewClientePanel({ cliente, onClose, onEdit, canWrite = true }) 
       {tab === 'ventas' && (
         <TabVentas
           ventas={ventas}
-          onVentaClick={id => { navigate('/ventas/' + id + '/editar'); onClose() }}
+          onVentaClick={id => { navigate(ventaPath(id, user)); onClose() }}
         />
       )}
 
       {tab === 'taller' && (
         <TabTaller
           odts={odts}
-          onOdtClick={odt => { navigate('/taller/' + odt.id + '/editar'); onClose() }}
+          onOdtClick={odt => { navigate(odtPath(odt.id, user)); onClose() }}
         />
       )}
     </ViewPanel>
