@@ -184,11 +184,14 @@ export const PageHeader = ({ title, subtitle, breadcrumb, actions }) => (
 // ── Btn ───────────────────────────────────────────────────────────────────────
 export const Btn = ({ children, variant = 'primary', size = 'md', icon, onClick, disabled }) => {
   const [hov, setHov] = useState(false)
+  const isXs = size === 'xs'
   const base = {
-    display: 'inline-flex', alignItems: 'center', gap: 6,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
     borderRadius: 7, fontFamily: 'inherit', fontWeight: 500, cursor: disabled ? 'not-allowed' : 'pointer',
-    transition: 'all 0.15s', border: 'none', fontSize: size === 'sm' ? 12 : 13,
-    padding: size === 'sm' ? '5px 11px' : '8px 16px',
+    transition: 'all 0.15s', border: 'none',
+    fontSize: isXs ? 11 : size === 'sm' ? 12 : 13,
+    padding: isXs ? '4px 9px' : size === 'sm' ? '8px 13px' : '10px 18px',
+    minHeight: isXs ? 28 : size === 'sm' ? 36 : 44,
     opacity: disabled ? 0.5 : 1,
   }
   const variants = {

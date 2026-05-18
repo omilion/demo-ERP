@@ -15,9 +15,16 @@ api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config
-    if (error.response?.status !== 401 || original.url === '/auth/login') {
+    if (
+      error.response?.status !== 401 ||
+      original.url === '/auth/login' ||
+      original.url === '/auth/refresh' ||
+      original._retry ||
+      !useAuthStore.getState().token
+    ) {
       return Promise.reject(error)
     }
+    original._retry = true
 
     if (!refreshPromise) {
       refreshPromise = api.post('/auth/refresh')

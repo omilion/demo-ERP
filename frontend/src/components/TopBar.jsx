@@ -187,9 +187,9 @@ export function TopBar() {
         {/* Right: clock + bell + user */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, fontFamily: "'DM Mono', monospace", letterSpacing: 0.2 }}>{clock}</span>
-          <button style={{ color: 'rgba(255,255,255,0.55)', padding: 6, borderRadius: 6, position: 'relative' }}>
+          <button aria-label="Notificaciones" style={{ color: 'rgba(255,255,255,0.78)', minWidth: 44, minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, position: 'relative' }}>
             <Icon name="bell" size={18} />
-            <span style={{ position: 'absolute', top: 4, right: 4, width: 7, height: 7, borderRadius: '50%', background: 'var(--amber)', border: '1.5px solid var(--green-900)' }} />
+            <span style={{ position: 'absolute', top: 8, right: 8, width: 7, height: 7, borderRadius: '50%', background: 'var(--amber)', border: '1.5px solid var(--green-900)' }} />
           </button>
 
           {/* User dropdown */}
