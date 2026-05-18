@@ -49,6 +49,14 @@ export function useEliminarOdtItem() {
   })
 }
 
+export function useBackfillOdtsCliente() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post('/admin/integridad/backfill-odts-cliente').then(r => r.data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin'] }) },
+  })
+}
+
 export function useAuditoria(params = {}) {
   return useQuery({
     queryKey: ['admin', 'auditoria', params],

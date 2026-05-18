@@ -32,7 +32,8 @@ export default async function bitacoraTallerRoutes(fastify) {
       fastify.prisma.bitacoraTaller.findMany({
         where,
         include: { odt: { select: { id: true, descripcion: true, tipo: true, estado: true } } },
-        orderBy: { fecha: 'desc' }, take: LIMIT, skip,
+        orderBy: [{ fecha: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
+        take: LIMIT, skip,
       }),
       fastify.prisma.bitacoraTaller.count({ where }),
     ])

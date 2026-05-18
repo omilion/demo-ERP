@@ -20,7 +20,9 @@ export default async function historialMaterialesRoutes(fastify) {
     }
     const [items, total, agg] = await Promise.all([
       fastify.prisma.tallerHistorialMaterial.findMany({
-        where, orderBy: { fecha: 'desc' }, take: LIMIT, skip,
+        where,
+        orderBy: [{ fecha: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
+        take: LIMIT, skip,
       }),
       fastify.prisma.tallerHistorialMaterial.count({ where }),
       fastify.prisma.tallerHistorialMaterial.aggregate({

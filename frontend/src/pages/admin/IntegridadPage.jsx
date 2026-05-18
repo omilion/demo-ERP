@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader, KpiCard, Badge, Btn } from '../../components/shared'
-import { useIntegridadResumen, useIntegridadDetalle, useReasignarOrdenItem, useEliminarOrdenItem, useReasignarOdtItem, useEliminarOdtItem } from '../../api/admin'
+import { useIntegridadResumen, useIntegridadDetalle, useReasignarOrdenItem, useEliminarOrdenItem, useReasignarOdtItem, useEliminarOdtItem, useBackfillOdtsCliente } from '../../api/admin'
 import { useProductos } from '../../api/productos'
 
 const TIPOS = [
@@ -13,6 +13,7 @@ const TIPOS = [
   { id: 'odt-mojibake',              label: 'ODT texto corrupto',      key: 'odt_mojibake',            cols: ['id', 'descripcion', 'cliente_nombre', 'tipo', 'estado'] },
   { id: 'crm-sin-contacto',          label: 'CRM sin teléfono/email',  key: 'crm_sin_contacto',        cols: ['id', 'nombre_cliente', 'empresa', 'estado', 'prioridad'] },
   { id: 'codigo-barra-basura',       label: 'Códigos barra inválidos', key: 'codigo_barra_basura',     cols: ['id', 'codigo_interno', 'codigo_barra', 'nombre', 'stock'] },
+  { id: 'odts-sin-cliente',          label: 'ODTs sin cliente',        key: 'odts_sin_cliente',        cols: ['id', 'cliente_orden', 'orden_id', 'descripcion', 'estado'] },
 ]
 
 const PRODUCT_TIPOS = new Set(['productos-stock-negativo', 'productos-sin-precio', 'productos-mojibake', 'codigo-barra-basura'])
@@ -62,6 +63,7 @@ export default function IntegridadPage() {
   const eliminarOrden = useEliminarOrdenItem()
   const reasignarOdt = useReasignarOdtItem()
   const eliminarOdt = useEliminarOdtItem()
+  const backfillOdtsCliente = useBackfillOdtsCliente()
 
   const isOrdenHuerfano = tipo === 'orden-items-huerfanos'
   const isOdtHuerfano = tipo === 'odt-items-huerfanos'
@@ -103,9 +105,18 @@ export default function IntegridadPage() {
             <strong style={{ fontSize: 14 }}>{def?.label}</strong>
             <Badge tone="neutral">{rows.length} de {resumen?.[def?.key] ?? 0}</Badge>
           </div>
-          <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}>
-            {TIPOS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-          </select>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {tipo === 'odts-sin-cliente' && (
+              <Btn size="sm" variant="primary"
+                onClick={() => { if (confirm('Rellenar cliente_nombre desde orden.cliente_id en todas las ODTs huérfanas?')) backfillOdtsCliente.mutate() }}
+                disabled={backfillOdtsCliente.isPending}>
+                {backfillOdtsCliente.isPending ? 'Backfilling…' : 'Backfill desde Orden'}
+              </Btn>
+            )}
+            <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}>
+              {TIPOS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>

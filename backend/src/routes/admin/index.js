@@ -20,7 +20,9 @@ export default async function adminRoutes(fastify) {
         (SELECT COUNT(*) FROM catalogo.productos WHERE (codigo_barra IS NULL OR codigo_barra = '') AND activo = true)::int AS sin_codigo_barra,
         (SELECT COUNT(*) FROM catalogo.productos WHERE (codigo_interno IS NULL OR codigo_interno = '') AND activo = true)::int AS sin_codigo_interno,
         (SELECT COUNT(*) FROM catalogo.productos WHERE categoria_id IS NULL AND activo = true)::int AS sin_categoria,
-        (SELECT COUNT(*) FROM catalogo.productos WHERE proveedor_id IS NULL AND activo = true)::int AS sin_proveedor
+        (SELECT COUNT(*) FROM catalogo.productos WHERE proveedor_id IS NULL AND activo = true)::int AS sin_proveedor,
+        (SELECT COUNT(*) FROM taller.odts WHERE (cliente_nombre IS NULL OR cliente_nombre = ''))::int AS odts_sin_cliente,
+        (SELECT COUNT(*) FROM taller.bitacora_taller WHERE fecha IS NULL)::int AS bitacora_sin_fecha
     `
     return r
   })
@@ -82,9 +84,36 @@ export default async function adminRoutes(fastify) {
           WHERE codigo_barra IN ('0','1','-') OR (codigo_barra IS NOT NULL AND LENGTH(codigo_barra) BETWEEN 1 AND 3)
           ORDER BY id LIMIT ${limit}
         `
+      case 'odts-sin-cliente':
+        return p.$queryRaw`
+          SELECT o.id, o.cliente_nombre, o.orden_id, o.descripcion, o.estado, o.created_at,
+                 ord.cliente_id, c.nombre AS cliente_orden
+          FROM taller.odts o
+          LEFT JOIN ventas.ordenes ord ON ord.id = o.orden_id
+          LEFT JOIN clientes.clientes c ON c.id = ord.cliente_id
+          WHERE (o.cliente_nombre IS NULL OR o.cliente_nombre = '')
+          ORDER BY o.created_at DESC LIMIT ${limit}
+        `
       default:
         return reply.code(404).send({ error: 'Tipo no soportado' })
     }
+  })
+
+  // Backfill cliente_nombre en ODTs huérfanas desde orden_id → ventas.ordenes.cliente_id → clientes.nombre
+  fastify.post('/integridad/backfill-odts-cliente', { preHandler: [fastify.authenticate, onlyAdmin] }, async () => {
+    const [r] = await fastify.prisma.$queryRaw`
+      WITH upd AS (
+        UPDATE taller.odts o
+        SET cliente_nombre = c.nombre
+        FROM ventas.ordenes ord
+        JOIN clientes.clientes c ON c.id = ord.cliente_id
+        WHERE ord.id = o.orden_id
+          AND (o.cliente_nombre IS NULL OR o.cliente_nombre = '')
+        RETURNING o.id
+      )
+      SELECT COUNT(*)::int AS actualizadas FROM upd
+    `
+    return r
   })
 
   fastify.patch('/integridad/orden-item/:id', { preHandler: [fastify.authenticate, onlyAdmin] }, async (req, reply) => {
