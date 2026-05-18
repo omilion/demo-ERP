@@ -10,9 +10,25 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  lint-build:
-    name: Lint & Build
+  build-test:
+    name: Build & Test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: plastimar
+          POSTGRES_PASSWORD: plastimar
+          POSTGRES_DB: plastimar_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U plastimar -d plastimar_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://plastimar:plastimar@localhost:5432/plastimar_ci
 
     steps:
       - name: Checkout
@@ -23,7 +39,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
 
       - name: Install frontend deps
         working-directory: frontend
@@ -37,6 +55,22 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      - name: Validate Prisma schema
+        working-directory: backend
+        run: npx prisma validate
+
       - name: Generate Prisma client
         working-directory: backend
         run: npx prisma generate
+
+      - name: Apply migrations
+        working-directory: backend
+        run: npx prisma migrate deploy
+
+      - name: Seed CI database
+        working-directory: backend
+        run: npm run db:seed
+
+      - name: Run backend tests
+        working-directory: backend
+        run: npm test

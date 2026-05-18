@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { computeEstado } from './helpers.js'
+import { computeEstado, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos } from './helpers.js'
+
+const FotoUrlSchema = z.string().refine(isProductoFotoUrl, {
+  message: 'fotoUrl debe ser URL o ruta /uploads valida',
+})
 
 const Schema = z.object({
   codigoInterno: z.string().min(1),
@@ -18,8 +22,8 @@ const Schema = z.object({
   idMarco: z.string().optional(),
   estadoInventario: z.string().optional(),
   visibleWeb: z.boolean().optional(),
-  fotoUrl: z.string().url().optional().or(z.literal('')),
-  fotoUrlGrande: z.string().url().optional().or(z.literal('')),
+  fotoUrl: FotoUrlSchema.optional(),
+  fotoUrlGrande: FotoUrlSchema.optional(),
   descripcionWeb: z.string().optional(),
   precioWeb: z.number().min(0).optional(),
   ordenWeb: z.number().int().optional(),
@@ -32,7 +36,8 @@ export default async function createProducto(fastify) {
   }, async (request, reply) => {
     const parsed = Schema.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
-    const p = await fastify.prisma.producto.create({ data: parsed.data })
-    return reply.code(201).send({ ...p, estado: computeEstado(p) })
+    const data = normalizeProductoFotoFields(parsed.data)
+    const p = await fastify.prisma.producto.create({ data })
+    return reply.code(201).send(normalizeProductoFotos({ ...p, estado: computeEstado(p) }))
   })
 }

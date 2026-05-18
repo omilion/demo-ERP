@@ -1,11 +1,40 @@
 // Pasar producto a taller: crea OdtItem y adjudica a un Taller (espumas/confecciones/madera/etc)
 
+function cleanText(value) {
+  if (value == null) return null
+  const text = String(value).trim()
+  return text || null
+}
+
+function parsePositiveInt(value) {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
+
+function buildObs(item) {
+  const descripcion = cleanText(item.descripcion)
+  const obs = cleanText(item.obs)
+  if (descripcion && obs && descripcion !== obs) return `${descripcion}\n${obs}`
+  return obs || descripcion
+}
+
+async function resolveProducto(prisma, item) {
+  const productoId = parsePositiveInt(item.productoId ?? item.producto_id)
+  if (productoId) {
+    return prisma.producto.findUnique({ where: { id: productoId } })
+  }
+
+  const codigoInterno = cleanText(item.codigoInterno ?? item.codigo_interno)
+  if (!codigoInterno) return null
+  return prisma.producto.findUnique({ where: { codigoInterno } })
+}
+
 export default async function pasarTallerRoutes(fastify) {
   // GET /api/pasar-taller/transitorios?userId= (productos pendientes de enviar)
   // Para simplificar, se almacena temporalmente como OdtItem con odtId=null hasta confirmar.
   // Aquí: lista directa desde body en flow stateless.
 
-  // POST /api/pasar-taller/enviar  body: { odtId, items: [{codigoInterno, nombre, cantidad, descripcion, tallerId, prioridad, obs}] }
+  // POST /api/pasar-taller/enviar  body: { odtId, items: [{productoId|codigoInterno, cantidad, tallerId, descripcion, obs}] }
   fastify.post('/enviar', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
   }, async (request, reply) => {
@@ -13,35 +42,66 @@ export default async function pasarTallerRoutes(fastify) {
     if (!odtId || !Array.isArray(items) || items.length === 0) {
       return reply.code(400).send({ error: 'odtId e items requeridos' })
     }
-    const odtIdInt = parseInt(odtId, 10)
+    const odtIdInt = parsePositiveInt(odtId)
+    if (!odtIdInt) return reply.code(400).send({ error: 'odtId invalido' })
+
     const odt = await fastify.prisma.odt.findUnique({ where: { id: odtIdInt } })
     if (!odt) return reply.code(404).send({ error: 'ODT no encontrada' })
 
-    const created = []
-    for (const it of items) {
-      const odtItem = await fastify.prisma.odtItem.create({
-        data: {
-          odtId: odtIdInt,
-          codigoInterno: it.codigoInterno || null,
-          nombre: it.nombre || null,
-          descripcion: it.descripcion || null,
-          cantidad: parseFloat(it.cantidad) || 1,
-          precio: parseFloat(it.precio) || 0,
-          obs: it.obs || null,
-          prioridad: it.prioridad || 'normal',
-        },
-      })
-      if (it.tallerId) {
-        await fastify.prisma.odtItemTaller.create({
-          data: {
-            itemId: odtItem.id,
-            tallerId: parseInt(it.tallerId, 10),
-            estado: 'Pendiente',
-          },
-        })
+    const prepared = []
+    for (const [index, it] of items.entries()) {
+      if (!it || typeof it !== 'object') {
+        return reply.code(400).send({ error: `items[${index}] debe ser un objeto` })
       }
-      created.push(odtItem)
+
+      const producto = await resolveProducto(fastify.prisma, it)
+      if (!producto) {
+        return reply.code(400).send({ error: `items[${index}].productoId o codigoInterno debe referenciar un producto existente` })
+      }
+
+      const cantidad = parsePositiveInt(it.cantidad) || 1
+      const tallerId = it.tallerId ? parsePositiveInt(it.tallerId) : null
+      if (it.tallerId && !tallerId) {
+        return reply.code(400).send({ error: `items[${index}].tallerId invalido` })
+      }
+
+      if (tallerId) {
+        const taller = await fastify.prisma.taller.findFirst({ where: { id: tallerId, activo: true } })
+        if (!taller) return reply.code(400).send({ error: `items[${index}].tallerId no existe o esta inactivo` })
+      }
+
+      prepared.push({
+        item: {
+          odtId: odtIdInt,
+          productoId: producto.id,
+          codigoInterno: producto.codigoInterno || cleanText(it.codigoInterno),
+          nombre: producto.nombre || cleanText(it.nombre),
+          cantidad,
+          obs: buildObs(it),
+          usuario: request.user?.nombre || request.user?.email || null,
+        },
+        tallerId,
+      })
     }
+
+    const created = await fastify.prisma.$transaction(async (tx) => {
+      const out = []
+      for (const entry of prepared) {
+        const odtItem = await tx.odtItem.create({ data: entry.item })
+        if (entry.tallerId) {
+          await tx.odtItemTaller.create({
+            data: {
+              odtItemId: odtItem.id,
+              tallerId: entry.tallerId,
+              usuario: request.user?.nombre || request.user?.email || null,
+            },
+          })
+        }
+        out.push(odtItem)
+      }
+      return out
+    })
+
     return { ok: true, created }
   })
 

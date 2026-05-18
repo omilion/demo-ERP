@@ -2,6 +2,7 @@ import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
 import { randomUUID } from 'crypto'
 import { z } from 'zod'
+import { createErpAccessTokenPayload, createErpRefreshTokenPayload } from '../../plugins/jwt.js'
 
 const schema = z.object({
   email: z.string().email(),
@@ -20,15 +21,10 @@ export default async function loginRoute(fastify) {
     const valid = await bcrypt.compare(password, user.passwordHash)
     if (!valid) return reply.status(401).send({ error: 'Invalid credentials' })
 
-    const accessToken = fastify.jwt.sign({
-      id: user.id,
-      role: user.role,
-      nombre: user.nombre,
-      permisosExtra: user.permisosExtra || null,
-    })
+    const accessToken = fastify.jwt.sign(createErpAccessTokenPayload(user))
 
     const refreshToken = jwt.sign(
-      { id: user.id, jti: randomUUID() },
+      createErpRefreshTokenPayload(user.id, randomUUID()),
       process.env.JWT_REFRESH_SECRET,
       { expiresIn: process.env.JWT_REFRESH_EXPIRES || '7d' }
     )

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../components/shared'
 import { useCotizaciones, useReportesLicitaciones, useCrearVentaDesdeLicitacion } from '../../api/cotizaciones'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 const ESTADO_TONE = {
   'Pendiente':    'amber',
@@ -39,6 +41,8 @@ function exportCsv(rows) {
 
 export default function LicitacionesPage() {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const canWriteVentas = can(user, 'ventas', 'write')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [estado, setEstado] = useState('')
@@ -106,7 +110,7 @@ export default function LicitacionesPage() {
             onClick={e => { e.stopPropagation(); navigate('/licitaciones/' + row.id) }}
             style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}
           >Ver</button>
-          {row.estado === 'Adjudicada' && !row.ordenId && (
+          {canWriteVentas && row.estado === 'Adjudicada' && !row.ordenId && (
             <button
               onClick={e => {
                 e.stopPropagation()
@@ -148,7 +152,7 @@ export default function LicitacionesPage() {
         breadcrumb={['Inicio', 'Ventas', 'Licitaciones']}
         actions={<>
           <Btn variant="secondary" icon="download" size="sm" onClick={handleExport}>Exportar</Btn>
-          <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/licitaciones/nueva')}>Nueva Cotización</Btn>
+          {canWriteVentas && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/licitaciones/nueva')}>Nueva Cotización</Btn>}
         </>}
       />
 

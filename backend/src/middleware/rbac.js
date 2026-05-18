@@ -8,14 +8,16 @@ const PERMISSIONS = {
     licitaciones: ['read', 'write'],
     clientes:     ['read', 'write'],
     catalogo:     ['read'],
+    despacho:     ['read'],
     taller:       ['read'],
   },
   bodeguero:    {
-    bodega:   ['read', 'write', 'delete'],
-    catalogo: ['read', 'write'],
-    despacho: ['read', 'write'],
-    ventas:   ['read'],
-    clientes: ['read'],
+    bodega:      ['read', 'write', 'delete'],
+    catalogo:    ['read', 'write'],
+    despacho:    ['read', 'write'],
+    ventas:      ['read'],
+    clientes:    ['read'],
+    proveedores: ['read', 'write'],
   },
   cajero:       {
     caja:     ['read', 'write'],
@@ -37,6 +39,7 @@ const PERMISSIONS = {
     taller:       ['read'],
     caja:         ['read'],
     cobranza:     ['read'],
+    despacho:     ['read'],
     licitaciones: ['read'],
     rrhh:         ['read'],
   },
@@ -63,7 +66,7 @@ export default fp(async (fastify) => {
 export function decorateRbac(app) {
   app.decorate('rbac', (module, permission) => async (request, reply) => {
     const extra = request.user?.permisosExtra
-    if (!can(request.user.role, module, permission, extra)) {
+    if (!request.user || !can(request.user.role, module, permission, extra)) {
       return reply.status(403).send({ error: 'Forbidden' })
     }
   })

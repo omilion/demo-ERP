@@ -4,9 +4,13 @@ import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../compone
 import { ViewClientePanel } from '../../components/forms/FormCliente'
 import { useClientes } from '../../api/clientes'
 import { downloadFromBackend } from '../../utils/csv'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 export default function ClientesPage() {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const canWriteClientes = can(user, 'clientes', 'write')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [tipoFilter, setTipoFilter] = useState('all')
@@ -58,7 +62,7 @@ export default function ClientesPage() {
       <div style={{ display: 'flex', gap: 4 }}>
         <button onClick={e => { e.stopPropagation(); setSelected(row) }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}>Ver</button>
         <button onClick={e => { e.stopPropagation(); navigate('/matriz-ventas?rut=' + encodeURIComponent(row.rut || '')) }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--blue, #2563eb)', fontWeight: 500 }} title="Ver ventas históricas">Ventas</button>
-        <button onClick={e => { e.stopPropagation(); navigate('/clientes/' + row.id + '/editar') }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)', fontWeight: 500 }}>Editar</button>
+        {canWriteClientes && <button onClick={e => { e.stopPropagation(); navigate('/clientes/' + row.id + '/editar') }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)', fontWeight: 500 }}>Editar</button>}
       </div>
     )},
   ]
@@ -72,7 +76,7 @@ export default function ClientesPage() {
           <Btn variant="secondary" icon="download" size="sm"
             onClick={() => downloadFromBackend('/reportes/export/clientes', `clientes_${new Date().toISOString().slice(0, 10)}.csv`)}
           >Exportar CSV</Btn>
-          <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/clientes/nuevo')}>Nuevo Cliente</Btn>
+          {canWriteClientes && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/clientes/nuevo')}>Nuevo Cliente</Btn>}
         </>}
       />
       <div className="kpi-strip">
@@ -117,7 +121,7 @@ export default function ClientesPage() {
         </div>
         <Table columns={cols} rows={shown} />
       </div>
-      {selected && <ViewClientePanel cliente={selected} onClose={() => setSelected(null)} onEdit={() => { navigate('/clientes/' + selected.id + '/editar'); setSelected(null) }} />}
+      {selected && <ViewClientePanel cliente={selected} canWrite={canWriteClientes} onClose={() => setSelected(null)} onEdit={() => { navigate('/clientes/' + selected.id + '/editar'); setSelected(null) }} />}
     </main>
   )
 }

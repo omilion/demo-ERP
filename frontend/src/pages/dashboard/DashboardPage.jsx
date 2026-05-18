@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Icon, Badge, KpiCard, SectionCard, ActionRow, PageHeader, Btn } from '../../components/shared'
 import { useDashboardStats } from '../../api/dashboard'
 import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 const TALLER_ICONS = { Espumas: 'layers', Confecciones: 'scissors', Madera: 'box' }
 
@@ -72,6 +73,11 @@ export default function DashboardPage() {
   const { user } = useAuthStore()
   const role = user?.role || 'admin'
   const show = ROLE_SECTIONS[role] || ROLE_SECTIONS.admin
+  const canWriteVentas = can(user, 'ventas', 'write')
+  const canWriteTaller = can(user, 'taller', 'write')
+  const canWriteBodega = can(user, 'bodega', 'write')
+  const canWriteClientes = can(user, 'clientes', 'write')
+  const canWriteProveedores = can(user, 'proveedores', 'write')
 
   const inv = stats?.stock?.Inventario ?? {}
   const tal = stats?.stock?.Taller ?? {}
@@ -96,7 +102,7 @@ export default function DashboardPage() {
         subtitle={`${fecha} · ${hora} · Sucursal 5 Oriente`}
         breadcrumb={['Inicio', 'Dashboard']}
         actions={
-          (show.ventas || show.admin) && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/ventas/nueva')}>Nueva Venta</Btn>
+          canWriteVentas && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/ventas/nueva')}>Nueva Venta</Btn>
         }
       />
 
@@ -157,9 +163,9 @@ export default function DashboardPage() {
             </div>
             {(stats?.talleres ?? []).map(t => <TallerBar key={t.tipo} {...t} max={maxTaller} />)}
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
-            <ActionRow icon="plusCircle" label="Nueva ODT" onClick={() => navigate('/taller/nueva')} />
+            {canWriteTaller && <ActionRow icon="plusCircle" label="Nueva ODT" onClick={() => navigate('/taller/nueva')} />}
             <ActionRow icon="edit" label="Registrar Bitácora" onClick={() => navigate('/bitacora-taller')} />
-            <ActionRow icon="package" label="Pasar a Taller" onClick={() => navigate('/pasar-taller')} />
+            {canWriteTaller && <ActionRow icon="package" label="Pasar a Taller" onClick={() => navigate('/pasar-taller')} />}
             <ActionRow icon="layers" label="Historial Materiales" onClick={() => navigate('/historial-materiales')} />
           </SectionCard>
         )}
@@ -170,7 +176,7 @@ export default function DashboardPage() {
               critico={inv.critico ?? 0} sinStock={inv.sinStock ?? 0} onClick={() => navigate('/bodega?filtro=critico')} />
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
             <ActionRow icon="warehouse" label="Mantención productos" onClick={() => navigate('/bodega')} />
-            <ActionRow icon="plusCircle" label="Ingreso Mercadería" onClick={() => navigate('/stock-ingresos')} />
+            {canWriteBodega && <ActionRow icon="plusCircle" label="Ingreso Mercadería" onClick={() => navigate('/stock-ingresos')} />}
             <ActionRow icon="tag" label="Consulta Precios" onClick={() => navigate('/consulta-precios')} />
             <ActionRow icon="truck" label="Despachos" onClick={() => navigate('/despachos')} />
             <ActionRow icon="users" label="Proveedores" badge={n(proveedores.total)} badgeTone="neutral" onClick={() => navigate('/proveedores')} />
@@ -200,7 +206,7 @@ export default function DashboardPage() {
             <ActionRow icon="truck" label="Pendientes Entrega" badge={n(stats?.ventas?.pendienteEntrega)} badgeTone="blue" onClick={() => navigate('/ventas?filtro=pendiente_entrega')} />
             <ActionRow icon="cloud" label="Cotizaciones Web" badge={n(webPend)} badgeTone={webPend > 0 ? 'amber' : 'neutral'} onClick={() => navigate('/ventas?filtro=web')} />
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
-            <ActionRow icon="plusCircle" label="Nueva Venta Sala" onClick={() => navigate('/ventas/nueva')} />
+            {canWriteVentas && <ActionRow icon="plusCircle" label="Nueva Venta Sala" onClick={() => navigate('/ventas/nueva')} />}
             <ActionRow icon="clipboard" label="Cotizar Licitación" onClick={() => navigate('/licitaciones')} />
             <ActionRow icon="briefcase" label="Convenio Marco" onClick={() => navigate('/licitaciones?tipo=convenio')} />
             <ActionRow icon="fileText" label="Reportes Licitaciones" onClick={() => navigate('/reportes/licitaciones')} />
@@ -229,14 +235,14 @@ export default function DashboardPage() {
             )}
             {show.crm && <ActionRow icon="phone" label="Ver CRM" onClick={() => navigate('/crm')} />}
             <ActionRow icon="users" label="Clientes" onClick={() => navigate('/clientes')} />
-            <ActionRow icon="plusCircle" label="Nuevo Cliente" onClick={() => navigate('/clientes/nuevo')} />
+            {canWriteClientes && <ActionRow icon="plusCircle" label="Nuevo Cliente" onClick={() => navigate('/clientes/nuevo')} />}
           </SectionCard>
         )}
 
         {show.cobranza && (
           <SectionCard title="Cobranza & Pagos Proveedores" icon="dollarSign">
             <ActionRow icon="dollarSign" label="Menú Cobranza" onClick={() => navigate('/cobranza')} />
-            <ActionRow icon="plusCircle" label="Nueva Boleta/Factura Prov." onClick={() => navigate('/pagos-proveedores')} />
+            {canWriteProveedores && <ActionRow icon="plusCircle" label="Nueva Boleta/Factura Prov." onClick={() => navigate('/pagos-proveedores')} />}
             <ActionRow icon="alertTriangle" label="Facturas No Pagadas" badge={n(provPagos.facturasNoPagadas)} badgeTone={provPagos.facturasNoPagadas > 0 ? 'red' : 'neutral'} onClick={() => navigate('/pagos-proveedores?doc=Factura&estado=Pendiente')} />
             <ActionRow icon="alertTriangle" label="Boletas No Pagadas" badge={n(provPagos.boletasNoPagadas)} badgeTone={provPagos.boletasNoPagadas > 0 ? 'red' : 'neutral'} onClick={() => navigate('/pagos-proveedores?doc=Boleta&estado=Pendiente')} />
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />

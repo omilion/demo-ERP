@@ -1,5 +1,6 @@
 // Gestión de despachos y guías
 import { z } from 'zod'
+import { applyDateRange, parseDate, parseOptionalInt, parsePage, parsePositiveInt } from '../operational-utils.js'
 
 const DespachoCreate = z.object({
   ordenId: z.union([z.number().int(), z.string()]).optional().nullable(),
@@ -29,13 +30,17 @@ const GuiaCreate = z.object({
 export default async function despachosRoutes(fastify) {
   // GET /api/despachos?desde=&hasta=&ordenId=&tipo=&page=1
   fastify.get('/', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
-  }, async (request) => {
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
+  }, async (request, reply) => {
     const { desde, hasta, ordenId, tipo, contacto, transporte, region, comuna, parcial, tieneMulta, search, page = '1' } = request.query
     const LIMIT = 100
-    const skip = (parseInt(page, 10) - 1) * LIMIT
+    const skip = (parsePage(page) - 1) * LIMIT
     const where = {}
-    if (ordenId) where.ordenId = parseInt(ordenId, 10)
+    if (ordenId) {
+      const parsedOrdenId = parsePositiveInt(ordenId)
+      if (!parsedOrdenId) return reply.code(400).send({ error: 'ordenId invalido' })
+      where.ordenId = parsedOrdenId
+    }
     if (tipo) where.tipoDespacho = { contains: tipo, mode: 'insensitive' }
     if (contacto) where.contacto = { contains: contacto, mode: 'insensitive' }
     if (transporte) where.transporte = { contains: transporte, mode: 'insensitive' }
@@ -53,11 +58,7 @@ export default async function despachosRoutes(fastify) {
         ...(isNum ? [{ ordenId: parseInt(search, 10) }] : []),
       ]
     }
-    if (desde || hasta) {
-      where.fechaEntrega = {}
-      if (desde) where.fechaEntrega.gte = new Date(desde)
-      if (hasta) where.fechaEntrega.lte = new Date(hasta + 'T23:59:59')
-    }
+    if (!applyDateRange(where, 'fechaEntrega', desde, hasta)) return reply.code(400).send({ error: 'Rango de fechas invalido' })
     const [items, total, parciales, multas] = await Promise.all([
       fastify.prisma.despacho.findMany({
         where, orderBy: { fechaEntrega: 'desc' }, take: LIMIT, skip,
@@ -70,9 +71,10 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.get('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
     const d = await fastify.prisma.despacho.findUnique({ where: { id } })
     if (!d) return reply.code(404).send({ error: 'no encontrado' })
     const guias = d.ordenId
@@ -82,21 +84,29 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.post('/', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
   }, async (request, reply) => {
     const parsed = DespachoCreate.safeParse(request.body || {})
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     const b = parsed.data
+    const ordenId = b.ordenId ? parsePositiveInt(b.ordenId) : null
+    const fechaInterno = b.fechaInterno ? parseDate(b.fechaInterno) : null
+    const fechaEntrega = b.fechaEntrega ? parseDate(b.fechaEntrega) : null
+    const montoEnvio = b.montoEnvio ? parseOptionalInt(b.montoEnvio) : null
+    if (b.ordenId && !ordenId) return reply.code(400).send({ error: 'ordenId invalido' })
+    if (b.fechaInterno && !fechaInterno) return reply.code(400).send({ error: 'fechaInterno invalida' })
+    if (b.fechaEntrega && !fechaEntrega) return reply.code(400).send({ error: 'fechaEntrega invalida' })
+    if (b.montoEnvio && (montoEnvio == null || montoEnvio < 0)) return reply.code(400).send({ error: 'montoEnvio invalido' })
     return fastify.prisma.despacho.create({
       data: {
-        ordenId: b.ordenId ? parseInt(b.ordenId, 10) : null,
+        ordenId,
         interno: b.interno || null,
         plazoEntrega: b.plazoEntrega || null,
-        fechaInterno: b.fechaInterno ? new Date(b.fechaInterno) : null,
-        fechaEntrega: b.fechaEntrega ? new Date(b.fechaEntrega) : null,
+        fechaInterno,
+        fechaEntrega,
         tipoDespacho: b.tipoDespacho || null,
         transporte: b.transporte || null,
-        montoEnvio: b.montoEnvio ? parseInt(b.montoEnvio, 10) : null,
+        montoEnvio,
         direccion: b.direccion || null,
         contacto: b.contacto || null,
         region: b.region || null,
@@ -109,9 +119,10 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
     const parsed = DespachoCreate.partial().safeParse(request.body || {})
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     const b = parsed.data
@@ -119,10 +130,26 @@ export default async function despachosRoutes(fastify) {
     for (const f of ['interno', 'plazoEntrega', 'tipoDespacho', 'transporte', 'direccion', 'contacto', 'region', 'comuna', 'usuario']) {
       if (b[f] !== undefined) data[f] = b[f]
     }
-    if (b.ordenId !== undefined) data.ordenId = b.ordenId ? parseInt(b.ordenId, 10) : null
-    if (b.fechaInterno !== undefined) data.fechaInterno = b.fechaInterno ? new Date(b.fechaInterno) : null
-    if (b.fechaEntrega !== undefined) data.fechaEntrega = b.fechaEntrega ? new Date(b.fechaEntrega) : null
-    if (b.montoEnvio !== undefined) data.montoEnvio = b.montoEnvio ? parseInt(b.montoEnvio, 10) : null
+    if (b.ordenId !== undefined) {
+      const ordenId = b.ordenId ? parsePositiveInt(b.ordenId) : null
+      if (b.ordenId && !ordenId) return reply.code(400).send({ error: 'ordenId invalido' })
+      data.ordenId = ordenId
+    }
+    if (b.fechaInterno !== undefined) {
+      const fechaInterno = b.fechaInterno ? parseDate(b.fechaInterno) : null
+      if (b.fechaInterno && !fechaInterno) return reply.code(400).send({ error: 'fechaInterno invalida' })
+      data.fechaInterno = fechaInterno
+    }
+    if (b.fechaEntrega !== undefined) {
+      const fechaEntrega = b.fechaEntrega ? parseDate(b.fechaEntrega) : null
+      if (b.fechaEntrega && !fechaEntrega) return reply.code(400).send({ error: 'fechaEntrega invalida' })
+      data.fechaEntrega = fechaEntrega
+    }
+    if (b.montoEnvio !== undefined) {
+      const montoEnvio = b.montoEnvio ? parseOptionalInt(b.montoEnvio) : null
+      if (b.montoEnvio && (montoEnvio == null || montoEnvio < 0)) return reply.code(400).send({ error: 'montoEnvio invalido' })
+      data.montoEnvio = montoEnvio
+    }
     if (b.parcial !== undefined) data.parcial = !!b.parcial
     if (b.tieneMulta !== undefined) data.tieneMulta = !!b.tieneMulta
     try { return await fastify.prisma.despacho.update({ where: { id }, data }) }
@@ -130,28 +157,29 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.delete('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
     try { return await fastify.prisma.despacho.delete({ where: { id } }) }
     catch (e) { if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrado' }); throw e }
   })
 
   // Guías
   fastify.get('/guias/list', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
-  }, async (request) => {
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
+  }, async (request, reply) => {
     const { desde, hasta, nGuia, ordenId, page = '1' } = request.query
     const LIMIT = 100
-    const skip = (parseInt(page, 10) - 1) * LIMIT
+    const skip = (parsePage(page) - 1) * LIMIT
     const where = {}
     if (nGuia) where.nGuia = { contains: nGuia, mode: 'insensitive' }
-    if (ordenId) where.ordenId = parseInt(ordenId, 10)
-    if (desde || hasta) {
-      where.fechaGuia = {}
-      if (desde) where.fechaGuia.gte = new Date(desde)
-      if (hasta) where.fechaGuia.lte = new Date(hasta + 'T23:59:59')
+    if (ordenId) {
+      const parsedOrdenId = parsePositiveInt(ordenId)
+      if (!parsedOrdenId) return reply.code(400).send({ error: 'ordenId invalido' })
+      where.ordenId = parsedOrdenId
     }
+    if (!applyDateRange(where, 'fechaGuia', desde, hasta)) return reply.code(400).send({ error: 'Rango de fechas invalido' })
     const [items, total] = await Promise.all([
       fastify.prisma.guiaDespacho.findMany({
         where, orderBy: { fechaGuia: 'desc' }, take: LIMIT, skip,
@@ -162,26 +190,33 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.post('/guias', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
   }, async (request, reply) => {
     const parsed = GuiaCreate.safeParse(request.body || {})
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     const { ordenId, nInterno, nGuia, fechaGuia, origen } = parsed.data
+    const parsedOrdenId = ordenId ? parsePositiveInt(ordenId) : null
+    const parsedNInterno = nInterno ? parsePositiveInt(nInterno) : null
+    const parsedFechaGuia = fechaGuia ? parseDate(fechaGuia) : new Date()
+    if (ordenId && !parsedOrdenId) return reply.code(400).send({ error: 'ordenId invalido' })
+    if (nInterno && !parsedNInterno) return reply.code(400).send({ error: 'nInterno invalido' })
+    if (fechaGuia && !parsedFechaGuia) return reply.code(400).send({ error: 'fechaGuia invalida' })
     return fastify.prisma.guiaDespacho.create({
       data: {
-        ordenId: ordenId ? parseInt(ordenId, 10) : null,
-        nInterno: nInterno ? parseInt(nInterno, 10) : null,
+        ordenId: parsedOrdenId,
+        nInterno: parsedNInterno,
         nGuia,
-        fechaGuia: fechaGuia ? new Date(fechaGuia) : new Date(),
+        fechaGuia: parsedFechaGuia,
         origen: origen || null,
       },
     })
   })
 
   fastify.delete('/guias/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
     try { return await fastify.prisma.guiaDespacho.delete({ where: { id } }) }
     catch (e) { if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrada' }); throw e }
   })

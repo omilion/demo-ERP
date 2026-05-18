@@ -42,6 +42,7 @@ import usuariosWebRoutes from './routes/usuarios-web/index.js'
 import rrhhRoutes from './routes/rrhh/index.js'
 import adminRoutes from './routes/admin/index.js'
 import { decorateRbac } from './middleware/rbac.js'
+import { isErpAccessToken } from './plugins/jwt.js'
 
 export function buildApp(opts = {}) {
   const app = Fastify({ logger: opts.logger ?? true })
@@ -51,7 +52,11 @@ export function buildApp(opts = {}) {
     try {
       await request.jwtVerify()
     } catch {
-      reply.status(401).send({ error: 'Unauthorized' })
+      return reply.status(401).send({ error: 'Unauthorized' })
+    }
+
+    if (!isErpAccessToken(request.user)) {
+      return reply.status(401).send({ error: 'Unauthorized' })
     }
   })
   decorateRbac(app)
@@ -107,7 +112,7 @@ const __filename = new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1'
 if (process.argv[1].replace(/\\/g, '/') === __filename.replace(/\\/g, '/')) {
   const app = buildApp()
   try {
-    await app.listen({ port: Number(process.env.PORT) || 3001, host: '0.0.0.0' })
+    await app.listen({ port: Number(process.env.PORT) || 3001, host: process.env.HOST || '0.0.0.0' })
   } catch (err) {
     app.log.error(err)
     process.exit(1)

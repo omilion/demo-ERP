@@ -21,7 +21,19 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend deps
+        working-directory: backend
+        run: npm ci
+
+      - name: Validate backend schema
+        working-directory: backend
+        run: |
+          npx prisma validate
+          npx prisma generate
 
       - name: Install frontend deps
         working-directory: frontend
@@ -38,13 +50,20 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Deploy frontend
+      - name: Backup production database
         run: |
-          rsync -az --delete \
-            --exclude='backend' \
-            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
-            frontend/dist/ \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/plastimar-erp/
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            'set -e
+             cd /var/www/plastimar-erp/backend
+             set -a
+             . ./.env
+             set +a
+             mkdir -p /var/backups/plastimar/db
+             backup="/var/backups/plastimar/db/plastimar_erp_$(date +%Y%m%d_%H%M%S).dump"
+             pg_dump -Fc "$DATABASE_URL" -f "$backup"
+             pg_restore --list "$backup" >/dev/null
+             echo "Backup verified: $backup"'
 
       - name: Deploy backend
         run: |
@@ -56,8 +75,33 @@ jobs:
             backend/ \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/plastimar-erp/backend/
 
-      - name: Restart API
+      - name: Migrate and restart API
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "cd /var/www/plastimar-erp/backend && npm ci --omit=dev && npx prisma generate && npx prisma migrate deploy && pm2 reload ecosystem.config.cjs --update-env"
+            'set -e
+             cd /var/www/plastimar-erp/backend
+             npm ci
+             npx prisma generate
+             npx prisma migrate deploy
+             npm prune --omit=dev
+             pm2 reload ecosystem.config.cjs --update-env'
+
+      - name: Smoke API
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            'set -e
+             cd /var/www/plastimar-erp/backend
+             set -a
+             . ./.env
+             set +a
+             curl -fsS "http://127.0.0.1:${PORT:-3001}/api/health"'
+
+      - name: Deploy frontend
+        run: |
+          rsync -az --delete \
+            --exclude='backend' \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            frontend/dist/ \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/plastimar-erp/

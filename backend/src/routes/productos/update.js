@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { computeEstado } from './helpers.js'
+import { computeEstado, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos } from './helpers.js'
+
+const FotoUrlSchema = z.string().refine(isProductoFotoUrl, {
+  message: 'fotoUrl debe ser URL o ruta /uploads valida',
+})
 
 const Schema = z.object({
   nombre: z.string().min(1).optional(),
@@ -18,8 +22,8 @@ const Schema = z.object({
   estadoInventario: z.string().optional(),
   activo: z.boolean().optional(),
   visibleWeb: z.boolean().optional(),
-  fotoUrl: z.string().url().optional().or(z.literal('')),
-  fotoUrlGrande: z.string().url().optional().or(z.literal('')),
+  fotoUrl: FotoUrlSchema.optional(),
+  fotoUrlGrande: FotoUrlSchema.optional(),
   descripcionWeb: z.string().optional(),
   precioWeb: z.number().min(0).optional(),
   ordenWeb: z.number().int().optional(),
@@ -36,7 +40,8 @@ export default async function updateProducto(fastify) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     const existing = await fastify.prisma.producto.findUnique({ where: { id } })
     if (!existing) return reply.code(404).send({ error: 'Producto no encontrado' })
-    const p = await fastify.prisma.producto.update({ where: { id }, data: parsed.data })
-    return { ...p, estado: computeEstado(p) }
+    const data = normalizeProductoFotoFields(parsed.data)
+    const p = await fastify.prisma.producto.update({ where: { id }, data })
+    return normalizeProductoFotos({ ...p, estado: computeEstado(p) })
   })
 }

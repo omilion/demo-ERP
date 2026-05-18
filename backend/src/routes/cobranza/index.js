@@ -1,3 +1,5 @@
+import { parsePage } from '../operational-utils.js'
+
 export default async function cobranzaHistoricoRoutes(fastify) {
   fastify.register(async function (f) {
     // GET /api/cobranza-historico?ejecutiva=...&estado=...&search=...&mes=...&page=1
@@ -6,7 +8,7 @@ export default async function cobranzaHistoricoRoutes(fastify) {
     }, async (request) => {
       const { ejecutiva, estado, search, mes, page = '1' } = request.query
       const LIMIT = 100
-      const offset = (parseInt(page) - 1) * LIMIT
+      const offset = (parsePage(page) - 1) * LIMIT
 
       const where = {}
       if (ejecutiva) where.ejecutiva = { contains: ejecutiva, mode: 'insensitive' }
@@ -29,23 +31,19 @@ export default async function cobranzaHistoricoRoutes(fastify) {
         f.prisma.cobranzaHistorico.count({ where }),
       ])
 
-      // Aggregates for filtered period
-      const agg = await f.prisma.$queryRaw`
-        SELECT
-          COALESCE(SUM(CASE WHEN UPPER(estado) = 'CANCELADA' THEN monto ELSE 0 END), 0)::numeric AS cobrado,
-          COALESCE(SUM(CASE WHEN UPPER(estado) = 'PENDIENTE' THEN valor_factura ELSE 0 END), 0)::numeric AS pendiente,
-          COUNT(CASE WHEN UPPER(estado) = 'CANCELADA' THEN 1 END)::int AS n_canceladas,
-          COUNT(CASE WHEN UPPER(estado) = 'PENDIENTE' THEN 1 END)::int AS n_pendientes,
-          COUNT(CASE WHEN UPPER(estado) = 'NULA' THEN 1 END)::int AS n_nulas
-        FROM ventas.cobranza_historico
-      `
-      const s = agg[0]
+      const grouped = await f.prisma.cobranzaHistorico.groupBy({
+        by: ['estado'],
+        where,
+        _sum: { monto: true, valorFactura: true },
+        _count: { _all: true },
+      })
+      const byEstado = Object.fromEntries(grouped.map(g => [(g.estado || '').toUpperCase(), g]))
       const stats = {
-        cobrado: Number(s.cobrado),
-        pendiente: Number(s.pendiente),
-        n_canceladas: s.n_canceladas,
-        n_pendientes: s.n_pendientes,
-        n_nulas: s.n_nulas,
+        cobrado: Number(byEstado.CANCELADA?._sum.monto || 0),
+        pendiente: Number(byEstado.PENDIENTE?._sum.valorFactura || 0),
+        n_canceladas: byEstado.CANCELADA?._count._all || 0,
+        n_pendientes: byEstado.PENDIENTE?._count._all || 0,
+        n_nulas: byEstado.NULA?._count._all || 0,
       }
 
       return { items, total, limit: LIMIT, stats }

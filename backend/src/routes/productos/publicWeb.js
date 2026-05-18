@@ -1,3 +1,5 @@
+import { normalizeProductoFotos } from './helpers.js'
+
 export default async function publicWebRoute(fastify) {
   fastify.get('/web/catalogo', async (request) => {
     const { search, destacado, limit, offset } = request.query
@@ -31,7 +33,7 @@ export default async function publicWebRoute(fastify) {
       fastify.prisma.producto.count({ where }),
     ])
     return {
-      items: items.map(p => ({
+      items: items.map(p => normalizeProductoFotos({
         ...p,
         precio: p.precioWeb ?? p.precioLista,
         disponible: p.stock > 0,
@@ -60,6 +62,6 @@ export default async function publicWebRoute(fastify) {
       },
     })
     if (!p) return reply.code(404).send({ error: 'Producto no disponible' })
-    return { ...p, precio: p.precioWeb ?? p.precioLista, disponible: p.stock > 0 }
+    return normalizeProductoFotos({ ...p, precio: p.precioWeb ?? p.precioLista, disponible: p.stock > 0 })
   })
 }

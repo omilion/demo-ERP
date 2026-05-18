@@ -1,3 +1,54 @@
+function hasValue(value) {
+  return value !== undefined && value !== null && value !== ''
+}
+
+function cleanText(value) {
+  if (!hasValue(value)) return null
+  const text = String(value).trim()
+  return text || null
+}
+
+function parseOptionalInt(value) {
+  if (!hasValue(value)) return null
+  const n = Number.parseInt(value, 10)
+  return Number.isFinite(n) ? n : null
+}
+
+function parseNumber(value) {
+  if (!hasValue(value)) return 0
+  const n = Number(value)
+  return Number.isFinite(n) ? n : 0
+}
+
+function normalizeDetalles(rawDetalles) {
+  return rawDetalles
+    .map(d => ({
+      codigoInterno: cleanText(d.codigoInterno),
+      cantidad: parseNumber(d.cantidad),
+      precio: parseNumber(d.precio),
+    }))
+    .filter(d => d.codigoInterno)
+}
+
+function stockIdempotencyKey({ proveedorId, codigoProveedor, documento, nDoc }) {
+  if (!nDoc || (!proveedorId && !codigoProveedor)) return null
+  const provider = proveedorId ? `proveedor:${proveedorId}` : `codigo:${codigoProveedor}`
+  return [provider, documento || '', nDoc].join('|').toLowerCase()
+}
+
+function stockIdempotencyWhere({ proveedorId, codigoProveedor, documento, nDoc }) {
+  const providers = []
+  if (proveedorId) providers.push({ proveedorId })
+  if (codigoProveedor) providers.push({ codigoProveedor })
+  if (!nDoc || providers.length === 0) return null
+  return {
+    nDoc,
+    stockAplicadoAt: { not: null },
+    ...(documento ? { documento } : {}),
+    OR: providers,
+  }
+}
+
 export default async function pagosProveedoresRoutes(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('proveedores', 'read')],
@@ -79,22 +130,49 @@ export default async function pagosProveedoresRoutes(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('proveedores', 'write')],
   }, async (request, reply) => {
     const b = request.body || {}
-    if (!b.proveedorId && !b.codigoProveedor) return reply.code(400).send({ error: 'proveedorId o codigoProveedor requerido' })
-    if (!b.total && !Array.isArray(b.detalles)) return reply.code(400).send({ error: 'total o detalles requerido' })
+    const proveedorId = parseOptionalInt(b.proveedorId)
+    const codigoProveedor = parseOptionalInt(b.codigoProveedor)
+    const documento = cleanText(b.documento)
+    const nDoc = cleanText(b.nDoc)
+    if (!proveedorId && !codigoProveedor) return reply.code(400).send({ error: 'proveedorId o codigoProveedor requerido' })
+    if (!hasValue(b.total) && !Array.isArray(b.detalles)) return reply.code(400).send({ error: 'total o detalles requerido' })
 
-    const detalles = Array.isArray(b.detalles) ? b.detalles : []
+    const detalles = normalizeDetalles(Array.isArray(b.detalles) ? b.detalles : [])
+    const stockDecimal = b.ingresaStock ? detalles.find(d => !Number.isInteger(d.cantidad)) : null
+    if (stockDecimal) {
+      return reply.code(400).send({
+        error: 'cantidad debe ser entera para ingresar stock de productos',
+        codigoInterno: stockDecimal.codigoInterno,
+      })
+    }
     const totalCalc = detalles.length
-      ? detalles.reduce((s, d) => s + (parseFloat(d.cantidad) || 0) * (parseFloat(d.precio) || 0), 0)
-      : (parseFloat(b.total) || 0)
+      ? detalles.reduce((s, d) => s + d.cantidad * d.precio, 0)
+      : parseNumber(b.total)
+
+    const stockKey = b.ingresaStock
+      ? stockIdempotencyKey({ proveedorId, codigoProveedor, documento, nDoc })
+      : null
+    const stockWhere = stockKey
+      ? stockIdempotencyWhere({ proveedorId, codigoProveedor, documento, nDoc })
+      : null
 
     const result = await fastify.prisma.$transaction(async (tx) => {
+      if (stockKey && stockWhere) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${stockKey})::bigint)`
+        const existing = await tx.pagoProveedor.findFirst({
+          where: stockWhere,
+          orderBy: { id: 'asc' },
+        })
+        if (existing) return { ...existing, idempotent: true }
+      }
+
       const pago = await tx.pagoProveedor.create({
         data: {
-          proveedorId: b.proveedorId ? parseInt(b.proveedorId, 10) : null,
-          codigoProveedor: b.codigoProveedor ? parseInt(b.codigoProveedor, 10) : null,
-          sucursalId: b.sucursalId ? parseInt(b.sucursalId, 10) : null,
-          documento: b.documento || null,
-          nDoc: b.nDoc || null,
+          proveedorId,
+          codigoProveedor,
+          sucursalId: parseOptionalInt(b.sucursalId),
+          documento,
+          nDoc,
           fechaDoc: b.fechaDoc ? new Date(b.fechaDoc) : new Date(),
           fechaPago: b.fechaPago ? new Date(b.fechaPago) : null,
           fechaVencimiento: b.fechaVencimiento ? new Date(b.fechaVencimiento) : null,
@@ -106,6 +184,7 @@ export default async function pagosProveedoresRoutes(fastify) {
           ncNumero: b.ncNumero || null,
           ncMonto: b.ncMonto != null ? parseFloat(b.ncMonto) : null,
           obs: b.obs || null,
+          stockAplicadoAt: b.ingresaStock && detalles.length ? new Date() : null,
         },
       })
 
@@ -115,16 +194,16 @@ export default async function pagosProveedoresRoutes(fastify) {
         await tx.detalleFacturaProveedor.create({
           data: {
             pagoId: pago.id,
-            codigoInterno: String(d.codigoInterno),
-            cantidad: parseFloat(d.cantidad) || 0,
-            precio: parseFloat(d.precio) || 0,
+            codigoInterno: d.codigoInterno,
+            cantidad: d.cantidad,
+            precio: d.precio,
           },
         })
         // Si el flag ingresaStock está, sumar al producto matching código
         if (b.ingresaStock) {
           await tx.producto.updateMany({
-            where: { codigo: String(d.codigoInterno) },
-            data: { stock: { increment: parseFloat(d.cantidad) || 0 } },
+            where: { codigoInterno: d.codigoInterno },
+            data: { stock: { increment: d.cantidad } },
           })
         }
       }
@@ -132,7 +211,7 @@ export default async function pagosProveedoresRoutes(fastify) {
       return pago
     })
 
-    return reply.code(201).send(result)
+    return reply.code(result.idempotent ? 200 : 201).send(result)
   })
 
   fastify.put('/:id', {

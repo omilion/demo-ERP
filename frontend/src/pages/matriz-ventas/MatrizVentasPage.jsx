@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { FormField, Input } from '../../components/forms'
@@ -6,6 +6,7 @@ import { useMatrizVentas, useMatrizTotales } from '../../api/matrizVentas'
 import { useDeleteVenta } from '../../api/ventas'
 import { useAuthStore } from '../../store/auth'
 import { downloadFromBackend } from '../../utils/csv'
+import { ventaPath } from '../../utils/permissions'
 
 const TABS = [
   { id: 'all', label: 'Todos' },
@@ -23,6 +24,9 @@ const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 export default function MatrizVentasPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const initialRut = searchParams.get('rut') || ''
+  const initialNInterno = searchParams.get('nInterno') || ''
+  const initialOc = searchParams.get('oc') || ''
   const user = useAuthStore(s => s.user)
   const isAdmin = user?.role === 'admin'
   const deleteVenta = useDeleteVenta()
@@ -31,23 +35,14 @@ export default function MatrizVentasPage() {
   const [search, setSearch] = useState('')
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
-  const [rut, setRut] = useState('')
-  const [oc, setOc] = useState('')
-  const [nInterno, setNInterno] = useState('')
+  const [rut, setRut] = useState(initialRut)
+  const [oc, setOc] = useState(initialOc)
+  const [nInterno, setNInterno] = useState(initialNInterno)
   const [odt, setOdt] = useState('')
   const [guia, setGuia] = useState('')
   const [estadoPago, setEstadoPago] = useState('')
   const [estadoEntrega, setEstadoEntrega] = useState('')
   const [page, setPage] = useState(1)
-
-  useEffect(() => {
-    const r = searchParams.get('rut')
-    if (r) setRut(r)
-    const n = searchParams.get('nInterno')
-    if (n) setNInterno(n)
-    const o = searchParams.get('oc')
-    if (o) setOc(o)
-  }, [searchParams])
 
   const params = { page: String(page) }
   if (tab !== 'all') params.tipo = tab
@@ -70,7 +65,7 @@ export default function MatrizVentasPage() {
   const pages = Math.max(1, Math.ceil(total / LIMIT))
 
   function openVenta(row) {
-    if (row.fuente === 'orden') navigate(`/ventas/${row.id}/editar`)
+    if (row.fuente === 'orden') navigate(ventaPath(row.id, user))
     else if (row.fuente === 'licitacion') navigate(`/licitaciones/${row.id}`)
     else if (row.fuente === 'oc-online') navigate(`/ordenes-compra`)
   }
@@ -139,7 +134,7 @@ export default function MatrizVentasPage() {
           <button onClick={e => { e.stopPropagation(); navigate(`/licitaciones/${row.cotizacion.id}`) }} style={btnSm('var(--blue)')} title={`Licitación ${row.cotizacion.idLicitacion}`}>Lic</button>
         )}
         {row.fuente === 'licitacion' && row.ordenVinculadaId && (
-          <button onClick={e => { e.stopPropagation(); navigate(`/ventas/${row.ordenVinculadaId}/editar`) }} style={btnSm('var(--green-700)')} title="Ver venta vinculada">Venta</button>
+          <button onClick={e => { e.stopPropagation(); navigate(ventaPath(row.ordenVinculadaId, user)) }} style={btnSm('var(--green-700)')} title="Ver venta vinculada">Venta</button>
         )}
         {row.fuente === 'orden' && row.odtCount > 0 && (
           <button onClick={e => { e.stopPropagation(); navigate(`/odt?ordenId=${row.id}`) }} style={btnSm('var(--amber)')} title={`${row.odtCount} ODT — ${row.odts.map(o => `#${o.id} ${o.estado || ''}`).join(', ')}`}>ODT {row.odtCount}</button>

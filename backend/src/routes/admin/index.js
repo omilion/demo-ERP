@@ -1,3 +1,18 @@
+export function toJsonSerializable(value) {
+  if (typeof value === 'bigint') {
+    const asNumber = Number(value)
+    return Number.isSafeInteger(asNumber) ? asNumber : value.toString()
+  }
+  if (Array.isArray(value)) return value.map(toJsonSerializable)
+  if (!value || typeof value !== 'object' || value instanceof Date) return value
+
+  const out = {}
+  for (const [key, item] of Object.entries(value)) {
+    out[key] = toJsonSerializable(item)
+  }
+  return out
+}
+
 export default async function adminRoutes(fastify) {
   const onlyAdmin = async (req, reply) => {
     if (req.user?.role !== 'admin') return reply.code(403).send({ error: 'Forbidden' })
@@ -168,6 +183,6 @@ export default async function adminRoutes(fastify) {
       ),
       fastify.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS total FROM auth.audit_log ${whereSql}`, ...params),
     ])
-    return { items: rows, total, limit, offset }
+    return { items: toJsonSerializable(rows), total: toJsonSerializable(total), limit, offset }
   })
 }

@@ -290,7 +290,7 @@ function TabDocumentos({ v }) {
 }
 
 // ── Main panel ─────────────────────────────────────────────────────────────────
-export function ViewVentaPanel({ venta, onClose, onEdit }) {
+export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true }) {
   const navigate = useNavigate()
   const [tab, setTab] = useState('detalle')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -316,8 +316,8 @@ export function ViewVentaPanel({ venta, onClose, onEdit }) {
       title={<span>Venta <span style={{ fontFamily: "'DM Mono',monospace", color: 'var(--green-700)' }}>#{v.id}</span></span>}
       subtitle={`${fecha} · ${v.creadorNombre || 'Sin vendedor'}`}
       onClose={onClose}
-      onEdit={onEdit}
-      onDelete={() => setConfirmDelete(true)}
+      onEdit={canWrite ? onEdit : undefined}
+      onDelete={canWrite ? () => setConfirmDelete(true) : undefined}
     >
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 16, marginTop: -6 }}>
@@ -337,7 +337,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit }) {
       {tab === 'documentos' && <TabDocumentos v={v} />}
 
       {/* Delete confirmation */}
-      {confirmDelete && (
+      {confirmDelete && canWrite && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'oklch(0 0 0/0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#fff', borderRadius: 14, padding: '24px 28px', maxWidth: 360, width: '90%', boxShadow: '0 16px 48px oklch(0 0 0/0.2)' }}>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, color: 'var(--text-1)' }}>¿Eliminar Venta #{v.id}?</div>

@@ -3,11 +3,15 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, Table, Tabs, SearchBar } from '../../components/shared'
 import { useTurnoActivo, useAbrirTurno, useCerrarTurno, useCajaHistorico, useCajaHistoricoYears } from '../../api/caja'
 import { downloadFromBackend } from '../../utils/csv'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 const MEDIOS_PAGO = ['Todos', 'Efectivo', 'Debito', 'Credito', 'Transferencia', 'Referencial']
 
 export default function CajaPage() {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const canWriteCaja = can(user, 'caja', 'write')
   const [urlParams, setUrlParams] = useSearchParams()
   const nInternoUrl = urlParams.get('nInterno') || ''
   const [tab, setTab] = useState(nInternoUrl ? 'historico' : 'hoy')
@@ -88,11 +92,11 @@ export default function CajaPage() {
           >Exportar CSV</Btn>
           {turno ? (
             <>
-              <Btn variant="secondary" icon="printer" size="sm" onClick={() => cerrarTurno.mutate(turno.id, { onError: (e) => alert(e?.response?.data?.error || 'Error') })} disabled={cerrarTurno.isPending}>Cerrar Turno</Btn>
-              <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/caja/nuevo')}>Nuevo Movimiento</Btn>
+              {canWriteCaja && <Btn variant="secondary" icon="printer" size="sm" onClick={() => cerrarTurno.mutate(turno.id, { onError: (e) => alert(e?.response?.data?.error || 'Error') })} disabled={cerrarTurno.isPending}>Cerrar Turno</Btn>}
+              {canWriteCaja && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/caja/nuevo')}>Nuevo Movimiento</Btn>}
             </>
           ) : (
-            <Btn variant="primary" icon="unlock" size="sm" onClick={() => abrirTurno.mutate({ cajaId: 1 }, { onError: (e) => alert(e?.response?.data?.error || 'Error') })} disabled={abrirTurno.isPending}>Abrir Turno</Btn>
+            canWriteCaja && <Btn variant="primary" icon="unlock" size="sm" onClick={() => abrirTurno.mutate({ cajaId: 1 }, { onError: (e) => alert(e?.response?.data?.error || 'Error') })} disabled={abrirTurno.isPending}>Abrir Turno</Btn>
           )}
         </>}
       />

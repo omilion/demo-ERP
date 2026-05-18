@@ -1,4 +1,4 @@
-import { computeEstado } from './helpers.js'
+import { computeEstado, normalizeProductoFotos } from './helpers.js'
 
 export default async function listProductos(fastify) {
   fastify.get('/', {
@@ -39,7 +39,7 @@ export default async function listProductos(fastify) {
       }),
       fastify.prisma.producto.count({ where }),
     ])
-    let items = productos.map(p => ({ ...p, estado: computeEstado(p) }))
+    let items = productos.map(p => normalizeProductoFotos({ ...p, estado: computeEstado(p) }))
     if (estado === 'critico') items = items.filter(p => p.estado === 'Crítico').slice(0, LIMIT)
     items.sort((a, b) => {
       const order = { 'Normal': 0, 'Crítico': 1, 'Sin stock': 2 }

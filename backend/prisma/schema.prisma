@@ -83,6 +83,30 @@ model AccesoLog {
   @@schema("auth")
 }
 
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?     @map("user_id")
+  userEmail  String?  @map("user_email")
+  userNombre String?  @map("user_nombre")
+  role       String?
+  method     String
+  path       String
+  status     Int?
+  entity     String?
+  entityId   String?  @map("entity_id")
+  payload    Json?
+  ip         String?
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([entity])
+  @@index([method])
+  @@index([createdAt])
+  @@map("audit_log")
+  @@schema("auth")
+}
+
 // ── CONFIG ────────────────────────────────────────────────────────────
 
 model EmpresaConfig {
@@ -264,8 +288,12 @@ model PagoProveedor {
   ncNumero         String?   @map("nc_numero")
   ncMonto          Float?    @map("nc_monto")
   obs              String?
+  stockAplicadoAt  DateTime? @map("stock_aplicado_at")
   createdAt        DateTime  @default(now()) @map("created_at")
 
+  @@index([proveedorId])
+  @@index([codigoProveedor])
+  @@index([nDoc])
   @@map("pagos_proveedores")
   @@schema("catalogo")
 }
