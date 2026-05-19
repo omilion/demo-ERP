@@ -282,6 +282,7 @@ export default async function cotizacionesRoutes(fastify) {
       const cliente = await fastify.prisma.cliente.findUnique({ where: { rut: cot.rutCliente } })
       clienteId = cliente?.id ?? null
     }
+    if (!clienteId) return reply.code(400).send({ error: 'Cliente canonico requerido para crear venta' })
 
     const codigos = adjItems.map(i => i.codigoInterno).filter(Boolean)
     const productos = await fastify.prisma.producto.findMany({

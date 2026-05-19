@@ -16,6 +16,34 @@ function tokenFor(app, role = 'admin') {
   })
 }
 
+async function createTestOrden(app) {
+  const user = await app.prisma.user.findFirst({ select: { id: true } })
+  const cliente = await app.prisma.cliente.findFirst({ select: { id: true } })
+  return app.prisma.orden.create({
+    data: {
+      tipo: 'Test',
+      estado: 'Activa',
+      estadoPago: 'No pagada',
+      estadoEntrega: 'Pendiente entrega',
+      clienteId: cliente.id,
+      userId: user.id,
+    },
+  })
+}
+
+async function createLinkedOdt(app) {
+  const orden = await createTestOrden(app)
+  const odt = await app.prisma.odt.create({
+    data: {
+      ordenId: orden.id,
+      tipo: 'Espumas',
+      descripcion: 'Trabajo test',
+      estado: 'Pendiente',
+    },
+  })
+  return { orden, odt }
+}
+
 describe('operational route hardening', () => {
   let app, adminToken, cajaToken, tallerToken
 
@@ -42,14 +70,27 @@ describe('operational route hardening', () => {
   })
 
   it('returns a clear 400 for invalid despacho dates', async () => {
+    const orden = await createTestOrden(app)
     const res = await app.inject({
       method: 'POST',
       url: '/api/despachos',
       headers: { authorization: `Bearer ${adminToken}` },
-      payload: { fechaEntrega: 'no-es-fecha' },
+      payload: { ordenId: orden.id, fechaEntrega: 'no-es-fecha' },
     })
+    await app.prisma.orden.delete({ where: { id: orden.id } }).catch(() => {})
     expect(res.statusCode).toBe(400)
     expect(JSON.parse(res.body).error).toMatch(/fechaEntrega/)
+  })
+
+  it('rejects new despacho records without a linked orden', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/despachos',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { fechaEntrega: new Date().toISOString() },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).error).toMatch(/ordenId/)
   })
 
   it('calculates caja historico stats using stored Ingreso/Egreso casing', async () => {
@@ -119,5 +160,34 @@ describe('operational route hardening', () => {
       payload: { texto: 'No debe quedar huerfano' },
     })
     expect(res.statusCode).toBe(404)
+  })
+
+  it('does not allow new bitacora on legacy ODTs without orden', async () => {
+    const odt = await app.prisma.odt.create({
+      data: { tipo: 'Espumas', descripcion: 'Legacy suelta', estado: 'Pendiente' },
+    })
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/odts/${odt.id}/bitacora`,
+      headers: { authorization: `Bearer ${tallerToken}` },
+      payload: { texto: 'Debe rechazarse' },
+    })
+    await app.prisma.odt.delete({ where: { id: odt.id } }).catch(() => {})
+    expect(res.statusCode).toBe(409)
+  })
+
+  it('requires taller assignment when passing items to workshop', async () => {
+    const { orden, odt } = await createLinkedOdt(app)
+    const producto = await app.prisma.producto.findFirst({ select: { id: true } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/pasar-taller/enviar',
+      headers: { authorization: `Bearer ${tallerToken}` },
+      payload: { odtId: odt.id, items: [{ productoId: producto.id, cantidad: 1 }] },
+    })
+    await app.prisma.odt.delete({ where: { id: odt.id } }).catch(() => {})
+    await app.prisma.orden.delete({ where: { id: orden.id } }).catch(() => {})
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).error).toMatch(/tallerId/)
   })
 })

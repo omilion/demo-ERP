@@ -171,4 +171,4 @@ Si el cliente aprueba esta regla, el siguiente sprint puede preparar un apply co
 
 La regla es defendible tecnicamente porque replica el comportamiento original, pero igual debe aprobarse como politica de saneamiento.
 
-No conviene fusionar fisicamente clientes ni borrar duplicados en este mismo paso. Primero se recomienda corregir `ventas.ordenes.cliente_id` con auditoria; la fusion de maestros puede venir despues.
+No conviene fusionar fisicamente clientes ni borrar duplicados en este mismo paso. Primero se recomienda corregir `ventas.ordenes.cliente_id` con auditoria; despues debe venir la inactivacion/fusion/alias auditado para que el ERP nuevo no opere con duplicados heredados.

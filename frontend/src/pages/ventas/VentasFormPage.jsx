@@ -369,7 +369,7 @@ export default function VentasFormPage() {
     if (!w) alert('Habilita popups para imprimir')
   }
   function handlePasarTaller() {
-    navigate(`/pasar-taller?ordenId=${id}`)
+    navigate(`/taller/nueva?ordenId=${id}`)
   }
 
   const { data, set, errors, validate } = useForm({

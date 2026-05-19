@@ -1,20 +1,22 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../components/forms/index'
 import { useOdt, useCreateOdt, useUpdateOdt } from '../../api/odts'
 
 export default function TallerFormPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { id } = useParams()
   const isEdit = !!id
+  const ordenIdParam = new URLSearchParams(location.search).get('ordenId') || ''
   const { data: found } = useOdt(isEdit ? Number(id) : null)
   const createOdt = useCreateOdt()
   const updateOdt = useUpdateOdt()
 
   const { data, set, errors, validate } = useForm({
     tipo: 'Espumas', clienteNombre: '', descripcion: '',
-    estado: 'Pendiente', prioridad: 'normal', plazo: '',
+    estado: 'Pendiente', prioridad: 'normal', plazo: '', ordenId: ordenIdParam,
   })
 
   const [initialized, setInitialized] = useState(false)
@@ -26,18 +28,20 @@ export default function TallerFormPage() {
       set('estado', found.estado || 'Pendiente')
       set('prioridad', found.prioridad || 'normal')
       set('plazo', found.plazo ? new Date(found.plazo).toISOString().slice(0, 10) : '')
+      set('ordenId', found.ordenId ? String(found.ordenId) : '')
       setInitialized(true)
     }
   }, [found?.id])
 
   const handleSave = () => {
-    if (!validate({ descripcion: { required: true } })) return
+    if (!validate({ ordenId: { required: true }, descripcion: { required: true } })) return
     const payload = {
       tipo: data.tipo,
       clienteNombre: data.clienteNombre,
       descripcion: data.descripcion,
       estado: data.estado,
       prioridad: data.prioridad,
+      ordenId: Number(data.ordenId),
       plazo: data.plazo ? new Date(data.plazo).toISOString() : undefined,
     }
     if (isEdit) {
@@ -63,6 +67,9 @@ export default function TallerFormPage() {
     >
       <FormDivider label="Trabajo" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+        <FormField label="Orden vinculada" required error={errors.ordenId}>
+          <Input type="number" value={data.ordenId} onChange={v => set('ordenId', v)} placeholder="ID de venta/orden" error={errors.ordenId} />
+        </FormField>
         <FormField label="Tipo de Trabajo">
           <Select value={data.tipo} onChange={v => set('tipo', v)} options={['Espumas', 'Confecciones', 'Madera', 'Externo']} />
         </FormField>

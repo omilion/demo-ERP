@@ -1,5 +1,7 @@
 // Bitácora del taller — entradas diarias por operario sobre ODTs
 
+import { resolveOdtForWrite } from '../relation-guards.js'
+
 export default async function bitacoraTallerRoutes(fastify) {
   // GET /api/bitacora-taller?desde=&hasta=&operario=&odtId=&page=1
   fastify.get('/', {
@@ -45,9 +47,11 @@ export default async function bitacoraTallerRoutes(fastify) {
   }, async (request, reply) => {
     const { odtId, texto, fecha, usuarioReporta } = request.body || {}
     if (!odtId || !texto) return reply.code(400).send({ error: 'odtId y texto requeridos' })
+    const resolved = await resolveOdtForWrite(fastify.prisma, odtId)
+    if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
     return fastify.prisma.bitacoraTaller.create({
       data: {
-        odtId: parseInt(odtId, 10),
+        odtId: resolved.odt.id,
         usuario: request.user?.nombre || request.user?.username || 'sistema',
         usuarioReporta: usuarioReporta || null,
         fecha: fecha ? new Date(fecha) : new Date(),

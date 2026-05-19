@@ -1,4 +1,5 @@
 // Historial de movimientos de materiales en taller
+import { resolveOdtForWrite } from '../relation-guards.js'
 
 export default async function historialMaterialesRoutes(fastify) {
   // GET /api/historial-materiales?desde=&hasta=&operario=&taller=&codigoInterno=&odtId=&page=1
@@ -40,10 +41,13 @@ export default async function historialMaterialesRoutes(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
   }, async (request, reply) => {
     const { odtId, codigoInterno, nombre, egreso, ingreso, unidad, taller, fecha } = request.body || {}
+    if (!odtId) return reply.code(400).send({ error: 'odtId requerido' })
     if (!codigoInterno) return reply.code(400).send({ error: 'codigoInterno requerido' })
+    const resolved = await resolveOdtForWrite(fastify.prisma, odtId)
+    if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
     return fastify.prisma.tallerHistorialMaterial.create({
       data: {
-        odtId: odtId ? parseInt(odtId, 10) : null,
+        odtId: resolved.odt.id,
         codigoInterno, nombre: nombre || null,
         egreso: parseFloat(egreso) || 0,
         ingreso: parseFloat(ingreso) || 0,

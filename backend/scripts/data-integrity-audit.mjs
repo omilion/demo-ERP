@@ -157,6 +157,13 @@ export const CHECKS = [
     ...countWhere({ table: 'taller.telas', where: 'stock < 0', fields: 'id, codigo, nombre, stock' }),
   },
   {
+    id: 'ordenes.cliente_id_nulo',
+    area: 'ventas',
+    severity: 'critical',
+    description: 'Ordenes sin cliente canonico asociado.',
+    ...countWhere({ table: 'ventas.ordenes', where: 'cliente_id IS NULL', fields: 'id, n_interno, rut_cliente, email_cliente, tipo, estado' }),
+  },
+  {
     id: 'ordenes.cliente_id_huerfano',
     area: 'ventas',
     severity: 'critical',
@@ -371,6 +378,13 @@ export const CHECKS = [
     `),
   },
   {
+    id: 'taller.odts_orden_id_nulo',
+    area: 'taller',
+    severity: 'critical',
+    description: 'ODTs sin orden/trabajo comercial asociado.',
+    ...countWhere({ table: 'taller.odts', where: 'orden_id IS NULL', fields: 'id, cliente_nombre, descripcion, estado, created_at' }),
+  },
+  {
     id: 'taller.odts_orden_id_huerfano',
     area: 'taller',
     severity: 'warn',
@@ -383,6 +397,30 @@ export const CHECKS = [
     severity: 'critical',
     description: 'Items ODT con odt_id inexistente.',
     ...orphan({ child: 'taller.odt_items', childColumn: 'odt_id', parent: 'taller.odts' }),
+  },
+  {
+    id: 'taller.odt_items_sin_taller',
+    area: 'taller',
+    severity: 'critical',
+    description: 'Items ODT sin asignacion a taller especifico.',
+    countSql: q(`
+      SELECT count(*)::int AS count
+      FROM taller.odt_items i
+      WHERE NOT EXISTS (
+        SELECT 1 FROM taller.odt_item_talleres t
+        WHERE t.odt_item_id = i.id
+      )
+    `),
+    sampleSql: (limit) => q(`
+      SELECT i.id, i.odt_id, i.producto_id, i.codigo_interno, i.nombre, i.cantidad, i.estado
+      FROM taller.odt_items i
+      WHERE NOT EXISTS (
+        SELECT 1 FROM taller.odt_item_talleres t
+        WHERE t.odt_item_id = i.id
+      )
+      ORDER BY i.id
+      LIMIT ${limit}
+    `),
   },
   {
     id: 'taller.odt_items_producto_id_huerfano',
@@ -413,11 +451,25 @@ export const CHECKS = [
     ...orphan({ child: 'taller.odt_item_talleres', childColumn: 'taller_id', parent: 'taller.talleres' }),
   },
   {
+    id: 'taller.bitacora_odt_id_nulo',
+    area: 'taller',
+    severity: 'warn',
+    description: 'Bitacora taller sin ODT/trabajo asociado.',
+    ...countWhere({ table: 'taller.bitacora_taller', where: 'odt_id IS NULL', fields: 'id, usuario, fecha, usuario_reporta, sucursal_id, texto' }),
+  },
+  {
     id: 'taller.bitacora_odt_id_huerfano',
     area: 'taller',
     severity: 'warn',
     description: 'Bitacora taller con odt_id inexistente.',
     ...orphan({ child: 'taller.bitacora_taller', childColumn: 'odt_id', parent: 'taller.odts' }),
+  },
+  {
+    id: 'taller.materiales_odt_id_nulo',
+    area: 'taller',
+    severity: 'warn',
+    description: 'Materiales taller sin ODT/trabajo asociado.',
+    ...countWhere({ table: 'taller.taller_materiales', where: 'odt_id IS NULL', fields: 'id, codigo_interno, nombre, cantidad, taller' }),
   },
   {
     id: 'taller.materiales_odt_id_huerfano',
@@ -427,6 +479,13 @@ export const CHECKS = [
     ...orphan({ child: 'taller.taller_materiales', childColumn: 'odt_id', parent: 'taller.odts' }),
   },
   {
+    id: 'taller.historial_materiales_odt_id_nulo',
+    area: 'taller',
+    severity: 'warn',
+    description: 'Historial de materiales taller sin ODT/trabajo asociado.',
+    ...countWhere({ table: 'taller.taller_historial_materiales', where: 'odt_id IS NULL', fields: 'id, codigo_interno, nombre, egreso, ingreso, usuario, fecha, taller' }),
+  },
+  {
     id: 'taller.historial_materiales_odt_id_huerfano',
     area: 'taller',
     severity: 'warn',
@@ -434,11 +493,25 @@ export const CHECKS = [
     ...orphan({ child: 'taller.taller_historial_materiales', childColumn: 'odt_id', parent: 'taller.odts' }),
   },
   {
+    id: 'despachos.despacho_orden_id_nulo',
+    area: 'despachos',
+    severity: 'warn',
+    description: 'Despachos sin orden asociada.',
+    ...countWhere({ table: 'bodega.despachos', where: 'orden_id IS NULL', fields: 'id, interno, fecha_interno, fecha_entrega, tipo_despacho, transporte' }),
+  },
+  {
     id: 'despachos.despacho_orden_id_huerfano',
     area: 'despachos',
     severity: 'warn',
     description: 'Despachos con orden_id inexistente.',
     ...orphan({ child: 'bodega.despachos', childColumn: 'orden_id', parent: 'ventas.ordenes' }),
+  },
+  {
+    id: 'despachos.guia_orden_id_nulo',
+    area: 'despachos',
+    severity: 'warn',
+    description: 'Guias de despacho sin orden asociada.',
+    ...countWhere({ table: 'bodega.guias_despachos', where: 'orden_id IS NULL', fields: 'id, n_interno, n_guia, fecha_guia, origen' }),
   },
   {
     id: 'despachos.guia_orden_id_huerfano',

@@ -1,3 +1,5 @@
+import { resolveOdtForWrite } from '../relation-guards.js'
+
 export default async function bitacoraRoutes(fastify) {
   // GET /odts/:id/bitacora
   fastify.get('/:id/bitacora', {
@@ -22,8 +24,8 @@ export default async function bitacoraRoutes(fastify) {
     if (isNaN(odtId)) return reply.code(400).send({ error: 'ID inválido' })
     const { texto } = request.body || {}
     if (!texto?.trim()) return reply.code(400).send({ error: 'texto requerido' })
-    const odt = await fastify.prisma.odt.findUnique({ where: { id: odtId }, select: { id: true } })
-    if (!odt) return reply.code(404).send({ error: 'ODT no encontrada' })
+    const resolved = await resolveOdtForWrite(fastify.prisma, odtId)
+    if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
     const usuario = request.user?.nombre || request.user?.email || 'Sistema'
     const entry = await fastify.prisma.bitacoraTaller.create({
       data: { odtId, usuario, texto: texto.trim() },

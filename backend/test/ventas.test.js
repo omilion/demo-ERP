@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app.js'
 
+process.env.JWT_ACCESS_SECRET ||= 'test-access-secret'
+process.env.JWT_REFRESH_SECRET ||= 'test-refresh-secret'
+
 async function loginAs(app, role = 'admin') {
   const res = await app.inject({
     method: 'POST', url: '/api/auth/login',

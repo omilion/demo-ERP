@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { resolveOrdenForWrite } from '../relation-guards.js'
 
 const Schema = z.object({
   tipo: z.enum(['Espumas', 'Confecciones', 'Madera', 'Externo']).optional(),
@@ -9,6 +10,7 @@ const Schema = z.object({
   fechaTermino: z.string().datetime({ offset: true }).optional().or(z.string().date().optional()).nullable().optional(),
   estado: z.enum(['Pendiente', 'En proceso', 'Prioritaria', 'Terminada']).optional(),
   prioridad: z.string().optional(),
+  ordenId: z.union([z.number().int(), z.string()]).optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'El cuerpo no puede estar vacío' })
 
 export default async function updateOdt(fastify) {
@@ -21,6 +23,11 @@ export default async function updateOdt(fastify) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     try {
       const data = { ...parsed.data }
+      if (data.ordenId !== undefined) {
+        const resolved = await resolveOrdenForWrite(fastify.prisma, { ordenId: data.ordenId })
+        if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
+        data.ordenId = resolved.orden.id
+      }
       if (data.plazo) data.plazo = new Date(data.plazo)
       if (data.fechaInicio) data.fechaInicio = new Date(data.fechaInicio)
       if (data.fechaTermino) data.fechaTermino = new Date(data.fechaTermino)

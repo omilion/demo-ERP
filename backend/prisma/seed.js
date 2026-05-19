@@ -152,7 +152,17 @@ async function main() {
   ]
   const odtCount = await prisma.odt.count()
   if (odtCount === 0) {
-    await prisma.odt.createMany({ data: ODTS_SEED })
+    const ordenesForOdt = await prisma.orden.findMany({
+      select: { id: true },
+      orderBy: { id: 'asc' },
+      take: ODTS_SEED.length,
+    })
+    await prisma.odt.createMany({
+      data: ODTS_SEED.map((odt, index) => ({
+        ...odt,
+        ordenId: ordenesForOdt[index % ordenesForOdt.length]?.id,
+      })),
+    })
   }
 
   console.log('Seed OK')

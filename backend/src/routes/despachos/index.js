@@ -1,6 +1,7 @@
 // Gestión de despachos y guías
 import { z } from 'zod'
 import { applyDateRange, parseDate, parseOptionalInt, parsePage, parsePositiveInt } from '../operational-utils.js'
+import { resolveOrdenForWrite } from '../relation-guards.js'
 
 const DespachoCreate = z.object({
   ordenId: z.union([z.number().int(), z.string()]).optional().nullable(),
@@ -89,18 +90,18 @@ export default async function despachosRoutes(fastify) {
     const parsed = DespachoCreate.safeParse(request.body || {})
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     const b = parsed.data
-    const ordenId = b.ordenId ? parsePositiveInt(b.ordenId) : null
+    const resolved = await resolveOrdenForWrite(fastify.prisma, { ordenId: b.ordenId, nInterno: b.interno })
     const fechaInterno = b.fechaInterno ? parseDate(b.fechaInterno) : null
     const fechaEntrega = b.fechaEntrega ? parseDate(b.fechaEntrega) : null
     const montoEnvio = b.montoEnvio ? parseOptionalInt(b.montoEnvio) : null
-    if (b.ordenId && !ordenId) return reply.code(400).send({ error: 'ordenId invalido' })
+    if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
     if (b.fechaInterno && !fechaInterno) return reply.code(400).send({ error: 'fechaInterno invalida' })
     if (b.fechaEntrega && !fechaEntrega) return reply.code(400).send({ error: 'fechaEntrega invalida' })
     if (b.montoEnvio && (montoEnvio == null || montoEnvio < 0)) return reply.code(400).send({ error: 'montoEnvio invalido' })
     return fastify.prisma.despacho.create({
       data: {
-        ordenId,
-        interno: b.interno || null,
+        ordenId: resolved.orden.id,
+        interno: b.interno || (resolved.orden.nInterno ? String(resolved.orden.nInterno) : null),
         plazoEntrega: b.plazoEntrega || null,
         fechaInterno,
         fechaEntrega,
@@ -131,9 +132,9 @@ export default async function despachosRoutes(fastify) {
       if (b[f] !== undefined) data[f] = b[f]
     }
     if (b.ordenId !== undefined) {
-      const ordenId = b.ordenId ? parsePositiveInt(b.ordenId) : null
-      if (b.ordenId && !ordenId) return reply.code(400).send({ error: 'ordenId invalido' })
-      data.ordenId = ordenId
+      const resolved = await resolveOrdenForWrite(fastify.prisma, { ordenId: b.ordenId })
+      if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
+      data.ordenId = resolved.orden.id
     }
     if (b.fechaInterno !== undefined) {
       const fechaInterno = b.fechaInterno ? parseDate(b.fechaInterno) : null
@@ -195,16 +196,16 @@ export default async function despachosRoutes(fastify) {
     const parsed = GuiaCreate.safeParse(request.body || {})
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     const { ordenId, nInterno, nGuia, fechaGuia, origen } = parsed.data
-    const parsedOrdenId = ordenId ? parsePositiveInt(ordenId) : null
+    const resolved = await resolveOrdenForWrite(fastify.prisma, { ordenId, nInterno })
     const parsedNInterno = nInterno ? parsePositiveInt(nInterno) : null
     const parsedFechaGuia = fechaGuia ? parseDate(fechaGuia) : new Date()
-    if (ordenId && !parsedOrdenId) return reply.code(400).send({ error: 'ordenId invalido' })
+    if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
     if (nInterno && !parsedNInterno) return reply.code(400).send({ error: 'nInterno invalido' })
     if (fechaGuia && !parsedFechaGuia) return reply.code(400).send({ error: 'fechaGuia invalida' })
     return fastify.prisma.guiaDespacho.create({
       data: {
-        ordenId: parsedOrdenId,
-        nInterno: parsedNInterno,
+        ordenId: resolved.orden.id,
+        nInterno: parsedNInterno || resolved.orden.nInterno,
         nGuia,
         fechaGuia: parsedFechaGuia,
         origen: origen || null,

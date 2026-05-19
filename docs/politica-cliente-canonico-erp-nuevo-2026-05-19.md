@@ -6,13 +6,16 @@ Para la nueva tecnologia se establece un modelo con cliente canonico.
 
 El ERP legacy permitia asociar clientes, pero la asociacion no era una relacion fuerte `orden -> cliente_id`. Era una referencia textual por `rut_cliente` o `email`, repetida en varios modulos. Eso no se debe heredar al ERP nuevo.
 
+Correccion de criterio: el objetivo final no es conservar duplicados como forma normal de operacion. Los alias/historicos solo pueden existir como puente auditado de migracion. El ERP nuevo debe terminar con relaciones fuertes: `cliente canonico -> orden -> ODT/trabajo -> taller/despacho/guia/materiales/bitacora`.
+
 ## Principio
 
 El ERP nuevo debe tener:
 
 - un cliente maestro canonico;
 - ordenes apuntando a `cliente_id`;
-- duplicados conservados solo como alias/historico mientras se audita;
+- duplicados bloqueados para operacion nueva y, cuando corresponda, inactivados o convertidos en alias auditados;
+- toda ODT y movimiento operativo colgando de una orden/trabajo;
 - ninguna fusion fisica destructiva sin lote separado.
 
 ## Reglas de saneamiento
@@ -76,7 +79,7 @@ Orden recomendado:
 1. Actualizar `ventas.ordenes.cliente_id` para las 1645 ordenes corregibles.
 2. Auditar saldos/reportes/cobranza.
 3. Crear tabla de alias o equivalencias `cliente_duplicado_id -> cliente_maestro_id`.
-4. Recien despues decidir si se inactivan duplicados.
+4. Inactivar duplicados operativos cuando la auditoria confirme que ya no son destino valido.
 
 ## Por que no fusionar todo directamente
 
@@ -88,7 +91,7 @@ La politica correcta no es "mismo RUT siempre se fusiona". La politica correcta 
 
 Y para los demas:
 
-> RUT invalido/generico o sin destino claro = revision manual o historico.
+> RUT invalido/generico o sin destino claro = no se usa para operacion nueva hasta crear cliente canonico o marcarlo como historico no operativo.
 
 ## Siguiente sprint propuesto
 
@@ -107,3 +110,5 @@ No incluye:
 - fusionar fisicamente datos maestros;
 - crear clientes faltantes;
 - resolver RUTs invalidos/genericos.
+
+Paralelamente, el ERP nuevo ya no debe permitir nuevas ordenes sin `cliente_id` ni nuevas operaciones de taller/despacho sin orden/trabajo asociado.

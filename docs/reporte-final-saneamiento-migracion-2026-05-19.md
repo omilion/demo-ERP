@@ -235,7 +235,11 @@ La auditoria muestra que corresponden a `catalogo.pagos_proveedores.fecha_pago` 
 | --- | ---: |
 | Registros `taller.bitacora_taller` sin `odt_id` | 12740 |
 
-No se corrigieron porque la evidencia indica que muchas filas son bitacora diaria general, no necesariamente bitacora de una ODT.
+No se deben normalizar como operacion nueva sin ODT. La evidencia indica que muchas filas son bitacora diaria general del ERP legacy, por lo que deben pasar por un sprint de clasificacion: asociar solo las que tengan evidencia de `n_interno`/ODT y dejar el resto como historico read-only o trabajo interno legacy explicitamente marcado.
+
+Documento complementario:
+
+- `docs/forense-odt-taller-legacy-2026-05-19.md`
 
 ### Stock historico legacy
 

@@ -1,4 +1,5 @@
 // Pasar producto a taller: crea OdtItem y adjudica a un Taller (espumas/confecciones/madera/etc)
+import { resolveOdtForWrite } from '../relation-guards.js'
 
 function cleanText(value) {
   if (value == null) return null
@@ -45,8 +46,8 @@ export default async function pasarTallerRoutes(fastify) {
     const odtIdInt = parsePositiveInt(odtId)
     if (!odtIdInt) return reply.code(400).send({ error: 'odtId invalido' })
 
-    const odt = await fastify.prisma.odt.findUnique({ where: { id: odtIdInt } })
-    if (!odt) return reply.code(404).send({ error: 'ODT no encontrada' })
+    const resolved = await resolveOdtForWrite(fastify.prisma, odtIdInt)
+    if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
 
     const prepared = []
     for (const [index, it] of items.entries()) {
@@ -61,14 +62,10 @@ export default async function pasarTallerRoutes(fastify) {
 
       const cantidad = parsePositiveInt(it.cantidad) || 1
       const tallerId = it.tallerId ? parsePositiveInt(it.tallerId) : null
-      if (it.tallerId && !tallerId) {
-        return reply.code(400).send({ error: `items[${index}].tallerId invalido` })
-      }
+      if (!tallerId) return reply.code(400).send({ error: `items[${index}].tallerId requerido` })
 
-      if (tallerId) {
-        const taller = await fastify.prisma.taller.findFirst({ where: { id: tallerId, activo: true } })
-        if (!taller) return reply.code(400).send({ error: `items[${index}].tallerId no existe o esta inactivo` })
-      }
+      const taller = await fastify.prisma.taller.findFirst({ where: { id: tallerId, activo: true } })
+      if (!taller) return reply.code(400).send({ error: `items[${index}].tallerId no existe o esta inactivo` })
 
       prepared.push({
         item: {
