@@ -329,6 +329,66 @@ export const CHECKS = [
     ...orphan({ child: 'caja.movimientos_caja', childColumn: 'gasto_tipo_id', parent: 'caja.gastos' }),
   },
   {
+    id: 'caja.movimientos_origen_tipo_nulo',
+    area: 'caja',
+    severity: 'warn',
+    description: 'Movimientos de caja sin origen_tipo auditable.',
+    ...countWhere({
+      table: 'caja.movimientos_caja',
+      where: "origen_tipo IS NULL OR trim(origen_tipo) = ''",
+      fields: 'id, turno_id, tipo, monto, medio_pago, orden_id, gasto_tipo_id, fecha',
+    }),
+  },
+  {
+    id: 'caja.ingresos_sin_orden_ni_documento',
+    area: 'caja',
+    severity: 'warn',
+    description: 'Ingresos de caja sin orden, documento ni referencia suficiente.',
+    ...countWhere({
+      table: 'caja.movimientos_caja',
+      where: `
+        tipo = 'Ingreso'
+        AND orden_id IS NULL
+        AND COALESCE(NULLIF(trim(documento), ''), NULLIF(trim(n_doc), ''), NULLIF(trim(referencia), '')) IS NULL
+        AND eliminado = false
+      `,
+      fields: 'id, turno_id, tipo, monto, medio_pago, documento, n_doc, referencia, fecha',
+    }),
+  },
+  {
+    id: 'caja.egresos_sin_gasto_ni_orden',
+    area: 'caja',
+    severity: 'warn',
+    description: 'Egresos de caja sin categoria de gasto ni orden asociada.',
+    ...countWhere({
+      table: 'caja.movimientos_caja',
+      where: "tipo = 'Egreso' AND gasto_tipo_id IS NULL AND orden_id IS NULL AND eliminado = false",
+      fields: 'id, turno_id, monto, medio_pago, referencia, documento, n_doc, fecha',
+    }),
+  },
+  {
+    id: 'caja.movimientos_origen_orden_mismatch',
+    area: 'caja',
+    severity: 'critical',
+    description: 'Movimientos de caja con origen orden distinto de orden_id.',
+    ...countWhere({
+      table: 'caja.movimientos_caja',
+      where: "origen_tipo = 'orden' AND orden_id IS NOT NULL AND origen_id IS NOT NULL AND origen_id <> orden_id",
+      fields: 'id, turno_id, orden_id, origen_tipo, origen_id, tipo, monto',
+    }),
+  },
+  {
+    id: 'caja.movimientos_origen_gasto_mismatch',
+    area: 'caja',
+    severity: 'critical',
+    description: 'Movimientos de caja con origen gasto distinto de gasto_tipo_id.',
+    ...countWhere({
+      table: 'caja.movimientos_caja',
+      where: "origen_tipo = 'gasto' AND gasto_tipo_id IS NOT NULL AND origen_id IS NOT NULL AND origen_id <> gasto_tipo_id",
+      fields: 'id, turno_id, gasto_tipo_id, origen_tipo, origen_id, tipo, monto',
+    }),
+  },
+  {
     id: 'caja.cierres_turno_id_huerfano',
     area: 'caja',
     severity: 'critical',

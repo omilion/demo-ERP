@@ -45,6 +45,19 @@ describe('data-integrity-audit checks', () => {
       expect(ids.has(id)).toBe(true)
     }
   })
+
+  it('audits cash movement traceability introduced in Sprint 2', () => {
+    const ids = new Set(CHECKS.map((check) => check.id))
+    for (const id of [
+      'caja.movimientos_origen_tipo_nulo',
+      'caja.ingresos_sin_orden_ni_documento',
+      'caja.egresos_sin_gasto_ni_orden',
+      'caja.movimientos_origen_orden_mismatch',
+      'caja.movimientos_origen_gasto_mismatch',
+    ]) {
+      expect(ids.has(id)).toBe(true)
+    }
+  })
 })
 
 describe('data-integrity-audit CLI behavior', () => {

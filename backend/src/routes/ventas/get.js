@@ -9,7 +9,7 @@ export default async function getVenta(fastify) {
     const [o, odts, pagos, despachos, guias, cobranza] = await Promise.all([
       fastify.prisma.orden.findUnique({ where: { id }, include: { items: true } }),
       fastify.prisma.odt.findMany({ where: { ordenId: id }, orderBy: { createdAt: 'desc' } }),
-      fastify.prisma.movimientoCaja.findMany({ where: { ordenId: id }, orderBy: { createdAt: 'desc' } }),
+      fastify.prisma.movimientoCaja.findMany({ where: { ordenId: id, eliminado: false }, orderBy: { createdAt: 'desc' } }),
       fastify.prisma.despacho.findMany({ where: { ordenId: id }, orderBy: { fechaEntrega: 'desc' } }),
       fastify.prisma.guiaDespacho.findMany({ where: { ordenId: id }, orderBy: { fechaGuia: 'desc' } }),
       fastify.prisma.cobranzaHistorico.findMany({ where: { ordenId: id }, orderBy: { fechaFactura: 'desc' } }),

@@ -9,7 +9,7 @@ export default async function historicoRoutes(fastify) {
     const LIMIT = 100
     const offset = (parsePage(page) - 1) * LIMIT
 
-    const where = {}
+    const where = { eliminado: false }
     if (year) {
       const y = parseOptionalInt(year)
       if (!y || y < 2000 || y > 2100) return reply.code(400).send({ error: 'year invalido' })
@@ -79,7 +79,7 @@ export default async function historicoRoutes(fastify) {
     const rows = await fastify.prisma.$queryRaw`
       SELECT DISTINCT EXTRACT(YEAR FROM fecha)::int AS year
       FROM caja.movimientos_caja
-      WHERE turno_id IS NULL AND fecha IS NOT NULL
+      WHERE turno_id IS NULL AND fecha IS NOT NULL AND eliminado = false
       ORDER BY year DESC
     `
     return rows.map(r => r.year)

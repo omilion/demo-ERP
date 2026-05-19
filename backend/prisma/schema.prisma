@@ -405,6 +405,7 @@ model Orden {
   despachos          Despacho[]
   guiasDespacho      GuiaDespacho[]
   movimientosBodega  MovimientoBodega[]
+  movimientosCaja    MovimientoCaja[]
 
   @@index([nInterno])
   @@index([rutCliente])
@@ -705,6 +706,8 @@ model MovimientoCaja {
   origenMedioPago String?   @map("origen_medio_pago")
   numeroNCInterna String?   @map("numero_nc_interna")
   gastoTipoId     Int?      @map("gasto_tipo_id")
+  origenTipo      String?   @map("origen_tipo")
+  origenId        Int?      @map("origen_id")
   usuario         String?
   fecha           DateTime?
   eliminado       Boolean   @default(false)
@@ -712,9 +715,13 @@ model MovimientoCaja {
   userMod         String?   @map("user_mod")
   createdAt       DateTime  @default(now()) @map("created_at")
   turno           Turno?    @relation(fields: [turnoId], references: [id])
+  orden           Orden?    @relation(fields: [ordenId], references: [id], onDelete: SetNull)
   gastoTipo       Gasto?    @relation(fields: [gastoTipoId], references: [id])
 
+  @@index([turnoId])
+  @@index([ordenId])
   @@index([gastoTipoId])
+  @@index([origenTipo, origenId])
   @@map("movimientos_caja")
   @@schema("caja")
 }

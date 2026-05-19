@@ -181,7 +181,7 @@ export default async function reportesRoutes(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('caja', 'read')],
   }, async (request, reply) => {
     const { desde, hasta } = request.query
-    const where = {}
+    const where = { eliminado: false }
     if (desde || hasta) {
       where.fecha = {}
       if (desde) where.fecha.gte = new Date(desde)
