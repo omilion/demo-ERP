@@ -597,6 +597,74 @@ export const CHECKS = [
     ...orphan({ child: 'bodega.despachos', childColumn: 'orden_id', parent: 'ventas.ordenes' }),
   },
   {
+    id: 'despachos.despacho_odt_id_huerfano',
+    area: 'despachos',
+    severity: 'critical',
+    description: 'Despachos con odt_id inexistente.',
+    ...orphan({ child: 'bodega.despachos', childColumn: 'odt_id', parent: 'taller.odts' }),
+  },
+  {
+    id: 'despachos.despacho_origen_tipo_nulo',
+    area: 'despachos',
+    severity: 'warn',
+    description: 'Despachos sin origen_tipo auditable.',
+    ...countWhere({
+      table: 'bodega.despachos',
+      where: "origen_tipo IS NULL OR trim(origen_tipo) = ''",
+      fields: 'id, orden_id, odt_id, interno, fecha_entrega, tipo_despacho',
+    }),
+  },
+  {
+    id: 'despachos.despacho_interno_mismatch',
+    area: 'despachos',
+    severity: 'warn',
+    description: 'Despachos con interno distinto del n_interno de la orden.',
+    countSql: q(`
+      SELECT count(*)::int AS count
+      FROM bodega.despachos d
+      JOIN ventas.ordenes o ON o.id = d.orden_id
+      WHERE d.interno IS NOT NULL
+        AND trim(d.interno) ~ '^[0-9]+$'
+        AND o.n_interno IS NOT NULL
+        AND trim(d.interno)::int <> o.n_interno
+    `),
+    sampleSql: (limit) => q(`
+      SELECT d.id, d.orden_id, d.odt_id, d.interno, o.n_interno AS orden_n_interno
+      FROM bodega.despachos d
+      JOIN ventas.ordenes o ON o.id = d.orden_id
+      WHERE d.interno IS NOT NULL
+        AND trim(d.interno) ~ '^[0-9]+$'
+        AND o.n_interno IS NOT NULL
+        AND trim(d.interno)::int <> o.n_interno
+      ORDER BY d.id
+      LIMIT ${limit}
+    `),
+  },
+  {
+    id: 'despachos.despacho_odt_orden_mismatch',
+    area: 'despachos',
+    severity: 'critical',
+    description: 'Despachos con odt_id que pertenece a otra orden.',
+    countSql: q(`
+      SELECT count(*)::int AS count
+      FROM bodega.despachos d
+      JOIN taller.odts t ON t.id = d.odt_id
+      WHERE d.orden_id IS NOT NULL
+        AND t.orden_id IS NOT NULL
+        AND d.orden_id <> t.orden_id
+    `),
+    sampleSql: (limit) => q(`
+      SELECT d.id, d.orden_id, d.odt_id, t.orden_id AS odt_orden_id
+      FROM bodega.despachos d
+      JOIN taller.odts t ON t.id = d.odt_id
+      WHERE d.orden_id IS NOT NULL
+        AND t.orden_id IS NOT NULL
+        AND d.orden_id <> t.orden_id
+      ORDER BY d.id
+      LIMIT ${limit}
+    `),
+  },
+  {
     id: 'despachos.guia_orden_id_nulo',
     area: 'despachos',
     severity: 'warn',
@@ -609,6 +677,24 @@ export const CHECKS = [
     severity: 'warn',
     description: 'Guias de despacho con orden_id inexistente.',
     ...orphan({ child: 'bodega.guias_despachos', childColumn: 'orden_id', parent: 'ventas.ordenes' }),
+  },
+  {
+    id: 'despachos.guia_odt_id_huerfano',
+    area: 'despachos',
+    severity: 'critical',
+    description: 'Guias de despacho con odt_id inexistente.',
+    ...orphan({ child: 'bodega.guias_despachos', childColumn: 'odt_id', parent: 'taller.odts' }),
+  },
+  {
+    id: 'despachos.guia_origen_tipo_nulo',
+    area: 'despachos',
+    severity: 'warn',
+    description: 'Guias de despacho sin origen_tipo auditable.',
+    ...countWhere({
+      table: 'bodega.guias_despachos',
+      where: "origen_tipo IS NULL OR trim(origen_tipo) = ''",
+      fields: 'id, orden_id, odt_id, n_interno, n_guia, fecha_guia',
+    }),
   },
   {
     id: 'despachos.guia_n_interno_mismatch',
@@ -630,6 +716,30 @@ export const CHECKS = [
       WHERE g.n_interno IS NOT NULL
         AND o.n_interno IS NOT NULL
         AND g.n_interno <> o.n_interno
+      ORDER BY g.id
+      LIMIT ${limit}
+    `),
+  },
+  {
+    id: 'despachos.guia_odt_orden_mismatch',
+    area: 'despachos',
+    severity: 'critical',
+    description: 'Guias con odt_id que pertenece a otra orden.',
+    countSql: q(`
+      SELECT count(*)::int AS count
+      FROM bodega.guias_despachos g
+      JOIN taller.odts t ON t.id = g.odt_id
+      WHERE g.orden_id IS NOT NULL
+        AND t.orden_id IS NOT NULL
+        AND g.orden_id <> t.orden_id
+    `),
+    sampleSql: (limit) => q(`
+      SELECT g.id, g.orden_id, g.odt_id, t.orden_id AS odt_orden_id, g.n_guia
+      FROM bodega.guias_despachos g
+      JOIN taller.odts t ON t.id = g.odt_id
+      WHERE g.orden_id IS NOT NULL
+        AND t.orden_id IS NOT NULL
+        AND g.orden_id <> t.orden_id
       ORDER BY g.id
       LIMIT ${limit}
     `),

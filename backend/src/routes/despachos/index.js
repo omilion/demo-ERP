@@ -1,10 +1,13 @@
-// Gestión de despachos y guías
+// Gestion de despachos y guias.
 import { z } from 'zod'
 import { applyDateRange, parseDate, parseOptionalInt, parsePage, parsePositiveInt } from '../operational-utils.js'
-import { resolveOrdenForWrite } from '../relation-guards.js'
+import { resolveOdtForWrite, resolveOrdenForWrite } from '../relation-guards.js'
+
+const optionalId = z.union([z.number().int(), z.string()]).optional().nullable()
 
 const DespachoCreate = z.object({
-  ordenId: z.union([z.number().int(), z.string()]).optional().nullable(),
+  ordenId: optionalId,
+  odtId: optionalId,
   interno: z.string().optional().nullable(),
   plazoEntrega: z.string().optional().nullable(),
   fechaInterno: z.string().optional().nullable(),
@@ -18,22 +21,99 @@ const DespachoCreate = z.object({
   comuna: z.string().optional().nullable(),
   parcial: z.boolean().optional(),
   tieneMulta: z.boolean().optional(),
+  origenTipo: z.string().optional().nullable(),
+  origenId: optionalId,
 })
 
 const GuiaCreate = z.object({
-  ordenId: z.union([z.number().int(), z.string()]).optional().nullable(),
-  nInterno: z.union([z.number().int(), z.string()]).optional().nullable(),
+  ordenId: optionalId,
+  odtId: optionalId,
+  nInterno: optionalId,
   nGuia: z.string().min(1),
   fechaGuia: z.string().optional().nullable(),
   origen: z.string().optional().nullable(),
+  origenTipo: z.string().optional().nullable(),
+  origenId: optionalId,
 })
 
+function hasValue(value) {
+  return value !== undefined && value !== null && value !== ''
+}
+
+function cleanText(value) {
+  if (!hasValue(value)) return null
+  const text = String(value).trim()
+  return text || null
+}
+
+function parseOptionalPositiveId(value, field) {
+  if (!hasValue(value)) return { value: null }
+  const parsed = parsePositiveInt(value)
+  if (!parsed) return { error: `${field} invalido` }
+  return { value: parsed }
+}
+
+export async function resolveDispatchTraceability(prisma, input = {}) {
+  const odtInput = parseOptionalPositiveId(input.odtId, 'odtId')
+  if (odtInput.error) return { status: 400, error: odtInput.error }
+  const origenInput = parseOptionalPositiveId(input.origenId, 'origenId')
+  if (origenInput.error) return { status: 400, error: origenInput.error }
+
+  let odt = null
+  if (odtInput.value) {
+    const resolvedOdt = await resolveOdtForWrite(prisma, odtInput.value)
+    if (resolvedOdt.error) return resolvedOdt
+    odt = resolvedOdt.odt
+  }
+
+  const orderLookup = odt && !hasValue(input.ordenId) && !hasValue(input.nInterno)
+    ? { ordenId: odt.ordenId }
+    : { ordenId: input.ordenId, nInterno: input.nInterno }
+  const resolvedOrden = await resolveOrdenForWrite(prisma, orderLookup)
+  if (resolvedOrden.error) return resolvedOrden
+
+  if (odt && odt.ordenId !== resolvedOrden.orden.id) {
+    return { status: 409, error: 'ODT no pertenece a la orden indicada' }
+  }
+
+  const parsedNInterno = hasValue(input.nInterno) ? parsePositiveInt(input.nInterno) : null
+  if (hasValue(input.nInterno) && !parsedNInterno) {
+    return { status: 400, error: 'nInterno invalido' }
+  }
+  if (parsedNInterno && resolvedOrden.orden.nInterno && parsedNInterno !== resolvedOrden.orden.nInterno) {
+    return { status: 409, error: 'nInterno no coincide con la orden indicada' }
+  }
+
+  const origenTipo = cleanText(input.origenTipo) || (odt ? 'odt' : 'orden')
+  const origenId = origenInput.value ?? (odt ? odt.id : resolvedOrden.orden.id)
+  if (!['orden', 'odt'].includes(origenTipo)) {
+    return { status: 400, error: 'origenTipo debe ser orden u odt' }
+  }
+  if (origenTipo === 'odt' && !odt) {
+    return { status: 400, error: 'odtId requerido para origen odt' }
+  }
+  if (origenTipo === 'odt' && origenId !== odt.id) {
+    return { status: 409, error: 'origenId no coincide con odtId' }
+  }
+  if (origenTipo === 'orden' && origenId !== resolvedOrden.orden.id) {
+    return { status: 409, error: 'origenId no coincide con ordenId' }
+  }
+
+  return {
+    orden: resolvedOrden.orden,
+    odt,
+    nInterno: parsedNInterno ?? resolvedOrden.orden.nInterno ?? null,
+    origenTipo,
+    origenId,
+  }
+}
+
 export default async function despachosRoutes(fastify) {
-  // GET /api/despachos?desde=&hasta=&ordenId=&tipo=&page=1
+  // GET /api/despachos?desde=&hasta=&ordenId=&odtId=&tipo=&page=1
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
   }, async (request, reply) => {
-    const { desde, hasta, ordenId, tipo, contacto, transporte, region, comuna, parcial, tieneMulta, search, page = '1' } = request.query
+    const { desde, hasta, ordenId, odtId, tipo, contacto, transporte, region, comuna, parcial, tieneMulta, search, page = '1' } = request.query
     const LIMIT = 100
     const skip = (parsePage(page) - 1) * LIMIT
     const where = {}
@@ -41,6 +121,11 @@ export default async function despachosRoutes(fastify) {
       const parsedOrdenId = parsePositiveInt(ordenId)
       if (!parsedOrdenId) return reply.code(400).send({ error: 'ordenId invalido' })
       where.ordenId = parsedOrdenId
+    }
+    if (odtId) {
+      const parsedOdtId = parsePositiveInt(odtId)
+      if (!parsedOdtId) return reply.code(400).send({ error: 'odtId invalido' })
+      where.odtId = parsedOdtId
     }
     if (tipo) where.tipoDespacho = { contains: tipo, mode: 'insensitive' }
     if (contacto) where.contacto = { contains: contacto, mode: 'insensitive' }
@@ -56,7 +141,7 @@ export default async function despachosRoutes(fastify) {
         { direccion: { contains: search, mode: 'insensitive' } },
         { transporte: { contains: search, mode: 'insensitive' } },
         { interno: { contains: search, mode: 'insensitive' } },
-        ...(isNum ? [{ ordenId: parseInt(search, 10) }] : []),
+        ...(isNum ? [{ ordenId: parseInt(search, 10) }, { odtId: parseInt(search, 10) }] : []),
       ]
     }
     if (!applyDateRange(where, 'fechaEntrega', desde, hasta)) return reply.code(400).send({ error: 'Rango de fechas invalido' })
@@ -90,7 +175,13 @@ export default async function despachosRoutes(fastify) {
     const parsed = DespachoCreate.safeParse(request.body || {})
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     const b = parsed.data
-    const resolved = await resolveOrdenForWrite(fastify.prisma, { ordenId: b.ordenId, nInterno: b.interno })
+    const resolved = await resolveDispatchTraceability(fastify.prisma, {
+      ordenId: b.ordenId,
+      odtId: b.odtId,
+      nInterno: b.interno,
+      origenTipo: b.origenTipo,
+      origenId: b.origenId,
+    })
     const fechaInterno = b.fechaInterno ? parseDate(b.fechaInterno) : null
     const fechaEntrega = b.fechaEntrega ? parseDate(b.fechaEntrega) : null
     const montoEnvio = b.montoEnvio ? parseOptionalInt(b.montoEnvio) : null
@@ -101,7 +192,8 @@ export default async function despachosRoutes(fastify) {
     return fastify.prisma.despacho.create({
       data: {
         ordenId: resolved.orden.id,
-        interno: b.interno || (resolved.orden.nInterno ? String(resolved.orden.nInterno) : null),
+        odtId: resolved.odt?.id ?? null,
+        interno: resolved.nInterno ? String(resolved.nInterno) : null,
         plazoEntrega: b.plazoEntrega || null,
         fechaInterno,
         fechaEntrega,
@@ -114,6 +206,8 @@ export default async function despachosRoutes(fastify) {
         comuna: b.comuna || null,
         parcial: !!b.parcial,
         tieneMulta: !!b.tieneMulta,
+        origenTipo: resolved.origenTipo,
+        origenId: resolved.origenId,
         usuario: request.user?.nombre || request.user?.username || null,
       },
     })
@@ -127,14 +221,29 @@ export default async function despachosRoutes(fastify) {
     const parsed = DespachoCreate.partial().safeParse(request.body || {})
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     const b = parsed.data
+    const existing = await fastify.prisma.despacho.findUnique({ where: { id } })
+    if (!existing) return reply.code(404).send({ error: 'no encontrado' })
+
     const data = {}
-    for (const f of ['interno', 'plazoEntrega', 'tipoDespacho', 'transporte', 'direccion', 'contacto', 'region', 'comuna', 'usuario']) {
-      if (b[f] !== undefined) data[f] = b[f]
-    }
-    if (b.ordenId !== undefined) {
-      const resolved = await resolveOrdenForWrite(fastify.prisma, { ordenId: b.ordenId })
+    const traceTouched = ['ordenId', 'odtId', 'interno', 'origenTipo', 'origenId'].some(field => b[field] !== undefined)
+    if (traceTouched) {
+      const resolved = await resolveDispatchTraceability(fastify.prisma, {
+        ordenId: b.ordenId !== undefined ? b.ordenId : existing.ordenId,
+        odtId: b.odtId !== undefined ? b.odtId : existing.odtId,
+        nInterno: b.interno !== undefined ? b.interno : existing.interno,
+        origenTipo: b.origenTipo !== undefined ? b.origenTipo : existing.origenTipo,
+        origenId: b.origenId !== undefined ? b.origenId : existing.origenId,
+      })
       if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
       data.ordenId = resolved.orden.id
+      data.odtId = resolved.odt?.id ?? null
+      data.interno = resolved.nInterno ? String(resolved.nInterno) : null
+      data.origenTipo = resolved.origenTipo
+      data.origenId = resolved.origenId
+    }
+
+    for (const f of ['plazoEntrega', 'tipoDespacho', 'transporte', 'direccion', 'contacto', 'region', 'comuna', 'usuario']) {
+      if (b[f] !== undefined) data[f] = b[f]
     }
     if (b.fechaInterno !== undefined) {
       const fechaInterno = b.fechaInterno ? parseDate(b.fechaInterno) : null
@@ -153,8 +262,7 @@ export default async function despachosRoutes(fastify) {
     }
     if (b.parcial !== undefined) data.parcial = !!b.parcial
     if (b.tieneMulta !== undefined) data.tieneMulta = !!b.tieneMulta
-    try { return await fastify.prisma.despacho.update({ where: { id }, data }) }
-    catch (e) { if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrado' }); throw e }
+    return fastify.prisma.despacho.update({ where: { id }, data })
   })
 
   fastify.delete('/:id', {
@@ -166,11 +274,11 @@ export default async function despachosRoutes(fastify) {
     catch (e) { if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrado' }); throw e }
   })
 
-  // Guías
+  // Guias
   fastify.get('/guias/list', {
     preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
   }, async (request, reply) => {
-    const { desde, hasta, nGuia, ordenId, page = '1' } = request.query
+    const { desde, hasta, nGuia, ordenId, odtId, page = '1' } = request.query
     const LIMIT = 100
     const skip = (parsePage(page) - 1) * LIMIT
     const where = {}
@@ -179,6 +287,11 @@ export default async function despachosRoutes(fastify) {
       const parsedOrdenId = parsePositiveInt(ordenId)
       if (!parsedOrdenId) return reply.code(400).send({ error: 'ordenId invalido' })
       where.ordenId = parsedOrdenId
+    }
+    if (odtId) {
+      const parsedOdtId = parsePositiveInt(odtId)
+      if (!parsedOdtId) return reply.code(400).send({ error: 'odtId invalido' })
+      where.odtId = parsedOdtId
     }
     if (!applyDateRange(where, 'fechaGuia', desde, hasta)) return reply.code(400).send({ error: 'Rango de fechas invalido' })
     const [items, total] = await Promise.all([
@@ -195,20 +308,27 @@ export default async function despachosRoutes(fastify) {
   }, async (request, reply) => {
     const parsed = GuiaCreate.safeParse(request.body || {})
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
-    const { ordenId, nInterno, nGuia, fechaGuia, origen } = parsed.data
-    const resolved = await resolveOrdenForWrite(fastify.prisma, { ordenId, nInterno })
-    const parsedNInterno = nInterno ? parsePositiveInt(nInterno) : null
+    const { ordenId, odtId, nInterno, nGuia, fechaGuia, origen, origenTipo, origenId } = parsed.data
+    const resolved = await resolveDispatchTraceability(fastify.prisma, {
+      ordenId,
+      odtId,
+      nInterno,
+      origenTipo,
+      origenId,
+    })
     const parsedFechaGuia = fechaGuia ? parseDate(fechaGuia) : new Date()
     if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
-    if (nInterno && !parsedNInterno) return reply.code(400).send({ error: 'nInterno invalido' })
     if (fechaGuia && !parsedFechaGuia) return reply.code(400).send({ error: 'fechaGuia invalida' })
     return fastify.prisma.guiaDespacho.create({
       data: {
         ordenId: resolved.orden.id,
-        nInterno: parsedNInterno || resolved.orden.nInterno,
+        odtId: resolved.odt?.id ?? null,
+        nInterno: resolved.nInterno,
         nGuia,
         fechaGuia: parsedFechaGuia,
         origen: origen || null,
+        origenTipo: resolved.origenTipo,
+        origenId: resolved.origenId,
       },
     })
   })

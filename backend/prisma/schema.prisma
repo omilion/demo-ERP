@@ -782,6 +782,8 @@ model Odt {
   items         OdtItem[]
   bitacora      BitacoraTaller[]
   movimientosBodega MovimientoBodega[]
+  despachos     Despacho[]
+  guiasDespacho GuiaDespacho[]
 
   @@map("odts")
   @@schema("taller")
@@ -1024,17 +1026,23 @@ model MovimientoBodega {
 }
 
 model GuiaDespacho {
-  id        Int      @id @default(autoincrement())
-  ordenId   Int?     @map("orden_id")
-  nInterno  Int?     @map("n_interno")
-  nGuia     String   @map("n_guia")
-  fechaGuia DateTime @map("fecha_guia")
-  origen    String?
-  createdAt DateTime @default(now()) @map("created_at")
-  orden     Orden?   @relation(fields: [ordenId], references: [id], onDelete: SetNull)
+  id         Int      @id @default(autoincrement())
+  ordenId    Int?     @map("orden_id")
+  odtId      Int?     @map("odt_id")
+  nInterno   Int?     @map("n_interno")
+  nGuia      String   @map("n_guia")
+  fechaGuia  DateTime @map("fecha_guia")
+  origen     String?
+  origenTipo String?  @map("origen_tipo")
+  origenId   Int?     @map("origen_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  orden      Orden?   @relation(fields: [ordenId], references: [id], onDelete: SetNull)
+  odt        Odt?     @relation(fields: [odtId], references: [id], onDelete: SetNull)
 
   @@index([nInterno])
   @@index([ordenId])
+  @@index([odtId])
+  @@index([origenTipo, origenId])
   @@map("guias_despachos")
   @@schema("bodega")
 }
@@ -1042,6 +1050,7 @@ model GuiaDespacho {
 model Despacho {
   id           Int       @id @default(autoincrement())
   ordenId      Int?      @map("orden_id")
+  odtId        Int?      @map("odt_id")
   interno      String?
   plazoEntrega String?   @map("plazo_entrega")
   fechaInterno DateTime? @map("fecha_interno")
@@ -1055,11 +1064,16 @@ model Despacho {
   comuna       String?
   parcial      Boolean   @default(false)
   tieneMulta   Boolean   @default(false) @map("tiene_multa")
+  origenTipo   String?   @map("origen_tipo")
+  origenId     Int?      @map("origen_id")
   usuario      String?
   createdAt    DateTime  @default(now()) @map("created_at")
   orden        Orden?    @relation(fields: [ordenId], references: [id], onDelete: SetNull)
+  odt          Odt?      @relation(fields: [odtId], references: [id], onDelete: SetNull)
 
   @@index([ordenId])
+  @@index([odtId])
+  @@index([origenTipo, origenId])
   @@map("despachos")
   @@schema("bodega")
 }

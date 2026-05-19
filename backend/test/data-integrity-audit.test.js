@@ -58,6 +58,21 @@ describe('data-integrity-audit checks', () => {
       expect(ids.has(id)).toBe(true)
     }
   })
+
+  it('audits dispatch and guide traceability introduced in Sprint 3', () => {
+    const ids = new Set(CHECKS.map((check) => check.id))
+    for (const id of [
+      'despachos.despacho_odt_id_huerfano',
+      'despachos.despacho_origen_tipo_nulo',
+      'despachos.despacho_interno_mismatch',
+      'despachos.despacho_odt_orden_mismatch',
+      'despachos.guia_odt_id_huerfano',
+      'despachos.guia_origen_tipo_nulo',
+      'despachos.guia_odt_orden_mismatch',
+    ]) {
+      expect(ids.has(id)).toBe(true)
+    }
+  })
 })
 
 describe('data-integrity-audit CLI behavior', () => {
