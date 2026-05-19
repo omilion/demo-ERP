@@ -31,6 +31,20 @@ describe('data-integrity-audit checks', () => {
       expect(areas.has(area)).toBe(true)
     }
   })
+
+  it('audits stock movement traceability introduced in Sprint 1', () => {
+    const ids = new Set(CHECKS.map((check) => check.id))
+    for (const id of [
+      'bodega.movimientos_origen_tipo_nulo',
+      'bodega.movimientos_orden_id_huerfano',
+      'bodega.movimientos_odt_id_huerfano',
+      'bodega.movimientos_pago_proveedor_id_huerfano',
+      'bodega.movimientos_egreso_manual_sin_trabajo',
+      'proveedores.pagos_stock_aplicado_sin_movimiento_bodega',
+    ]) {
+      expect(ids.has(id)).toBe(true)
+    }
+  })
 })
 
 describe('data-integrity-audit CLI behavior', () => {

@@ -290,6 +290,7 @@ model PagoProveedor {
   obs              String?
   stockAplicadoAt  DateTime? @map("stock_aplicado_at")
   createdAt        DateTime  @default(now()) @map("created_at")
+  movimientosBodega MovimientoBodega[]
 
   @@index([proveedorId])
   @@index([codigoProveedor])
@@ -403,6 +404,7 @@ model Orden {
   cargos             OrdenCargo[]
   despachos          Despacho[]
   guiasDespacho      GuiaDespacho[]
+  movimientosBodega  MovimientoBodega[]
 
   @@index([nInterno])
   @@index([rutCliente])
@@ -772,6 +774,7 @@ model Odt {
   createdAt     DateTime         @default(now()) @map("created_at")
   items         OdtItem[]
   bitacora      BitacoraTaller[]
+  movimientosBodega MovimientoBodega[]
 
   @@map("odts")
   @@schema("taller")
@@ -989,14 +992,26 @@ model TelaMovimiento {
 // ── BODEGA ───────────────────────────────────────────────────────────
 
 model MovimientoBodega {
-  id         Int      @id @default(autoincrement())
-  productoId Int      @map("producto_id")
-  tipo       String
-  cantidad   Int
-  motivo     String
-  userId     Int      @map("user_id")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id              Int            @id @default(autoincrement())
+  productoId      Int            @map("producto_id")
+  tipo            String
+  cantidad        Int
+  motivo          String
+  userId          Int            @map("user_id")
+  ordenId         Int?           @map("orden_id")
+  odtId           Int?           @map("odt_id")
+  pagoProveedorId Int?           @map("pago_proveedor_id")
+  origenTipo      String?        @map("origen_tipo")
+  origenId        Int?           @map("origen_id")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  orden           Orden?         @relation(fields: [ordenId], references: [id], onDelete: SetNull)
+  odt             Odt?           @relation(fields: [odtId], references: [id], onDelete: SetNull)
+  pagoProveedor   PagoProveedor? @relation(fields: [pagoProveedorId], references: [id], onDelete: SetNull)
 
+  @@index([ordenId])
+  @@index([odtId])
+  @@index([pagoProveedorId])
+  @@index([origenTipo, origenId])
   @@map("movimientos")
   @@schema("bodega")
 }

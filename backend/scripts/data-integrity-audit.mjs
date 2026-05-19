@@ -378,6 +378,36 @@ export const CHECKS = [
     `),
   },
   {
+    id: 'proveedores.pagos_stock_aplicado_sin_movimiento_bodega',
+    area: 'proveedores',
+    severity: 'critical',
+    description: 'Pagos proveedor marcados como stock aplicado sin movimientos de bodega vinculados.',
+    countSql: q(`
+      SELECT count(*)::int AS count
+      FROM catalogo.pagos_proveedores p
+      WHERE p.stock_aplicado_at IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM bodega.movimientos m
+          WHERE m.pago_proveedor_id = p.id
+             OR (m.origen_tipo = 'pago_proveedor' AND m.origen_id = p.id)
+        )
+    `),
+    sampleSql: (limit) => q(`
+      SELECT p.id, p.proveedor_id, p.codigo_proveedor, p.documento, p.n_doc, p.stock_aplicado_at
+      FROM catalogo.pagos_proveedores p
+      WHERE p.stock_aplicado_at IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM bodega.movimientos m
+          WHERE m.pago_proveedor_id = p.id
+             OR (m.origen_tipo = 'pago_proveedor' AND m.origen_id = p.id)
+        )
+      ORDER BY p.id
+      LIMIT ${limit}
+    `),
+  },
+  {
     id: 'taller.odts_orden_id_nulo',
     area: 'taller',
     severity: 'critical',
@@ -557,6 +587,54 @@ export const CHECKS = [
     severity: 'warn',
     description: 'Movimientos de bodega con user_id inexistente.',
     ...orphan({ child: 'bodega.movimientos', childColumn: 'user_id', parent: 'auth.users' }),
+  },
+  {
+    id: 'bodega.movimientos_origen_tipo_nulo',
+    area: 'bodega',
+    severity: 'warn',
+    description: 'Movimientos de bodega sin origen_tipo auditable.',
+    ...countWhere({
+      table: 'bodega.movimientos',
+      where: "origen_tipo IS NULL OR trim(origen_tipo) = ''",
+      fields: 'id, producto_id, tipo, cantidad, motivo, created_at',
+    }),
+  },
+  {
+    id: 'bodega.movimientos_orden_id_huerfano',
+    area: 'bodega',
+    severity: 'critical',
+    description: 'Movimientos de bodega con orden_id inexistente.',
+    ...orphan({ child: 'bodega.movimientos', childColumn: 'orden_id', parent: 'ventas.ordenes' }),
+  },
+  {
+    id: 'bodega.movimientos_odt_id_huerfano',
+    area: 'bodega',
+    severity: 'critical',
+    description: 'Movimientos de bodega con odt_id inexistente.',
+    ...orphan({ child: 'bodega.movimientos', childColumn: 'odt_id', parent: 'taller.odts' }),
+  },
+  {
+    id: 'bodega.movimientos_pago_proveedor_id_huerfano',
+    area: 'bodega',
+    severity: 'critical',
+    description: 'Movimientos de bodega con pago_proveedor_id inexistente.',
+    ...orphan({ child: 'bodega.movimientos', childColumn: 'pago_proveedor_id', parent: 'catalogo.pagos_proveedores' }),
+  },
+  {
+    id: 'bodega.movimientos_egreso_manual_sin_trabajo',
+    area: 'bodega',
+    severity: 'warn',
+    description: 'Egresos manuales de bodega sin orden ni ODT asociada.',
+    ...countWhere({
+      table: 'bodega.movimientos',
+      where: `
+        tipo = 'egreso'
+        AND orden_id IS NULL
+        AND odt_id IS NULL
+        AND COALESCE(NULLIF(trim(origen_tipo), ''), 'manual') = 'manual'
+      `,
+      fields: 'id, producto_id, cantidad, motivo, user_id, created_at',
+    }),
   },
   {
     id: 'catalogo.producto_categoria_id_huerfano',

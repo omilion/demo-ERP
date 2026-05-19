@@ -55,7 +55,7 @@ export default async function pagosProveedoresRoutes(fastify) {
   }, async (request) => {
     const { search, estado, proveedorId, desde, hasta, page = '1' } = request.query
     const LIMIT = 100
-    const offset = (parseInt(page) - 1) * LIMIT
+    const offset = (parseInt(page, 10) - 1) * LIMIT
 
     const where = {}
     if (estado) where.estado = estado
@@ -93,7 +93,6 @@ export default async function pagosProveedoresRoutes(fastify) {
       if (g.estado === 'Vencido') stats.montoVencido = g._sum.total || 0
     }
 
-    // attach proveedores
     const provIds = [...new Set(items.map(p => p.proveedorId).filter(Boolean))]
     let provMap = {}
     if (provIds.length) {
@@ -111,7 +110,7 @@ export default async function pagosProveedoresRoutes(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('proveedores', 'read')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
-    if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
     const pago = await fastify.prisma.pagoProveedor.findUnique({ where: { id } })
     if (!pago) return reply.code(404).send({ error: 'Pago no encontrado' })
     const detalles = await fastify.prisma.detalleFacturaProveedor.findMany({ where: { pagoId: id } })
@@ -125,7 +124,7 @@ export default async function pagosProveedoresRoutes(fastify) {
     return { ...pago, proveedor, detalles }
   })
 
-  // G15: POST con detalles - crea factura proveedor con ítems + actualiza stock
+  // G15: POST con detalles - crea factura proveedor con items + actualiza stock
   fastify.post('/', {
     preHandler: [fastify.authenticate, fastify.rbac('proveedores', 'write')],
   }, async (request, reply) => {
@@ -138,11 +137,13 @@ export default async function pagosProveedoresRoutes(fastify) {
     if (!hasValue(b.total) && !Array.isArray(b.detalles)) return reply.code(400).send({ error: 'total o detalles requerido' })
 
     const detalles = normalizeDetalles(Array.isArray(b.detalles) ? b.detalles : [])
-    const stockDecimal = b.ingresaStock ? detalles.find(d => !Number.isInteger(d.cantidad)) : null
-    if (stockDecimal) {
+    const stockInvalid = b.ingresaStock
+      ? detalles.find(d => !Number.isInteger(d.cantidad) || d.cantidad <= 0)
+      : null
+    if (stockInvalid) {
       return reply.code(400).send({
-        error: 'cantidad debe ser entera para ingresar stock de productos',
-        codigoInterno: stockDecimal.codigoInterno,
+        error: 'cantidad debe ser entera y mayor que cero para ingresar stock de productos',
+        codigoInterno: stockInvalid.codigoInterno,
       })
     }
     const totalCalc = detalles.length
@@ -166,6 +167,26 @@ export default async function pagosProveedoresRoutes(fastify) {
         if (existing) return { ...existing, idempotent: true }
       }
 
+      let productosByCodigo = new Map()
+      if (b.ingresaStock && detalles.length > 0) {
+        const codigos = [...new Set(detalles.map(d => d.codigoInterno).filter(Boolean))]
+        const productos = await tx.producto.findMany({
+          where: { codigoInterno: { in: codigos } },
+          select: { id: true, codigoInterno: true },
+        })
+        productosByCodigo = new Map(productos.map(p => [p.codigoInterno, p]))
+        const codigosFaltantes = codigos.filter(codigo => !productosByCodigo.has(codigo))
+        if (codigosFaltantes.length > 0) {
+          return {
+            status: 400,
+            payload: {
+              error: 'productos no encontrados para ingresar stock',
+              codigos: codigosFaltantes,
+            },
+          }
+        }
+      }
+
       const pago = await tx.pagoProveedor.create({
         data: {
           proveedorId,
@@ -184,11 +205,15 @@ export default async function pagosProveedoresRoutes(fastify) {
           ncNumero: b.ncNumero || null,
           ncMonto: b.ncMonto != null ? parseFloat(b.ncMonto) : null,
           obs: b.obs || null,
-          stockAplicadoAt: b.ingresaStock && detalles.length ? new Date() : null,
+          stockAplicadoAt: null,
         },
       })
 
-      // Crear detalles + sumar stock si ingresa mercadería
+      const userId = request.user?.id || 1
+      const motivoStock = `Ingreso factura ${pago.documento || ''} ${pago.nDoc || ''}`.trim()
+      let stockAplicado = false
+
+      // Crear detalles + sumar stock si ingresa mercaderia.
       for (const d of detalles) {
         if (!d.codigoInterno) continue
         await tx.detalleFacturaProveedor.create({
@@ -199,18 +224,37 @@ export default async function pagosProveedoresRoutes(fastify) {
             precio: d.precio,
           },
         })
-        // Si el flag ingresaStock está, sumar al producto matching código
+
         if (b.ingresaStock) {
-          await tx.producto.updateMany({
-            where: { codigoInterno: d.codigoInterno },
-            data: { stock: { increment: d.cantidad } },
+          const prod = productosByCodigo.get(d.codigoInterno)
+          await tx.producto.update({ where: { id: prod.id }, data: { stock: { increment: d.cantidad } } })
+          await tx.movimientoBodega.create({
+            data: {
+              productoId: prod.id,
+              tipo: 'ingreso',
+              cantidad: d.cantidad,
+              motivo: motivoStock,
+              userId,
+              pagoProveedorId: pago.id,
+              origenTipo: 'pago_proveedor',
+              origenId: pago.id,
+            },
           })
+          stockAplicado = true
         }
+      }
+
+      if (stockAplicado) {
+        return tx.pagoProveedor.update({
+          where: { id: pago.id },
+          data: { stockAplicadoAt: new Date() },
+        })
       }
 
       return pago
     })
 
+    if (result.status && result.payload) return reply.code(result.status).send(result.payload)
     return reply.code(result.idempotent ? 200 : 201).send(result)
   })
 
@@ -218,7 +262,7 @@ export default async function pagosProveedoresRoutes(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('proveedores', 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
-    if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
     const body = request.body || {}
     const data = {}
     for (const f of ['estado', 'documento', 'nDoc', 'usuario', 'bodega', 'obs', 'ncNumero']) {
