@@ -280,6 +280,15 @@ Paquete preparado para esa revision:
 - `docs/revision-cliente-saneamiento-2026-05-19/README.md`
 - `docs/revision-cliente-saneamiento-2026-05-19/*.csv`
 - `docs/revision-cliente-saneamiento-2026-05-19/revision-cliente-saneamiento-2026-05-19.xlsx`
+- `docs/revision-cliente-saneamiento-2026-05-19/revision-cliente-saneamiento-2026-05-19-forense.xlsx`
+- `docs/forense-clientes-erp-legacy-2026-05-19.md`
+
+Hallazgo posterior desde archivos del ERP PHP original:
+
+- El sistema legacy asociaba ventas/cotizaciones por `rut_cliente` o `email` texto, no por `cliente_id`.
+- La tabla legacy `clientes` no tenia unicidad por RUT.
+- Se agrego `18_ordenes_cliente_clasificacion_forense.csv`.
+- De los 1655 casos ambiguos, 1649 tienen cliente maestro sugerido por logica legacy y 6 son empates identicos; quedan 201 sin cliente destino claro.
 
 Orden recomendado:
 

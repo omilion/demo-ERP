@@ -2,6 +2,9 @@
 ordenes_cliente_revision_total,1856,"Ordenes con RUT distinto al cliente actual, ambiguas o sin destino"
 ordenes_cliente_ambiguas,1655,RUT de orden apunta a multiples clientes
 ordenes_cliente_sin_destino,201,RUT de orden no existe en clientes
+ordenes_cliente_forense_legacy_resoluble,1649,Ordenes ambiguas con cliente maestro sugerido replicando logica legacy
+ordenes_cliente_forense_empate_identico,6,Ordenes ambiguas con duplicados equivalentes; proponer ID menor como maestro si cliente aprueba
+ordenes_cliente_forense_manual_real,201,Ordenes sin cliente destino claro tras revisar evidencia legacy
 items_precio_negativo,688,ventas.orden_items.precio_unitario < 0
 ordenes_con_precio_negativo,589,Ordenes afectadas por precio negativo
 productos_stock_negativo,167,catalogo.productos.stock < 0
