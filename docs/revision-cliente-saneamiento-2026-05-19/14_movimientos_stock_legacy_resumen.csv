@@ -1,0 +1,8 @@
+﻿metrica,valor,nota
+filas_legacy,164885,Filas parseadas desde tabla legacy movimientos_stock
+codigos_distintos,4383,codigo_interno distintos en lecturas legacy
+usuarios_distintos,2,usuarios distintos en lecturas legacy
+primera_fecha,2025-08-21 12:52:20,fecha minima legacy
+ultima_fecha,2026-04-27 10:14:24,fecha maxima legacy
+stock_minimo,0,stock minimo observado
+stock_maximo,4129,stock maximo observado

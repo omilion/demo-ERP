@@ -1,0 +1,2 @@
+﻿decision_cliente,accion_requerida,tela_id,codigo,tipo,nombre,ubicacion,stock,stock_min,proveedor,activo,comentario_cliente
+"",VALIDAR_AJUSTE_INVENTARIO_TALLER,12,TEP1121,TELA,TAFETAN ESTAMPADO PLASTIMAR,MESON 1,-0.995,0,,t,""

@@ -275,6 +275,12 @@ Estado esperado:
 
 Antes de nuevas features, preparar revision manual con el cliente usando `docs/revision-manual-datos-pendientes-2026-05-19.md`.
 
+Paquete preparado para esa revision:
+
+- `docs/revision-cliente-saneamiento-2026-05-19/README.md`
+- `docs/revision-cliente-saneamiento-2026-05-19/*.csv`
+- `docs/revision-cliente-saneamiento-2026-05-19/revision-cliente-saneamiento-2026-05-19.xlsx`
+
 Orden recomendado:
 
 1. Clientes duplicados/mismatch por RUT.

@@ -1,0 +1,11 @@
+﻿item,cantidad,nota
+ordenes_cliente_revision_total,1856,"Ordenes con RUT distinto al cliente actual, ambiguas o sin destino"
+ordenes_cliente_ambiguas,1655,RUT de orden apunta a multiples clientes
+ordenes_cliente_sin_destino,201,RUT de orden no existe en clientes
+items_precio_negativo,688,ventas.orden_items.precio_unitario < 0
+ordenes_con_precio_negativo,589,Ordenes afectadas por precio negativo
+productos_stock_negativo,167,catalogo.productos.stock < 0
+telas_stock_negativo,1,taller.telas.stock < 0
+fechas_operacionales_anomalas,55,Fechas auditadas fuera de rango operativo
+bitacora_taller_sin_odt,12740,taller.bitacora_taller.odt_id IS NULL
+movimientos_stock_legacy,164885,Filas en dump legacy; no migradas a produccion
