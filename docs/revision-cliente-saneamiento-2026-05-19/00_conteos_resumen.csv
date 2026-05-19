@@ -1,10 +1,11 @@
 ﻿item,cantidad,nota
 ordenes_cliente_revision_total,1856,"Ordenes con RUT distinto al cliente actual, ambiguas o sin destino"
 ordenes_cliente_ambiguas,1655,RUT de orden apunta a multiples clientes
-ordenes_cliente_sin_destino,201,RUT de orden no existe en clientes
-ordenes_cliente_forense_legacy_resoluble,1649,Ordenes ambiguas con cliente maestro sugerido replicando logica legacy
-ordenes_cliente_forense_empate_identico,6,Ordenes ambiguas con duplicados equivalentes; proponer ID menor como maestro si cliente aprueba
-ordenes_cliente_forense_manual_real,201,Ordenes sin cliente destino claro tras revisar evidencia legacy
+ordenes_cliente_sin_destino,201,"Conteo bruto: RUT de orden no existe en clientes; puede solaparse con RUT invalido/generico"
+ordenes_cliente_canonico_dry_run,1645,Ordenes corregibles con RUT valido y cliente canonico sugerido por evidencia legacy
+grupos_rut_cliente_canonico_dry_run,215,Grupos RUT validos con cliente maestro canonico sugerido
+ordenes_cliente_revision_manual_final,211,Ordenes que no deben automatizarse: sin destino o RUT invalido/generico
+ordenes_cliente_rut_invalido_generico,23,Ordenes con RUT invalido/generico que no deben fusionarse por RUT
 items_precio_negativo,688,ventas.orden_items.precio_unitario < 0
 ordenes_con_precio_negativo,589,Ordenes afectadas por precio negativo
 productos_stock_negativo,167,catalogo.productos.stock < 0

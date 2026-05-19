@@ -132,6 +132,27 @@ Lectura operativa:
 - 6 son empates de duplicados casi identicos.
 - Quedan 201 casos reales para crear/validar cliente o dejar historicos.
 
+## Ajuste de politica canonica
+
+La regla anterior explica el comportamiento legacy, pero para la nueva tecnologia se agrego una restriccion adicional:
+
+- solo automatizar RUTs validos por digito verificador;
+- no fusionar ni corregir masivamente RUTs invalidos o genericos.
+
+Con esa restriccion, el universo aplicable queda asi:
+
+| Resultado canonico | Ordenes |
+| --- | ---: |
+| Corregibles con RUT valido y cliente canonico sugerido | 1645 |
+| Revision manual final | 211 |
+| De las manuales: sin cliente destino | 188 |
+| De las manuales: RUT invalido/generico | 23 |
+
+Archivos:
+
+- `docs/revision-cliente-saneamiento-2026-05-19/19_mapeo_cliente_canonico_dry_run.csv`
+- `docs/revision-cliente-saneamiento-2026-05-19/20_clientes_revision_manual_final.csv`
+
 ## Regla recomendada para pedir aprobacion al cliente
 
 No pedir al cliente que revise 1655 ordenes una a una.
@@ -142,9 +163,9 @@ Pedir aprobacion de regla:
 
 Si el cliente aprueba esta regla, el siguiente sprint puede preparar un apply controlado para:
 
-1. actualizar `ventas.ordenes.cliente_id` en los 1649 casos `DUPLICADO_LEGACY_RESOLUBLE`;
-2. resolver los 6 `DUPLICADO_EMPATE_IDENTICO` con maestro ID menor o con aprobacion explicita;
-3. dejar los 201 `SIN_CLIENTE_DESTINO_SIN_EVIDENCIA_LEGACY` para planilla manual.
+1. actualizar `ventas.ordenes.cliente_id` en 1645 ordenes con RUT valido y cliente canonico sugerido;
+2. dejar fuera del apply los RUTs invalidos/genericos aunque el legacy los resolviera;
+3. dejar 211 ordenes para revision manual final.
 
 ## Riesgo
 

@@ -34,6 +34,7 @@ Valores sugeridos para `decision_cliente`:
 Excel consolidado actualizado con hoja forense:
 
 - `revision-cliente-saneamiento-2026-05-19-forense.xlsx`
+- `revision-cliente-saneamiento-2026-05-19-canonico.xlsx`
 
 | Archivo | Filas de datos | Uso |
 | --- | ---: | --- |
@@ -56,6 +57,8 @@ Excel consolidado actualizado con hoja forense:
 | `16_movimientos_stock_legacy_usuarios_resumen.csv` | 2 | Usuarios que generaron lecturas de stock legacy. |
 | `17_movimientos_stock_legacy_muestra_500.csv` | 500 | Muestra revisable de lecturas stock legacy. |
 | `18_ordenes_cliente_clasificacion_forense.csv` | 1856 | Clasificacion forense de ordenes cliente usando evidencia del ERP legacy. |
+| `19_mapeo_cliente_canonico_dry_run.csv` | 215 | Mapeo de RUT valido hacia cliente canonico para apply controlado. |
+| `20_clientes_revision_manual_final.csv` | 211 | Ordenes que no deben automatizarse: sin destino o RUT invalido/generico. |
 
 ## Orden recomendado de revision
 
@@ -63,6 +66,8 @@ Excel consolidado actualizado con hoja forense:
    - `01_ordenes_cliente_revision.csv`
    - `02_clientes_rut_duplicados.csv`
    - `18_ordenes_cliente_clasificacion_forense.csv`
+   - `19_mapeo_cliente_canonico_dry_run.csv`
+   - `20_clientes_revision_manual_final.csv`
 
 2. Inventario:
    - `06_stock_negativo_productos.csv`
@@ -101,7 +106,9 @@ Nota forense:
 
 - La revision del ERP PHP legacy muestra que ventas/cotizaciones guardaban `rut_cliente` o `email` como texto, no `cliente_id`.
 - Para los casos duplicados se agrego `18_ordenes_cliente_clasificacion_forense.csv`, que propone maestro segun la logica que el sistema viejo habria usado.
-- Si el cliente aprueba la regla legacy, la revision manual baja de 1856 ordenes a 201 casos sin cliente destino claro.
+- La politica final separa RUT valido de RUT invalido/generico.
+- `19_mapeo_cliente_canonico_dry_run.csv` contiene 1645 ordenes automatizables agrupadas en 215 RUT validos.
+- `20_clientes_revision_manual_final.csv` deja 211 ordenes fuera de automatizacion: 188 con RUT valido sin cliente destino y 23 con RUT invalido/generico.
 
 ### Precios negativos
 
