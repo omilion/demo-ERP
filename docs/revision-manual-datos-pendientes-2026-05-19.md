@@ -4,7 +4,7 @@
 
 Este documento prepara la revision posterior con el dueno del ERP original o con el equipo que conoce los datos historicos de Plastimar.
 
-Despues de los dos primeros lotes automaticos ya aplicados, quedan casos donde no existe una regla unica segura. Esos casos no deben corregirse por script sin validacion humana.
+Despues de los lotes automaticos ya aplicados, quedan casos donde no existe una regla unica segura. Esos casos no deben corregirse por script sin validacion humana.
 
 ## Ya aplicado automaticamente
 
@@ -20,40 +20,43 @@ Despues de los dos primeros lotes automaticos ya aplicados, quedan casos donde n
 - Criterio: `ventas.ordenes.rut_cliente` normalizado coincide con exactamente un cliente destino.
 - Auditoria: `migration_audit.sprint2_cliente_rut_20260519_010737`
 
+### Producto legacy para items historicos sin catalogo
+
+- Productos legacy inactivos creados: 1389
+- Items `ventas.orden_items` actualizados: 6150
+- Items `taller.odt_items` actualizados: 200
+- Resultado final: `producto_id` huerfano en ventas/taller = 0.
+- Auditorias:
+  - `migration_audit.sprint3_legacy_products_20260519_011815`
+  - `migration_audit.sprint3_legacy_product_item_updates_20260519_011815`
+
+### Fechas invalidas en guias
+
+- Guias actualizadas: 7561
+- Criterio: reemplazar fechas anomalas por fecha de la orden asociada.
+- Resultado final: guias con fecha operacional anomala = 0.
+- Auditoria: `migration_audit.sprint3_guias_fecha_20260519_011815`
+
 ## Pendientes que requieren decision humana
 
-### 1. Items sin producto en catalogo
+### 1. Ordenes con cliente ambiguo o sin destino
 
-| Tabla | Pendientes |
-| --- | ---: |
-| `ventas.orden_items` | 6150 |
-| `taller.odt_items` | 200 |
-| **Total** | **6350** |
-
-Por que no se corrigieron:
-
-- Tienen `producto_id` invalido, pero su `codigo_interno` no existe en `catalogo.productos`.
-- No se debe inventar producto ni asignar por parecido de nombre sin validacion.
-
-Opciones de decision:
-
-1. Crear productos legacy faltantes.
-2. Mapear manualmente codigos antiguos a productos actuales.
-3. Permitir que esos items queden como historicos con producto no encontrado.
-4. Excluirlos de reportes operativos y mantenerlos solo para trazabilidad.
-
-### 2. Ordenes con cliente ambiguo
+Conteo conservador final por RUT normalizado:
 
 | Tipo | Pendientes |
 | --- | ---: |
 | RUT apunta a varios clientes posibles | 1655 |
-| RUT no tiene cliente destino | 133 |
-| **Total** | **1788** |
+| RUT no tiene cliente destino | 201 |
+| Candidatas seguras restantes | 0 |
+| **Total** | **1856** |
+
+Nota: este es el conteo final de cierre leido directamente en produccion para preparar la revision manual. Reemplaza como universo de trabajo al conteo intermedio del Sprint 2.
 
 Por que no se corrigieron:
 
 - En 1655 casos el RUT existe en mas de un cliente.
-- En 133 casos el RUT de la orden no existe como cliente actual.
+- En 201 casos el RUT de la orden no tiene cliente destino en `clientes.clientes`.
+- Ya no quedan casos masivos seguros con destino unico.
 
 Opciones de decision:
 
@@ -62,28 +65,7 @@ Opciones de decision:
 3. Crear cliente faltante.
 4. Mantener historico sin cambio si no hay certeza.
 
-### 3. Guias con fecha `1970-01-01`
-
-| Check | Pendientes |
-| --- | ---: |
-| Guias con `fecha_guia = 1970-01-01` | 7558 |
-| Guias con fecha pre-2000 | 7560 |
-| Fecha futura > 1 ano | 1 |
-
-Por que no se corrigieron:
-
-- `fecha_guia` es `NOT NULL`.
-- `1970-01-01` viene de conversion de fecha legacy invalida.
-- La fecha de creacion de guia en produccion es fecha de migracion, no fecha historica real.
-- La fecha de orden existe, pero no necesariamente corresponde a fecha de guia.
-
-Opciones de decision:
-
-1. Cambiar esquema para permitir `fecha_guia = NULL`.
-2. Reemplazar por fecha de orden como aproximacion historica.
-3. Buscar fuente documental externa para fecha real de guia.
-
-### 4. Precios negativos
+### 2. Precios negativos
 
 | Check | Pendientes |
 | --- | ---: |
@@ -102,7 +84,91 @@ Opciones de decision:
 3. Mantener como historico si los reportes antiguos dependian de ese valor.
 4. Corregir solo errores confirmados.
 
-### 5. Bitacora taller sin ODT
+### 3. Stock negativo
+
+| Check | Pendientes |
+| --- | ---: |
+| Productos con stock negativo | 167 |
+| Telas con stock negativo | 1 |
+
+Por que no se corrigio:
+
+- Cambiar stock altera inventario, valorizacion y trazabilidad.
+- Debe decidirlo bodega/administracion con criterio operativo.
+
+Opciones de decision:
+
+1. Ajuste inventario formal con documento de respaldo.
+2. Mantener negativo si representa deuda operativa real.
+3. Corregir solo productos validados por conteo fisico o fuente historica.
+
+### 4. Duplicados maestros
+
+| Check | Pendientes |
+| --- | ---: |
+| Grupos de RUT cliente duplicado normalizado | 403 |
+| Grupos de RUT proveedor duplicado normalizado | 10 |
+| Codigo interno producto duplicado normalizado | 1 |
+
+Producto duplicado detectado:
+
+- `PACK4`
+
+Por que no se corrigieron:
+
+- Fusionar maestros puede cambiar historial, saldos, reportes y relaciones comerciales.
+- Requiere decidir cual registro queda como canonicamente correcto.
+
+Opciones de decision:
+
+1. Fusionar duplicados.
+2. Marcar registros antiguos como inactivos.
+3. Mantener separados si representan entidades realmente distintas.
+
+### 5. Codigos historicos sin mapeo comercial
+
+| Check | Pendientes |
+| --- | ---: |
+| Compras online con `codigo_vendedor` sin usuario asociado | 39941 |
+| Items de cotizacion con `codigo_interno` sin producto | 3685 |
+| Detalles proveedor con `codigo_interno` sin producto | 3473 |
+
+Por que no se corrigieron:
+
+- Los codigos de vendedor legacy no tienen mapeo confiable a `auth.users`.
+- Los codigos de cotizacion/proveedor restantes no tienen producto actual o legacy creado por los lotes aplicados.
+- La asignacion por similitud puede distorsionar reportes comerciales historicos.
+
+Opciones de decision:
+
+1. Crear tabla de equivalencias legacy.
+2. Mapear vendedor antiguo a usuario actual con aprobacion.
+3. Crear productos legacy adicionales para cotizaciones/proveedores si el cliente quiere reportabilidad historica completa.
+4. Mantener como historico sin cruce si no hay certeza.
+
+### 6. Fechas restantes en pagos proveedor
+
+| Check | Pendientes |
+| --- | ---: |
+| Fechas operacionales anomalas restantes | 55 |
+
+La auditoria final muestra muestras en:
+
+- `catalogo.pagos_proveedores.fecha_pago`
+- valor tipo `0001-01-01`
+
+Por que no se corrigieron:
+
+- No se identifico una fuente automatica equivalente a la fecha real de pago.
+- Reemplazar por fecha de creacion o migracion podria alterar reportes financieros.
+
+Opciones de decision:
+
+1. Revisar documentos de proveedor/pago.
+2. Permitir `NULL` si la fecha real es desconocida.
+3. Usar una fecha aproximada solo si administracion lo aprueba.
+
+### 7. Bitacora taller sin ODT
 
 | Check | Pendientes |
 | --- | ---: |
@@ -120,7 +186,7 @@ Opciones de decision:
 2. Crear vista/seccion separada de historico diario de taller.
 3. Asociar manualmente solo entradas con ODT claramente identificable.
 
-### 6. Movimientos stock legacy
+### 8. Movimientos stock legacy
 
 | Check | Pendientes |
 | --- | ---: |
@@ -136,6 +202,7 @@ Opcion recomendada:
 
 - Crear tabla nueva `bodega.stock_lecturas`.
 - Migrar como historico de lecturas, preservando `codigo_interno`, `stock`, `fecha`, `usuario` y `id` legacy.
+- Dejar claro en UI/reportes que son snapshots historicos, no entradas/salidas de inventario.
 
 ## Formato recomendado para reunion con cliente
 

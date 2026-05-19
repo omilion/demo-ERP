@@ -164,6 +164,12 @@ Quedan fuera del apply automatico:
 
 Estos registros requieren validacion manual del dueno del ERP original o del equipo administrativo, porque no existe una regla unica segura para decidir el `cliente_id`.
 
+Nota posterior de cierre 2026-05-19:
+
+- La verificacion final conservadora de saneamiento contabiliza 1856 ordenes para revision manual: 1655 ambiguas y 201 sin cliente destino.
+- Para preparar la revision con cliente usar el conteo final de `docs/reporte-final-saneamiento-migracion-2026-05-19.md` y `docs/revision-manual-datos-pendientes-2026-05-19.md`.
+- La conclusion tecnica no cambia: no quedan candidatas seguras por RUT unico para corregir automaticamente.
+
 ## Siguiente paso recomendado
 
 Preparar documento de revision manual para el cliente con:
