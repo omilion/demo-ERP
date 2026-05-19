@@ -1,116 +1,145 @@
 # Flujos ERP viejo vs ERP nuevo - 2026-05-19
 
-Este documento contiene dos charts Mermaid:
+Objetivo del documento: mostrarle al cliente, de forma visual, el punto de partida y el flujo al que vamos.
 
-1. flujo real observado en el ERP PHP legacy;
-2. flujo objetivo obligatorio para el ERP nuevo.
+El ERP viejo usaba `n_interno` como numero comun entre varias tablas, pero sin una relacion relacional fuerte. El ERP nuevo debe usar un `trabajo_id / odt_id` obligatorio como llave de trazabilidad para toda operacion productiva.
 
-## Chart 1 - ERP viejo legacy
+## Chart 1 - Aqui partimos: ERP viejo legacy
 
 ```mermaid
-flowchart TB
-  classDef module fill:#FEF3C7,stroke:#D97706,color:#111827,stroke-width:1px
-  classDef tbl fill:#E0F2FE,stroke:#0284C7,color:#111827,stroke-width:1px
+flowchart LR
+  classDef entry fill:#FEF3C7,stroke:#D97706,color:#111827,stroke-width:1px
   classDef weak fill:#FEE2E2,stroke:#DC2626,color:#111827,stroke-width:1px
-  classDef note fill:#F3F4F6,stroke:#6B7280,color:#111827,stroke-dasharray:4 3
+  classDef tbl fill:#E0F2FE,stroke:#0284C7,color:#111827,stroke-width:1px
+  classDef key fill:#FFEDD5,stroke:#EA580C,color:#111827,stroke-width:2px
+  classDef shop fill:#EDE9FE,stroke:#7C3AED,color:#111827,stroke-width:1px
+  classDef problem fill:#F3F4F6,stroke:#6B7280,color:#111827,stroke-dasharray:4 3
 
-  subgraph M["Modulos de venta separados"]
-    VD["venta_directa"]:::module
-    VW["venta_web"]:::module
-    CM["convenio_marco"]:::module
-    LV["licitacion_venta"]:::module
+  subgraph V["Entradas comerciales separadas"]
+    VD["Venta directa"]:::entry
+    VW["Venta web"]:::entry
+    CM["Convenio marco"]:::entry
+    LV["Licitaciones"]:::entry
   end
 
-  C["clientes<br/>sin RUT unico"]:::weak
-  OC["orden_compra_sistema<br/>n_interno + rut_cliente/email"]:::tbl
-  ODTC["odts<br/>n_interno + texto ODT/transporte"]:::tbl
-  T["taller<br/>n_interno + estado_general"]:::tbl
-  PT["productos_taller<br/>n_interno + columnas por taller"]:::tbl
-  TT["taller_materiales<br/>n_interno + material"]:::tbl
-  TH["taller_historial_materiales<br/>n_interno + egreso/ingreso"]:::tbl
-  B["bitacora_taller<br/>fecha + usuario + texto libre"]:::weak
-  GD["guias_despachos<br/>n_interno + n_guia"]:::tbl
-  MS["movimientos_stock<br/>codigo_interno + stock snapshot"]:::weak
+  CL["Cliente copiado por modulo<br/>RUT/email/texto<br/>posibles duplicados"]:::weak
+  OC["orden_compra_sistema<br/>n_interno + datos cliente"]:::tbl
+  NI["n_interno<br/>numero repetido<br/>no FK relacional estricta"]:::key
+  ODT["odts / taller<br/>cabecera operativa por n_interno"]:::tbl
+  PT["productos_taller<br/>item + n_interno<br/>talleres como columnas"]:::tbl
 
-  VD -->|"copia/usa rut_cliente"| C
-  VW -->|"copia/usa email"| C
-  CM -->|"copia/usa rut_cliente"| C
-  LV -->|"copia/usa rut_cliente"| C
+  subgraph TC["Talleres legacy dentro de productos_taller"]
+    CONF["taller_confecciones<br/>estado_confecciones"]:::shop
+    ESP["taller_espumas<br/>estado_espumas"]:::shop
+    MAD["taller_externo<br/>Madera / Externo<br/>estado_externo"]:::shop
+  end
 
+  MAT["taller_materiales<br/>n_interno + material"]:::tbl
+  HMAT["taller_historial_materiales<br/>n_interno + egreso/ingreso"]:::tbl
+  GD["guias_despachos<br/>n_interno + guia"]:::tbl
+  BIT["bitacora_taller<br/>texto libre<br/>sin odt_id obligatorio"]:::weak
+  MS["movimientos_stock<br/>stock historico<br/>sin trabajo_id"]:::weak
+
+  VD --> CL
+  VW --> CL
+  CM --> CL
+  LV --> CL
   VD --> OC
   VW --> OC
   CM --> OC
   LV --> OC
 
-  C -. "referencia textual sin FK estable" .-> OC
-  OC -. "n_interno" .-> ODTC
-  OC -. "n_interno" .-> T
-  OC -. "n_interno" .-> GD
-  T -. "n_interno" .-> PT
-  T -. "n_interno" .-> TT
-  T -. "n_interno" .-> TH
-  PT -. "estado por columnas de taller" .-> T
-  B -. "sin n_interno ni odt_id" .-> T
-  MS -. "no apunta a orden ni ODT" .-> OC
+  CL -.-> OC
+  OC -.-> NI
+  NI -.-> ODT
+  NI -.-> PT
+  NI -.-> MAT
+  NI -.-> HMAT
+  NI -.-> GD
 
-  R1["Problema estructural:<br/>relaciones por texto o n_interno,<br/>duplicados y operaciones huerfanas"]:::note
-  C --> R1
-  B --> R1
-  MS --> R1
+  PT --> CONF
+  PT --> ESP
+  PT --> MAD
+  BIT -.-> ODT
+  MS -.-> OC
+
+  P1["Resultado:<br/>el numero existe, pero el flujo queda fragil;<br/>hay duplicados, estados por columnas<br/>y operaciones dificiles de auditar"]:::problem
+  CL --> P1
+  PT --> P1
+  BIT --> P1
+  MS --> P1
 ```
 
-## Chart 2 - ERP nuevo objetivo
+## Chart 2 - Aqui vamos: ERP nuevo objetivo
 
 ```mermaid
-flowchart TB
+flowchart LR
   classDef master fill:#DCFCE7,stroke:#16A34A,color:#111827,stroke-width:1px
   classDef core fill:#DBEAFE,stroke:#2563EB,color:#111827,stroke-width:1px
-  classDef operation fill:#EDE9FE,stroke:#7C3AED,color:#111827,stroke-width:1px
+  classDef key fill:#FEF08A,stroke:#CA8A04,color:#111827,stroke-width:2px
+  classDef op fill:#EDE9FE,stroke:#7C3AED,color:#111827,stroke-width:1px
+  classDef shop fill:#FCE7F3,stroke:#DB2777,color:#111827,stroke-width:1px
   classDef guard fill:#FEE2E2,stroke:#DC2626,color:#111827,stroke-width:1px
-  classDef legacy fill:#F3F4F6,stroke:#6B7280,color:#111827,stroke-dasharray:4 3
 
-  CC["cliente canonico<br/>clientes.clientes"]:::master
-  P["producto canonico<br/>catalogo.productos"]:::master
-  O["orden de venta<br/>ventas.ordenes<br/>cliente_id requerido"]:::core
-  OI["items de venta<br/>ventas.orden_items<br/>producto_id requerido"]:::core
-  W["trabajo / ODT<br/>taller.odts<br/>orden_id requerido"]:::operation
-  WI["items de trabajo<br/>taller.odt_items<br/>odt_id + producto_id"]:::operation
-  WT["estado por taller<br/>taller.odt_item_talleres<br/>taller_id requerido"]:::operation
-  BIT["bitacora de trabajo<br/>taller.bitacora_taller<br/>odt_id requerido"]:::operation
-  MAT["materiales usados<br/>taller.taller_materiales<br/>odt_id requerido"]:::operation
-  HMAT["historial materiales<br/>taller.taller_historial_materiales<br/>odt_id requerido"]:::operation
-  DES["despacho<br/>bodega.despachos<br/>orden_id requerido"]:::operation
-  GUIA["guia despacho<br/>bodega.guias_despachos<br/>orden_id requerido"]:::operation
-  CAJA["caja / pagos<br/>caja.movimientos_caja<br/>orden_id cuando aplica"]:::operation
-  COB["cobranza<br/>ventas.cobranza_historico<br/>orden_id cuando aplica"]:::operation
-  G["guardas API + constraints DB<br/>bloquean nuevas operaciones huerfanas"]:::guard
-  LEG["legacy no reconciliado<br/>solo lectura / staging<br/>no alimenta operacion nueva"]:::legacy
+  C["Cliente canonico<br/>cliente_id unico"]:::master
+  P["Producto canonico<br/>producto_id unico"]:::master
+  O["Orden de venta<br/>orden_id<br/>cliente_id requerido"]:::core
+  OI["Items de venta<br/>orden_id + producto_id"]:::core
+  W["Trabajo / ODT<br/>trabajo_id = odt_id<br/>llave central obligatoria"]:::key
+  WI["Items de trabajo<br/>trabajo_id + producto_id"]:::op
 
-  CC -->|"cliente_id"| O
-  O -->|"orden_id"| W
-  O -->|"orden_id"| DES
-  O -->|"orden_id"| GUIA
-  O -->|"orden_id"| CAJA
-  O -->|"orden_id"| COB
+  subgraph TN["Talleres normalizados"]
+    TCONF["Confecciones<br/>taller_id"]:::shop
+    TESP["Espumas<br/>taller_id"]:::shop
+    TMAD["Madera / Externo<br/>taller_id"]:::shop
+  end
+
+  ROUTE["Asignacion item-taller<br/>odt_item_talleres<br/>trabajo_id indirecto + taller_id"]:::op
+  BIT["Bitacora de trabajo<br/>trabajo_id obligatorio"]:::op
+  MAT["Materiales usados<br/>trabajo_id obligatorio"]:::op
+  HST["Historial materiales<br/>trabajo_id obligatorio"]:::op
+  STK["Movimientos de stock<br/>trabajo_id obligatorio"]:::op
+  DES["Despacho<br/>trabajo_id obligatorio"]:::op
+  GUIA["Guia despacho<br/>trabajo_id obligatorio"]:::op
+  CAJA["Caja / pagos<br/>trabajo_id cuando aplica"]:::op
+  COB["Cobranza<br/>trabajo_id cuando aplica"]:::op
+  REP["Reportes y auditoria<br/>filtran por trabajo_id"]:::op
+  G["Regla nueva:<br/>ninguna operacion productiva<br/>sin trabajo_id"]:::guard
+
+  C -->|"cliente_id"| O
   O -->|"orden_id"| OI
   P -->|"producto_id"| OI
-  W -->|"odt_id"| WI
-  WI -->|"odt_item_id"| WT
+  O -->|"crea"| W
+  W -->|"trabajo_id"| WI
   P -->|"producto_id"| WI
-  W -->|"odt_id"| BIT
-  W -->|"odt_id"| MAT
-  W -->|"odt_id"| HMAT
+  WI -->|"odt_item_id"| ROUTE
+  ROUTE -->|"taller_id"| TCONF
+  ROUTE -->|"taller_id"| TESP
+  ROUTE -->|"taller_id"| TMAD
 
-  G --> CC
-  G --> O
+  W -->|"trabajo_id"| BIT
+  W -->|"trabajo_id"| MAT
+  W -->|"trabajo_id"| HST
+  W -->|"trabajo_id"| STK
+  W -->|"trabajo_id"| DES
+  W -->|"trabajo_id"| GUIA
+  W -->|"trabajo_id"| CAJA
+  W -->|"trabajo_id"| COB
+  W -->|"trabajo_id"| REP
+
   G --> W
+  G --> WI
+  G --> ROUTE
   G --> BIT
   G --> MAT
-  G --> HMAT
+  G --> HST
+  G --> STK
   G --> DES
   G --> GUIA
-
-  LEG -. "se reconcilia antes de validar constraints" .-> CC
-  LEG -. "n_interno -> orden -> ODT" .-> W
-  LEG -. "sin evidencia queda historico no operativo" .-> G
 ```
+
+Notas de revision:
+
+- En el ERP viejo, el dump confirma que `productos_taller` tiene columnas `taller_confecciones`, `taller_espumas` y `taller_externo`.
+- En el PHP legacy, `taller_externo` se presenta al usuario como Taller Madera.
+- En el ERP nuevo, el legacy no debe ser flujo operativo: solo sirve como antecedente de migracion y reconciliacion.
