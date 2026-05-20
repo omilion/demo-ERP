@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, closestCenter } from '@dnd-kit/core'
+import { DndContext, DragOverlay, PointerSensor, pointerWithin, rectIntersection, useSensor, useSensors } from '@dnd-kit/core'
 import { useDroppable, useDraggable } from '@dnd-kit/core'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../components/shared'
 import { useCrm, useCrmEjecutivas, useCrmPatch, useCrmOrdenLink } from '../../api/crm'
@@ -117,20 +117,24 @@ function CrmCard({ item, isDragging }) {
 
 // ── Draggable wrapper ──────────────────────────────────────────────────────────
 function DraggableCard({ item, onOpen }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: item.id })
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: String(item.id) })
+  const dragListeners = listeners ?? {}
   const downRef = useRef({ x: 0, y: 0, t: 0 })
   return (
     <div
       ref={setNodeRef}
-      {...listeners}
+      {...dragListeners}
       {...attributes}
-      onPointerDown={e => { downRef.current = { x: e.clientX, y: e.clientY, t: Date.now() } }}
+      onPointerDown={e => {
+        downRef.current = { x: e.clientX, y: e.clientY, t: Date.now() }
+        dragListeners.onPointerDown?.(e)
+      }}
       onPointerUp={e => {
         const d = downRef.current
         const dx = Math.abs(e.clientX - d.x), dy = Math.abs(e.clientY - d.y)
         if (dx < 5 && dy < 5 && Date.now() - d.t < 300) onOpen(item)
       }}
-      style={{ marginBottom: 8 }}
+      style={{ marginBottom: 8, touchAction: 'none' }}
     >
       <CrmCard item={item} isDragging={isDragging} />
     </div>
@@ -413,7 +417,7 @@ export default function CrmPage() {
     return map
   }, [items])
 
-  const activeItem = activeId != null ? items.find(i => i.id === activeId) : null
+  const activeItem = activeId != null ? items.find(i => String(i.id) === String(activeId)) : null
 
   const pendientes    = items.filter(c => normalizeEstado(c.estado) === '0').length
   const enGestion     = items.filter(c => normalizeEstado(c.estado) === '1').length
@@ -432,7 +436,7 @@ export default function CrmPage() {
     setOverId(null)
     if (!over) return
     const newEstado = normalizeEstado(over.id)
-    const item = items.find(i => i.id === active.id)
+    const item = items.find(i => String(i.id) === String(active.id))
     if (!item || normalizeEstado(item.estado) === newEstado) return
     patch.mutate(
       { id: item.id, estado: newEstado },
@@ -498,7 +502,10 @@ export default function CrmPage() {
       {view === 'pipeline' && (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCenter}
+          collisionDetection={(args) => {
+            const pointerCollisions = pointerWithin(args)
+            return pointerCollisions.length > 0 ? pointerCollisions : rectIntersection(args)
+          }}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
