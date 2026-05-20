@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { resolveOrdenForWrite } from '../relation-guards.js'
+import { computeTotal } from '../ventas/helpers.js'
 
 const MEDIOS_PAGO = [
   'Efectivo',
@@ -32,6 +33,19 @@ const Schema = z.object({
   gastoTipoId: optionalPositiveInt,
   origenTipo: z.string().trim().min(1).optional(),
   origenId: optionalPositiveInt,
+})
+
+const PagoCobranzaSchema = z.object({
+  monto: z.number().positive(),
+  medioPago: z.enum(MEDIOS_PAGO).default('Efectivo'),
+  referencia: z.string().optional(),
+  documento: z.string().optional(),
+  nDoc: z.string().optional(),
+  tipoDocumento: z.string().optional(),
+  cuotas: optionalPositiveInt,
+  pagaCon: z.number().min(0).optional(),
+  nMedioPago: z.string().optional(),
+  origenMedioPago: z.string().optional(),
 })
 
 function cleanText(value) {
@@ -82,6 +96,132 @@ export async function resolveCajaMovementTraceability(prisma, data) {
 }
 
 export default async function movimientosRoutes(fastify) {
+  fastify.post('/cobranza/orden/:id/pago', {
+    preHandler: [fastify.authenticate, fastify.rbac('cobranza', 'write')],
+  }, async (request, reply) => {
+    const ordenId = parseInt(request.params.id, 10)
+    if (isNaN(ordenId) || ordenId <= 0) return reply.code(400).send({ error: 'ID invalido' })
+
+    const parsed = PagoCobranzaSchema.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
+
+    const d = parsed.data
+    try {
+      const result = await fastify.prisma.$transaction(async (tx) => {
+        const lockedTurnos = await tx.$queryRaw`
+          SELECT id, estado
+          FROM caja.turnos
+          WHERE estado = 'abierto'
+          ORDER BY apertura DESC
+          LIMIT 1
+          FOR UPDATE
+        `
+        const turno = lockedTurnos[0]
+        if (!turno) {
+          const err = new Error('No hay turno abierto')
+          err.statusCode = 400
+          throw err
+        }
+
+        const orden = await tx.orden.findUnique({
+          where: { id: ordenId },
+          include: { items: true },
+        })
+        if (!orden || orden.eliminada) {
+          const err = new Error('Venta no encontrada')
+          err.statusCode = 404
+          throw err
+        }
+
+        const total = computeTotal(orden.items, orden.descuentoPct)
+        const abonoActual = orden.abono || 0
+        const saldo = Math.max(0, total - abonoActual)
+        if (saldo <= 0) {
+          const err = new Error('La venta ya esta pagada')
+          err.statusCode = 409
+          throw err
+        }
+        if (d.monto > saldo) {
+          const err = new Error('El monto excede el saldo pendiente')
+          err.statusCode = 409
+          throw err
+        }
+
+        const usuario = request.user?.nombre || request.user?.username || null
+        const fecha = new Date()
+        const applied = await tx.orden.updateMany({
+          where: {
+            id: ordenId,
+            eliminada: false,
+            OR: [
+              { abono: null },
+              { abono: { lte: total - d.monto } },
+            ],
+          },
+          data: {
+            abono: { increment: d.monto },
+            userMod: usuario,
+            fecham: fecha,
+          },
+        })
+        if (applied.count !== 1) {
+          const err = new Error('El saldo de la venta cambio; vuelve a intentar')
+          err.statusCode = 409
+          throw err
+        }
+
+        const ordenConAbono = await tx.orden.findUnique({
+          where: { id: ordenId },
+          include: { items: true },
+        })
+        const estadoPago = (ordenConAbono.abono || 0) >= total ? 'Pagada' : 'Parcial'
+        const ordenActualizada = await tx.orden.update({
+          where: { id: ordenId },
+          data: { estadoPago },
+          include: { items: true },
+        })
+        const referencia = cleanText(d.referencia)
+          || `Pago venta ${orden.nInterno ? `N interno ${orden.nInterno}` : `#${orden.id}`}`
+        const movimiento = await tx.movimientoCaja.create({
+          data: {
+            turnoId: turno.id,
+            tipo: 'Ingreso',
+            monto: Math.abs(d.monto),
+            medioPago: d.medioPago,
+            referencia,
+            ordenId,
+            documento: d.documento,
+            nDoc: d.nDoc,
+            tipoDocumento: d.tipoDocumento,
+            estadoPagoDoc: estadoPago,
+            cuotas: d.cuotas,
+            pagaCon: d.pagaCon,
+            nMedioPago: d.nMedioPago,
+            origenMedioPago: d.origenMedioPago,
+            origenTipo: 'orden',
+            origenId: ordenId,
+            usuario,
+            fecha,
+          },
+        })
+
+        return {
+          movimiento,
+          orden: {
+            ...ordenActualizada,
+            total,
+            saldo: Math.max(0, total - (ordenActualizada.abono || 0)),
+          },
+        }
+      })
+
+      return reply.code(201).send(result)
+    } catch (e) {
+      if (e.statusCode) return reply.code(e.statusCode).send({ error: e.message })
+      throw e
+    }
+  })
+
   fastify.post('/turno/:id/movimientos', {
     preHandler: [fastify.authenticate, fastify.rbac('caja', 'write')],
   }, async (request, reply) => {

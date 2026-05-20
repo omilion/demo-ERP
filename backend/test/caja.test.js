@@ -134,3 +134,71 @@ describe('POST /api/caja/turno/:id/movimientos', () => {
     await app.prisma.turno.update({ where: { id: turno.id }, data: { estado: 'cerrado' } }).catch(() => {})
   })
 })
+
+describe('POST /api/caja/cobranza/orden/:id/pago', () => {
+  let app, token
+
+  beforeAll(async () => { app = buildApp({ logger: false }); await app.ready(); token = await loginAs(app, 'cajero') })
+  afterAll(() => app.close())
+
+  async function createOrdenConTurno() {
+    const user = await app.prisma.user.findFirst()
+    const existing = await app.prisma.turno.findFirst({ where: { estado: 'abierto' } })
+    if (existing) await app.prisma.turno.update({ where: { id: existing.id }, data: { estado: 'cerrado' } })
+    const turno = await app.prisma.turno.create({ data: { cajaId: 1, userId: user.id, estado: 'abierto' } })
+    const orden = await app.prisma.orden.create({
+      data: {
+        tipo: 'Normal',
+        userId: user.id,
+        estadoPago: 'No pagada',
+        abono: 0,
+        items: { create: [{ productoId: 1, cantidad: 1, precioUnitario: 10000 }] },
+      },
+      include: { items: true },
+    })
+    return { turno, orden }
+  }
+
+  async function cleanup(turnoId, ordenId) {
+    if (ordenId) {
+      await app.prisma.movimientoCaja.deleteMany({ where: { ordenId } }).catch(() => {})
+      await app.prisma.ordenItem.deleteMany({ where: { ordenId } }).catch(() => {})
+      await app.prisma.orden.delete({ where: { id: ordenId } }).catch(() => {})
+    }
+    if (turnoId) await app.prisma.turno.update({ where: { id: turnoId }, data: { estado: 'cerrado' } }).catch(() => {})
+  }
+
+  it('lets cajero register payment, creates movimiento and updates venta state', async () => {
+    const { turno, orden } = await createOrdenConTurno()
+    const res = await app.inject({
+      method: 'POST', url: `/api/caja/cobranza/orden/${orden.id}/pago`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { monto: 10000, medioPago: 'Efectivo' },
+    })
+
+    expect(res.statusCode).toBe(201)
+    const body = JSON.parse(res.body)
+    expect(body.movimiento.ordenId).toBe(orden.id)
+    expect(body.movimiento.turnoId).toBe(turno.id)
+    expect(body.orden.abono).toBe(10000)
+    expect(body.orden.estadoPago).toBe('Pagada')
+
+    await cleanup(turno.id, orden.id)
+  })
+
+  it('rejects overpayment and leaves venta unchanged', async () => {
+    const { turno, orden } = await createOrdenConTurno()
+    const res = await app.inject({
+      method: 'POST', url: `/api/caja/cobranza/orden/${orden.id}/pago`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { monto: 10001, medioPago: 'Efectivo' },
+    })
+
+    expect(res.statusCode).toBe(409)
+    const unchanged = await app.prisma.orden.findUnique({ where: { id: orden.id } })
+    expect(unchanged.abono).toBe(0)
+    expect(unchanged.estadoPago).toBe('No pagada')
+
+    await cleanup(turno.id, orden.id)
+  })
+})

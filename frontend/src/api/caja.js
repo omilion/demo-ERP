@@ -48,6 +48,18 @@ export const useCreateMovimiento = () => {
   })
 }
 
+export const useRegistrarPagoCobranza = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ordenId, data }) =>
+      api.post(`/caja/cobranza/orden/${ordenId}/pago`, data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['caja'] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+    },
+  })
+}
+
 export const useDeleteMovimiento = () => {
   const qc = useQueryClient()
   return useMutation({

@@ -41,6 +41,7 @@ const PERMISSIONS = {
     cobranza:     ['read'],
     despacho:     ['read'],
     licitaciones: ['read'],
+    proveedores:  ['read'],
     rrhh:         ['read'],
   },
 }

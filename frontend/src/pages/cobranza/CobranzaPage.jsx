@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs } from '../../components/shared'
-import { useVentas, useUpdateVenta } from '../../api/ventas'
+import { useVentas } from '../../api/ventas'
+import { useRegistrarPagoCobranza, useTurnoActivo } from '../../api/caja'
 import { useCobranzaHistorico, useCobranzaEjecutivas, useCobranzaMeses } from '../../api/cobranzaHistorico'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can, ventaPath } from '../../utils/permissions'
+
+const MEDIOS_PAGO = ['Efectivo', 'Debito', 'Credito', 'Transferencia', 'Cheque', 'Webpay', 'Transbank', 'Referencial']
 
 const ESTADO_TABS = [
   { id: 'No pagada', label: 'No Pagadas' },
@@ -39,7 +42,7 @@ function estadoCobTone(estado) {
 export default function CobranzaPage() {
   const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
-  const canWriteCobranza = can(user, 'cobranza', 'write') || can(user, 'ventas', 'write') || can(user, 'caja', 'write')
+  const canWriteCobranza = can(user, 'cobranza', 'write')
   const [mainTab, setMainTab] = useState('activo')
   const [estadoTab, setEstadoTab] = useState('No pagada')
   const [search, setSearch] = useState('')
@@ -70,7 +73,8 @@ export default function CobranzaPage() {
   const activeParams = { orderBy: 'asc', estadoPago: estadoTab }
   if (debounced) activeParams.search = debounced
   const { data: activeResult = { items: [], total: 0 }, isLoading } = useVentas(activeParams)
-  const updateVentaMut = useUpdateVenta()
+  const { data: turno } = useTurnoActivo()
+  const registrarPagoMut = useRegistrarPagoCobranza()
   const ventas = activeResult.items ?? []
   const total = activeResult.total ?? 0
 
@@ -159,15 +163,19 @@ export default function CobranzaPage() {
                 if (!monto) return
                 const n = parseInt(monto, 10)
                 if (!n || n <= 0) return alert('Monto inválido')
-                const nuevoAbono = (row.abono || 0) + n
-                const estadoPago = nuevoAbono >= (row.total || 0) ? 'Pagada' : 'Parcial'
-                updateVentaMut.mutate({ id: row.id, data: { abono: nuevoAbono, estadoPago } }, {
-                  onError: err => alert(err.response?.status === 403 ? 'No tienes permiso para registrar abonos.' : (err.response?.data?.error || 'Error al registrar abono')),
+                if (n > saldo) return alert('El monto excede el saldo pendiente')
+                if (!turno) return alert('No hay turno activo. Abre un turno en caja antes de registrar pagos.')
+
+                const medioPago = prompt(`Medio de pago (${MEDIOS_PAGO.join(', ')})`, 'Efectivo') || 'Efectivo'
+                if (!MEDIOS_PAGO.includes(medioPago)) return alert('Medio de pago invalido')
+
+                registrarPagoMut.mutate({ ordenId: row.id, data: { monto: n, medioPago } }, {
+                  onError: err => alert(err.response?.data?.error || 'Error al registrar abono'),
                 })
               }}
-              disabled={updateVentaMut.isPending}
+              disabled={registrarPagoMut.isPending || !turno}
               style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--green-700)', background: 'var(--green-700)', cursor: 'pointer', color: '#fff', fontWeight: 500, whiteSpace: 'nowrap' }}
-              title="Registrar abono"
+              title={turno ? 'Registrar abono' : 'Requiere turno de caja abierto'}
             >Pagar</button>
             )}
             <button

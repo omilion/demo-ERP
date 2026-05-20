@@ -8,8 +8,10 @@ function cleanText(value) {
 }
 
 function parsePositiveInt(value) {
-  const parsed = Number.parseInt(value, 10)
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+  if (typeof value === 'number') return Number.isInteger(value) && value > 0 ? value : null
+  if (typeof value !== 'string' || !/^\d+$/.test(value.trim())) return null
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
 }
 
 function buildObs(item) {
@@ -22,12 +24,12 @@ function buildObs(item) {
 async function resolveProducto(prisma, item) {
   const productoId = parsePositiveInt(item.productoId ?? item.producto_id)
   if (productoId) {
-    return prisma.producto.findUnique({ where: { id: productoId } })
+    return prisma.producto.findFirst({ where: { id: productoId, activo: true } })
   }
 
   const codigoInterno = cleanText(item.codigoInterno ?? item.codigo_interno)
   if (!codigoInterno) return null
-  return prisma.producto.findUnique({ where: { codigoInterno } })
+  return prisma.producto.findFirst({ where: { codigoInterno, activo: true } })
 }
 
 export default async function pasarTallerRoutes(fastify) {
@@ -57,10 +59,13 @@ export default async function pasarTallerRoutes(fastify) {
 
       const producto = await resolveProducto(fastify.prisma, it)
       if (!producto) {
-        return reply.code(400).send({ error: `items[${index}].productoId o codigoInterno debe referenciar un producto existente` })
+        return reply.code(400).send({ error: `items[${index}].producto no encontrado` })
       }
 
-      const cantidad = parsePositiveInt(it.cantidad) || 1
+      const cantidad = parsePositiveInt(it.cantidad)
+      if (!cantidad) {
+        return reply.code(400).send({ error: `items[${index}].cantidad debe ser un entero mayor a 0` })
+      }
       const tallerId = it.tallerId ? parsePositiveInt(it.tallerId) : null
       if (!tallerId) return reply.code(400).send({ error: `items[${index}].tallerId requerido` })
 
@@ -90,6 +95,7 @@ export default async function pasarTallerRoutes(fastify) {
             data: {
               odtItemId: odtItem.id,
               tallerId: entry.tallerId,
+              obs: entry.item.obs,
               usuario: request.user?.nombre || request.user?.email || null,
             },
           })
