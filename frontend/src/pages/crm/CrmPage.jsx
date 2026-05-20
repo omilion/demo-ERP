@@ -6,13 +6,11 @@ import { useCrm, useCrmEjecutivas, useCrmPatch, useCrmOrdenLink } from '../../ap
 import { Link } from 'react-router-dom'
 
 const ESTADOS = [
-  { id: 0, label: 'Pendiente',   tone: 'amber', color: '#f59e0b', bg: '#fffbeb' },
-  { id: 1, label: 'En Gestión',  tone: 'blue',  color: '#3b82f6', bg: '#eff6ff' },
-  { id: 2, label: 'En Espera',   tone: 'gray',  color: '#6b7280', bg: '#f9fafb' },
-  { id: 3, label: 'Cerrado',     tone: 'green', color: '#16a34a', bg: '#f0fdf4' },
+  { id: '0', label: 'Pendiente',  tone: 'amber', color: '#f59e0b', bg: '#fffbeb' },
+  { id: '1', label: 'En Gestion', tone: 'blue',  color: '#3b82f6', bg: '#eff6ff' },
+  { id: '2', label: 'En Espera',  tone: 'gray',  color: '#6b7280', bg: '#f9fafb' },
+  { id: '3', label: 'Cerrado',    tone: 'green', color: '#16a34a', bg: '#f0fdf4' },
 ]
-
-const PRIORIDAD_COLOR = { alta: 'var(--red)', media: 'var(--amber)', baja: 'var(--text-3)' }
 
 function prioridadTone(p) {
   if (!p) return 'gray'
@@ -20,6 +18,37 @@ function prioridadTone(p) {
   if (l === 'alta') return 'red'
   if (l === 'media') return 'amber'
   return 'gray'
+}
+
+function normalizeEstado(value) {
+  if (value === null || value === undefined || value === '') return '0'
+  const estado = String(value)
+  return ESTADOS.some(e => e.id === estado) ? estado : '0'
+}
+
+function Field({ label, children, full }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: full ? '1 / -1' : 'auto' }}>
+      <label style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>{label}</label>
+      {children}
+    </div>
+  )
+}
+
+function ViewToggle({ view, setView }) {
+  return (
+    <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
+      {[['pipeline', 'Pipeline'], ['table', 'Tabla']].map(([v, label]) => (
+        <button key={v} onClick={() => setView(v)} style={{
+          padding: '5px 12px', fontSize: 12, fontWeight: view === v ? 700 : 400,
+          background: view === v ? 'var(--green-700)' : 'transparent',
+          color: view === v ? '#fff' : 'var(--text-2)',
+          cursor: 'pointer', border: 'none',
+          borderRight: v === 'pipeline' ? '1px solid var(--border)' : 'none',
+        }}>{label}</button>
+      ))}
+    </div>
+  )
 }
 
 // ── Drag card ─────────────────────────────────────────────────────────────────
@@ -111,7 +140,7 @@ function DraggableCard({ item, onOpen }) {
 // ── Detail modal ───────────────────────────────────────────────────────────────
 function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
   const [form, setForm] = useState(() => ({
-    estado:          item.estado ?? 0,
+    estado:          normalizeEstado(item.estado),
     prioridad:       item.prioridad || '',
     ejecutiva:       item.ejecutiva || '',
     fechaProximo:    item.fechaProximo ? item.fechaProximo.slice(0, 10) : '',
@@ -132,17 +161,11 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
 
   async function save() {
-    await patch.mutateAsync({ id: item.id, ...form, estado: parseInt(form.estado) })
+    await patch.mutateAsync({ id: item.id, ...form, estado: normalizeEstado(form.estado) })
     onSaved?.()
     onClose()
   }
 
-  const Field = ({ label, children, full }) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: full ? '1 / -1' : 'auto' }}>
-      <label style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>{label}</label>
-      {children}
-    </div>
-  )
   const inputStyle = { padding: '7px 10px', fontSize: 13, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)', width: '100%', fontFamily: 'inherit' }
 
   return (
@@ -325,7 +348,7 @@ function TableView({ items, total, limit, onOpen }) {
     {
       key: 'estado', label: 'Estado',
       render: v => {
-        const e = ESTADOS.find(s => s.id === v)
+        const e = ESTADOS.find(s => s.id === normalizeEstado(v))
         return e ? <Badge tone={e.tone}>{e.label}</Badge> : '—'
       }
     },
@@ -377,14 +400,14 @@ export default function CrmPage() {
   if (fechaHasta) params.fechaHasta = fechaHasta
 
   const { data: result = { items: [], total: 0, limit: 500 }, isLoading } = useCrm(params)
-  const items = result.items ?? []
+  const items = useMemo(() => result.items ?? [], [result.items])
   const total = result.total ?? 0
 
   const byEstado = useMemo(() => {
     const map = {}
     ESTADOS.forEach(e => { map[e.id] = [] })
     items.forEach(i => {
-      const col = map[i.estado ?? 0]
+      const col = map[normalizeEstado(i.estado)]
       if (col) col.push(i)
     })
     return map
@@ -392,9 +415,9 @@ export default function CrmPage() {
 
   const activeItem = activeId != null ? items.find(i => i.id === activeId) : null
 
-  const pendientes    = items.filter(c => c.estado === 0).length
-  const enGestion     = items.filter(c => c.estado === 1).length
-  const cerrados      = items.filter(c => c.estado === 3).length
+  const pendientes    = items.filter(c => normalizeEstado(c.estado) === '0').length
+  const enGestion     = items.filter(c => normalizeEstado(c.estado) === '1').length
+  const cerrados      = items.filter(c => normalizeEstado(c.estado) === '3').length
   const altaPrioridad = items.filter(c => c.prioridad?.toLowerCase() === 'alta').length
 
   const sensors = useSensors(
@@ -408,25 +431,14 @@ export default function CrmPage() {
     setActiveId(null)
     setOverId(null)
     if (!over) return
-    const newEstado = parseInt(over.id)
+    const newEstado = normalizeEstado(over.id)
     const item = items.find(i => i.id === active.id)
-    if (!item || item.estado === newEstado) return
-    patch.mutate({ id: item.id, estado: newEstado })
+    if (!item || normalizeEstado(item.estado) === newEstado) return
+    patch.mutate(
+      { id: item.id, estado: newEstado },
+      { onError: err => alert(err.response?.data?.error || 'No se pudo cambiar el estado CRM') }
+    )
   }
-
-  const ViewToggle = () => (
-    <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
-      {[['pipeline', '⬛ Pipeline'], ['table', '☰ Tabla']].map(([v, label]) => (
-        <button key={v} onClick={() => setView(v)} style={{
-          padding: '5px 12px', fontSize: 12, fontWeight: view === v ? 700 : 400,
-          background: view === v ? 'var(--green-700)' : 'transparent',
-          color: view === v ? '#fff' : 'var(--text-2)',
-          cursor: 'pointer', border: 'none',
-          borderRight: v === 'pipeline' ? '1px solid var(--border)' : 'none',
-        }}>{label}</button>
-      ))}
-    </div>
-  )
 
   return (
     <main style={{ maxWidth: 1500, margin: '0 auto', padding: '24px' }}>
@@ -435,7 +447,7 @@ export default function CrmPage() {
         subtitle={`${total.toLocaleString('es-CL')} registros de seguimiento`}
         breadcrumb={['Inicio', 'Ventas', 'CRM']}
         actions={<>
-          <ViewToggle />
+          <ViewToggle view={view} setView={setView} />
           <Btn variant="secondary" icon="download" size="sm">Exportar</Btn>
         </>}
       />

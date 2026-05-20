@@ -1,3 +1,12 @@
+const CRM_ESTADOS = new Set(['0', '1', '2', '3'])
+
+function normalizeEstado(value) {
+  if (value === null || value === '') return null
+  if (value === undefined) return undefined
+  const estado = String(value)
+  return CRM_ESTADOS.has(estado) ? estado : undefined
+}
+
 export default async function crmRoutes(fastify) {
   fastify.register(async function (f) {
     // GET /api/crm?ejecutiva=...&estado=...&prioridad=...&search=...&page=1
@@ -11,7 +20,10 @@ export default async function crmRoutes(fastify) {
       const where = {}
       if (ejecutiva) where.ejecutiva = { contains: ejecutiva, mode: 'insensitive' }
       if (prioridad) where.prioridad = prioridad
-      if (estado !== undefined && estado !== '') where.estado = parseInt(estado)
+      if (estado !== undefined && estado !== '') {
+        const normalizedEstado = normalizeEstado(estado)
+        if (normalizedEstado !== undefined) where.estado = normalizedEstado
+      }
       if (fechaDesde || fechaHasta) {
         where.fecha = {}
         if (fechaDesde) where.fecha.gte = new Date(fechaDesde)
@@ -41,12 +53,16 @@ export default async function crmRoutes(fastify) {
 
     // PATCH /api/crm/:id — update editable fields
     f.patch('/:id', {
-      preHandler: [f.authenticate, f.rbac('ventas', 'read')],
+      preHandler: [f.authenticate, f.rbac('ventas', 'write')],
     }, async (request, reply) => {
       const { id } = request.params
       const b = request.body ?? {}
       const data = {}
-      if (b.estado !== undefined) data.estado = b.estado === null ? null : parseInt(b.estado)
+      if (b.estado !== undefined) {
+        const normalizedEstado = normalizeEstado(b.estado)
+        if (normalizedEstado === undefined) return reply.status(400).send({ error: 'Estado CRM invalido' })
+        data.estado = normalizedEstado
+      }
       if (b.prioridad !== undefined) data.prioridad = b.prioridad || null
       if (b.fechaProximo !== undefined) data.fechaProximo = b.fechaProximo ? new Date(b.fechaProximo) : null
       if (b.fecha !== undefined) data.fecha = b.fecha ? new Date(b.fecha) : null
