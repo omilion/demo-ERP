@@ -1,14 +1,17 @@
 import { computeTotal, attachClientes, attachProductos } from './helpers.js'
 import { parsePositiveInt } from '../operational-utils.js'
+import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenScope } from '../historico/corte.js'
 
 export default async function listVentas(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request, reply) => {
-    const { estadoPago, estadoEntrega, tipo, search, orderBy: orderParam, clienteId } = request.query
+    const { estadoPago, estadoEntrega, tipo, search, orderBy: orderParam, clienteId, scope: scopeParam } = request.query
     const LIMIT = 100
+    const scope = parseOrdenScope(scopeParam, 'operacional')
+    if (!scope) return reply.code(400).send({ error: 'scope invalido' })
 
-    const where = { eliminada: false }
+    let where = { eliminada: false }
     if (estadoPago) where.estadoPago = estadoPago
     if (estadoEntrega) where.estadoEntrega = estadoEntrega
     if (tipo) where.tipo = tipo
@@ -28,6 +31,9 @@ export default async function listVentas(fastify) {
     }
 
     // Cobranza: más antiguas primero (más urgentes). Default: más recientes primero.
+    const corte = await getPrimerRegistroInterno(fastify.prisma)
+    where = mergeWhere(where, buildOrdenScopeWhere(scope, corte))
+
     const orderBy = orderParam === 'asc' ? { createdAt: 'asc' } : { createdAt: 'desc' }
 
     const [ordenes, total] = await Promise.all([

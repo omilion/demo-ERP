@@ -1,8 +1,12 @@
+import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere } from '../historico/corte.js'
+
 export default async function dashboardStats(fastify) {
   fastify.get('/stats', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const p = fastify.prisma
+    const corte = await getPrimerRegistroInterno(p)
+    const ordenOperacionalWhere = buildOrdenScopeWhere('operacional', corte)
 
     const [
       ventasNoPagadas,
@@ -27,8 +31,8 @@ export default async function dashboardStats(fastify) {
       boletasProvNoPagadas,
       productosCalidadRows,
     ] = await Promise.all([
-      p.orden.count({ where: { estadoPago: 'No pagada' } }),
-      p.orden.count({ where: { estadoEntrega: 'Pendiente entrega' } }),
+      p.orden.count({ where: mergeWhere({ estadoPago: 'No pagada', eliminada: false }, ordenOperacionalWhere) }),
+      p.orden.count({ where: mergeWhere({ estadoEntrega: 'Pendiente entrega', eliminada: false }, ordenOperacionalWhere) }),
       p.odt.count({ where: { estado: 'Pendiente' } }),
       p.odt.count({ where: { estado: 'En proceso' } }),
       p.odt.count({ where: { OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] } }),

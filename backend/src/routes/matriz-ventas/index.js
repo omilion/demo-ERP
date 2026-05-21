@@ -2,14 +2,17 @@
 // Filtros: tipo, fechas, RUT, n° interno, OC, ID licitación, búsqueda libre
 
 import { parseDate, parsePage, parsePositiveInt } from '../operational-utils.js'
+import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenScope } from '../historico/corte.js'
 
 export default async function matrizVentasRoutes(fastify) {
   // GET /api/matriz-ventas?tipo=&desde=&hasta=&rut=&nInterno=&oc=&idLicitacion=&search=&page=1
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request, reply) => {
-    const { tipo, desde, hasta, rut, nInterno, oc, idLicitacion, guia, odt, estadoPago, estadoEntrega, search, page = '1' } = request.query
+    const { tipo, desde, hasta, rut, nInterno, oc, idLicitacion, guia, odt, estadoPago, estadoEntrega, search, page = '1', scope: scopeParam } = request.query
     const LIMIT = 100
+    const scope = parseOrdenScope(scopeParam, 'operacional')
+    if (!scope) return reply.code(400).send({ error: 'scope invalido' })
     const skip = (parsePage(page) - 1) * LIMIT
     const scanTake = Math.min(skip + LIMIT, 500)
     const dateDesde = desde ? parseDate(desde) : null
@@ -38,13 +41,13 @@ export default async function matrizVentasRoutes(fastify) {
 
     // Tipo: 'venta-sala' | 'venta-web' | 'convenio-marco' | 'licitacion' | undefined (todos)
     // Filtros odt/guia/estadoPago/estadoEntrega solo aplican a ordenes
-    const restrictToOrden = !!(odt || guia || estadoPago || estadoEntrega)
+    const restrictToOrden = !!(odt || guia || estadoPago || estadoEntrega || scope === 'historico')
     const inOrden = !tipo || ['venta-sala', 'convenio-marco', 'venta-directa'].includes(tipo)
     const inOcOnline = !restrictToOrden && (!tipo || tipo === 'venta-web')
     const inLicitacion = !restrictToOrden && (!tipo || tipo === 'licitacion')
 
     if (inOrden) {
-      const where = { eliminada: false }
+      let where = { eliminada: false }
       if (tipo === 'venta-sala' || tipo === 'venta-directa') where.tipo = { in: ['Venta sala', 'Venta directa'] }
       if (tipo === 'convenio-marco') where.tipo = 'Convenio Marco'
       if (dateDesde || dateHasta) where.createdAt = {}
@@ -66,6 +69,9 @@ export default async function matrizVentasRoutes(fastify) {
           ...(isNum ? [{ nInterno: parseInt(search, 10) }, { id: parseInt(search, 10) }] : []),
         ]
       }
+      const corte = await getPrimerRegistroInterno(fastify.prisma)
+      where = mergeWhere(where, buildOrdenScopeWhere(scope, corte))
+
       const ordenes = await fastify.prisma.orden.findMany({
         where, include: { items: true }, orderBy: { createdAt: 'desc' }, take: scanTake,
       })
@@ -211,8 +217,10 @@ export default async function matrizVentasRoutes(fastify) {
       if (dateHasta) f.lte = dateHasta
       return Object.keys(f).length ? { [field]: f } : {}
     }
+    const corte = await getPrimerRegistroInterno(fastify.prisma)
+    const ordenWhere = mergeWhere({ eliminada: false, ...dateFilter('createdAt') }, buildOrdenScopeWhere('operacional', corte))
     const [ordenes, ocs, lics] = await Promise.all([
-      fastify.prisma.orden.findMany({ where: { eliminada: false, ...dateFilter('createdAt') }, include: { items: true } }),
+      fastify.prisma.orden.findMany({ where: ordenWhere, include: { items: true } }),
       fastify.prisma.ordenCompraOnline.findMany({ where: dateFilter('fechaHora') }),
       fastify.prisma.cotizacionLicitacion.findMany({ where: dateFilter('fecha'), include: { items: true } }),
     ])

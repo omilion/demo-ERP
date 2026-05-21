@@ -43,6 +43,7 @@ const NAV_GROUPS = [
     { label: 'Descuentos', route: '/descuentos', requirements: [{ module: 'ventas', permission: 'write' }] },
     { label: 'Integridad', route: '/admin/integridad', roles: ['admin'] },
     { label: 'Auditoria', route: '/admin/auditoria', roles: ['admin'] },
+    { label: 'Historico', route: '/admin/historico', roles: ['admin'] },
   ] },
 ]
 

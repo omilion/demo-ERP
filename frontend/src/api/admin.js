@@ -63,3 +63,20 @@ export function useAuditoria(params = {}) {
     queryFn: () => api.get('/admin/auditoria', { params }).then(r => r.data),
   })
 }
+
+export function useHistoricoCorte() {
+  return useQuery({
+    queryKey: ['admin', 'historico', 'corte'],
+    queryFn: () => api.get('/historico/corte').then(r => r.data),
+    staleTime: 60_000,
+  })
+}
+
+export function useHistoricoOrdenes(params = {}) {
+  return useQuery({
+    queryKey: ['admin', 'historico', 'ordenes', params],
+    queryFn: () => api.get('/historico/ordenes', { params }).then(r => r.data),
+    placeholderData: { items: [], total: 0, limit: 100, page: 1, corte: null },
+    staleTime: 30_000,
+  })
+}

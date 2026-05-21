@@ -43,6 +43,7 @@ import UsuariosPage from './pages/usuarios/UsuariosPage'
 import RrhhPage from './pages/rrhh/RrhhPage'
 import IntegridadPage from './pages/admin/IntegridadPage'
 import AuditoriaPage from './pages/admin/AuditoriaPage'
+import HistoricoPage from './pages/admin/HistoricoPage'
 
 const ALL = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
 
@@ -107,6 +108,7 @@ export const router = createBrowserRouter([
       { path: 'rrhh', element: protect(<RrhhPage />, { module: 'rrhh' }) },
       { path: 'admin/integridad', element: <ProtectedRoute allowedRoles={['admin']}><IntegridadPage /></ProtectedRoute> },
       { path: 'admin/auditoria',  element: <ProtectedRoute allowedRoles={['admin']}><AuditoriaPage /></ProtectedRoute> },
+      { path: 'admin/historico',  element: <ProtectedRoute allowedRoles={['admin']}><HistoricoPage /></ProtectedRoute> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

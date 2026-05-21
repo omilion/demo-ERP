@@ -1,4 +1,5 @@
 import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenScope } from '../historico/corte.js'
 
 export default async function reportesRoutes(fastify) {
   // Reporte stock crítico (productos + materiales bodega taller) — G6
@@ -92,8 +93,10 @@ export default async function reportesRoutes(fastify) {
   fastify.get('/export/ventas', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request, reply) => {
-    const { desde, hasta, tipo, rut, nInterno, oc, guia, odt, estadoPago, estadoEntrega, search } = request.query
-    const where = { eliminada: false }
+    const { desde, hasta, tipo, rut, nInterno, oc, guia, odt, estadoPago, estadoEntrega, search, scope: scopeParam } = request.query
+    const scope = parseOrdenScope(scopeParam, 'operacional')
+    if (!scope) return reply.code(400).send({ error: 'scope invalido' })
+    let where = { eliminada: false }
     if (desde || hasta) {
       where.createdAt = {}
       if (desde) where.createdAt.gte = new Date(desde)
@@ -122,6 +125,8 @@ export default async function reportesRoutes(fastify) {
         ...(isNum ? [{ nInterno: parseInt(search, 10) }, { id: parseInt(search, 10) }] : []),
       ]
     }
+    const corte = await getPrimerRegistroInterno(fastify.prisma)
+    where = mergeWhere(where, buildOrdenScopeWhere(scope, corte))
     const ventas = await fastify.prisma.orden.findMany({
       where, include: { items: true }, orderBy: { createdAt: 'desc' },
     })

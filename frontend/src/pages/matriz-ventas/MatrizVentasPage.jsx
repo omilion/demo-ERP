@@ -42,9 +42,10 @@ export default function MatrizVentasPage() {
   const [guia, setGuia] = useState('')
   const [estadoPago, setEstadoPago] = useState('')
   const [estadoEntrega, setEstadoEntrega] = useState('')
+  const [scope, setScope] = useState('operacional')
   const [page, setPage] = useState(1)
 
-  const params = { page: String(page) }
+  const params = { page: String(page), scope }
   if (tab !== 'all') params.tipo = tab
   if (search) params.search = search
   if (desde) params.desde = desde
@@ -154,7 +155,7 @@ export default function MatrizVentasPage() {
 
   function limpiarFiltros() {
     setSearch(''); setDesde(''); setHasta(''); setRut(''); setOc('')
-    setNInterno(''); setOdt(''); setGuia(''); setEstadoPago(''); setEstadoEntrega('')
+    setNInterno(''); setOdt(''); setGuia(''); setEstadoPago(''); setEstadoEntrega(''); setScope('operacional')
     setPage(1)
   }
 
@@ -194,6 +195,13 @@ export default function MatrizVentasPage() {
           <FormField label="Estado entrega">
             <select value={estadoEntrega} onChange={e => setEstadoEntrega(e.target.value)} style={selectStyle}>
               {ESTADO_ENTREGA_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Alcance">
+            <select value={scope} onChange={e => { setScope(e.target.value); setPage(1) }} style={selectStyle}>
+              <option value="operacional">Operacional</option>
+              <option value="historico">Historico</option>
+              <option value="todos">Todos</option>
             </select>
           </FormField>
           <div style={{ display: 'flex', alignItems: 'flex-end' }}>
