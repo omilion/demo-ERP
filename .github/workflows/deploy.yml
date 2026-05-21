@@ -96,7 +96,17 @@ jobs:
              set -a
              . ./.env
              set +a
-             curl -fsS "http://127.0.0.1:${PORT:-3001}/api/health"'
+             for attempt in $(seq 1 30); do
+               if curl -fsS "http://127.0.0.1:${PORT:-3001}/api/health"; then
+                 exit 0
+               fi
+               echo "API health not ready yet (attempt ${attempt}/30)"
+               sleep 2
+             done
+             echo "API health failed after retries"
+             pm2 status || true
+             pm2 logs --nostream --lines 80 || true
+             exit 1'
 
       - name: Deploy frontend
         run: |
