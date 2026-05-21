@@ -101,7 +101,7 @@ export const router = createBrowserRouter([
       { path: 'despachos', element: protect(<DespachosPage />, { module: 'despacho' }) },
       { path: 'bitacora-taller', element: protect(<BitacoraTallerPage />, { module: 'taller' }) },
       { path: 'historial-materiales', element: protect(<HistorialMaterialesPage />, { module: 'taller' }) },
-      { path: 'stock-ingresos', element: protect(<StockIngresosPage />, { module: 'bodega', permission: 'write' }) },
+      { path: 'stock-ingresos', element: protect(<StockIngresosPage />, { module: 'bodega' }) },
       { path: 'pasar-taller', element: protect(<PasarTallerPage />, { module: 'taller', permission: 'write' }) },
       { path: 'consulta-precios', element: protect(<ConsultaPreciosPage />, { module: 'catalogo' }) },
       { path: 'reportes/licitaciones', element: protect(<ReportesLicitacionesPage />, { module: 'ventas' }) },

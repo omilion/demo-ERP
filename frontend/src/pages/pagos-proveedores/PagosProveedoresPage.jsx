@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { usePagosProveedores, useUpdatePagoProveedor } from '../../api/pagosProveedores'
 import { downloadCsv } from '../../utils/csv'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 const TABS = [
   { id: 'all',       label: 'Todos' },
@@ -19,6 +21,8 @@ const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
 export default function PagosProveedoresPage() {
   const navigate = useNavigate()
+  const user = useAuthStore(s => s.user)
+  const canWriteProveedores = can(user, 'proveedores', 'write')
   const [tab, setTab] = useState('all')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -97,7 +101,7 @@ export default function PagosProveedoresPage() {
             onClick={e => { e.stopPropagation(); navigate('/pagos-proveedores/' + row.id) }}
             style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}
           >Ver</button>
-          {row.estado !== 'Pagado' && row.estado !== 'Anulado' && (
+          {canWriteProveedores && row.estado !== 'Pagado' && row.estado !== 'Anulado' && (
             <button
               onClick={e => {
                 e.stopPropagation()

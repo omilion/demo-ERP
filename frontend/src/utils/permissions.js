@@ -10,7 +10,7 @@ export const ROLE_PERMISSIONS = {
     taller: ['read'],
   },
   bodeguero: {
-    bodega: ['read', 'write', 'delete'],
+    bodega: ['read', 'write'],
     catalogo: ['read', 'write'],
     despacho: ['read', 'write'],
     ventas: ['read'],
@@ -39,6 +39,7 @@ export const ROLE_PERMISSIONS = {
     cobranza: ['read'],
     despacho: ['read'],
     licitaciones: ['read'],
+    proveedores: ['read'],
     rrhh: ['read'],
   },
 }

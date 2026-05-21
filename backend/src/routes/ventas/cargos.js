@@ -20,7 +20,7 @@ export default async function ventaCargosRoutes(fastify) {
   })
 
   fastify.delete('/cargos/:cargoId', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'delete')],
   }, async (request, reply) => {
     const cargoId = parseInt(request.params.cargoId, 10)
     try {
@@ -31,7 +31,7 @@ export default async function ventaCargosRoutes(fastify) {
 
   // Anular venta (soft)
   fastify.post('/:id/anular', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'delete')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     try {
@@ -43,7 +43,7 @@ export default async function ventaCargosRoutes(fastify) {
 
   // Reactivar venta
   fastify.post('/:id/activar', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'delete')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     try {

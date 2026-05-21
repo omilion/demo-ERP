@@ -16,9 +16,10 @@ const NAV_GROUPS = [
   { label: 'Bodega', items: [
     { label: 'Inventario', route: '/bodega', module: 'catalogo' },
     { label: 'Consulta Precios', route: '/consulta-precios', module: 'catalogo' },
-    { label: 'Ingreso Mercaderia', route: '/stock-ingresos', module: 'bodega', permission: 'write' },
+    { label: 'Ingreso Mercaderia', route: '/stock-ingresos', module: 'bodega' },
     { label: 'Despachos', route: '/despachos', module: 'despacho' },
     { label: 'Proveedores', route: '/proveedores', module: 'catalogo' },
+    { label: 'Pagos Proveedores', route: '/pagos-proveedores', module: 'proveedores' },
   ] },
   { label: 'Taller', items: [
     { label: 'ODTs', route: '/taller', module: 'taller' },

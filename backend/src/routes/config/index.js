@@ -1,14 +1,10 @@
-const adminOnly = async (req, reply) => {
-  if (req.user?.role !== 'admin') return reply.code(403).send({ error: 'Forbidden' })
-}
-
 export default async function configRoutes(fastify) {
   // ── Empresa ────────────────────────────────────────────────────────
   fastify.get('/empresa', { preHandler: [fastify.authenticate] }, async () => {
     return fastify.prisma.empresaConfig.findFirst()
   })
 
-  fastify.put('/empresa', { preHandler: [fastify.authenticate, adminOnly] }, async (request, reply) => {
+  fastify.put('/empresa', { preHandler: [fastify.authenticate, fastify.rbac('config', 'write', { allowExtra: false })] }, async (request, reply) => {
     const body = request.body || {}
     const data = {}
     for (const f of ['nombre', 'rut', 'razonSocial', 'giro', 'email', 'telefono', 'direccion', 'region', 'comuna', 'logoUrl', 'textoPie']) {
@@ -27,13 +23,13 @@ export default async function configRoutes(fastify) {
     return fastify.prisma.firmaEmail.findMany({ where: { activo: true }, orderBy: { alias: 'asc' } })
   })
 
-  fastify.post('/firmas', { preHandler: [fastify.authenticate, adminOnly] }, async (request, reply) => {
+  fastify.post('/firmas', { preHandler: [fastify.authenticate, fastify.rbac('config', 'write', { allowExtra: false })] }, async (request, reply) => {
     const { alias, email, firma, fotoUrl } = request.body || {}
     if (!alias || !email || !firma) return reply.code(400).send({ error: 'alias, email, firma requeridos' })
     return fastify.prisma.firmaEmail.create({ data: { alias, email, firma, fotoUrl } })
   })
 
-  fastify.put('/firmas/:id', { preHandler: [fastify.authenticate, adminOnly] }, async (request, reply) => {
+  fastify.put('/firmas/:id', { preHandler: [fastify.authenticate, fastify.rbac('config', 'write', { allowExtra: false })] }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
     const body = request.body || {}
@@ -48,7 +44,7 @@ export default async function configRoutes(fastify) {
     }
   })
 
-  fastify.delete('/firmas/:id', { preHandler: [fastify.authenticate, adminOnly] }, async (request, reply) => {
+  fastify.delete('/firmas/:id', { preHandler: [fastify.authenticate, fastify.rbac('config', 'delete', { allowExtra: false })] }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
     try {
@@ -65,7 +61,7 @@ export default async function configRoutes(fastify) {
     return fastify.prisma.bloqueoPagina.findMany({ orderBy: { modulo: 'asc' } })
   })
 
-  fastify.put('/bloqueos/:modulo', { preHandler: [fastify.authenticate, adminOnly] }, async (request) => {
+  fastify.put('/bloqueos/:modulo', { preHandler: [fastify.authenticate, fastify.rbac('config', 'write', { allowExtra: false })] }, async (request) => {
     const modulo = request.params.modulo
     const { estado, texto } = request.body || {}
     return fastify.prisma.bloqueoPagina.upsert({

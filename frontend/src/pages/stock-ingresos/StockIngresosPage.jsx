@@ -2,10 +2,14 @@ import { useEffect, useState } from 'react'
 import { Badge, Btn, KpiCard, PageHeader, Table } from '../../components/shared'
 import { FormField, Input } from '../../components/forms'
 import { useStockIngresos, useAplicarStock } from '../../api/stockIngresos'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
 export default function StockIngresosPage() {
+  const { user } = useAuthStore()
+  const canWriteBodega = can(user, 'bodega', 'write')
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
   const [nDoc, setNDoc] = useState('')
@@ -26,6 +30,7 @@ export default function StockIngresosPage() {
   }, [desde, hasta, nDoc])
 
   const aplicar = (id) => {
+    if (!canWriteBodega) return
     if (!confirm('¿Aplicar este ingreso al stock? Suma cantidades al inventario.')) return
     aplicarMut.mutate(id, {
       onSuccess: (res) => {
@@ -62,9 +67,9 @@ export default function StockIngresosPage() {
     { key: 'stockAplicadoAt', label: 'Stock',
       render: v => v ? <Badge tone="green">Aplicado</Badge> : <Badge tone="amber">Pendiente</Badge> },
     { key: 'usuario', label: 'Usuario' },
-    { key: '_acc', label: '', render: (_, r) => (
+    { key: '_acc', label: '', render: (_, r) => canWriteBodega ? (
       <Btn variant="secondary" size="sm" onClick={() => aplicar(r.id)} disabled={aplicarMut.isPending || !!r.stockAplicadoAt}>Aplicar a stock</Btn>
-    ) },
+    ) : null },
   ]
 
   return (

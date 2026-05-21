@@ -1,5 +1,6 @@
 // Movimientos manuales de stock por producto (ingreso / egreso / ajuste)
 import { resolveOdtForWrite, resolveOrdenForWrite } from '../relation-guards.js'
+import { can } from '../../middleware/rbac.js'
 
 const TIPOS = ['ingreso', 'egreso', 'ajuste']
 
@@ -77,6 +78,9 @@ export default async function movimientosProductoRoutes(fastify) {
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
     const { tipo, cantidad, motivo } = request.body || {}
     if (!TIPOS.includes(tipo)) return reply.code(400).send({ error: 'tipo debe ser ingreso, egreso o ajuste' })
+    if (tipo === 'ajuste' && !can(request.user?.role, 'bodega', 'delete', request.user?.permisosExtra)) {
+      return reply.code(403).send({ error: 'Forbidden' })
+    }
     const qty = parseInt(cantidad, 10)
     if (isNaN(qty) || qty === 0) return reply.code(400).send({ error: 'cantidad invalida' })
     if (!motivo || !String(motivo).trim()) return reply.code(400).send({ error: 'motivo requerido' })

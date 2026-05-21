@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
-import { useProveedores, useProveedor, useCreatePagoProveedor, useUpdatePagoProveedor, useDeletePagoProveedor, useCreateProveedor, useUpdateProveedor, useDeleteProveedor } from '../../api/proveedores'
+import { useProveedores, useProveedor, useCreatePagoProveedor, useDeletePagoProveedor, useCreateProveedor, useUpdateProveedor, useDeleteProveedor } from '../../api/proveedores'
 import { downloadFromBackend } from '../../utils/csv'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 const fmt = n => n ? `${n}%` : '—'
 const fmtPeso = n => '$' + (n || 0).toLocaleString('es-CL')
@@ -10,12 +12,13 @@ const fmtDate = d => d ? new Date(d).toLocaleDateString('es-CL') : '—'
 const ESTADO_TONE = { Pagado: 'green', Pendiente: 'amber', Vencido: 'red', 'N/C': 'neutral' }
 
 // ── PagoForm inline ────────────────────────────────────────────────────────────
-function PagoForm({ proveedorId, onClose }) {
+function PagoForm({ proveedorId, onClose, canWrite }) {
   const [form, setForm] = useState({ documento: '', nDoc: '', fechaDoc: '', fechaVencimiento: '', fechaPago: '', estado: 'Pendiente', total: '', bodega: '', obs: '' })
   const create = useCreatePagoProveedor()
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handleSave = () => {
+    if (!canWrite) return
     if (!form.total) return
     create.mutate({ proveedorId, ...form }, { onSuccess: onClose })
   }
@@ -115,7 +118,7 @@ function TabDatos({ p }) {
 }
 
 // ── TabPagos ────────────────────────────────────────────────────────────────────
-function TabPagos({ proveedorId, pagos = [] }) {
+function TabPagos({ proveedorId, pagos = [], canWrite }) {
   const [showForm, setShowForm] = useState(false)
   const deletePago = useDeletePagoProveedor()
 
@@ -138,15 +141,17 @@ function TabPagos({ proveedorId, pagos = [] }) {
         ))}
       </div>
 
-      <button
-        onClick={() => setShowForm(s => !s)}
-        style={{ width: '100%', padding: '7px 14px', marginBottom: 12, background: showForm ? 'var(--bg)' : 'var(--green-600)', color: showForm ? 'var(--text-2)' : '#fff', border: showForm ? '1px solid var(--border)' : 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-      >
-        <Icon name={showForm ? 'x' : 'plus'} size={14} />
-        {showForm ? 'Cancelar' : 'Registrar pago'}
-      </button>
+      {canWrite && (
+        <button
+          onClick={() => setShowForm(s => !s)}
+          style={{ width: '100%', padding: '7px 14px', marginBottom: 12, background: showForm ? 'var(--bg)' : 'var(--green-600)', color: showForm ? 'var(--text-2)' : '#fff', border: showForm ? '1px solid var(--border)' : 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+        >
+          <Icon name={showForm ? 'x' : 'plus'} size={14} />
+          {showForm ? 'Cancelar' : 'Registrar pago'}
+        </button>
+      )}
 
-      {showForm && <PagoForm proveedorId={proveedorId} onClose={() => setShowForm(false)} />}
+      {showForm && canWrite && <PagoForm proveedorId={proveedorId} onClose={() => setShowForm(false)} canWrite={canWrite} />}
 
       {pagos.length === 0 && !showForm ? (
         <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Sin pagos registrados</div>
@@ -173,7 +178,7 @@ function TabPagos({ proveedorId, pagos = [] }) {
             {p.obs && <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 3 }}>{p.obs}</div>}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5, fontSize: 11, color: 'var(--text-3)' }}>
               <span>{p.usuario || '—'}</span>
-              <button onClick={() => deletePago.mutate({ proveedorId, pagoId: p.id })} style={{ fontSize: 11, color: 'var(--red)', cursor: 'pointer', background: 'none', border: 'none', padding: '0 2px' }}>Eliminar</button>
+              {canWrite && <button onClick={() => deletePago.mutate({ proveedorId, pagoId: p.id })} style={{ fontSize: 11, color: 'var(--red)', cursor: 'pointer', background: 'none', border: 'none', padding: '0 2px' }}>Eliminar</button>}
             </div>
           </div>
         ))
@@ -199,13 +204,14 @@ function TabBtn({ active, onClick, children, badge }) {
   )
 }
 
-function ViewProveedorPanel({ proveedor, onClose, onEdit }) {
+function ViewProveedorPanel({ proveedor, onClose, onEdit, canWrite }) {
   const [tab, setTab] = useState('datos')
   const { data: full, isLoading } = useProveedor(proveedor.id)
   const p = full || proveedor
   const pagos = full?.pagos ?? []
   const deleteProv = useDeleteProveedor()
   const handleDelete = () => {
+    if (!canWrite) return
     if (!confirm(`¿Eliminar proveedor "${p.nombre}"? (soft delete)`)) return
     deleteProv.mutate(p.id, { onSuccess: onClose })
   }
@@ -223,8 +229,8 @@ function ViewProveedorPanel({ proveedor, onClose, onEdit }) {
             <div style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace", marginTop: 2 }}>{p.rut}</div>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <button onClick={() => onEdit(p)} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Editar</button>
-            <button onClick={handleDelete} disabled={deleteProv.isPending} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--red, #fca5a5)', background: '#fff', cursor: 'pointer', color: 'var(--red, #991b1b)' }}>Eliminar</button>
+            {canWrite && <button onClick={() => onEdit(p)} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Editar</button>}
+            {canWrite && <button onClick={handleDelete} disabled={deleteProv.isPending} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--red, #fca5a5)', background: '#fff', cursor: 'pointer', color: 'var(--red, #991b1b)' }}>Eliminar</button>}
             <button onClick={onClose} style={{ color: 'var(--text-3)', padding: 4 }}><Icon name="x" size={18} /></button>
           </div>
         </div>
@@ -240,7 +246,7 @@ function ViewProveedorPanel({ proveedor, onClose, onEdit }) {
             <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Cargando…</div>
           )}
           {tab === 'datos' && <TabDatos p={p} />}
-          {tab === 'pagos' && <TabPagos proveedorId={p.id} pagos={pagos} />}
+          {tab === 'pagos' && <TabPagos proveedorId={p.id} pagos={pagos} canWrite={canWrite} />}
         </div>
       </div>
     </div>
@@ -307,6 +313,8 @@ function ProveedorFormModal({ proveedor, onClose }) {
 
 // ── Main Page ───────────────────────────────────────────────────────────────────
 export default function ProveedoresPage() {
+  const user = useAuthStore(s => s.user)
+  const canWriteCatalogo = can(user, 'catalogo', 'write')
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
   const [selected, setSelected] = useState(null)
@@ -376,7 +384,7 @@ export default function ProveedoresPage() {
           <Btn variant="secondary" icon="download" size="sm"
             onClick={() => downloadFromBackend('/reportes/export/proveedores', `proveedores_${new Date().toISOString().slice(0, 10)}.csv`)}
           >Exportar CSV</Btn>
-          <Btn variant="primary" icon="plus" size="sm" onClick={() => setCreating(true)}>Nuevo proveedor</Btn>
+          {canWriteCatalogo && <Btn variant="primary" icon="plus" size="sm" onClick={() => setCreating(true)}>Nuevo proveedor</Btn>}
         </div>}
       />
 
@@ -405,7 +413,7 @@ export default function ProveedoresPage() {
         )}
       </div>
 
-      {selected && <ViewProveedorPanel proveedor={selected} onClose={() => setSelected(null)} onEdit={p => { setSelected(null); setEditing(p) }} />}
+      {selected && <ViewProveedorPanel proveedor={selected} canWrite={canWriteCatalogo} onClose={() => setSelected(null)} onEdit={p => { setSelected(null); setEditing(p) }} />}
       {creating && <ProveedorFormModal onClose={() => setCreating(false)} />}
       {editing && <ProveedorFormModal proveedor={editing} onClose={() => setEditing(null)} />}
     </main>

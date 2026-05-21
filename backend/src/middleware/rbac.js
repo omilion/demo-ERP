@@ -12,7 +12,7 @@ const PERMISSIONS = {
     taller:       ['read'],
   },
   bodeguero:    {
-    bodega:      ['read', 'write', 'delete'],
+    bodega:      ['read', 'write'],
     catalogo:    ['read', 'write'],
     despacho:    ['read', 'write'],
     ventas:      ['read'],
@@ -46,14 +46,15 @@ const PERMISSIONS = {
   },
 }
 
-export function can(role, module, permission, extraPerms = null) {
+export function can(role, module, permission, extraPerms = null, options = {}) {
+  const allowExtra = options.allowExtra !== false
   const rolePerms = PERMISSIONS[role]
   if (rolePerms) {
     if (rolePerms['*']) return true
     if ((rolePerms[module] || []).includes(permission)) return true
   }
   // G13: permisos extra por usuario (objeto { modulo: ['read', 'write', ...] })
-  if (extraPerms && typeof extraPerms === 'object') {
+  if (allowExtra && extraPerms && typeof extraPerms === 'object') {
     if (Array.isArray(extraPerms[module]) && extraPerms[module].includes(permission)) return true
     if (Array.isArray(extraPerms['*']) && extraPerms['*'].includes(permission)) return true
   }
@@ -65,9 +66,9 @@ export default fp(async (fastify) => {
 })
 
 export function decorateRbac(app) {
-  app.decorate('rbac', (module, permission) => async (request, reply) => {
+  app.decorate('rbac', (module, permission, options = {}) => async (request, reply) => {
     const extra = request.user?.permisosExtra
-    if (!request.user || !can(request.user.role, module, permission, extra)) {
+    if (!request.user || !can(request.user.role, module, permission, extra, options)) {
       return reply.status(403).send({ error: 'Forbidden' })
     }
   })

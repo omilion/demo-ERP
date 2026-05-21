@@ -359,7 +359,7 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.delete('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'delete')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
@@ -433,7 +433,7 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.delete('/guias/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'delete')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })

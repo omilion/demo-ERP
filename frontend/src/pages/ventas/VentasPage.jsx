@@ -39,6 +39,7 @@ export default function VentasPage() {
   const initialSearch = searchParams.get('search') || ''
   const { user } = useAuthStore()
   const canWriteVentas = can(user, 'ventas', 'write')
+  const canDeleteVentas = can(user, 'ventas', 'delete')
   const [tab, setTab] = useState(initialFiltro)
   const [search, setSearch] = useState(initialSearch)
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch)
@@ -140,7 +141,7 @@ export default function VentasPage() {
         }
       </div>
 
-      {selected && <ViewVentaPanel venta={selected} canWrite={canWriteVentas} onClose={() => setSelected(null)} onEdit={() => { navigate('/ventas/' + selected.id + '/editar'); setSelected(null) }} />}
+      {selected && <ViewVentaPanel venta={selected} canWrite={canWriteVentas} canDelete={canDeleteVentas} onClose={() => setSelected(null)} onEdit={() => { navigate('/ventas/' + selected.id + '/editar'); setSelected(null) }} />}
     </main>
   )
 }

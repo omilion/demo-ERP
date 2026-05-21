@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Badge, PageHeader, Btn, Table } from '../../components/shared'
 import { FormField, Input, Select, Textarea } from '../../components/forms'
 import { usePagoProveedor, useUpdatePagoProveedor } from '../../api/pagosProveedores'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
@@ -14,6 +16,8 @@ const ESTADOS = ['Pendiente', 'Pagado', 'Vencido', 'Anulado']
 export default function PagoProveedorDetallePage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const user = useAuthStore(s => s.user)
+  const canWriteProveedores = can(user, 'proveedores', 'write')
   const { data, isLoading } = usePagoProveedor(id)
   const updateMut = useUpdatePagoProveedor()
   const [editing, setEditing] = useState(false)
@@ -67,7 +71,7 @@ export default function PagoProveedorDetallePage() {
         breadcrumb={['Inicio', 'Proveedores', 'Pagos', String(data.id)]}
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
-            {!editing && <Btn variant="primary" size="sm" onClick={() => setEditing(true)}>Editar</Btn>}
+            {canWriteProveedores && !editing && <Btn variant="primary" size="sm" onClick={() => setEditing(true)}>Editar</Btn>}
             {editing && <>
               <Btn variant="secondary" size="sm" onClick={() => setEditing(false)} disabled={updateMut.isPending}>Cancelar</Btn>
               <Btn variant="primary" size="sm" onClick={handleSave} disabled={updateMut.isPending}>

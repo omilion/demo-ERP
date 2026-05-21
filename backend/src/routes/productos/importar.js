@@ -56,7 +56,7 @@ export default async function importarRoute(fastify) {
 
   // POST /api/productos/importar/stock { rows: [{ codigo|codigoInterno, stock, stockCritico? }] }
   fastify.post('/importar/stock', {
-    preHandler: [fastify.authenticate, fastify.rbac('bodega', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('bodega', 'delete')],
   }, async (request, reply) => {
     const rows = Array.isArray(request.body?.rows) ? request.body.rows : null
     if (!rows) return reply.code(400).send({ error: 'rows requerido' })

@@ -14,11 +14,11 @@ export function toJsonSerializable(value) {
 }
 
 export default async function adminRoutes(fastify) {
-  const onlyAdmin = async (req, reply) => {
-    if (req.user?.role !== 'admin') return reply.code(403).send({ error: 'Forbidden' })
-  }
+  const adminRead = fastify.rbac('admin', 'read', { allowExtra: false })
+  const adminWrite = fastify.rbac('admin', 'write', { allowExtra: false })
+  const adminDelete = fastify.rbac('admin', 'delete', { allowExtra: false })
 
-  fastify.get('/integridad/resumen', { preHandler: [fastify.authenticate, onlyAdmin] }, async () => {
+  fastify.get('/integridad/resumen', { preHandler: [fastify.authenticate, adminRead] }, async () => {
     const p = fastify.prisma
     const [r] = await p.$queryRaw`
       SELECT
@@ -42,7 +42,7 @@ export default async function adminRoutes(fastify) {
     return r
   })
 
-  fastify.get('/integridad/:tipo', { preHandler: [fastify.authenticate, onlyAdmin] }, async (req, reply) => {
+  fastify.get('/integridad/:tipo', { preHandler: [fastify.authenticate, adminRead] }, async (req, reply) => {
     const { tipo } = req.params
     const limit = Math.min(Number(req.query.limit) || 200, 1000)
     const p = fastify.prisma
@@ -115,7 +115,7 @@ export default async function adminRoutes(fastify) {
   })
 
   // Backfill cliente_nombre en ODTs huérfanas desde orden_id → ventas.ordenes.cliente_id → clientes.nombre
-  fastify.post('/integridad/backfill-odts-cliente', { preHandler: [fastify.authenticate, onlyAdmin] }, async () => {
+  fastify.post('/integridad/backfill-odts-cliente', { preHandler: [fastify.authenticate, adminWrite] }, async () => {
     const [r] = await fastify.prisma.$queryRaw`
       WITH upd AS (
         UPDATE taller.odts o
@@ -131,7 +131,7 @@ export default async function adminRoutes(fastify) {
     return r
   })
 
-  fastify.patch('/integridad/orden-item/:id', { preHandler: [fastify.authenticate, onlyAdmin] }, async (req, reply) => {
+  fastify.patch('/integridad/orden-item/:id', { preHandler: [fastify.authenticate, adminWrite] }, async (req, reply) => {
     const id = Number(req.params.id)
     const productoId = Number(req.body?.producto_id)
     if (!id || !productoId) return reply.code(400).send({ error: 'id y producto_id requeridos' })
@@ -141,14 +141,14 @@ export default async function adminRoutes(fastify) {
     return { ok: true, producto: prod }
   })
 
-  fastify.delete('/integridad/orden-item/:id', { preHandler: [fastify.authenticate, onlyAdmin] }, async (req, reply) => {
+  fastify.delete('/integridad/orden-item/:id', { preHandler: [fastify.authenticate, adminDelete] }, async (req, reply) => {
     const id = Number(req.params.id)
     if (!id) return reply.code(400).send({ error: 'id requerido' })
     await fastify.prisma.$executeRaw`DELETE FROM ventas.orden_items WHERE id = ${id}`
     return { ok: true }
   })
 
-  fastify.patch('/integridad/odt-item/:id', { preHandler: [fastify.authenticate, onlyAdmin] }, async (req, reply) => {
+  fastify.patch('/integridad/odt-item/:id', { preHandler: [fastify.authenticate, adminWrite] }, async (req, reply) => {
     const id = Number(req.params.id)
     const productoId = Number(req.body?.producto_id)
     if (!id || !productoId) return reply.code(400).send({ error: 'id y producto_id requeridos' })
@@ -158,14 +158,14 @@ export default async function adminRoutes(fastify) {
     return { ok: true, producto: prod }
   })
 
-  fastify.delete('/integridad/odt-item/:id', { preHandler: [fastify.authenticate, onlyAdmin] }, async (req, reply) => {
+  fastify.delete('/integridad/odt-item/:id', { preHandler: [fastify.authenticate, adminDelete] }, async (req, reply) => {
     const id = Number(req.params.id)
     if (!id) return reply.code(400).send({ error: 'id requerido' })
     await fastify.prisma.$executeRaw`DELETE FROM taller.odt_items WHERE id = ${id}`
     return { ok: true }
   })
 
-  fastify.get('/auditoria', { preHandler: [fastify.authenticate, onlyAdmin] }, async (req) => {
+  fastify.get('/auditoria', { preHandler: [fastify.authenticate, adminRead] }, async (req) => {
     const limit = Math.min(Number(req.query.limit) || 100, 500)
     const offset = Number(req.query.offset) || 0
     const where = []

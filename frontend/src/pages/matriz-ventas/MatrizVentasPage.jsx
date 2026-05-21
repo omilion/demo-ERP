@@ -6,7 +6,7 @@ import { useMatrizVentas, useMatrizTotales } from '../../api/matrizVentas'
 import { useDeleteVenta } from '../../api/ventas'
 import { useAuthStore } from '../../store/auth'
 import { downloadFromBackend } from '../../utils/csv'
-import { ventaPath } from '../../utils/permissions'
+import { can, ventaPath } from '../../utils/permissions'
 
 const TABS = [
   { id: 'all', label: 'Todos' },
@@ -28,7 +28,7 @@ export default function MatrizVentasPage() {
   const initialNInterno = searchParams.get('nInterno') || ''
   const initialOc = searchParams.get('oc') || ''
   const user = useAuthStore(s => s.user)
-  const isAdmin = user?.role === 'admin'
+  const canDeleteVentas = can(user, 'ventas', 'delete')
   const deleteVenta = useDeleteVenta()
 
   const [tab, setTab] = useState('all')
@@ -146,7 +146,7 @@ export default function MatrizVentasPage() {
         {row.fuente === 'orden' && row.nInterno && (
           <button onClick={e => { e.stopPropagation(); navigate(`/caja?nInterno=${row.nInterno}`) }} style={btnSm('var(--text-2)')} title="Pagos / facturación">Pagos</button>
         )}
-        {isAdmin && row.fuente === 'orden' && (
+        {canDeleteVentas && row.fuente === 'orden' && (
           <button onClick={e => { e.stopPropagation(); eliminarFila(row) }} style={btnSm('var(--red)')} title="Eliminar">×</button>
         )}
       </div>

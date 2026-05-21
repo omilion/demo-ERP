@@ -12,6 +12,8 @@ export default function BodegaPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const canWriteCatalogo = can(user, 'catalogo', 'write')
+  const canWriteBodega = can(user, 'bodega', 'write')
+  const canDeleteBodega = can(user, 'bodega', 'delete')
   const qc = useQueryClient()
   const [tab, setTab] = useState('inventario')
   const [importing, setImporting] = useState(false)
@@ -100,7 +102,7 @@ export default function BodegaPage() {
           <Btn variant="secondary" icon="download" size="sm"
             onClick={() => downloadFromBackend('/reportes/export/productos', `productos_${new Date().toISOString().slice(0, 10)}.csv`)}
           >Exportar CSV</Btn>
-          {canWriteCatalogo && <Btn variant="secondary" icon="upload" size="sm" onClick={() => setImporting(true)}>Importar</Btn>}
+          {(canWriteBodega || canDeleteBodega) && <Btn variant="secondary" icon="upload" size="sm" onClick={() => setImporting(true)}>Importar</Btn>}
           {canWriteCatalogo && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/bodega/nuevo')}>Ingreso Mercadería</Btn>}
         </>}
       />
@@ -144,15 +146,22 @@ export default function BodegaPage() {
         }
       </div>
 
-      {importing && <ImportModal onClose={() => setImporting(false)} onDone={() => qc.invalidateQueries({ queryKey: ['productos'] })} />}
+      {importing && <ImportModal canWriteBodega={canWriteBodega} canDeleteBodega={canDeleteBodega} onClose={() => setImporting(false)} onDone={() => qc.invalidateQueries({ queryKey: ['productos'] })} />}
     </main>
   )
 }
 
 const miniInput = { padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff', width: 120 }
 
-function ImportModal({ onClose, onDone }) {
-  const [tipo, setTipo] = useState('precios')
+function ImportModal({ canWriteBodega, canDeleteBodega, onClose, onDone }) {
+  const importOptions = [
+    ...(canWriteBodega ? [
+      ['precios', 'Actualizar precios'],
+      ['nuevo', 'Crear nuevos productos'],
+    ] : []),
+    ...(canDeleteBodega ? [['stock', 'Actualizar stock']] : []),
+  ]
+  const [tipo, setTipo] = useState(importOptions[0]?.[0] || '')
   const [rows, setRows] = useState([])
   const [filename, setFilename] = useState('')
   const [result, setResult] = useState(null)
@@ -170,6 +179,8 @@ function ImportModal({ onClose, onDone }) {
 
   const submit = async () => {
     if (!rows.length) return
+    if (tipo === 'stock' && !canDeleteBodega) return
+    if (tipo !== 'stock' && !canWriteBodega) return
     setLoading(true)
     try {
       const { data } = await api.post(`/productos/importar/${tipo}`, { rows })
@@ -191,9 +202,7 @@ function ImportModal({ onClose, onDone }) {
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: 12, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>Tipo de importación</label>
           <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, width: '100%' }}>
-            <option value="precios">Actualizar precios</option>
-            <option value="stock">Actualizar stock</option>
-            <option value="nuevo">Crear nuevos productos</option>
+            {importOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
           <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Columnas esperadas: {cols}</div>
         </div>
@@ -215,7 +224,7 @@ function ImportModal({ onClose, onDone }) {
         )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <Btn variant="secondary" size="sm" onClick={onClose} disabled={loading}>Cerrar</Btn>
-          <Btn variant="primary" size="sm" onClick={submit} disabled={loading || !rows.length}>
+          <Btn variant="primary" size="sm" onClick={submit} disabled={loading || !rows.length || !tipo}>
             {loading ? 'Importando…' : `Importar ${rows.length} filas`}
           </Btn>
         </div>

@@ -1,13 +1,9 @@
 import bcrypt from 'bcrypt'
 
-const onlyAdmin = async (req, reply) => {
-  if (req.user?.role !== 'admin') return reply.code(403).send({ error: 'Forbidden' })
-}
-
 export default async function usuariosRoutes(fastify) {
   // GET /api/usuarios
   fastify.get('/', {
-    preHandler: [fastify.authenticate, onlyAdmin],
+    preHandler: [fastify.authenticate, fastify.rbac('usuarios', 'read', { allowExtra: false })],
   }, async () => {
     return fastify.prisma.user.findMany({
       orderBy: { nombre: 'asc' },
@@ -20,7 +16,7 @@ export default async function usuariosRoutes(fastify) {
   })
 
   fastify.get('/:id', {
-    preHandler: [fastify.authenticate, onlyAdmin],
+    preHandler: [fastify.authenticate, fastify.rbac('usuarios', 'read', { allowExtra: false })],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     const u = await fastify.prisma.user.findUnique({
@@ -36,7 +32,7 @@ export default async function usuariosRoutes(fastify) {
   })
 
   fastify.post('/', {
-    preHandler: [fastify.authenticate, onlyAdmin],
+    preHandler: [fastify.authenticate, fastify.rbac('usuarios', 'write', { allowExtra: false })],
   }, async (request, reply) => {
     const b = request.body || {}
     if (!b.email || !b.password || !b.role || !b.nombre)
@@ -65,7 +61,7 @@ export default async function usuariosRoutes(fastify) {
   })
 
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate, onlyAdmin],
+    preHandler: [fastify.authenticate, fastify.rbac('usuarios', 'write', { allowExtra: false })],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     const b = request.body || {}
@@ -86,7 +82,7 @@ export default async function usuariosRoutes(fastify) {
 
   // PUT /api/usuarios/:id/permisos — bulk update permisosExtra
   fastify.put('/:id/permisos', {
-    preHandler: [fastify.authenticate, onlyAdmin],
+    preHandler: [fastify.authenticate, fastify.rbac('usuarios', 'write', { allowExtra: false })],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     const { permisosExtra } = request.body || {}

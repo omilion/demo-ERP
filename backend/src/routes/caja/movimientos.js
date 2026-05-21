@@ -298,7 +298,7 @@ export default async function movimientosRoutes(fastify) {
   })
 
   fastify.delete('/movimientos/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('caja', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('caja', 'delete')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id) || id <= 0) return reply.code(400).send({ error: 'ID invalido' })

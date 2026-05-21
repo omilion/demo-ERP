@@ -1,6 +1,6 @@
 export default async function deleteVenta(fastify) {
   fastify.delete('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'delete')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })

@@ -8,6 +8,7 @@ import { useAuthStore } from '../../store/auth'
 import { useClientes, useClienteSucursales } from '../../api/clientes'
 import { useProductos } from '../../api/productos'
 import { useMultas, useCreateMulta, useUpdateMulta, useDeleteMulta } from '../../api/multas'
+import { can } from '../../utils/permissions'
 
 const TIPOS = ['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala']
 
@@ -347,7 +348,8 @@ export default function VentasFormPage() {
   const { id } = useParams()
   const isEdit = !!id
   const user = useAuthStore(s => s.user)
-  const isAdmin = user?.role === 'admin'
+  const canDeleteVentas = can(user, 'ventas', 'delete')
+  const canWriteTaller = can(user, 'taller', 'write')
 
   const { data: found, isLoading } = useVenta(isEdit ? Number(id) : null)
   const { data: clientesResult } = useClientes()
@@ -566,15 +568,17 @@ export default function VentasFormPage() {
             <button onClick={handleImprimir} style={actionBtn('var(--green-700)')}>
               <Icon name="printer" size={13} /> Imprimir nota
             </button>
-            <button onClick={handlePasarTaller} style={actionBtn('var(--blue)')}>
-              <Icon name="tool" size={13} /> Pasar a taller
-            </button>
-            {found?.estado !== 'Nula' && (
+            {canWriteTaller && (
+              <button onClick={handlePasarTaller} style={actionBtn('var(--blue)')}>
+                <Icon name="tool" size={13} /> Pasar a taller
+              </button>
+            )}
+            {canDeleteVentas && found?.estado !== 'Nula' && (
               <button onClick={handleAnular} disabled={anularVenta.isPending} style={actionBtn('var(--red)')}>
                 <Icon name="x" size={13} /> Anular
               </button>
             )}
-            {found?.estado === 'Nula' && (
+            {canDeleteVentas && found?.estado === 'Nula' && (
               <button onClick={handleActivar} disabled={activarVenta.isPending} style={actionBtn('var(--green-700)')}>
                 <Icon name="check" size={13} /> Reactivar
               </button>
