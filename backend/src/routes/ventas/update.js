@@ -9,6 +9,7 @@ const Schema = z.object({
   estado: z.string().optional(),
   estadoPago: z.enum(ESTADO_PAGO_VALUES).optional(),
   estadoEntrega: z.enum(ESTADO_ENTREGA_VALUES).optional(),
+  clienteSucursalId: z.number().int().nullable().optional(),
   abono: z.number().min(0).optional(),
   facturado: z.number().min(0).optional(),
   guias: z.number().int().optional(),
@@ -26,6 +27,15 @@ export default async function updateVenta(fastify) {
     const parsed = Schema.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     try {
+      if (parsed.data.clienteSucursalId) {
+        const current = await fastify.prisma.orden.findUnique({ where: { id }, select: { clienteId: true } })
+        if (!current) return reply.code(404).send({ error: 'Venta no encontrada' })
+        const sucursal = await fastify.prisma.clienteSucursal.findFirst({
+          where: { id: parsed.data.clienteSucursalId, clienteId: current.clienteId, activo: true },
+          select: { id: true },
+        })
+        if (!sucursal) return reply.code(400).send({ error: 'Sucursal no pertenece al cliente' })
+      }
       const orden = await fastify.prisma.orden.update({
         where: { id },
         data: parsed.data,

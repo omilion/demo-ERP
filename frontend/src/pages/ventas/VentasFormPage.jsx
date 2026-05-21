@@ -5,7 +5,7 @@ import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../
 import { Icon } from '../../components/shared'
 import { useVenta, useCreateVenta, useUpdateVenta, useAnularVenta, useActivarVenta, useVentaCargos, useAddCargo, useDeleteCargo, useUpdateItemEntregados } from '../../api/ventas'
 import { useAuthStore } from '../../store/auth'
-import { useClientes } from '../../api/clientes'
+import { useClientes, useClienteSucursales } from '../../api/clientes'
 import { useProductos } from '../../api/productos'
 import { useMultas, useCreateMulta, useUpdateMulta, useDeleteMulta } from '../../api/multas'
 
@@ -373,10 +373,12 @@ export default function VentasFormPage() {
   }
 
   const { data, set, errors, validate } = useForm({
-    clienteId: '', tipo: 'Normal', estado: 'Activa',
+    clienteId: '', clienteSucursalId: '', tipo: 'Normal', estado: 'Activa',
     estadoPago: 'No pagada', estadoEntrega: 'Pendiente entrega',
     abono: '', guias: '', facturado: '', descuentoPct: '', licitacion: '', observaciones: '',
   })
+  const selectedClienteId = data.clienteId ? Number(data.clienteId) : null
+  const { data: sucursalesCliente = [] } = useClienteSucursales(selectedClienteId)
 
   const [items, setItems] = useState([])
   const [initialized, setInitialized] = useState(false)
@@ -384,6 +386,7 @@ export default function VentasFormPage() {
   useEffect(() => {
     if (found && !initialized) {
       set('clienteId', String(found.clienteId || ''))
+      set('clienteSucursalId', String(found.clienteSucursalId || ''))
       set('tipo', found.tipo || 'Normal')
       set('estado', found.estado || 'Activa')
       set('estadoPago', found.estadoPago || 'No pagada')
@@ -430,6 +433,7 @@ export default function VentasFormPage() {
       observaciones: data.observaciones || undefined,
     }
     if (data.clienteId) payload.clienteId = Number(data.clienteId)
+    payload.clienteSucursalId = data.clienteSucursalId ? Number(data.clienteSucursalId) : null
     if (data.descuentoPct !== '') payload.descuentoPct = Number(data.descuentoPct)
 
     if (isEdit) {
@@ -456,7 +460,13 @@ export default function VentasFormPage() {
     ...clientesData.map(c => ({ value: String(c.id), label: `${c.nombre} (${c.rut})` })),
   ]
 
-  if (isEdit && isLoading) return <main style={{ padding: 24 }}><p>Cargando…</p></main>
+  const sucursalOptions = [
+    { value: '', label: sucursalesCliente.length ? 'Sin sucursal especifica' : 'Sin sucursales registradas' },
+    ...sucursalesCliente.map(s => ({ value: String(s.id), label: `${s.nombre}${s.comuna ? ` - ${s.comuna}` : ''}` })),
+  ]
+  const selectedSucursal = sucursalesCliente.find(s => String(s.id) === data.clienteSucursalId)
+
+  if (isEdit && isLoading) return <main style={{ padding: 24 }}><p>Cargando...</p></main>
 
   return (
     <FormPage
@@ -468,11 +478,19 @@ export default function VentasFormPage() {
     >
       <FormDivider label="Cliente" />
       <FormField label="Cliente / Organismo">
-        <Select value={data.clienteId} onChange={v => set('clienteId', v)} options={clienteOptions} />
+        <Select value={data.clienteId} onChange={v => { set('clienteId', v); set('clienteSucursalId', '') }} options={clienteOptions} />
+      </FormField>
+      <FormField label="Sucursal / Direccion de entrega">
+        <Select value={data.clienteSucursalId} onChange={v => set('clienteSucursalId', v)} options={sucursalOptions} disabled={!selectedClienteId || !sucursalesCliente.length} />
       </FormField>
       {isEdit && found?.cliente && (
         <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: -8, marginBottom: 4 }}>
           Actual: <strong style={{ color: 'var(--text-2)' }}>{found.cliente.nombre}</strong> · {found.cliente.rut}
+        </div>
+      )}
+      {selectedSucursal && (
+        <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: -8, marginBottom: 4, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--bg)' }}>
+          {selectedSucursal.direccion || 'Sin direccion'} {selectedSucursal.comuna ? `- ${selectedSucursal.comuna}` : ''} {selectedSucursal.contacto ? `- Contacto: ${selectedSucursal.contacto}` : ''}
         </div>
       )}
 

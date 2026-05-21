@@ -18,6 +18,10 @@ export default async function getCliente(fastify) {
       }),
     ])
     if (!c) return reply.code(404).send({ error: 'Cliente no encontrado' })
+    const sucursales = await fastify.prisma.clienteSucursal.findMany({
+      where: { clienteId: id, activo: true },
+      orderBy: [{ isPrincipal: 'desc' }, { nombre: 'asc' }],
+    })
 
     // Enrich ventas with computed total
     const ventasEnriched = ventas.map(o => ({
@@ -38,6 +42,6 @@ export default async function getCliente(fastify) {
         })
       : []
 
-    return { ...c, saldo, ventas: ventasEnriched, odts }
+    return { ...c, saldo, sucursales, ventas: ventasEnriched, odts }
   })
 }

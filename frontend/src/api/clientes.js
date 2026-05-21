@@ -30,3 +30,35 @@ export const useUpdateCliente = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['clientes'] }),
   })
 }
+
+export const useClienteSucursales = (clienteId) =>
+  useQuery({
+    queryKey: ['clientes', clienteId, 'sucursales'],
+    queryFn: () => api.get(`/clientes/${clienteId}/sucursales`).then(r => r.data),
+    enabled: !!clienteId,
+    staleTime: 30_000,
+  })
+
+export const useCreateClienteSucursal = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ clienteId, data }) => api.post(`/clientes/${clienteId}/sucursales`, data).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['clientes'] })
+      qc.invalidateQueries({ queryKey: ['clientes', Number(vars.clienteId)] })
+      qc.invalidateQueries({ queryKey: ['clientes', vars.clienteId, 'sucursales'] })
+    },
+  })
+}
+
+export const useUpdateClienteSucursal = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ clienteId, sucursalId, data }) => api.put(`/clientes/${clienteId}/sucursales/${sucursalId}`, data).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['clientes'] })
+      qc.invalidateQueries({ queryKey: ['clientes', Number(vars.clienteId)] })
+      qc.invalidateQueries({ queryKey: ['clientes', vars.clienteId, 'sucursales'] })
+    },
+  })
+}

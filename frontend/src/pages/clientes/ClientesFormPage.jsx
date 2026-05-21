@@ -1,8 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, Input, Select, useForm, useSave } from '../../components/forms/index'
-import { useCliente, useCreateCliente, useUpdateCliente } from '../../api/clientes'
+import { useCliente, useCreateCliente, useUpdateCliente, useCreateClienteSucursal, useUpdateClienteSucursal } from '../../api/clientes'
 
 export default function ClientesFormPage() {
   const navigate = useNavigate()
@@ -149,8 +149,83 @@ export default function ClientesFormPage() {
         </FormField>
       </div>
 
+      {isEdit && found && <SucursalesCliente cliente={found} />}
       {isEdit && found && <HistorialCliente cliente={found} navigate={navigate} />}
     </FormPage>
+  )
+}
+
+function SucursalesCliente({ cliente }) {
+  const [form, setForm] = useState({ nombre: '', direccion: '', comuna: '', ciudad: '', contacto: '', telefono: '', email: '', isPrincipal: false })
+  const [editingId, setEditingId] = useState(null)
+  const createSucursal = useCreateClienteSucursal()
+  const updateSucursal = useUpdateClienteSucursal()
+  const sucursales = cliente.sucursales || []
+  const saving = createSucursal.isPending || updateSucursal.isPending
+
+  function edit(s) {
+    setEditingId(s.id)
+    setForm({
+      nombre: s.nombre || '',
+      direccion: s.direccion || '',
+      comuna: s.comuna || '',
+      ciudad: s.ciudad || '',
+      contacto: s.contacto || '',
+      telefono: s.telefono || '',
+      email: s.email || '',
+      isPrincipal: !!s.isPrincipal,
+    })
+  }
+
+  function reset() {
+    setEditingId(null)
+    setForm({ nombre: '', direccion: '', comuna: '', ciudad: '', contacto: '', telefono: '', email: '', isPrincipal: false })
+  }
+
+  function save() {
+    if (!form.nombre.trim()) { alert('Nombre de sucursal requerido'); return }
+    const data = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, typeof v === 'string' && !v.trim() ? undefined : v]))
+    if (editingId) {
+      updateSucursal.mutate({ clienteId: cliente.id, sucursalId: editingId, data }, { onSuccess: reset, onError: e => alert(e.response?.data?.error || 'Error al guardar sucursal') })
+    } else {
+      createSucursal.mutate({ clienteId: cliente.id, data }, { onSuccess: reset, onError: e => alert(e.response?.data?.error || 'Error al crear sucursal') })
+    }
+  }
+
+  const field = (key, value) => setForm(f => ({ ...f, [key]: value }))
+
+  return (
+    <>
+      <FormDivider label={`Sucursales / direcciones (${sucursales.length})`} />
+      <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
+        {sucursales.length === 0
+          ? <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>Sin sucursales registradas.</div>
+          : sucursales.map(s => (
+            <button key={s.id} type="button" onClick={() => edit(s)} style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr 1fr', gap: 12, width: '100%', padding: '10px 14px', borderBottom: '1px solid var(--border)', textAlign: 'left', background: '#fff', cursor: 'pointer' }}>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>{s.nombre} {s.isPrincipal ? <span style={{ color: 'var(--green-700)', fontSize: 11 }}>(Principal)</span> : null}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{[s.direccion, s.comuna, s.ciudad].filter(Boolean).join(', ') || '-'}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{s.contacto || s.telefono || '-'}</span>
+            </button>
+          ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
+        <FormField label="Nombre"><Input value={form.nombre} onChange={v => field('nombre', v)} placeholder="Casa matriz, sede norte..." /></FormField>
+        <FormField label="Direccion"><Input value={form.direccion} onChange={v => field('direccion', v)} placeholder="Calle y numero" /></FormField>
+        <FormField label="Comuna"><Input value={form.comuna} onChange={v => field('comuna', v)} /></FormField>
+        <FormField label="Ciudad"><Input value={form.ciudad} onChange={v => field('ciudad', v)} /></FormField>
+        <FormField label="Contacto"><Input value={form.contacto} onChange={v => field('contacto', v)} /></FormField>
+        <FormField label="Telefono"><Input value={form.telefono} onChange={v => field('telefono', v)} /></FormField>
+        <FormField label="Email"><Input type="email" value={form.email} onChange={v => field('email', v)} /></FormField>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 18, alignItems: 'center' }}>
+          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-2)' }}>
+            <input type="checkbox" checked={form.isPrincipal} onChange={e => field('isPrincipal', e.target.checked)} />
+            Principal
+          </label>
+          <button type="button" onClick={save} disabled={saving} style={smallBtn('var(--green-700)', saving)}>{editingId ? 'Actualizar' : 'Agregar'}</button>
+          {editingId && <button type="button" onClick={reset} style={smallBtn('var(--text-2)')}>Cancelar</button>}
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -216,3 +291,15 @@ function HistorialCliente({ cliente, navigate }) {
     </>
   )
 }
+
+const smallBtn = (color, disabled = false) => ({
+  padding: '6px 10px',
+  borderRadius: 6,
+  border: '1px solid var(--border)',
+  background: '#fff',
+  color,
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: disabled ? 'not-allowed' : 'pointer',
+  opacity: disabled ? 0.5 : 1,
+})

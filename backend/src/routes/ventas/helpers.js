@@ -9,7 +9,13 @@ export async function attachCliente(fastify, orden) {
     where: { id: orden.clienteId },
     select: { id: true, nombre: true, rut: true, email: true, telefono: true, ciudad: true, razonSocial: true, tipo: true },
   })
-  return { ...orden, cliente }
+  const clienteSucursal = orden.clienteSucursalId
+    ? await fastify.prisma.clienteSucursal.findFirst({
+        where: { id: orden.clienteSucursalId },
+        select: { id: true, nombre: true, direccion: true, comuna: true, ciudad: true, region: true, contacto: true, email: true, telefono: true, isPrincipal: true },
+      })
+    : null
+  return { ...orden, cliente, clienteSucursal }
 }
 
 export async function attachProductos(fastify, items = []) {
@@ -31,5 +37,17 @@ export async function attachClientes(fastify, ordenes) {
     select: { id: true, nombre: true, rut: true },
   })
   const map = Object.fromEntries(clientes.map(c => [c.id, c]))
-  return ordenes.map(o => ({ ...o, cliente: o.clienteId ? (map[o.clienteId] || null) : null }))
+  const sucursalIds = [...new Set(ordenes.map(o => o.clienteSucursalId).filter(Boolean))]
+  const sucursales = sucursalIds.length
+    ? await fastify.prisma.clienteSucursal.findMany({
+        where: { id: { in: sucursalIds } },
+        select: { id: true, nombre: true, direccion: true, comuna: true, ciudad: true, region: true },
+      })
+    : []
+  const sucursalMap = Object.fromEntries(sucursales.map(s => [s.id, s]))
+  return ordenes.map(o => ({
+    ...o,
+    cliente: o.clienteId ? (map[o.clienteId] || null) : null,
+    clienteSucursal: o.clienteSucursalId ? (sucursalMap[o.clienteSucursalId] || null) : null,
+  }))
 }

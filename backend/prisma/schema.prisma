@@ -170,8 +170,32 @@ model Cliente {
   diasInactivoAlerta Int?    @map("dias_inactivo_alerta")
   segmento           String? @default("C")
   activo             Boolean @default(true)
+  sucursales         ClienteSucursal[]
 
   @@map("clientes")
+  @@schema("clientes")
+}
+
+model ClienteSucursal {
+  id          Int      @id @default(autoincrement())
+  clienteId   Int      @map("cliente_id")
+  nombre      String
+  direccion   String?
+  region      String?
+  comuna      String?
+  ciudad      String?
+  contacto    String?
+  email       String?
+  telefono    String?
+  isPrincipal Boolean  @default(false) @map("is_principal")
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  cliente     Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  ordenes     Orden[]
+
+  @@unique([clienteId, nombre])
+  @@index([clienteId])
+  @@map("cliente_sucursales")
   @@schema("clientes")
 }
 
@@ -383,6 +407,7 @@ model Orden {
   estadoEntrega      String         @default("Pendiente entrega") @map("estado_entrega")
   fechaEstadoEntrega DateTime?      @map("fecha_estado_entrega")
   clienteId          Int?           @map("cliente_id")
+  clienteSucursalId  Int?           @map("cliente_sucursal_id")
   rutCliente         String?        @map("rut_cliente")
   emailCliente       String?        @map("email_cliente")
   userId             Int            @map("user_id")
@@ -406,8 +431,10 @@ model Orden {
   guiasDespacho      GuiaDespacho[]
   movimientosBodega  MovimientoBodega[]
   movimientosCaja    MovimientoCaja[]
+  clienteSucursal    ClienteSucursal? @relation(fields: [clienteSucursalId], references: [id], onDelete: SetNull)
 
   @@index([nInterno])
+  @@index([clienteSucursalId])
   @@index([rutCliente])
   @@map("ordenes")
   @@schema("ventas")

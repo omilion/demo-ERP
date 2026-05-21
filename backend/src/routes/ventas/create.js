@@ -11,6 +11,7 @@ const ItemSchema = z.object({
 const Schema = z.object({
   tipo: z.enum(['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala']).default('Normal'),
   clienteId: z.number().int(),
+  clienteSucursalId: z.number().int().optional().nullable(),
   descuentoPct: z.number().min(0).max(100).default(0),
   abono: z.number().min(0).default(0),
   facturado: z.number().min(0).optional(),
@@ -32,6 +33,13 @@ export default async function createVenta(fastify) {
     const { items, ...rest } = parsed.data
     const cliente = await fastify.prisma.cliente.findUnique({ where: { id: rest.clienteId }, select: { id: true } })
     if (!cliente) return reply.code(404).send({ error: 'Cliente no encontrado' })
+    if (rest.clienteSucursalId) {
+      const sucursal = await fastify.prisma.clienteSucursal.findFirst({
+        where: { id: rest.clienteSucursalId, clienteId: rest.clienteId, activo: true },
+        select: { id: true },
+      })
+      if (!sucursal) return reply.code(400).send({ error: 'Sucursal no pertenece al cliente' })
+    }
     const orden = await fastify.prisma.orden.create({
       data: {
         ...rest,
