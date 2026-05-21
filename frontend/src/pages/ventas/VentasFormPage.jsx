@@ -493,6 +493,17 @@ export default function VentasFormPage() {
           {selectedSucursal.direccion || 'Sin direccion'} {selectedSucursal.comuna ? `- ${selectedSucursal.comuna}` : ''} {selectedSucursal.contacto ? `- Contacto: ${selectedSucursal.contacto}` : ''}
         </div>
       )}
+      {isEdit && found?.cotizaciones?.length > 0 && (
+        <div style={{ marginTop: 8, marginBottom: 8, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ padding: '8px 10px', background: 'var(--bg)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>Cotizacion / licitacion vinculada</div>
+          {found.cotizaciones.map(c => (
+            <button key={c.id} type="button" onClick={() => navigate(`/licitaciones/${c.id}`)} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, width: '100%', padding: '9px 10px', background: '#fff', borderTop: '1px solid var(--border)', textAlign: 'left', cursor: 'pointer', fontSize: 12 }}>
+              <span><strong>{c.idLicitacion || `#${c.id}`}</strong> {c.referencia || c.ordenCompra || ''}</span>
+              <span style={{ color: 'var(--green-700)', fontWeight: 600 }}>Ver</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <FormDivider label="Tipo y estado" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>

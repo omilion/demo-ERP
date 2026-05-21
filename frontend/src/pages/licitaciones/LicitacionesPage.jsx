@@ -117,7 +117,8 @@ export default function LicitacionesPage() {
                 if (!confirm(`Crear venta desde licitación ${row.idLicitacion || row.id}?`)) return
                 crearVenta.mutate(row.id, {
                   onSuccess: (data) => {
-                    if (data?.ordenId) navigate(`/ventas/${data.ordenId}/editar`)
+                    const ordenId = data?.orden?.id || data?.ordenId
+                    if (ordenId) navigate(`/ventas/${ordenId}/editar`)
                   },
                   onError: e => alert(e.response?.data?.error || 'Error al crear venta'),
                 })

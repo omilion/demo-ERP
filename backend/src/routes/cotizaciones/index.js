@@ -274,6 +274,7 @@ export default async function cotizacionesRoutes(fastify) {
       where: { id }, include: { items: true },
     })
     if (!cot) return reply.code(404).send({ error: 'Licitación no encontrada' })
+    if (cot.ordenId) return reply.code(409).send({ error: 'La licitacion ya tiene una venta vinculada', ordenId: cot.ordenId })
     const adjItems = cot.items.filter(i => (i.cantAdjudicados || 0) > 0)
     if (adjItems.length === 0) return reply.code(400).send({ error: 'No hay items adjudicados' })
 

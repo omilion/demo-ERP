@@ -87,6 +87,10 @@ export default function LicitacionDetallePage() {
     })
   }
   const crearVenta = () => {
+    if (data.orden?.id || data.ordenId) {
+      navigate('/ventas/' + (data.orden?.id || data.ordenId) + '/editar')
+      return
+    }
     if (!confirm('¿Crear venta desde esta licitación? Se generará una orden con los items adjudicados.')) return
     crearVentaMut.mutate(data.id, {
       onSuccess: (res) => {
