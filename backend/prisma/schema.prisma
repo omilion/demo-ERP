@@ -316,6 +316,9 @@ model PagoProveedor {
   stockAplicadoAt  DateTime? @map("stock_aplicado_at")
   createdAt        DateTime  @default(now()) @map("created_at")
   movimientosBodega MovimientoBodega[]
+  detallesFactura  DetalleFacturaProveedor[]
+  telaMovimientos  TelaMovimiento[]
+  bodegaTallerMovimientos BodegaTallerMovimiento[]
 
   @@index([proveedorId])
   @@index([codigoProveedor])
@@ -376,8 +379,10 @@ model DetalleFacturaProveedor {
   id            Int    @id @default(autoincrement())
   pagoId        Int    @map("pago_id")
   codigoInterno String @map("codigo_interno")
+  destino       String @default("producto")
   cantidad      Float
   precio        Float
+  pago          PagoProveedor @relation(fields: [pagoId], references: [id], onDelete: Cascade)
 
   @@index([pagoId])
   @@map("detalle_facturas_proveedor")
@@ -902,8 +907,30 @@ model BodegaTaller {
   sucursalId     Int?    @map("sucursal_id")
   precio         Float   @default(0)
   activo         Boolean @default(true)
+  movimientos    BodegaTallerMovimiento[]
 
   @@map("bodega_taller")
+  @@schema("taller")
+}
+
+model BodegaTallerMovimiento {
+  id              Int          @id @default(autoincrement())
+  bodegaTallerId  Int          @map("bodega_taller_id")
+  tipo            String
+  cantidad        Float
+  motivo          String?
+  userId          Int?         @map("user_id")
+  pagoProveedorId Int?         @map("pago_proveedor_id")
+  origenTipo      String?      @map("origen_tipo")
+  origenId        Int?         @map("origen_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  item            BodegaTaller @relation(fields: [bodegaTallerId], references: [id], onDelete: Cascade)
+  pagoProveedor   PagoProveedor? @relation(fields: [pagoProveedorId], references: [id], onDelete: SetNull)
+
+  @@index([bodegaTallerId])
+  @@index([pagoProveedorId])
+  @@index([origenTipo, origenId])
+  @@map("bodega_taller_movimientos")
   @@schema("taller")
 }
 
@@ -1015,13 +1042,19 @@ model TelaMovimiento {
   tipo      String
   cantidad  Float
   factura   String?
+  pagoProveedorId Int?     @map("pago_proveedor_id")
+  origenTipo String?       @map("origen_tipo")
+  origenId   Int?          @map("origen_id")
   cortador  String?
   ubicacion String?
   usuario   String?
   fecha     DateTime @default(now())
   tela      Tela     @relation(fields: [telaId], references: [id], onDelete: Cascade)
+  pagoProveedor PagoProveedor? @relation(fields: [pagoProveedorId], references: [id], onDelete: SetNull)
 
   @@index([telaId])
+  @@index([pagoProveedorId])
+  @@index([origenTipo, origenId])
   @@map("tela_movimientos")
   @@schema("taller")
 }

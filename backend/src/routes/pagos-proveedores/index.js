@@ -1,3 +1,5 @@
+import { normalizeDetalleDestino, validateAndApplyStockIngreso } from '../stock-ingresos/apply.js'
+
 function hasValue(value) {
   return value !== undefined && value !== null && value !== ''
 }
@@ -24,6 +26,7 @@ function normalizeDetalles(rawDetalles) {
   return rawDetalles
     .map(d => ({
       codigoInterno: cleanText(d.codigoInterno),
+      destino: normalizeDetalleDestino(d.destino),
       cantidad: parseNumber(d.cantidad),
       precio: parseNumber(d.precio),
     }))
@@ -138,7 +141,7 @@ export default async function pagosProveedoresRoutes(fastify) {
 
     const detalles = normalizeDetalles(Array.isArray(b.detalles) ? b.detalles : [])
     const stockInvalid = b.ingresaStock
-      ? detalles.find(d => !Number.isInteger(d.cantidad) || d.cantidad <= 0)
+      ? detalles.find(d => d.cantidad <= 0 || (d.destino === 'producto' && !Number.isInteger(d.cantidad)))
       : null
     if (stockInvalid) {
       return reply.code(400).send({
@@ -167,26 +170,6 @@ export default async function pagosProveedoresRoutes(fastify) {
         if (existing) return { ...existing, idempotent: true }
       }
 
-      let productosByCodigo = new Map()
-      if (b.ingresaStock && detalles.length > 0) {
-        const codigos = [...new Set(detalles.map(d => d.codigoInterno).filter(Boolean))]
-        const productos = await tx.producto.findMany({
-          where: { codigoInterno: { in: codigos } },
-          select: { id: true, codigoInterno: true },
-        })
-        productosByCodigo = new Map(productos.map(p => [p.codigoInterno, p]))
-        const codigosFaltantes = codigos.filter(codigo => !productosByCodigo.has(codigo))
-        if (codigosFaltantes.length > 0) {
-          return {
-            status: 400,
-            payload: {
-              error: 'productos no encontrados para ingresar stock',
-              codigos: codigosFaltantes,
-            },
-          }
-        }
-      }
-
       const pago = await tx.pagoProveedor.create({
         data: {
           proveedorId,
@@ -210,7 +193,6 @@ export default async function pagosProveedoresRoutes(fastify) {
       })
 
       const userId = request.user?.id || 1
-      const motivoStock = `Ingreso factura ${pago.documento || ''} ${pago.nDoc || ''}`.trim()
       let stockAplicado = false
 
       // Crear detalles + sumar stock si ingresa mercaderia.
@@ -220,28 +202,17 @@ export default async function pagosProveedoresRoutes(fastify) {
           data: {
             pagoId: pago.id,
             codigoInterno: d.codigoInterno,
+            destino: d.destino,
             cantidad: d.cantidad,
             precio: d.precio,
           },
         })
+      }
 
-        if (b.ingresaStock) {
-          const prod = productosByCodigo.get(d.codigoInterno)
-          await tx.producto.update({ where: { id: prod.id }, data: { stock: { increment: d.cantidad } } })
-          await tx.movimientoBodega.create({
-            data: {
-              productoId: prod.id,
-              tipo: 'ingreso',
-              cantidad: d.cantidad,
-              motivo: motivoStock,
-              userId,
-              pagoProveedorId: pago.id,
-              origenTipo: 'pago_proveedor',
-              origenId: pago.id,
-            },
-          })
-          stockAplicado = true
-        }
+      if (b.ingresaStock && detalles.length > 0) {
+        const applied = await validateAndApplyStockIngreso({ tx, detalles, pago, userId })
+        if (applied.error) return { status: 400, payload: applied }
+        stockAplicado = applied.aplicados.some(item => item.ok)
       }
 
       if (stockAplicado) {

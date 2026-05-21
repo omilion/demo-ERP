@@ -1,5 +1,6 @@
 // Ingreso de mercaderia: aplicar detalle factura proveedor a stock de productos.
 // Reutiliza PagoProveedor + DetalleFacturaProveedor; aqui solo el endpoint de aplicacion.
+import { validateAndApplyStockIngreso } from './apply.js'
 
 export default async function stockIngresosRoutes(fastify) {
   // POST /api/stock-ingresos/aplicar/:pagoId -> suma stock por cada detalle, registra movimientos
@@ -30,56 +31,10 @@ export default async function stockIngresosRoutes(fastify) {
       const detalles = await tx.detalleFacturaProveedor.findMany({ where: { pagoId } })
       if (detalles.length === 0) return { status: 400, payload: { error: 'No hay detalles para aplicar' } }
 
-      const invalidDetail = detalles.find(d => !Number.isInteger(Number(d.cantidad)) || Number(d.cantidad) <= 0)
-      if (invalidDetail) {
-        return {
-          status: 400,
-          payload: {
-            error: 'cantidad debe ser entera y mayor que cero para ingresar stock de productos',
-            codigoInterno: invalidDetail.codigoInterno,
-          },
-        }
-      }
-
-      const codigos = [...new Set(detalles.map(d => d.codigoInterno).filter(Boolean))]
-      const productos = await tx.producto.findMany({
-        where: { codigoInterno: { in: codigos } },
-        select: { id: true, codigoInterno: true },
-      })
-      const productosByCodigo = new Map(productos.map(p => [p.codigoInterno, p]))
-      const codigosFaltantes = codigos.filter(codigo => !productosByCodigo.has(codigo))
-      if (codigosFaltantes.length > 0) {
-        return {
-          status: 400,
-          payload: {
-            error: 'productos no encontrados para ingresar stock',
-            codigos: codigosFaltantes,
-          },
-        }
-      }
-
       const userId = request.user?.id || 1
-      const motivo = `Ingreso factura ${pago.documento || ''} ${pago.nDoc || ''}`.trim()
-      const aplicados = []
-
-      for (const d of detalles) {
-        const prod = productosByCodigo.get(d.codigoInterno)
-        const qty = Number(d.cantidad)
-        await tx.producto.update({ where: { id: prod.id }, data: { stock: { increment: qty } } })
-        await tx.movimientoBodega.create({
-          data: {
-            productoId: prod.id,
-            tipo: 'ingreso',
-            cantidad: qty,
-            motivo,
-            userId,
-            pagoProveedorId: pago.id,
-            origenTipo: 'pago_proveedor',
-            origenId: pago.id,
-          },
-        })
-        aplicados.push({ codigoInterno: d.codigoInterno, ok: true, cantidad: qty })
-      }
+      const applied = await validateAndApplyStockIngreso({ tx, detalles, pago, userId })
+      if (applied.error) return { status: 400, payload: applied }
+      const aplicados = applied.aplicados
 
       if (aplicados.some(item => item.ok)) {
         await tx.pagoProveedor.update({
@@ -110,7 +65,13 @@ export default async function stockIngresosRoutes(fastify) {
       if (hasta) where.fechaDoc.lte = new Date(hasta + 'T23:59:59')
     }
     const [items, total] = await Promise.all([
-      fastify.prisma.pagoProveedor.findMany({ where, orderBy: { fechaDoc: 'desc' }, take: LIMIT, skip }),
+      fastify.prisma.pagoProveedor.findMany({
+        where,
+        orderBy: { fechaDoc: 'desc' },
+        take: LIMIT,
+        skip,
+        include: { detallesFactura: true },
+      }),
       fastify.prisma.pagoProveedor.count({ where }),
     ])
     return { items, total, limit: LIMIT }

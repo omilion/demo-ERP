@@ -29,6 +29,16 @@ export default function StockIngresosPage() {
       },
     })
   }
+  const resumenDetalle = (r) => {
+    const detalles = r.detallesFactura || []
+    if (!detalles.length) return 'Sin detalle'
+    const counts = detalles.reduce((acc, d) => {
+      const key = d.destino || 'producto'
+      acc[key] = (acc[key] || 0) + 1
+      return acc
+    }, {})
+    return Object.entries(counts).map(([k, v]) => `${k}: ${v}`).join(' / ')
+  }
 
   const cols = [
     { key: 'fechaDoc', label: 'Fecha doc',
@@ -41,9 +51,13 @@ export default function StockIngresosPage() {
       render: v => <Badge tone={v === 'Pagado' ? 'green' : 'amber'}>{v}</Badge> },
     { key: 'total', label: 'Total', align: 'right',
       render: v => <span style={{ fontFamily: "'DM Mono', monospace", color: 'var(--green-700)', fontWeight: 600 }}>{fmt(v)}</span> },
+    { key: 'detallesFactura', label: 'Recepcion',
+      render: (_, r) => <span style={{ fontSize: 12 }}>{resumenDetalle(r)}</span> },
+    { key: 'stockAplicadoAt', label: 'Stock',
+      render: v => v ? <Badge tone="green">Aplicado</Badge> : <Badge tone="amber">Pendiente</Badge> },
     { key: 'usuario', label: 'Usuario' },
     { key: '_acc', label: '', render: (_, r) => (
-      <Btn variant="secondary" size="sm" onClick={() => aplicar(r.id)} disabled={aplicarMut.isPending}>Aplicar a stock</Btn>
+      <Btn variant="secondary" size="sm" onClick={() => aplicar(r.id)} disabled={aplicarMut.isPending || !!r.stockAplicadoAt}>Aplicar a stock</Btn>
     ) },
   ]
 
