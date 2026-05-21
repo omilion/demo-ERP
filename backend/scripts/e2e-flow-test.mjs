@@ -109,17 +109,15 @@ async function main() {
     step('GET /api/caja/turno (existente)', true, `turno_id=${turno.id}`)
   }
 
-  // 11. Movimiento caja vinculado a orden
-  r = await call('POST', `/api/caja/turno/${turno.id}/movimientos`, {
-    tipo: 'Ingreso',
+  // 11. Pago formal de venta por cobranza. Los movimientos manuales ya no pueden pagar ventas.
+  r = await call('POST', `/api/caja/cobranza/orden/${orden.id}/pago`, {
     monto: 1000,
     medioPago: 'Efectivo',
-    ordenId: orden.id,
     referencia: `${TAG} pago`,
   })
-  const mov = r.body
+  const mov = r.body?.movimiento
   ids.mov = mov?.id
-  step('POST /api/caja/.../movimientos', r.status === 201 && !!mov?.id, `mov_id=${mov?.id}`)
+  step('POST /api/caja/cobranza/orden/:id/pago', r.status === 201 && !!mov?.id, `mov_id=${mov?.id}`)
 
   // 12. Verify orden listada con datos
   r = await call('GET', `/api/ventas?search=${TAG}`)

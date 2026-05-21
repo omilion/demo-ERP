@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Badge, Btn, KpiCard, PageHeader, Table } from '../../components/shared'
 import { FormField, Input } from '../../components/forms'
 import { useStockIngresos, useAplicarStock } from '../../api/stockIngresos'
@@ -18,6 +18,12 @@ export default function StockIngresosPage() {
 
   const { data = { items: [], total: 0 }, isLoading } = useStockIngresos(params)
   const aplicarMut = useAplicarStock()
+  const limit = data.limit || 100
+  const totalPages = Math.max(1, Math.ceil((data.total || 0) / limit))
+
+  useEffect(() => {
+    setPage(1)
+  }, [desde, hasta, nDoc])
 
   const aplicar = (id) => {
     if (!confirm('¿Aplicar este ingreso al stock? Suma cantidades al inventario.')) return
@@ -73,7 +79,7 @@ export default function StockIngresosPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
           <FormField label="Desde"><Input type="date" value={desde} onChange={setDesde} /></FormField>
           <FormField label="Hasta"><Input type="date" value={hasta} onChange={setHasta} /></FormField>
           <FormField label="N° Doc"><Input value={nDoc} onChange={setNDoc} /></FormField>
@@ -82,6 +88,15 @@ export default function StockIngresosPage() {
           ? <div style={{ padding: 48, textAlign: 'center' }}>Cargando…</div>
           : <Table columns={cols} rows={data.items} emptyMessage="Sin facturas" />
         }
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
+            Pagina {page} de {totalPages} · {data.total || 0} registros
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn variant="secondary" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1 || isLoading}>Anterior</Btn>
+            <Btn variant="secondary" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages || isLoading}>Siguiente</Btn>
+          </div>
+        </div>
       </div>
     </main>
   )

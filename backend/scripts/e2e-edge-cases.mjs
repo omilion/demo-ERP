@@ -136,8 +136,15 @@ async function main() {
     })
     check('mov ingreso débito', m2.status === 201, `monto=${m2.body?.monto}`)
 
+    let gastos = await call('GET', '/api/gastos')
+    let gastoTipo = Array.isArray(gastos.body) ? gastos.body.find(g => g.activo !== false) : null
+    if (!gastoTipo) {
+      const nuevoGasto = await call('POST', '/api/gastos', { nombre: `${TAG}-gasto-caja`, activo: true })
+      gastoTipo = nuevoGasto.body
+      check('crear tipo gasto para egreso', nuevoGasto.status === 200 || nuevoGasto.status === 201, `id=${gastoTipo?.id}`)
+    }
     const m3 = await call('POST', `/api/caja/turno/${turnoId}/movimientos`, {
-      tipo: 'Egreso', monto: 5000, medioPago: 'Efectivo', referencia: `${TAG}-m3`,
+      tipo: 'Egreso', monto: 5000, medioPago: 'Efectivo', referencia: `${TAG}-m3`, gastoTipoId: gastoTipo?.id,
     })
     check('mov egreso efectivo (negativo)', m3.status === 201 && m3.body?.monto === -5000, `monto=${m3.body?.monto}`)
 

@@ -1,5 +1,14 @@
 import { normalizeDetalleDestino, validateAndApplyStockIngreso } from '../stock-ingresos/apply.js'
 
+export class StockIngresoRollbackError extends Error {
+  constructor(payload, status = 400) {
+    super(payload?.error || 'error al aplicar stock')
+    this.name = 'StockIngresoRollbackError'
+    this.payload = payload
+    this.status = status
+  }
+}
+
 function hasValue(value) {
   return value !== undefined && value !== null && value !== ''
 }
@@ -160,72 +169,79 @@ export default async function pagosProveedoresRoutes(fastify) {
       ? stockIdempotencyWhere({ proveedorId, codigoProveedor, documento, nDoc })
       : null
 
-    const result = await fastify.prisma.$transaction(async (tx) => {
-      if (stockKey && stockWhere) {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${stockKey})::bigint)`
-        const existing = await tx.pagoProveedor.findFirst({
-          where: stockWhere,
-          orderBy: { id: 'asc' },
-        })
-        if (existing) return { ...existing, idempotent: true }
-      }
+    let result
+    try {
+      result = await fastify.prisma.$transaction(async (tx) => {
+        if (stockKey && stockWhere) {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${stockKey})::bigint)`
+          const existing = await tx.pagoProveedor.findFirst({
+            where: stockWhere,
+            orderBy: { id: 'asc' },
+          })
+          if (existing) return { ...existing, idempotent: true }
+        }
 
-      const pago = await tx.pagoProveedor.create({
-        data: {
-          proveedorId,
-          codigoProveedor,
-          sucursalId: parseOptionalInt(b.sucursalId),
-          documento,
-          nDoc,
-          fechaDoc: b.fechaDoc ? new Date(b.fechaDoc) : new Date(),
-          fechaPago: b.fechaPago ? new Date(b.fechaPago) : null,
-          fechaVencimiento: b.fechaVencimiento ? new Date(b.fechaVencimiento) : null,
-          estado: b.estado || 'Pendiente',
-          total: totalCalc,
-          usuario: request.user?.nombre || request.user?.username || null,
-          bodega: b.bodega || null,
-          nc: !!b.nc,
-          ncNumero: b.ncNumero || null,
-          ncMonto: b.ncMonto != null ? parseFloat(b.ncMonto) : null,
-          obs: b.obs || null,
-          stockAplicadoAt: null,
-        },
-      })
-
-      const userId = request.user?.id || 1
-      let stockAplicado = false
-
-      // Crear detalles + sumar stock si ingresa mercaderia.
-      for (const d of detalles) {
-        if (!d.codigoInterno) continue
-        await tx.detalleFacturaProveedor.create({
+        const pago = await tx.pagoProveedor.create({
           data: {
-            pagoId: pago.id,
-            codigoInterno: d.codigoInterno,
-            destino: d.destino,
-            cantidad: d.cantidad,
-            precio: d.precio,
+            proveedorId,
+            codigoProveedor,
+            sucursalId: parseOptionalInt(b.sucursalId),
+            documento,
+            nDoc,
+            fechaDoc: b.fechaDoc ? new Date(b.fechaDoc) : new Date(),
+            fechaPago: b.fechaPago ? new Date(b.fechaPago) : null,
+            fechaVencimiento: b.fechaVencimiento ? new Date(b.fechaVencimiento) : null,
+            estado: b.estado || 'Pendiente',
+            total: totalCalc,
+            usuario: request.user?.nombre || request.user?.username || null,
+            bodega: b.bodega || null,
+            nc: !!b.nc,
+            ncNumero: b.ncNumero || null,
+            ncMonto: b.ncMonto != null ? parseFloat(b.ncMonto) : null,
+            obs: b.obs || null,
+            stockAplicadoAt: null,
           },
         })
+
+        const userId = request.user?.id || 1
+        let stockAplicado = false
+
+        // Crear detalles + sumar stock si ingresa mercaderia.
+        for (const d of detalles) {
+          if (!d.codigoInterno) continue
+          await tx.detalleFacturaProveedor.create({
+            data: {
+              pagoId: pago.id,
+              codigoInterno: d.codigoInterno,
+              destino: d.destino,
+              cantidad: d.cantidad,
+              precio: d.precio,
+            },
+          })
+        }
+
+        if (b.ingresaStock && detalles.length > 0) {
+          const applied = await validateAndApplyStockIngreso({ tx, detalles, pago, userId })
+          if (applied.error) throw new StockIngresoRollbackError(applied)
+          stockAplicado = applied.aplicados.some(item => item.ok)
+        }
+
+        if (stockAplicado) {
+          return tx.pagoProveedor.update({
+            where: { id: pago.id },
+            data: { stockAplicadoAt: new Date() },
+          })
+        }
+
+        return pago
+      })
+    } catch (error) {
+      if (error instanceof StockIngresoRollbackError) {
+        return reply.code(error.status).send(error.payload)
       }
+      throw error
+    }
 
-      if (b.ingresaStock && detalles.length > 0) {
-        const applied = await validateAndApplyStockIngreso({ tx, detalles, pago, userId })
-        if (applied.error) return { status: 400, payload: applied }
-        stockAplicado = applied.aplicados.some(item => item.ok)
-      }
-
-      if (stockAplicado) {
-        return tx.pagoProveedor.update({
-          where: { id: pago.id },
-          data: { stockAplicadoAt: new Date() },
-        })
-      }
-
-      return pago
-    })
-
-    if (result.status && result.payload) return reply.code(result.status).send(result.payload)
     return reply.code(result.idempotent ? 200 : 201).send(result)
   })
 

@@ -57,6 +57,19 @@ function cleanText(value) {
 export async function resolveCajaMovementTraceability(prisma, data) {
   let ordenId = data.ordenId ?? null
   const gastoTipoId = data.gastoTipoId ?? null
+  const origenTipoInput = cleanText(data.origenTipo)
+  const allowedOrigenTipos = new Set(['manual', 'orden', 'gasto'])
+
+  if (data.tipo === 'Ingreso' && gastoTipoId) {
+    return { status: 400, error: 'gastoTipoId solo aplica a egresos' }
+  }
+
+  if (data.tipo === 'Ingreso' && ordenId) {
+    return {
+      status: 400,
+      error: 'Los pagos de venta deben registrarse por cobranza',
+    }
+  }
 
   if (ordenId) {
     const resolvedOrden = await resolveOrdenForWrite(prisma, { ordenId })
@@ -72,23 +85,34 @@ export async function resolveCajaMovementTraceability(prisma, data) {
     if (!gasto.activo) return { status: 409, error: 'Tipo de gasto inactivo' }
   }
 
-  if (data.tipo === 'Ingreso' && gastoTipoId) {
-    return { status: 400, error: 'gastoTipoId solo aplica a egresos' }
-  }
-
   if (data.tipo === 'Egreso' && !ordenId && !gastoTipoId) {
     return { status: 400, error: 'gastoTipoId u ordenId requerido para egreso' }
   }
 
-  const origenTipo = cleanText(data.origenTipo)
-    || (ordenId ? 'orden' : gastoTipoId ? 'gasto' : 'manual')
+  const origenTipo = origenTipoInput || (ordenId ? 'orden' : gastoTipoId ? 'gasto' : 'manual')
+  if (!allowedOrigenTipos.has(origenTipo)) {
+    return { status: 400, error: 'origenTipo invalido' }
+  }
+
   const origenId = data.origenId ?? ordenId ?? gastoTipoId ?? null
 
-  if (origenTipo === 'orden' && origenId && ordenId && origenId !== ordenId) {
+  if (origenTipo === 'manual' && (ordenId || gastoTipoId || origenId)) {
+    return { status: 400, error: 'Movimiento manual no debe tener origen asociado' }
+  }
+
+  if (origenTipo === 'orden' && !ordenId) {
+    return { status: 400, error: 'origenTipo orden requiere ordenId' }
+  }
+
+  if (origenTipo === 'gasto' && !gastoTipoId) {
+    return { status: 400, error: 'origenTipo gasto requiere gastoTipoId' }
+  }
+
+  if (origenTipo === 'orden' && origenId !== ordenId) {
     return { status: 409, error: 'origenId no coincide con ordenId' }
   }
 
-  if (origenTipo === 'gasto' && origenId && gastoTipoId && origenId !== gastoTipoId) {
+  if (origenTipo === 'gasto' && origenId !== gastoTipoId) {
     return { status: 409, error: 'origenId no coincide con gastoTipoId' }
   }
 

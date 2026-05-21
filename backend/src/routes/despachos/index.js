@@ -53,11 +53,21 @@ function parseOptionalPositiveId(value, field) {
   return { value: parsed }
 }
 
+function rejectInvalidOrigenTipo(origenTipo) {
+  if (origenTipo && !['orden', 'odt'].includes(origenTipo)) {
+    return { status: 400, error: 'origenTipo debe ser orden u odt' }
+  }
+  return null
+}
+
 export async function resolveDispatchTraceability(prisma, input = {}) {
   const odtInput = parseOptionalPositiveId(input.odtId, 'odtId')
   if (odtInput.error) return { status: 400, error: odtInput.error }
   const origenInput = parseOptionalPositiveId(input.origenId, 'origenId')
   if (origenInput.error) return { status: 400, error: origenInput.error }
+  const explicitOrigenTipo = cleanText(input.origenTipo)
+  const origenTipoError = rejectInvalidOrigenTipo(explicitOrigenTipo)
+  if (origenTipoError) return origenTipoError
 
   let odt = null
   if (odtInput.value) {
@@ -84,18 +94,19 @@ export async function resolveDispatchTraceability(prisma, input = {}) {
     return { status: 409, error: 'nInterno no coincide con la orden indicada' }
   }
 
-  const origenTipo = cleanText(input.origenTipo) || (odt ? 'odt' : 'orden')
-  const origenId = origenInput.value ?? (odt ? odt.id : resolvedOrden.orden.id)
-  if (!['orden', 'odt'].includes(origenTipo)) {
-    return { status: 400, error: 'origenTipo debe ser orden u odt' }
+  const expectedOrigenTipo = odt ? 'odt' : 'orden'
+  const expectedOrigenId = odt ? odt.id : resolvedOrden.orden.id
+  if (explicitOrigenTipo && explicitOrigenTipo !== expectedOrigenTipo) {
+    return {
+      status: 409,
+      error: odt ? 'origenTipo debe ser odt cuando se informa odtId' : 'origenTipo debe ser orden sin odtId',
+    }
   }
-  if (origenTipo === 'odt' && !odt) {
-    return { status: 400, error: 'odtId requerido para origen odt' }
-  }
-  if (origenTipo === 'odt' && origenId !== odt.id) {
+  const origenId = origenInput.value ?? expectedOrigenId
+  if (expectedOrigenTipo === 'odt' && origenId !== odt.id) {
     return { status: 409, error: 'origenId no coincide con odtId' }
   }
-  if (origenTipo === 'orden' && origenId !== resolvedOrden.orden.id) {
+  if (expectedOrigenTipo === 'orden' && origenId !== resolvedOrden.orden.id) {
     return { status: 409, error: 'origenId no coincide con ordenId' }
   }
 
@@ -103,9 +114,88 @@ export async function resolveDispatchTraceability(prisma, input = {}) {
     orden: resolvedOrden.orden,
     odt,
     nInterno: parsedNInterno ?? resolvedOrden.orden.nInterno ?? null,
-    origenTipo,
+    origenTipo: expectedOrigenTipo,
     origenId,
   }
+}
+
+export async function validateDispatchFilterCoherence(prisma, input = {}) {
+  const ordenInput = parseOptionalPositiveId(input.ordenId, 'ordenId')
+  if (ordenInput.error) return { status: 400, error: ordenInput.error }
+  const odtInput = parseOptionalPositiveId(input.odtId, 'odtId')
+  if (odtInput.error) return { status: 400, error: odtInput.error }
+  const nInternoInput = parseOptionalPositiveId(input.nInterno, 'nInterno')
+  if (nInternoInput.error) return { status: 400, error: nInternoInput.error }
+  const origenInput = parseOptionalPositiveId(input.origenId, 'origenId')
+  if (origenInput.error) return { status: 400, error: origenInput.error }
+  const origenTipo = cleanText(input.origenTipo)
+  const origenTipoError = rejectInvalidOrigenTipo(origenTipo)
+  if (origenTipoError) return origenTipoError
+
+  const filters = {
+    ordenId: ordenInput.value,
+    odtId: odtInput.value,
+    nInterno: nInternoInput.value,
+    origenTipo,
+    origenId: origenInput.value,
+  }
+
+  if (origenTipo === 'orden' && filters.origenId && filters.ordenId && filters.origenId !== filters.ordenId) {
+    return { status: 409, error: 'origenId no coincide con ordenId' }
+  }
+  if (origenTipo === 'odt' && filters.origenId && filters.odtId && filters.origenId !== filters.odtId) {
+    return { status: 409, error: 'origenId no coincide con odtId' }
+  }
+
+  let orden = null
+  if (filters.ordenId || filters.nInterno) {
+    orden = await prisma.orden.findUnique({
+      where: filters.ordenId ? { id: filters.ordenId } : { nInterno: filters.nInterno },
+      select: { id: true, nInterno: true },
+    })
+  }
+  if (orden && filters.ordenId && filters.nInterno && orden.nInterno && orden.nInterno !== filters.nInterno) {
+    return { status: 409, error: 'nInterno no coincide con la orden indicada' }
+  }
+
+  const effectiveOdtId = filters.odtId ?? (origenTipo === 'odt' ? filters.origenId : null)
+  const effectiveOrdenId = filters.ordenId ?? (origenTipo === 'orden' ? filters.origenId : null)
+
+  if (effectiveOdtId && (effectiveOrdenId || filters.nInterno)) {
+    const odt = await prisma.odt.findUnique({
+      where: { id: effectiveOdtId },
+      select: { id: true, ordenId: true },
+    })
+    const expectedOrdenId = effectiveOrdenId ?? orden?.id ?? null
+    if (odt?.ordenId && expectedOrdenId && odt.ordenId !== expectedOrdenId) {
+      return { status: 409, error: 'ODT no pertenece a la orden indicada' }
+    }
+  }
+
+  return { filters }
+}
+
+export function buildGuideWhereForDespacho(despacho) {
+  if (despacho.odtId) {
+    return {
+      ordenId: despacho.ordenId,
+      OR: [
+        { odtId: despacho.odtId },
+        { origenTipo: 'odt', origenId: despacho.odtId },
+      ],
+    }
+  }
+  if (despacho.ordenId) {
+    return {
+      ordenId: despacho.ordenId,
+      OR: [
+        { odtId: null },
+        { origenTipo: 'orden', origenId: despacho.ordenId },
+        { origenTipo: null, origenId: null },
+      ],
+    }
+  }
+  return { id: -1 }
 }
 
 export default async function despachosRoutes(fastify) {
@@ -113,20 +203,23 @@ export default async function despachosRoutes(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
   }, async (request, reply) => {
-    const { desde, hasta, ordenId, odtId, tipo, contacto, transporte, region, comuna, parcial, tieneMulta, search, page = '1' } = request.query
+    const { desde, hasta, ordenId, odtId, nInterno, interno, origenTipo, origenId, tipo, contacto, transporte, region, comuna, parcial, tieneMulta, search, page = '1' } = request.query
     const LIMIT = 100
     const skip = (parsePage(page) - 1) * LIMIT
     const where = {}
-    if (ordenId) {
-      const parsedOrdenId = parsePositiveInt(ordenId)
-      if (!parsedOrdenId) return reply.code(400).send({ error: 'ordenId invalido' })
-      where.ordenId = parsedOrdenId
-    }
-    if (odtId) {
-      const parsedOdtId = parsePositiveInt(odtId)
-      if (!parsedOdtId) return reply.code(400).send({ error: 'odtId invalido' })
-      where.odtId = parsedOdtId
-    }
+    const traceFilters = await validateDispatchFilterCoherence(fastify.prisma, {
+      ordenId,
+      odtId,
+      nInterno: nInterno ?? interno,
+      origenTipo,
+      origenId,
+    })
+    if (traceFilters.error) return reply.code(traceFilters.status).send({ error: traceFilters.error })
+    if (traceFilters.filters.ordenId) where.ordenId = traceFilters.filters.ordenId
+    if (traceFilters.filters.odtId) where.odtId = traceFilters.filters.odtId
+    if (traceFilters.filters.nInterno) where.interno = String(traceFilters.filters.nInterno)
+    if (traceFilters.filters.origenTipo) where.origenTipo = traceFilters.filters.origenTipo
+    if (traceFilters.filters.origenId) where.origenId = traceFilters.filters.origenId
     if (tipo) where.tipoDespacho = { contains: tipo, mode: 'insensitive' }
     if (contacto) where.contacto = { contains: contacto, mode: 'insensitive' }
     if (transporte) where.transporte = { contains: transporte, mode: 'insensitive' }
@@ -163,9 +256,7 @@ export default async function despachosRoutes(fastify) {
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
     const d = await fastify.prisma.despacho.findUnique({ where: { id } })
     if (!d) return reply.code(404).send({ error: 'no encontrado' })
-    const guias = d.ordenId
-      ? await fastify.prisma.guiaDespacho.findMany({ where: { ordenId: d.ordenId } })
-      : []
+    const guias = await fastify.prisma.guiaDespacho.findMany({ where: buildGuideWhereForDespacho(d) })
     return { ...d, guias }
   })
 
@@ -227,12 +318,14 @@ export default async function despachosRoutes(fastify) {
     const data = {}
     const traceTouched = ['ordenId', 'odtId', 'interno', 'origenTipo', 'origenId'].some(field => b[field] !== undefined)
     if (traceTouched) {
+      const relationTouched = ['ordenId', 'odtId'].some(field => b[field] !== undefined)
+      const origenTouched = ['origenTipo', 'origenId'].some(field => b[field] !== undefined)
       const resolved = await resolveDispatchTraceability(fastify.prisma, {
         ordenId: b.ordenId !== undefined ? b.ordenId : existing.ordenId,
         odtId: b.odtId !== undefined ? b.odtId : existing.odtId,
         nInterno: b.interno !== undefined ? b.interno : existing.interno,
-        origenTipo: b.origenTipo !== undefined ? b.origenTipo : existing.origenTipo,
-        origenId: b.origenId !== undefined ? b.origenId : existing.origenId,
+        origenTipo: origenTouched || !relationTouched ? (b.origenTipo !== undefined ? b.origenTipo : existing.origenTipo) : undefined,
+        origenId: origenTouched || !relationTouched ? (b.origenId !== undefined ? b.origenId : existing.origenId) : undefined,
       })
       if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
       data.ordenId = resolved.orden.id
@@ -278,20 +371,26 @@ export default async function despachosRoutes(fastify) {
   fastify.get('/guias/list', {
     preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
   }, async (request, reply) => {
-    const { desde, hasta, nGuia, ordenId, odtId, page = '1' } = request.query
+    const { desde, hasta, nGuia, ordenId, odtId, nInterno, origenTipo, origenId, search, page = '1' } = request.query
     const LIMIT = 100
     const skip = (parsePage(page) - 1) * LIMIT
     const where = {}
     if (nGuia) where.nGuia = { contains: nGuia, mode: 'insensitive' }
-    if (ordenId) {
-      const parsedOrdenId = parsePositiveInt(ordenId)
-      if (!parsedOrdenId) return reply.code(400).send({ error: 'ordenId invalido' })
-      where.ordenId = parsedOrdenId
-    }
-    if (odtId) {
-      const parsedOdtId = parsePositiveInt(odtId)
-      if (!parsedOdtId) return reply.code(400).send({ error: 'odtId invalido' })
-      where.odtId = parsedOdtId
+    const traceFilters = await validateDispatchFilterCoherence(fastify.prisma, { ordenId, odtId, nInterno, origenTipo, origenId })
+    if (traceFilters.error) return reply.code(traceFilters.status).send({ error: traceFilters.error })
+    if (traceFilters.filters.ordenId) where.ordenId = traceFilters.filters.ordenId
+    if (traceFilters.filters.odtId) where.odtId = traceFilters.filters.odtId
+    if (traceFilters.filters.nInterno) where.nInterno = traceFilters.filters.nInterno
+    if (traceFilters.filters.origenTipo) where.origenTipo = traceFilters.filters.origenTipo
+    if (traceFilters.filters.origenId) where.origenId = traceFilters.filters.origenId
+    if (search) {
+      const trimmed = search.trim()
+      const isNum = /^\d+$/.test(trimmed)
+      where.OR = [
+        { nGuia: { contains: trimmed, mode: 'insensitive' } },
+        { origen: { contains: trimmed, mode: 'insensitive' } },
+        ...(isNum ? [{ nInterno: parseInt(trimmed, 10) }, { ordenId: parseInt(trimmed, 10) }, { odtId: parseInt(trimmed, 10) }] : []),
+      ]
     }
     if (!applyDateRange(where, 'fechaGuia', desde, hasta)) return reply.code(400).send({ error: 'Rango de fechas invalido' })
     const [items, total] = await Promise.all([

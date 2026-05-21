@@ -56,9 +56,21 @@ describe('resolveCajaMovementTraceability', () => {
     })
   })
 
-  it('classifies order linked movements', async () => {
+  it('rejects sale payments through manual movements', async () => {
     const result = await resolveCajaMovementTraceability(prismaMock(), {
       tipo: 'Ingreso',
+      ordenId: 10,
+    })
+
+    expect(result).toMatchObject({
+      status: 400,
+      error: 'Los pagos de venta deben registrarse por cobranza',
+    })
+  })
+
+  it('classifies order linked egresos', async () => {
+    const result = await resolveCajaMovementTraceability(prismaMock(), {
+      tipo: 'Egreso',
       ordenId: 10,
     })
 
@@ -81,6 +93,57 @@ describe('resolveCajaMovementTraceability', () => {
       gastoTipoId: 3,
       origenTipo: 'gasto',
       origenId: 3,
+    })
+  })
+
+  it('classifies manual ingresos without an associated origin', async () => {
+    const result = await resolveCajaMovementTraceability(prismaMock(), {
+      tipo: 'Ingreso',
+    })
+
+    expect(result).toMatchObject({
+      ordenId: null,
+      gastoTipoId: null,
+      origenTipo: 'manual',
+      origenId: null,
+    })
+  })
+
+  it('rejects invalid origin types', async () => {
+    const result = await resolveCajaMovementTraceability(prismaMock(), {
+      tipo: 'Ingreso',
+      origenTipo: 'externo',
+    })
+
+    expect(result).toMatchObject({
+      status: 400,
+      error: 'origenTipo invalido',
+    })
+  })
+
+  it('rejects manual origins with explicit origin ids', async () => {
+    const result = await resolveCajaMovementTraceability(prismaMock(), {
+      tipo: 'Ingreso',
+      origenTipo: 'manual',
+      origenId: 99,
+    })
+
+    expect(result).toMatchObject({
+      status: 400,
+      error: 'Movimiento manual no debe tener origen asociado',
+    })
+  })
+
+  it('rejects mismatched expense origin ids', async () => {
+    const result = await resolveCajaMovementTraceability(prismaMock(), {
+      tipo: 'Egreso',
+      gastoTipoId: 3,
+      origenId: 4,
+    })
+
+    expect(result).toMatchObject({
+      status: 409,
+      error: 'origenId no coincide con gastoTipoId',
     })
   })
 })

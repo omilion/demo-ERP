@@ -133,6 +133,54 @@ describe('POST /api/caja/turno/:id/movimientos', () => {
     // cleanup
     await app.prisma.turno.update({ where: { id: turno.id }, data: { estado: 'cerrado' } }).catch(() => {})
   })
+
+  it('rejects movimientos on closed turno', async () => {
+    const user = await app.prisma.user.findFirst()
+    const turno = await app.prisma.turno.create({ data: { cajaId: 1, userId: user.id, estado: 'cerrado' } })
+    const res = await app.inject({
+      method: 'POST', url: `/api/caja/turno/${turno.id}/movimientos`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { tipo: 'Ingreso', monto: 5000, medioPago: 'Efectivo' },
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).error).toBe('Turno cerrado')
+    const count = await app.prisma.movimientoCaja.count({ where: { turnoId: turno.id } })
+    expect(count).toBe(0)
+
+    await app.prisma.turno.delete({ where: { id: turno.id } }).catch(() => {})
+  })
+
+  it('rejects sale payments through manual movimientos', async () => {
+    const user = await app.prisma.user.findFirst()
+    const existing = await app.prisma.turno.findFirst({ where: { estado: 'abierto' } })
+    if (existing) await app.prisma.turno.update({ where: { id: existing.id }, data: { estado: 'cerrado' } })
+    const turno = await app.prisma.turno.create({ data: { cajaId: 1, userId: user.id, estado: 'abierto' } })
+    const orden = await app.prisma.orden.create({
+      data: {
+        tipo: 'Normal',
+        userId: user.id,
+        estadoPago: 'No pagada',
+        abono: 0,
+      },
+    })
+
+    const res = await app.inject({
+      method: 'POST', url: `/api/caja/turno/${turno.id}/movimientos`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { tipo: 'Ingreso', monto: 5000, medioPago: 'Efectivo', ordenId: orden.id },
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).error).toBe('Los pagos de venta deben registrarse por cobranza')
+    const unchanged = await app.prisma.orden.findUnique({ where: { id: orden.id } })
+    expect(unchanged.abono).toBe(0)
+    const movimientos = await app.prisma.movimientoCaja.count({ where: { ordenId: orden.id } })
+    expect(movimientos).toBe(0)
+
+    await app.prisma.orden.delete({ where: { id: orden.id } }).catch(() => {})
+    await app.prisma.turno.update({ where: { id: turno.id }, data: { estado: 'cerrado' } }).catch(() => {})
+  })
 })
 
 describe('POST /api/caja/cobranza/orden/:id/pago', () => {
@@ -180,6 +228,8 @@ describe('POST /api/caja/cobranza/orden/:id/pago', () => {
     const body = JSON.parse(res.body)
     expect(body.movimiento.ordenId).toBe(orden.id)
     expect(body.movimiento.turnoId).toBe(turno.id)
+    expect(body.movimiento.origenTipo).toBe('orden')
+    expect(body.movimiento.origenId).toBe(orden.id)
     expect(body.orden.abono).toBe(10000)
     expect(body.orden.estadoPago).toBe('Pagada')
 
@@ -195,6 +245,24 @@ describe('POST /api/caja/cobranza/orden/:id/pago', () => {
     })
 
     expect(res.statusCode).toBe(409)
+    const unchanged = await app.prisma.orden.findUnique({ where: { id: orden.id } })
+    expect(unchanged.abono).toBe(0)
+    expect(unchanged.estadoPago).toBe('No pagada')
+
+    await cleanup(turno.id, orden.id)
+  })
+
+  it('rejects payment when there is no open turno and leaves venta unchanged', async () => {
+    const { turno, orden } = await createOrdenConTurno()
+    await app.prisma.turno.update({ where: { id: turno.id }, data: { estado: 'cerrado' } })
+    const res = await app.inject({
+      method: 'POST', url: `/api/caja/cobranza/orden/${orden.id}/pago`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { monto: 5000, medioPago: 'Efectivo' },
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).error).toBe('No hay turno abierto')
     const unchanged = await app.prisma.orden.findUnique({ where: { id: orden.id } })
     expect(unchanged.abono).toBe(0)
     expect(unchanged.estadoPago).toBe('No pagada')
