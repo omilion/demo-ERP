@@ -67,7 +67,7 @@ export default function BodegaFormPage() {
     cod: '', nombre: '', cat: 'Espumas', bodega: 'Inventario', stock: '', minimo: '', precio: '',
     codigoBarra: '', proveedor: '', ubicacion: '', descripcion: '', precioMarco: '',
     idMarco: '', unidadMedida: '', estadoInventario: '',
-    visibleWeb: false, destacadoWeb: false, fotoUrl: '', fotoUrlGrande: '',
+    visibleWeb: false, destacadoWeb: false, fotoUrl: '', fotoUrlGrande: '', fotosGaleria: '',
     descripcionWeb: '', precioWeb: '', ordenWeb: '',
   })
 
@@ -84,6 +84,7 @@ export default function BodegaFormPage() {
       set('destacadoWeb', !!found.destacadoWeb)
       set('fotoUrl', found.fotoUrl || '')
       set('fotoUrlGrande', found.fotoUrlGrande || '')
+      set('fotosGaleria', Array.isArray(found.fotosGaleria) ? found.fotosGaleria.join('\n') : '')
       set('descripcionWeb', found.descripcionWeb || '')
       set('precioWeb', found.precioWeb != null ? String(found.precioWeb) : '')
       set('ordenWeb', found.ordenWeb != null ? String(found.ordenWeb) : '')
@@ -122,6 +123,7 @@ export default function BodegaFormPage() {
       destacadoWeb: !!data.destacadoWeb,
       fotoUrl: data.fotoUrl || undefined,
       fotoUrlGrande: data.fotoUrlGrande || undefined,
+      fotosGaleria: data.fotosGaleria ? data.fotosGaleria.split(/\r?\n/).map(s => s.trim()).filter(Boolean) : undefined,
       descripcionWeb: data.descripcionWeb || undefined,
       precioWeb: data.precioWeb !== '' ? Number(data.precioWeb) : undefined,
       ordenWeb: data.ordenWeb !== '' ? Number(data.ordenWeb) : undefined,
@@ -254,6 +256,16 @@ export default function BodegaFormPage() {
               {data.fotoUrlGrande && <img src={data.fotoUrlGrande} alt="" style={{ marginTop: 8, maxWidth: 200, maxHeight: 200, borderRadius: 6, border: '1px solid var(--border)' }} onError={e => { e.currentTarget.style.display = 'none' }} />}
             </FormField>
           </div>
+          <FormField label="Galeria" hint="Una URL por linea. Se publica junto a la foto principal.">
+            <Textarea value={data.fotosGaleria} onChange={v => set('fotosGaleria', v)} rows={3} placeholder="/uploads/fotos_grandes/producto-2.jpeg" />
+            {data.fotosGaleria && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                {data.fotosGaleria.split(/\r?\n/).map(s => s.trim()).filter(Boolean).slice(0, 6).map((url, idx) => (
+                  <img key={`${url}-${idx}`} src={url} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} onError={e => { e.currentTarget.style.display = 'none' }} />
+                ))}
+              </div>
+            )}
+          </FormField>
           <FormField label="Descripción web" hint="Texto largo para tienda">
             <Textarea value={data.descripcionWeb} onChange={v => set('descripcionWeb', v)} rows={3} />
           </FormField>

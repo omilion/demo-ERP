@@ -258,6 +258,7 @@ model Producto {
   visibleWeb       Boolean       @default(false) @map("visible_web")
   fotoUrl          String?       @map("foto_url")
   fotoUrlGrande    String?       @map("foto_url_grande")
+  fotosGaleria     Json?         @map("fotos_galeria")
   descripcionWeb   String?       @map("descripcion_web")
   precioWeb        Float?        @map("precio_web")
   ordenWeb         Int?          @map("orden_web")

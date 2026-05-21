@@ -38,6 +38,7 @@ export function normalizeProductoFotos(producto) {
     ...producto,
     fotoUrl: normalizeProductoFotoUrl(producto.fotoUrl),
     fotoUrlGrande: normalizeProductoFotoUrl(producto.fotoUrlGrande),
+    fotosGaleria: normalizeProductoGaleria(producto.fotosGaleria),
   }
 }
 
@@ -46,6 +47,9 @@ export function normalizeProductoFotoFields(data) {
   const out = { ...data }
   if (Object.prototype.hasOwnProperty.call(out, 'fotoUrl')) out.fotoUrl = normalizeProductoFotoUrl(out.fotoUrl)
   if (Object.prototype.hasOwnProperty.call(out, 'fotoUrlGrande')) out.fotoUrlGrande = normalizeProductoFotoUrl(out.fotoUrlGrande)
+  if (Object.prototype.hasOwnProperty.call(out, 'fotosGaleria')) out.fotosGaleria = normalizeProductoGaleria(out.fotosGaleria)
+  if (!out.fotoUrl && out.fotoUrlGrande) out.fotoUrl = deriveFotoPar(out.fotoUrlGrande, 'chicas')
+  if (!out.fotoUrlGrande && out.fotoUrl) out.fotoUrlGrande = deriveFotoPar(out.fotoUrl, 'grandes')
   return out
 }
 
@@ -59,4 +63,25 @@ export function isProductoFotoUrl(value) {
   } catch {
     return false
   }
+}
+
+export function normalizeProductoGaleria(value) {
+  if (value == null) return value
+  const arr = Array.isArray(value) ? value : []
+  return arr
+    .filter(v => typeof v === 'string' && v.trim())
+    .map(v => normalizeProductoFotoUrl(v.trim()))
+    .filter(isProductoFotoUrl)
+}
+
+function deriveFotoPar(value, target) {
+  const normalized = normalizeProductoFotoUrl(value)
+  if (typeof normalized !== 'string') return normalized
+  const pairs = target === 'chicas'
+    ? [['/fotos_grandes/', '/fotos_chicas/'], ['/productos/grandes/', '/productos/chicas/']]
+    : [['/fotos_chicas/', '/fotos_grandes/'], ['/productos/chicas/', '/productos/grandes/']]
+  for (const [from, to] of pairs) {
+    if (normalized.includes(from)) return normalized.replace(from, to)
+  }
+  return normalized
 }

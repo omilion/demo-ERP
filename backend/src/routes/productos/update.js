@@ -24,6 +24,7 @@ const Schema = z.object({
   visibleWeb: z.boolean().optional(),
   fotoUrl: FotoUrlSchema.optional(),
   fotoUrlGrande: FotoUrlSchema.optional(),
+  fotosGaleria: z.array(FotoUrlSchema).optional(),
   descripcionWeb: z.string().optional(),
   precioWeb: z.number().min(0).optional(),
   ordenWeb: z.number().int().optional(),
