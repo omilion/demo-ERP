@@ -1,10 +1,29 @@
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
+
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3101'
 
-const DEFAULT_INTEGRITY_EXPECTATIONS = {
-  orden_items_huerfanos: 6143,
-  odt_items_huerfanos: 200,
-  productos_stock_negativo: 167,
-}
+const INTEGRITY_SUMMARY_KEYS = [
+  'orden_items_huerfanos',
+  'odt_items_huerfanos',
+  'productos_stock_negativo',
+  'productos_sin_precio',
+  'productos_mojibake',
+  'odt_mojibake',
+  'crm_sin_contacto',
+  'codigo_barra_basura',
+  'sin_codigo_barra',
+  'sin_codigo_interno',
+  'productos_codigo_duplicado',
+  'clientes_rut_duplicados',
+  'proveedores_rut_duplicados',
+  'orden_items_precio_negativo',
+  'ordenes_cliente_rut_mismatch',
+  'sin_categoria',
+  'sin_proveedor',
+  'odts_sin_cliente',
+  'bitacora_sin_fecha',
+]
 
 function optionalInteger(value, name) {
   if (value == null || value === '') return undefined
@@ -17,19 +36,26 @@ function optionalInteger(value, name) {
 }
 
 function parseArgs(argv = process.argv.slice(2)) {
-  const expectedIntegrity = {
+  let expectedIntegrity = null
+  const expectedFromEnv = {
     orden_items_huerfanos: optionalInteger(
       process.env.SMOKE_EXPECT_ORDEN_ITEMS_HUERFANOS,
       'SMOKE_EXPECT_ORDEN_ITEMS_HUERFANOS',
-    ) ?? DEFAULT_INTEGRITY_EXPECTATIONS.orden_items_huerfanos,
+    ),
     odt_items_huerfanos: optionalInteger(
       process.env.SMOKE_EXPECT_ODT_ITEMS_HUERFANOS,
       'SMOKE_EXPECT_ODT_ITEMS_HUERFANOS',
-    ) ?? DEFAULT_INTEGRITY_EXPECTATIONS.odt_items_huerfanos,
+    ),
     productos_stock_negativo: optionalInteger(
       process.env.SMOKE_EXPECT_PRODUCTOS_STOCK_NEGATIVO,
       'SMOKE_EXPECT_PRODUCTOS_STOCK_NEGATIVO',
-    ) ?? DEFAULT_INTEGRITY_EXPECTATIONS.productos_stock_negativo,
+    ),
+  }
+  for (const [key, value] of Object.entries(expectedFromEnv)) {
+    if (value !== undefined) {
+      expectedIntegrity ??= {}
+      expectedIntegrity[key] = value
+    }
   }
 
   const options = {
@@ -73,6 +99,24 @@ function parseArgs(argv = process.argv.slice(2)) {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
+}
+
+function validateIntegritySummary(integridad, expectedIntegrity = null) {
+  assert(integridad && typeof integridad === 'object' && !Array.isArray(integridad), 'integridad resumen did not return an object')
+
+  for (const key of INTEGRITY_SUMMARY_KEYS) {
+    assert(Object.hasOwn(integridad, key), `integridad resumen missing key ${key}`)
+    assert(Number.isInteger(integridad[key]) && integridad[key] >= 0, `integridad resumen ${key} must be a non-negative integer`)
+  }
+
+  if (expectedIntegrity) {
+    for (const [key, expected] of Object.entries(expectedIntegrity)) {
+      assert(
+        integridad[key] === expected,
+        `expected ${key} ${expected}, got ${integridad[key]}`,
+      )
+    }
+  }
 }
 
 async function request(baseUrl, path, { method = 'GET', token, body, expect = [200] } = {}) {
@@ -206,27 +250,13 @@ async function smoke(options) {
   }
 
   const integridad = responses['admin integridad resumen']
-
-  if (options.expectedIntegrity) {
-    const expected = options.expectedIntegrity
-    assert(
-      integridad.orden_items_huerfanos === expected.orden_items_huerfanos,
-      `expected orden_items_huerfanos ${expected.orden_items_huerfanos}, got ${integridad.orden_items_huerfanos}`,
-    )
-    assert(
-      integridad.odt_items_huerfanos === expected.odt_items_huerfanos,
-      `expected odt_items_huerfanos ${expected.odt_items_huerfanos}, got ${integridad.odt_items_huerfanos}`,
-    )
-    assert(
-      integridad.productos_stock_negativo === expected.productos_stock_negativo,
-      `expected productos_stock_negativo ${expected.productos_stock_negativo}, got ${integridad.productos_stock_negativo}`,
-    )
-  }
+  validateIntegritySummary(integridad, options.expectedIntegrity)
 
   record(options.expectedIntegrity ? 'integrity counts expected' : 'integrity counts observed', {
     ordenItemsHuerfanos: integridad.orden_items_huerfanos,
     odtItemsHuerfanos: integridad.odt_items_huerfanos,
     productosStockNegativo: integridad.productos_stock_negativo,
+    summary: integridad,
   })
 
   return {
@@ -240,20 +270,44 @@ async function smoke(options) {
   }
 }
 
-const isDirectRun = process.argv[1] && import.meta.url === new URL(process.argv[1], 'file:').href
-if (isDirectRun) {
+function isDirectRun(entry = process.argv[1], moduleUrl = import.meta.url) {
+  return Boolean(entry && fileURLToPath(moduleUrl) === path.resolve(entry))
+}
+
+function errorReport(error, options) {
+  return {
+    generatedAt: new Date().toISOString(),
+    baseUrl: options.baseUrl,
+    ok: false,
+    error: {
+      name: error?.name || 'Error',
+      message: error?.message || String(error),
+    },
+    checks: [],
+    summary: {
+      total: 0,
+      passed: 0,
+    },
+  }
+}
+
+if (isDirectRun()) {
   const options = parseArgs()
   smoke(options).then((report) => {
     if (options.json) {
-      console.log(JSON.stringify(report, null, 2))
+      console.log(JSON.stringify({ ok: true, ...report }, null, 2))
     } else {
       console.log(`API smoke OK: ${report.summary.passed}/${report.summary.total}`)
       for (const check of report.checks) console.log(`- ${check.name}`)
     }
   }).catch((error) => {
-    console.error(error)
+    if (options.json) {
+      console.log(JSON.stringify(errorReport(error, options), null, 2))
+    } else {
+      console.error(error)
+    }
     process.exit(1)
   })
 }
 
-export { parseArgs, smoke }
+export { INTEGRITY_SUMMARY_KEYS, errorReport, isDirectRun, parseArgs, smoke, validateIntegritySummary }

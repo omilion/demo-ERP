@@ -62,6 +62,7 @@ jobs:
              mkdir -p /var/backups/plastimar/db
              backup="/var/backups/plastimar/db/plastimar_erp_$(date +%Y%m%d_%H%M%S).dump"
              pg_dump -Fc "$DATABASE_URL" -f "$backup"
+             test -s "$backup"
              pg_restore --list "$backup" >/dev/null
              echo "Backup verified: $backup"'
 
@@ -98,15 +99,22 @@ jobs:
              set +a
              for attempt in $(seq 1 30); do
                if curl -fsS "http://127.0.0.1:${PORT:-3001}/api/health"; then
-                 exit 0
+                 break
                fi
                echo "API health not ready yet (attempt ${attempt}/30)"
                sleep 2
+               if [ "$attempt" -eq 30 ]; then
+                 echo "API health failed after retries"
+                 pm2 status || true
+                 pm2 logs --nostream --lines 80 || true
+                 exit 1
+               fi
              done
-             echo "API health failed after retries"
-             pm2 status || true
-             pm2 logs --nostream --lines 80 || true
-             exit 1'
+             mkdir -p /var/backups/plastimar/smoke
+             smoke_report="/var/backups/plastimar/smoke/staging_smoke_$(date +%Y%m%d_%H%M%S).json"
+             node scripts/staging-smoke.mjs --base-url="http://127.0.0.1:${PORT:-3001}" --json > "$smoke_report"
+             test -s "$smoke_report"
+             echo "Smoke verified: $smoke_report"'
 
       - name: Deploy frontend
         run: |
