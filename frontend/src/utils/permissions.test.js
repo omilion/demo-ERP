@@ -15,6 +15,13 @@ describe('frontend permissions map', () => {
     expect(can(user('solo_lectura'), 'proveedores', 'write')).toBe(false)
   })
 
+  it('exposes gerencial reports as read-only across operational roles', () => {
+    for (const role of ['vendedor', 'bodeguero', 'cajero', 'taller', 'solo_lectura']) {
+      expect(can(user(role), 'reportes', 'read')).toBe(true)
+      expect(can(user(role), 'reportes', 'write')).toBe(false)
+    }
+  })
+
   it('supports delegated delete permissions for operational modules', () => {
     expect(can(user('vendedor'), 'ventas', 'delete')).toBe(false)
     expect(can(user('vendedor', { ventas: ['delete'] }), 'ventas', 'delete')).toBe(true)

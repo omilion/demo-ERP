@@ -7,7 +7,7 @@ const ROLES = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'so
 const MODULOS = [
   'ventas', 'cotizaciones', 'licitaciones', 'clientes',
   'bodega', 'catalogo', 'despacho', 'taller',
-  'caja', 'cobranza', 'rrhh',
+  'caja', 'cobranza', 'rrhh', 'reportes',
 ]
 const PERMS = ['read', 'write', 'delete']
 

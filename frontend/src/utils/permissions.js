@@ -1,6 +1,7 @@
 export const ROLE_PERMISSIONS = {
   admin: { '*': ['read', 'write', 'delete'] },
   vendedor: {
+    reportes: ['read'],
     ventas: ['read', 'write'],
     cotizaciones: ['read', 'write'],
     licitaciones: ['read', 'write'],
@@ -10,6 +11,7 @@ export const ROLE_PERMISSIONS = {
     taller: ['read'],
   },
   bodeguero: {
+    reportes: ['read'],
     bodega: ['read', 'write'],
     catalogo: ['read', 'write'],
     despacho: ['read', 'write'],
@@ -18,18 +20,21 @@ export const ROLE_PERMISSIONS = {
     proveedores: ['read', 'write'],
   },
   cajero: {
+    reportes: ['read'],
     caja: ['read', 'write'],
     cobranza: ['read', 'write'],
     clientes: ['read'],
     ventas: ['read'],
   },
   taller: {
+    reportes: ['read'],
     taller: ['read', 'write'],
     catalogo: ['read'],
     bodega: ['read'],
   },
   rrhh: { rrhh: ['read', 'write'] },
   solo_lectura: {
+    reportes: ['read'],
     ventas: ['read'],
     bodega: ['read'],
     clientes: ['read'],

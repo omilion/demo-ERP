@@ -10,6 +10,7 @@ const NAV_GROUPS = [
     { label: 'Ventas', route: '/ventas', module: 'ventas' },
     { label: 'Matriz Ventas', route: '/matriz-ventas', module: 'ventas' },
     { label: 'Licitaciones', route: '/licitaciones', module: 'ventas' },
+    { label: 'Reporteria Gerencial', route: '/reportes/gerenciales', module: 'reportes' },
     { label: 'Reportes Licitaciones', route: '/reportes/licitaciones', module: 'ventas' },
     { label: 'CRM', route: '/crm', module: 'ventas' },
   ] },

@@ -39,6 +39,7 @@ import StockIngresosPage from './pages/stock-ingresos/StockIngresosPage'
 import PasarTallerPage from './pages/pasar-taller/PasarTallerPage'
 import ConsultaPreciosPage from './pages/consulta-precios/ConsultaPreciosPage'
 import ReportesLicitacionesPage from './pages/reportes-licitaciones/ReportesLicitacionesPage'
+import ReportesGerencialesPage from './pages/reportes-gerenciales/ReportesGerencialesPage'
 import UsuariosPage from './pages/usuarios/UsuariosPage'
 import RrhhPage from './pages/rrhh/RrhhPage'
 import IntegridadPage from './pages/admin/IntegridadPage'
@@ -104,6 +105,7 @@ export const router = createBrowserRouter([
       { path: 'stock-ingresos', element: protect(<StockIngresosPage />, { module: 'bodega' }) },
       { path: 'pasar-taller', element: protect(<PasarTallerPage />, { module: 'taller', permission: 'write' }) },
       { path: 'consulta-precios', element: protect(<ConsultaPreciosPage />, { module: 'catalogo' }) },
+      { path: 'reportes/gerenciales', element: protect(<ReportesGerencialesPage />, { module: 'reportes' }) },
       { path: 'reportes/licitaciones', element: protect(<ReportesLicitacionesPage />, { module: 'ventas' }) },
       { path: 'rrhh', element: protect(<RrhhPage />, { module: 'rrhh' }) },
       { path: 'admin/integridad', element: <ProtectedRoute allowedRoles={['admin']}><IntegridadPage /></ProtectedRoute> },
