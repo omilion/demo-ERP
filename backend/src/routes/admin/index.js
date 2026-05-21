@@ -34,6 +34,32 @@ export default async function adminRoutes(fastify) {
         (SELECT COUNT(*) FROM catalogo.productos WHERE codigo_barra IN ('0','1','-') OR (codigo_barra IS NOT NULL AND LENGTH(codigo_barra) BETWEEN 1 AND 3))::int AS codigo_barra_basura,
         (SELECT COUNT(*) FROM catalogo.productos WHERE (codigo_barra IS NULL OR codigo_barra = '') AND activo = true)::int AS sin_codigo_barra,
         (SELECT COUNT(*) FROM catalogo.productos WHERE (codigo_interno IS NULL OR codigo_interno = '') AND activo = true)::int AS sin_codigo_interno,
+        (SELECT COUNT(*) FROM (
+          SELECT 1 FROM catalogo.productos
+          WHERE codigo_interno IS NOT NULL AND trim(codigo_interno) <> ''
+          GROUP BY upper(trim(codigo_interno))
+          HAVING COUNT(*) > 1
+        ) dup)::int AS productos_codigo_duplicado,
+        (SELECT COUNT(*) FROM (
+          SELECT 1 FROM clientes.clientes
+          WHERE rut IS NOT NULL AND trim(rut) <> ''
+          GROUP BY regexp_replace(upper(trim(rut)), '[^0-9K]', '', 'g')
+          HAVING regexp_replace(upper(trim(rut)), '[^0-9K]', '', 'g') <> '' AND COUNT(*) > 1
+        ) dup)::int AS clientes_rut_duplicados,
+        (SELECT COUNT(*) FROM (
+          SELECT 1 FROM catalogo.proveedores
+          WHERE rut IS NOT NULL AND trim(rut) <> ''
+          GROUP BY regexp_replace(upper(trim(rut)), '[^0-9K]', '', 'g')
+          HAVING regexp_replace(upper(trim(rut)), '[^0-9K]', '', 'g') <> '' AND COUNT(*) > 1
+        ) dup)::int AS proveedores_rut_duplicados,
+        (SELECT COUNT(*) FROM ventas.orden_items WHERE precio_unitario < 0)::int AS orden_items_precio_negativo,
+        (SELECT COUNT(*) FROM ventas.ordenes o
+          JOIN clientes.clientes c ON c.id = o.cliente_id
+          WHERE o.rut_cliente IS NOT NULL
+            AND trim(o.rut_cliente) <> ''
+            AND regexp_replace(upper(trim(o.rut_cliente)), '[^0-9K]', '', 'g') <> ''
+            AND regexp_replace(upper(trim(c.rut)), '[^0-9K]', '', 'g') <> ''
+            AND regexp_replace(upper(trim(o.rut_cliente)), '[^0-9K]', '', 'g') <> regexp_replace(upper(trim(c.rut)), '[^0-9K]', '', 'g'))::int AS ordenes_cliente_rut_mismatch,
         (SELECT COUNT(*) FROM catalogo.productos WHERE categoria_id IS NULL AND activo = true)::int AS sin_categoria,
         (SELECT COUNT(*) FROM catalogo.productos WHERE proveedor_id IS NULL AND activo = true)::int AS sin_proveedor,
         (SELECT COUNT(*) FROM taller.odts WHERE (cliente_nombre IS NULL OR cliente_nombre = ''))::int AS odts_sin_cliente,
@@ -98,6 +124,86 @@ export default async function adminRoutes(fastify) {
           FROM catalogo.productos
           WHERE codigo_barra IN ('0','1','-') OR (codigo_barra IS NOT NULL AND LENGTH(codigo_barra) BETWEEN 1 AND 3)
           ORDER BY id LIMIT ${limit}
+        `
+      case 'productos-codigo-duplicado':
+        return p.$queryRaw`
+          WITH duplicates AS (
+            SELECT upper(trim(codigo_interno)) AS normalized_code
+            FROM catalogo.productos
+            WHERE codigo_interno IS NOT NULL AND trim(codigo_interno) <> ''
+            GROUP BY upper(trim(codigo_interno))
+            HAVING COUNT(*) > 1
+          )
+          SELECT p.id, p.codigo_interno, p.nombre, p.activo, p.stock, p.precio_lista
+          FROM catalogo.productos p
+          JOIN duplicates d ON d.normalized_code = upper(trim(p.codigo_interno))
+          ORDER BY d.normalized_code, p.activo DESC, p.id
+          LIMIT ${limit}
+        `
+      case 'clientes-rut-duplicados':
+        return p.$queryRaw`
+          WITH duplicates AS (
+            SELECT regexp_replace(upper(trim(rut)), '[^0-9K]', '', 'g') AS normalized_rut
+            FROM clientes.clientes
+            WHERE rut IS NOT NULL AND trim(rut) <> ''
+            GROUP BY regexp_replace(upper(trim(rut)), '[^0-9K]', '', 'g')
+            HAVING regexp_replace(upper(trim(rut)), '[^0-9K]', '', 'g') <> '' AND COUNT(*) > 1
+          )
+          SELECT c.id, c.rut, c.nombre, c.razon_social, c.activo
+          FROM clientes.clientes c
+          JOIN duplicates d ON d.normalized_rut = regexp_replace(upper(trim(c.rut)), '[^0-9K]', '', 'g')
+          ORDER BY d.normalized_rut, c.id
+          LIMIT ${limit}
+        `
+      case 'proveedores-rut-duplicados':
+        return p.$queryRaw`
+          WITH duplicates AS (
+            SELECT regexp_replace(upper(trim(rut)), '[^0-9K]', '', 'g') AS normalized_rut
+            FROM catalogo.proveedores
+            WHERE rut IS NOT NULL AND trim(rut) <> ''
+            GROUP BY regexp_replace(upper(trim(rut)), '[^0-9K]', '', 'g')
+            HAVING regexp_replace(upper(trim(rut)), '[^0-9K]', '', 'g') <> '' AND COUNT(*) > 1
+          )
+          SELECT p.id, p.rut, p.nombre, p.razon_social, p.codigo_proveedor, p.activo
+          FROM catalogo.proveedores p
+          JOIN duplicates d ON d.normalized_rut = regexp_replace(upper(trim(p.rut)), '[^0-9K]', '', 'g')
+          ORDER BY d.normalized_rut, p.id
+          LIMIT ${limit}
+        `
+      case 'orden-items-precio-negativo':
+        return p.$queryRaw`
+          SELECT id, orden_id, producto_id, codigo_interno, nombre, cantidad, precio_unitario
+          FROM ventas.orden_items
+          WHERE precio_unitario < 0
+          ORDER BY precio_unitario ASC, id
+          LIMIT ${limit}
+        `
+      case 'ordenes-cliente-rut-mismatch':
+        return p.$queryRaw`
+          WITH client_keys AS (
+            SELECT id, nombre, rut, regexp_replace(upper(trim(rut)), '[^0-9K]', '', 'g') AS rut_norm
+            FROM clientes.clientes
+          ),
+          unique_client_by_rut AS (
+            SELECT rut_norm, count(*)::int AS matches, min(id)::int AS target_cliente_id
+            FROM client_keys
+            WHERE rut_norm <> '' AND rut_norm !~ '^0+$'
+            GROUP BY rut_norm
+          )
+          SELECT o.id, o.n_interno, o.cliente_id, c.nombre AS cliente_actual, c.rut AS rut_actual,
+                 o.rut_cliente, u.matches AS target_matches, u.target_cliente_id,
+                 target.nombre AS target_cliente, target.rut AS target_rut
+          FROM ventas.ordenes o
+          JOIN client_keys c ON c.id = o.cliente_id
+          LEFT JOIN unique_client_by_rut u ON u.rut_norm = regexp_replace(upper(trim(coalesce(o.rut_cliente, ''))), '[^0-9K]', '', 'g')
+          LEFT JOIN client_keys target ON target.id = u.target_cliente_id
+          WHERE o.rut_cliente IS NOT NULL
+            AND trim(o.rut_cliente) <> ''
+            AND regexp_replace(upper(trim(coalesce(o.rut_cliente, ''))), '[^0-9K]', '', 'g') <> ''
+            AND c.rut_norm <> ''
+            AND regexp_replace(upper(trim(coalesce(o.rut_cliente, ''))), '[^0-9K]', '', 'g') <> c.rut_norm
+          ORDER BY o.id
+          LIMIT ${limit}
         `
       case 'odts-sin-cliente':
         return p.$queryRaw`

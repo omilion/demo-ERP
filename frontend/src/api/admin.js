@@ -17,6 +17,14 @@ export function useIntegridadDetalle(tipo, enabled = true) {
   })
 }
 
+export function useSaneamientoLegacyDryRun() {
+  return useQuery({
+    queryKey: ['admin', 'saneamiento-legacy', 'dry-run'],
+    queryFn: () => api.get('/admin/integridad/resumen').then(r => r.data),
+    staleTime: 30_000,
+  })
+}
+
 export function useReasignarOrdenItem() {
   const qc = useQueryClient()
   return useMutation({
