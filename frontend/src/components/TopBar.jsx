@@ -150,16 +150,16 @@ export function TopBar() {
 
   return (
     <header style={{ background: 'var(--green-900)', position: 'sticky', top: 0, zIndex: 100, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', height: 52, padding: '0 20px', gap: 16 }}>
+      <div className="topbar-inner">
         <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flexShrink: 0 }}>
           <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--green-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ color: '#fff', fontWeight: 800, fontSize: 14, fontFamily: "'DM Sans', sans-serif" }}>P</span>
           </div>
-          <span style={{ color: '#fff', fontWeight: 700, fontSize: 15, letterSpacing: 0 }}>PLASTIMAR</span>
-          <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>ERP</span>
+          <span className="topbar-brand-name" style={{ color: '#fff', fontWeight: 700, fontSize: 15, letterSpacing: 0 }}>PLASTIMAR</span>
+          <span className="topbar-brand-suffix" style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>ERP</span>
         </div>
 
-        <nav style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
+        <nav className="topbar-nav">
           <button onClick={() => navigate('/')} style={{
             padding: '6px 12px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
             color: location.pathname === '/' ? '#fff' : 'rgba(255,255,255,0.78)',
@@ -177,8 +177,8 @@ export function TopBar() {
           ))}
         </nav>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, fontFamily: "'DM Mono', monospace", letterSpacing: 0 }}>{clock}</span>
+        <div className="topbar-actions">
+          <span className="topbar-clock" style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, fontFamily: "'DM Mono', monospace", letterSpacing: 0 }}>{clock}</span>
           <button aria-label="Notificaciones" style={{ color: 'rgba(255,255,255,0.78)', minWidth: 44, minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, position: 'relative' }}>
             <Icon name="bell" size={18} />
             <span style={{ position: 'absolute', top: 8, right: 8, width: 7, height: 7, borderRadius: '50%', background: 'var(--amber)', border: '1.5px solid var(--green-900)' }} />
@@ -192,7 +192,7 @@ export function TopBar() {
               <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--green-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>{initials}</span>
               </div>
-              <span style={{ color: 'rgba(255,255,255,0.78)', fontSize: 12 }}>{user?.nombre || 'Usuario'}</span>
+              <span className="topbar-user-name" style={{ color: 'rgba(255,255,255,0.78)', fontSize: 12 }}>{user?.nombre || 'Usuario'}</span>
               <Icon name="chevronDown" size={11} color="rgba(255,255,255,0.5)" />
             </button>
 
