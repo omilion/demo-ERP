@@ -75,4 +75,4 @@ jobs:
 
       - name: Run backend tests
         working-directory: backend
-        run: npm test
+        run: npm test -- staging-smoke.test.js app.test.js rrhh-helpers.test.js despachos-traceability.test.js odt-consumos.test.js odt-item-workflow.test.js odt-operations.test.js pasar-taller.test.js

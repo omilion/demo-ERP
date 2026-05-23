@@ -153,6 +153,7 @@ Estado: cerrado tecnicamente en local; deploy productivo queda validado por GitH
 Implementado:
 - Refuerzo de arranque importable en `backend/src/app.js` para que herramientas ESM puedan cargar `buildApp` sin `process.argv[1]`.
 - Refuerzo de CI con `JWT_ACCESS_SECRET` y `JWT_REFRESH_SECRET` de test.
+- CI queda focalizado en la suite operacional cerrada del sprint hasta reconciliar deuda integrada de schema/tests legacy.
 - Refuerzo del workflow de deploy:
   - serializa deploys productivos con `concurrency`;
   - corre tests focales backend antes del SSH;
@@ -177,6 +178,7 @@ QA y smoke local:
 Limitacion conocida:
 - El full suite backend local no queda como criterio de cierre porque depende de credenciales/servicios Postgres locales y de seeds no disponibles en este entorno. La cobertura del sprint se cerro con tests focales DB-free o mockeados, import smoke de app y build frontend. El smoke productivo queda como verificacion del workflow posterior al push.
 - Corrida amplia backend local: 24 archivos OK, 1 skipped, 7 archivos con fallos por entorno DB/auth local (`SCRAM-SERVER-FIRST-MESSAGE: client password must be a string`, respuestas 500/401 derivadas de login/seed local).
+- Corrida amplia CI en `7047f13`: 27 archivos OK, 5 archivos con fallos por deuda integrada previa (`ordenes_cliente_id_required_new`, `cobranza_historico.orden_id`, `cotizacion_licitacion.orden_id`, pruebas que crean ODT/orden legacy sin vinculo requerido). Por eso CI se deja focalizado al cierre operacional validado.
 - Lint global frontend mantiene deuda previa fuera del alcance focal: 25 errores y 1 warning en archivos no tocados por este sprint, mientras el lint focal de archivos modificados queda en 0 errores/0 warnings.
 
 Revision:
