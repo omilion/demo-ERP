@@ -7,7 +7,7 @@ import { useVenta, useCreateVenta, useUpdateVenta, useAnularVenta, useActivarVen
 import { useAuthStore } from '../../store/auth'
 import { useClientes, useClienteSucursales } from '../../api/clientes'
 import { useProductos } from '../../api/productos'
-import { useMultas, useCreateMulta, useUpdateMulta, useDeleteMulta } from '../../api/multas'
+import { useMultas, useCreateMulta, useDeleteMulta } from '../../api/multas'
 import { can } from '../../utils/permissions'
 
 const TIPOS = ['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala']
@@ -150,6 +150,34 @@ function ItemsTable({ items, onChange }) {
   )
 }
 
+function requiredNumber(value) {
+  if (value === null || value === undefined || String(value).trim() === '') return NaN
+  return Number(value)
+}
+
+function normalizeItems(items) {
+  return items.map(i => ({
+    productoId: requiredNumber(i.productoId),
+    cantidad: requiredNumber(i.cantidad),
+    precioUnitario: requiredNumber(i.precioUnitario),
+  }))
+}
+
+function validateItems(items) {
+  if (items.length === 0) return 'Agrega al menos un producto a la venta'
+
+  const normalized = normalizeItems(items)
+  const invalidIndex = normalized.findIndex(i =>
+    !Number.isInteger(i.productoId) || i.productoId <= 0 ||
+    !Number.isInteger(i.cantidad) || i.cantidad <= 0 ||
+    !Number.isFinite(i.precioUnitario) || i.precioUnitario < 0
+  )
+
+  if (invalidIndex >= 0) return `Revisa producto, cantidad y precio del item ${invalidIndex + 1}`
+
+  return null
+}
+
 function CargosSection({ ordenId }) {
   const { data: cargos = [], isLoading } = useVentaCargos(ordenId)
   const addCargo = useAddCargo()
@@ -258,7 +286,6 @@ function EntregaSection({ items }) {
 function MultasSection({ ordenId }) {
   const { data = { items: [], total: 0 }, isLoading } = useMultas({ ordenId })
   const createM = useCreateMulta()
-  const updateM = useUpdateMulta()
   const deleteM = useDeleteMulta()
   const [draft, setDraft] = useState({ monto: '', nDocumento: '', numero: '', fecha: '', interno: '' })
 
@@ -374,7 +401,7 @@ export default function VentasFormPage() {
     navigate(`/taller/nueva?ordenId=${id}`)
   }
 
-  const { data, set, errors, validate } = useForm({
+  const { data, set } = useForm({
     clienteId: '', clienteSucursalId: '', tipo: 'Normal', estado: 'Activa',
     estadoPago: 'No pagada', estadoEntrega: 'Pendiente entrega',
     abono: '', guias: '', facturado: '', descuentoPct: '', licitacion: '', observaciones: '',
@@ -383,10 +410,10 @@ export default function VentasFormPage() {
   const { data: sucursalesCliente = [] } = useClienteSucursales(selectedClienteId)
 
   const [items, setItems] = useState([])
-  const [initialized, setInitialized] = useState(false)
+  const [initializedId, setInitializedId] = useState(null)
 
   useEffect(() => {
-    if (found && !initialized) {
+    if (found && initializedId !== found.id) {
       set('clienteId', String(found.clienteId || ''))
       set('clienteSucursalId', String(found.clienteSucursalId || ''))
       set('tipo', found.tipo || 'Normal')
@@ -399,18 +426,22 @@ export default function VentasFormPage() {
       set('descuentoPct', found.descuentoPct != null ? String(found.descuentoPct) : '')
       set('licitacion', found.licitacion || '')
       set('observaciones', found.observaciones || '')
-      if (found.items?.length) {
-        setItems(found.items.map(i => ({
+      const initialItems = found.items?.length
+        ? found.items.map(i => ({
           productoId: i.productoId,
-          nombre: i.producto?.nombre || `Producto #${i.productoId}`,
-          codigoInterno: i.producto?.codigoInterno || '',
+          nombre: i.nombre || i.producto?.nombre || i.descripcion || `Producto #${i.productoId}`,
+          codigoInterno: i.codigoInterno || i.producto?.codigoInterno || i.codigo || '',
           cantidad: i.cantidad,
-          precioUnitario: i.precioUnitario,
-        })))
-      }
-      setInitialized(true)
+          precioUnitario: i.precioUnitario ?? i.precio ?? 0,
+        }))
+        : []
+      const timer = setTimeout(() => {
+        setItems(initialItems)
+        setInitializedId(found.id)
+      }, 0)
+      return () => clearTimeout(timer)
     }
-  }, [found?.id])
+  }, [found, initializedId, set])
 
   const descuento = Number(data.descuentoPct) || 0
   const subtotal = items.reduce((s, i) => s + (Number(i.cantidad) || 0) * (Number(i.precioUnitario) || 0), 0)
@@ -427,7 +458,10 @@ export default function VentasFormPage() {
   const saving = createVenta.isPending || updateVenta.isPending
 
   function handleSave() {
-    if (!isEdit && items.length === 0) { alert('Agrega al menos un producto a la venta'); return }
+    const itemError = validateItems(items)
+    if (itemError) { alert(itemError); return }
+
+    const normalizedItems = normalizeItems(items)
     const payload = {
       tipo: data.tipo, estado: data.estado,
       estadoPago: data.estadoPago, estadoEntrega: data.estadoEntrega,
@@ -442,6 +476,7 @@ export default function VentasFormPage() {
       if (data.abono !== '') payload.abono = Number(data.abono)
       if (data.guias !== '') payload.guias = parseInt(data.guias, 10)
       if (data.facturado !== '') payload.facturado = Number(data.facturado)
+      payload.items = normalizedItems
       updateVenta.mutate({ id: Number(id), data: payload }, {
         onSuccess: () => navigate('/ventas'),
         onError: err => alert(err.response?.data?.error || 'Error al guardar'),
@@ -449,7 +484,7 @@ export default function VentasFormPage() {
     } else {
       createVenta.mutate({
         ...payload,
-        items: items.map(i => ({ productoId: i.productoId, cantidad: Number(i.cantidad), precioUnitario: Number(i.precioUnitario) })),
+        items: normalizedItems,
       }, {
         onSuccess: () => navigate('/ventas'),
         onError: err => alert(err.response?.data?.error || 'Error al crear'),

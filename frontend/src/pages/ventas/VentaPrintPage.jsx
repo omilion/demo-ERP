@@ -5,6 +5,20 @@ import { useVenta } from '../../api/ventas'
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 const fmtDate = d => d ? new Date(d).toLocaleDateString('es-CL') : '—'
 
+function normalizeItem(it) {
+  const cantidad = Number(it.cantidad) || 0
+  const precioUnitario = Number(it.precioUnitario ?? it.precio) || 0
+
+  return {
+    id: it.id,
+    codigo: it.codigoInterno ?? it.producto?.codigoInterno ?? it.codigo ?? it.producto?.codigo ?? '—',
+    nombre: it.nombre ?? it.producto?.nombre ?? it.descripcion ?? '—',
+    cantidad,
+    precioUnitario,
+    subtotal: cantidad * precioUnitario,
+  }
+}
+
 export default function VentaPrintPage() {
   const { id } = useParams()
   const { data: venta, isLoading } = useVenta(Number(id))
@@ -19,7 +33,8 @@ export default function VentaPrintPage() {
   if (isLoading) return <div style={{ padding: 40, textAlign: 'center', fontSize: 14 }}>Cargando…</div>
   if (!venta) return <div style={{ padding: 40, textAlign: 'center', fontSize: 14 }}>Venta no encontrada</div>
 
-  const subtotal = (venta.items || []).reduce((s, i) => s + (i.cantidad || 0) * (i.precio || 0), 0)
+  const items = (venta.items || []).map(normalizeItem)
+  const subtotal = items.reduce((s, i) => s + i.subtotal, 0)
   const descMonto = subtotal * ((venta.descuentoPct || 0) / 100)
   const total = subtotal - descMonto
 
@@ -68,13 +83,13 @@ export default function VentaPrintPage() {
           </tr>
         </thead>
         <tbody>
-          {(venta.items || []).map((it, idx) => (
+          {items.map((it, idx) => (
             <tr key={it.id || idx} style={{ borderBottom: '1px solid #ddd' }}>
-              <td style={{ ...td, fontFamily: 'monospace' }}>{it.codigo || it.producto?.codigo || '—'}</td>
-              <td style={td}>{it.descripcion || it.producto?.nombre || '—'}</td>
+              <td style={{ ...td, fontFamily: 'monospace' }}>{it.codigo}</td>
+              <td style={td}>{it.nombre}</td>
               <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace' }}>{it.cantidad}</td>
-              <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace' }}>{fmt(it.precio)}</td>
-              <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>{fmt((it.cantidad || 0) * (it.precio || 0))}</td>
+              <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace' }}>{fmt(it.precioUnitario)}</td>
+              <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>{fmt(it.subtotal)}</td>
             </tr>
           ))}
         </tbody>
