@@ -12,13 +12,13 @@ import { can } from '../../utils/permissions'
 
 const TIPOS = ['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala']
 
-function ProductoSearch({ onAdd }) {
+function ProductoSearch({ onAdd, disabled = false }) {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
   const ref = useRef()
   const inputRef = useRef()
 
-  const { data: result } = useProductos(q.length >= 2 ? { search: q } : {})
+  const { data: result } = useProductos(!disabled && q.length >= 2 ? { search: q } : {})
   const productos = result?.items ?? []
 
   useEffect(() => {
@@ -28,6 +28,7 @@ function ProductoSearch({ onAdd }) {
   }, [])
 
   function select(p) {
+    if (disabled) return
     onAdd(p)
     setQ('')
     setOpen(false)
@@ -43,14 +44,15 @@ function ProductoSearch({ onAdd }) {
         <input
           ref={inputRef}
           value={q}
-          onChange={e => { setQ(e.target.value); setOpen(true) }}
-          onFocus={() => q.length >= 2 && setOpen(true)}
+          onChange={e => { setQ(e.target.value); setOpen(!disabled) }}
+          onFocus={() => !disabled && q.length >= 2 && setOpen(true)}
+          disabled={disabled}
           placeholder="Buscar producto por código o nombre… (mínimo 2 caracteres)"
-          style={{ width: '100%', padding: '8px 10px 8px 32px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff', boxSizing: 'border-box' }}
+          style={{ width: '100%', padding: '8px 10px 8px 32px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: disabled ? 'var(--bg)' : '#fff', color: disabled ? 'var(--text-3)' : 'inherit', boxSizing: 'border-box', cursor: disabled ? 'not-allowed' : 'text' }}
           onKeyDown={e => e.key === 'Escape' && setOpen(false)}
         />
       </div>
-      {open && q.length >= 2 && productos.length > 0 && (
+      {!disabled && open && q.length >= 2 && productos.length > 0 && (
         <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 200, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', maxHeight: 260, overflowY: 'auto' }}>
           {productos.slice(0, 15).map(p => (
             <button key={p.id} onClick={() => select(p)}
@@ -73,7 +75,7 @@ function ProductoSearch({ onAdd }) {
           ))}
         </div>
       )}
-      {open && q.length >= 2 && productos.length === 0 && (
+      {!disabled && open && q.length >= 2 && productos.length === 0 && (
         <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 200, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: 'var(--text-3)' }}>
           Sin resultados para "{q}"
         </div>
@@ -82,11 +84,15 @@ function ProductoSearch({ onAdd }) {
   )
 }
 
-function ItemsTable({ items, onChange }) {
+function ItemsTable({ items, onChange, locked = false }) {
   function update(idx, field, value) {
+    if (locked) return
     onChange(items.map((item, i) => i === idx ? { ...item, [field]: value } : item))
   }
-  function remove(idx) { onChange(items.filter((_, i) => i !== idx)) }
+  function remove(idx) {
+    if (locked) return
+    onChange(items.filter((_, i) => i !== idx))
+  }
 
   const subtotal = items.reduce((s, i) => s + (Number(i.cantidad) || 0) * (Number(i.precioUnitario) || 0), 0)
 
@@ -114,21 +120,24 @@ function ItemsTable({ items, onChange }) {
                 <td style={{ padding: '8px 12px' }}>
                   <div style={{ fontWeight: 500 }}>{item.nombre}</div>
                   <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>{item.codigoInterno}</div>
+                  {Number(item.nEntregados || 0) > 0 && (
+                    <div style={{ fontSize: 11, color: 'var(--green-700)', marginTop: 2 }}>Entregados: {item.nEntregados}</div>
+                  )}
                 </td>
                 <td style={{ padding: '4px 8px' }}>
-                  <input type="number" min="1" value={item.cantidad} onChange={e => update(idx, 'cantidad', e.target.value)}
-                    style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right', background: '#fff' }} />
+                  <input type="number" min="1" value={item.cantidad} onChange={e => update(idx, 'cantidad', e.target.value)} disabled={locked}
+                    style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right', background: locked ? 'var(--bg)' : '#fff', color: locked ? 'var(--text-2)' : 'inherit', cursor: locked ? 'not-allowed' : 'text' }} />
                 </td>
                 <td style={{ padding: '4px 8px' }}>
-                  <input type="number" min="0" value={item.precioUnitario} onChange={e => update(idx, 'precioUnitario', e.target.value)}
-                    style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right', background: '#fff' }} />
+                  <input type="number" min="0" value={item.precioUnitario} onChange={e => update(idx, 'precioUnitario', e.target.value)} disabled={locked}
+                    style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right', background: locked ? 'var(--bg)' : '#fff', color: locked ? 'var(--text-2)' : 'inherit', cursor: locked ? 'not-allowed' : 'text' }} />
                 </td>
                 <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>
                   ${sub.toLocaleString('es-CL')}
                 </td>
                 <td style={{ padding: '4px 6px', textAlign: 'center' }}>
-                  <button onClick={() => remove(idx)} style={{ padding: '4px', borderRadius: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-3)' }}
-                    onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
+                  <button onClick={() => remove(idx)} disabled={locked} title={locked ? 'Productos bloqueados por entregas registradas' : 'Quitar producto'} style={{ padding: '4px', borderRadius: 4, border: 'none', background: 'none', cursor: locked ? 'not-allowed' : 'pointer', color: 'var(--text-3)', opacity: locked ? 0.45 : 1 }}
+                    onMouseEnter={e => { if (!locked) e.currentTarget.style.color = 'var(--red)' }}
                     onMouseLeave={e => e.currentTarget.style.color = 'var(--text-3)'}
                   >
                     <Icon name="trash" size={14} />
@@ -176,6 +185,10 @@ function validateItems(items) {
   if (invalidIndex >= 0) return `Revisa producto, cantidad y precio del item ${invalidIndex + 1}`
 
   return null
+}
+
+function hasDeliveredItems(venta) {
+  return (venta?.items || []).some(item => Number(item.nEntregados) > 0)
 }
 
 function CargosSection({ ordenId }) {
@@ -432,6 +445,7 @@ export default function VentasFormPage() {
           nombre: i.nombre || i.producto?.nombre || i.descripcion || `Producto #${i.productoId}`,
           codigoInterno: i.codigoInterno || i.producto?.codigoInterno || i.codigo || '',
           cantidad: i.cantidad,
+          nEntregados: i.nEntregados ?? 0,
           precioUnitario: i.precioUnitario ?? i.precio ?? 0,
         }))
         : []
@@ -446,8 +460,10 @@ export default function VentasFormPage() {
   const descuento = Number(data.descuentoPct) || 0
   const subtotal = items.reduce((s, i) => s + (Number(i.cantidad) || 0) * (Number(i.precioUnitario) || 0), 0)
   const totalCalculado = subtotal * (1 - descuento / 100)
+  const itemsLocked = isEdit && hasDeliveredItems(found)
 
   function addProducto(p) {
+    if (itemsLocked) return
     setItems(prev => {
       const existing = prev.findIndex(i => i.productoId === p.id)
       if (existing >= 0) return prev.map((item, idx) => idx === existing ? { ...item, cantidad: Number(item.cantidad) + 1 } : item)
@@ -458,10 +474,11 @@ export default function VentasFormPage() {
   const saving = createVenta.isPending || updateVenta.isPending
 
   function handleSave() {
-    const itemError = validateItems(items)
+    const shouldSendItems = !isEdit || !itemsLocked
+    const itemError = shouldSendItems ? validateItems(items) : null
     if (itemError) { alert(itemError); return }
 
-    const normalizedItems = normalizeItems(items)
+    const normalizedItems = shouldSendItems ? normalizeItems(items) : null
     const payload = {
       tipo: data.tipo, estado: data.estado,
       estadoPago: data.estadoPago, estadoEntrega: data.estadoEntrega,
@@ -476,7 +493,7 @@ export default function VentasFormPage() {
       if (data.abono !== '') payload.abono = Number(data.abono)
       if (data.guias !== '') payload.guias = parseInt(data.guias, 10)
       if (data.facturado !== '') payload.facturado = Number(data.facturado)
-      payload.items = normalizedItems
+      if (shouldSendItems) payload.items = normalizedItems
       updateVenta.mutate({ id: Number(id), data: payload }, {
         onSuccess: () => navigate('/ventas'),
         onError: err => alert(err.response?.data?.error || 'Error al guardar'),
@@ -564,9 +581,15 @@ export default function VentasFormPage() {
       </div>
 
       <FormDivider label={isEdit ? `Productos (${items.length})` : 'Agregar productos'} />
-      <ProductoSearch onAdd={addProducto} />
+      {itemsLocked && (
+        <div style={{ marginBottom: 12, padding: '10px 12px', border: '1px solid var(--amber)', borderRadius: 8, background: '#fff8e6', color: 'var(--text-2)', fontSize: 13, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <Icon name="lock" size={15} color="var(--amber)" />
+          <span>Los productos de esta venta no se pueden modificar porque ya registran entregas. Para mantener la trazabilidad, solo puedes actualizar campos administrativos.</span>
+        </div>
+      )}
+      <ProductoSearch onAdd={addProducto} disabled={itemsLocked} />
       <div style={{ marginTop: 12 }}>
-        <ItemsTable items={items} onChange={setItems} />
+        <ItemsTable items={items} onChange={setItems} locked={itemsLocked} />
       </div>
       {items.length > 0 && (
         <div style={{ marginTop: 10, background: 'var(--bg)', borderRadius: 8, padding: '12px 16px', display: 'flex', justifyContent: 'flex-end', gap: 24, alignItems: 'center' }}>

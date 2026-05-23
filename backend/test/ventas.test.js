@@ -173,6 +173,66 @@ describe('PUT /api/ventas/:id', () => {
     }
   })
 
+  it('updates metadata without replacing delivered items', async () => {
+    const marker = `TEST-VENTA-DELIVERED-META-${Date.now()}`
+    const created = { productos: [], ordenId: null }
+    try {
+      const [cliente, user] = await Promise.all([
+        app.prisma.cliente.findFirst(),
+        app.prisma.user.findFirst(),
+      ])
+      const producto = await app.prisma.producto.create({
+        data: { codigoInterno: `${marker}-A`, nombre: `${marker} A`, activo: true },
+      })
+      created.productos = [producto.id]
+      const orden = await app.prisma.orden.create({
+        data: {
+          tipo: 'Normal',
+          clienteId: cliente.id,
+          userId: user.id,
+          descuentoPct: 0,
+          items: {
+            create: [{
+              productoId: producto.id,
+              cantidad: 3,
+              nEntregados: 1,
+              precioUnitario: 7000,
+            }],
+          },
+        },
+      })
+      created.ordenId = orden.id
+
+      const res = await app.inject({
+        method: 'PUT', url: `/api/ventas/${orden.id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { observaciones: marker, estadoPago: 'Parcial' },
+      })
+
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.observaciones).toBe(marker)
+      expect(body.estadoPago).toBe('Parcial')
+      expect(body.items).toHaveLength(1)
+      expect(body.items[0].productoId).toBe(producto.id)
+      expect(body.items[0].cantidad).toBe(3)
+      expect(body.items[0].nEntregados).toBe(1)
+      expect(body.total).toBe(21000)
+      const dbItems = await app.prisma.ordenItem.findMany({ where: { ordenId: orden.id } })
+      expect(dbItems).toHaveLength(1)
+      expect(dbItems[0].productoId).toBe(producto.id)
+      expect(dbItems[0].nEntregados).toBe(1)
+    } finally {
+      if (created.ordenId) {
+        await app.prisma.ordenItem.deleteMany({ where: { ordenId: created.ordenId } }).catch(() => {})
+        await app.prisma.orden.delete({ where: { id: created.ordenId } }).catch(() => {})
+      }
+      if (created.productos.length) {
+        await app.prisma.producto.deleteMany({ where: { id: { in: created.productos } } }).catch(() => {})
+      }
+    }
+  })
+
   it('rejects replacing items with unknown product and keeps existing items', async () => {
     const marker = `TEST-VENTA-UNKNOWN-${Date.now()}`
     const created = { productos: [], ordenId: null }
