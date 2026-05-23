@@ -17,6 +17,8 @@ const smokeEnvKeys = [
   'SMOKE_BASE_URL',
   'SMOKE_EMAIL',
   'SMOKE_PASSWORD',
+  'SMOKE_READONLY_EMAIL',
+  'SMOKE_TIMEOUT_MS',
   'SMOKE_EXPECT_ORDEN_ITEMS_HUERFANOS',
   'SMOKE_EXPECT_ODT_ITEMS_HUERFANOS',
   'SMOKE_EXPECT_PRODUCTOS_STOCK_NEGATIVO',
@@ -43,6 +45,8 @@ describe('staging-smoke CLI args', () => {
     const options = parseArgs([])
 
     expect(options.baseUrl).toBe('http://127.0.0.1:3101')
+    expect(options.readonlyEmail).toBe('solo_lectura@plastimar.cl')
+    expect(options.timeoutMs).toBe(15000)
     expect(options.expectedIntegrity).toBeNull()
   })
 
@@ -50,6 +54,8 @@ describe('staging-smoke CLI args', () => {
     const options = parseArgs([
       '--json',
       '--base-url=http://localhost:9999/',
+      '--readonly-email=lectura@example.com',
+      '--timeout-ms=5000',
       '--expect-orden-items-huerfanos=1',
       '--expect-odt-items-huerfanos=2',
       '--expect-productos-stock-negativo=3',
@@ -58,6 +64,8 @@ describe('staging-smoke CLI args', () => {
     expect(options).toMatchObject({
       json: true,
       baseUrl: 'http://localhost:9999',
+      readonlyEmail: 'lectura@example.com',
+      timeoutMs: 5000,
       expectedIntegrity: {
         orden_items_huerfanos: 1,
         odt_items_huerfanos: 2,

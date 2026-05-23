@@ -10,6 +10,14 @@ export const useTrabajadores = (params = {}) =>
     staleTime: 60_000,
   })
 
+export const useRrhhCargos = (params = {}) =>
+  useQuery({
+    queryKey: ['rrhh', 'cargos', params],
+    queryFn: () => api.get('/rrhh/cargos', { params }).then(r => r.data),
+    placeholderData: [],
+    staleTime: 5 * 60_000,
+  })
+
 export const useTrabajador = (id) =>
   useQuery({
     queryKey: ['rrhh', 'trabajadores', id],
@@ -56,7 +64,11 @@ function makeSubResource(path) {
   const useUpdate = () => {
     const qc = useQueryClient()
     return useMutation({
-      mutationFn: ({ id, trabajadorId, ...data }) => api.put(`/rrhh/${path}/${id}`, data).then(r => r.data),
+      mutationFn: (payload) => {
+        const { id, ...data } = payload
+        delete data.trabajadorId
+        return api.put(`/rrhh/${path}/${id}`, data).then(r => r.data)
+      },
       onSuccess: (_, { trabajadorId }) => {
         if (trabajadorId) qc.invalidateQueries({ queryKey: ['rrhh', 'trabajadores', trabajadorId] })
       },

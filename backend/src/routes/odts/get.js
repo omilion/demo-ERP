@@ -1,3 +1,5 @@
+import { attachOperarios } from './operations.js'
+
 export default async function getOdt(fastify) {
   fastify.get('/:id', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
@@ -36,6 +38,7 @@ export default async function getOdt(fastify) {
         orden = { ...orden, cliente }
       }
     }
-    return { ...o, orden }
+    const withOperario = await attachOperarios(fastify.prisma, o)
+    return { ...withOperario, orden }
   })
 }

@@ -5,7 +5,7 @@ import { useDespachos, useGuias, useCreateDespacho, useUpdateDespacho, useDelete
 import { useUpdateVenta } from '../../api/ventas'
 import { downloadCsv } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
-import { can, ventaPath } from '../../utils/permissions'
+import { can, odtPath, ventaPath } from '../../utils/permissions'
 
 const TABS = [
   { id: 'despachos', label: 'Despachos' },
@@ -14,6 +14,7 @@ const TABS = [
 
 const emptyDespacho = {
   ordenId: '',
+  odtId: '',
   interno: '',
   fechaEntrega: '',
   tipoDespacho: '',
@@ -33,11 +34,16 @@ export default function DespachosPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const ordenIdParam = searchParams.get('ordenId') || ''
+  const odtIdParam = searchParams.get('odtId') || ''
   const { user } = useAuthStore()
   const canWriteDespacho = can(user, 'despacho', 'write')
   const canWriteVentas = can(user, 'ventas', 'write')
   const [tab, setTab] = useState('despachos')
   const [search, setSearch] = useState('')
+  const [odtId, setOdtId] = useState(odtIdParam)
+  const [comuna, setComuna] = useState('')
+  const [cliente, setCliente] = useState('')
+  const [estadoLogistico, setEstadoLogistico] = useState('')
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
   const [creating, setCreating] = useState(false)
@@ -48,12 +54,18 @@ export default function DespachosPage() {
   if (desde) params.desde = desde
   if (hasta) params.hasta = hasta
   if (search) params.search = search
+  if (odtId) params.odtId = odtId
+  if (comuna) params.comuna = comuna
+  if (cliente) params.cliente = cliente
+  if (estadoLogistico) params.estado = estadoLogistico
   if (ordenIdParam) params.ordenId = ordenIdParam
 
   const guiaParams = {}
   if (desde) guiaParams.desde = desde
   if (hasta) guiaParams.hasta = hasta
-  if (search) guiaParams.nGuia = search
+  if (search) guiaParams.search = search
+  if (odtId) guiaParams.odtId = odtId
+  if (cliente) guiaParams.cliente = cliente
   if (ordenIdParam) guiaParams.ordenId = ordenIdParam
 
   const despachos = useDespachos(tab === 'despachos' ? params : {})
@@ -64,9 +76,17 @@ export default function DespachosPage() {
   const createGuiaMut = useCreateGuia()
   const delGuiaMut = useDeleteGuia()
   const updateVentaMut = useUpdateVenta()
+  const renderOdtLink = value => value ? (
+    <button
+      onClick={(e) => { e.stopPropagation(); navigate(odtPath(value, user)) }}
+      style={linkButton('var(--amber, #d97706)', 600)}
+      title={`Abrir ODT #${value}`}
+    >#{value}</button>
+  ) : '-'
 
   const colsDespacho = [
     { key: 'fechaEntrega', label: 'Fecha entrega', render: v => v ? new Date(v).toLocaleDateString('es-CL') : '-' },
+    { key: 'odtId', label: 'ODT', render: renderOdtLink },
     { key: 'tipoDespacho', label: 'Tipo', render: v => v ? <Badge tone="blue">{v}</Badge> : '-' },
     { key: 'transporte', label: 'Transporte' },
     { key: 'contacto', label: 'Contacto' },
@@ -106,6 +126,7 @@ export default function DespachosPage() {
     { key: 'nGuia', label: 'N Guia', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{v}</span> },
     { key: 'nInterno', label: 'N Interno' },
     { key: 'ordenId', label: 'Orden' },
+    { key: 'odtId', label: 'ODT', render: renderOdtLink },
     { key: 'origen', label: 'Origen' },
     { key: '_acc', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 8 }}>
@@ -119,6 +140,8 @@ export default function DespachosPage() {
     if (tab === 'despachos') {
       downloadCsv(`despachos_${new Date().toISOString().slice(0, 10)}`, despachos.data?.items || [], [
         { key: 'fechaEntrega', label: 'Fecha', fmt: v => v ? new Date(v).toLocaleDateString('es-CL') : '' },
+        { key: 'ordenId', label: 'Orden' },
+        { key: 'odtId', label: 'ODT' },
         { key: 'tipoDespacho', label: 'Tipo' },
         { key: 'transporte', label: 'Transporte' },
         { key: 'contacto', label: 'Contacto' },
@@ -132,6 +155,7 @@ export default function DespachosPage() {
         { key: 'nGuia', label: 'N Guia' },
         { key: 'nInterno', label: 'N Interno' },
         { key: 'ordenId', label: 'Orden' },
+        { key: 'odtId', label: 'ODT' },
         { key: 'origen', label: 'Origen' },
       ])
     }
@@ -141,7 +165,11 @@ export default function DespachosPage() {
     setDesde('')
     setHasta('')
     setSearch('')
-    if (ordenIdParam) setSearchParams({})
+    setOdtId('')
+    setComuna('')
+    setCliente('')
+    setEstadoLogistico('')
+    if (ordenIdParam || odtIdParam) setSearchParams({})
   }
 
   return (
@@ -172,9 +200,21 @@ export default function DespachosPage() {
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <input type="date" value={desde} onChange={e => setDesde(e.target.value)} style={inputFilter} />
           <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} style={inputFilter} />
-          <SearchBar placeholder={tab === 'despachos' ? 'Buscar despacho...' : 'Buscar guia...'} value={search} onChange={setSearch} style={{ width: 260 }} />
+          <input type="number" min="1" placeholder="ODT ID" value={odtId} onChange={e => setOdtId(e.target.value)} style={{ ...inputFilter, width: 110 }} />
+          {tab === 'despachos' && <input placeholder="Comuna" value={comuna} onChange={e => setComuna(e.target.value)} style={{ ...inputFilter, width: 150 }} />}
+          <input placeholder="Cliente" value={cliente} onChange={e => setCliente(e.target.value)} style={{ ...inputFilter, width: 170 }} />
+          {tab === 'despachos' && (
+            <select value={estadoLogistico} onChange={e => setEstadoLogistico(e.target.value)} style={{ ...inputFilter, width: 150, background: '#fff' }}>
+              <option value="">Estado despacho</option>
+              <option value="pendiente">Pendiente</option>
+              <option value="entregada">Entregada</option>
+              <option value="parcial">Parcial</option>
+              <option value="multa">Con multa</option>
+            </select>
+          )}
+          <SearchBar placeholder={tab === 'despachos' ? 'Buscar despacho...' : 'Buscar guia...'} value={search} onChange={setSearch} style={{ width: 240 }} />
           {ordenIdParam && <Badge tone="blue">Orden #{ordenIdParam}</Badge>}
-          {(desde || hasta || search || ordenIdParam) && <button onClick={clearFilters} style={smallButton}>Limpiar</button>}
+          {(desde || hasta || search || odtId || comuna || cliente || estadoLogistico || ordenIdParam || odtIdParam) && <button onClick={clearFilters} style={smallButton}>Limpiar</button>}
         </div>
         <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)' }}>
           <Tabs tabs={TABS} active={tab} onChange={setTab} />
@@ -230,6 +270,7 @@ function DespachoModal({ title, initial, saving, onClose, onSave }) {
     <Modal title={title} onClose={onClose}>
       <div style={grid}>
         <Field label="Orden ID"><input value={form.ordenId || ''} onChange={e => set('ordenId', e.target.value)} style={input} /></Field>
+        <Field label="ODT ID"><input value={form.odtId || ''} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
         <Field label="Interno"><input value={form.interno || ''} onChange={e => set('interno', e.target.value)} style={input} /></Field>
         <Field label="Fecha entrega"><input type="date" value={form.fechaEntrega || ''} onChange={e => set('fechaEntrega', e.target.value)} style={input} /></Field>
         <Field label="Tipo"><input value={form.tipoDespacho || ''} onChange={e => set('tipoDespacho', e.target.value)} style={input} /></Field>
@@ -249,7 +290,7 @@ function DespachoModal({ title, initial, saving, onClose, onSave }) {
 }
 
 function GuiaModal({ saving, onClose, onSave }) {
-  const [form, setForm] = useState({ ordenId: '', nInterno: '', nGuia: '', fechaGuia: '', origen: '' })
+  const [form, setForm] = useState({ ordenId: '', odtId: '', nInterno: '', nGuia: '', fechaGuia: '', origen: '' })
   const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
 
   return (
@@ -257,6 +298,7 @@ function GuiaModal({ saving, onClose, onSave }) {
       <div style={grid}>
         <Field label="N guia"><input value={form.nGuia} onChange={e => set('nGuia', e.target.value)} style={input} /></Field>
         <Field label="Orden ID"><input value={form.ordenId} onChange={e => set('ordenId', e.target.value)} style={input} /></Field>
+        <Field label="ODT ID"><input value={form.odtId} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
         <Field label="N interno"><input value={form.nInterno} onChange={e => set('nInterno', e.target.value)} style={input} /></Field>
         <Field label="Fecha"><input type="date" value={form.fechaGuia} onChange={e => set('fechaGuia', e.target.value)} style={input} /></Field>
       </div>

@@ -5,25 +5,27 @@ export default async function rrhhRoutes(fastify) {
     f.get('/trabajadores', {
       preHandler: [f.authenticate, f.rbac('rrhh', 'read')],
     }, async (request) => {
-      const { search, empresa, estado, page = '1' } = request.query
+      const { page = '1' } = request.query
       const LIMIT = 100
       const offset = (parseInt(page) - 1) * LIMIT
-      const where = {}
-      if (empresa) where.empresa = empresa
-      if (estado !== undefined) where.estado = estado === 'true' || estado === '1'
-      if (search) {
-        where.OR = [
-          { nombres: { contains: search, mode: 'insensitive' } },
-          { apellidoPaterno: { contains: search, mode: 'insensitive' } },
-          { apellidoMaterno: { contains: search, mode: 'insensitive' } },
-          { rut: { contains: search, mode: 'insensitive' } },
-        ]
-      }
+      const where = buildTrabajadorWhere(request.query)
       const [items, total] = await Promise.all([
         f.prisma.trabajador.findMany({ where, orderBy: [{ apellidoPaterno: 'asc' }, { nombres: 'asc' }], take: LIMIT, skip: offset }),
         f.prisma.trabajador.count({ where }),
       ])
       return { items, total, limit: LIMIT }
+    })
+
+    f.get('/cargos', {
+      preHandler: [f.authenticate, f.rbac('rrhh', 'read')],
+    }, async (request) => {
+      const rows = await f.prisma.trabajador.findMany({
+        where: buildCargoListWhere(request.query),
+        distinct: ['cargo'],
+        select: { cargo: true },
+        orderBy: { cargo: 'asc' },
+      })
+      return normalizeCargoList(rows)
     })
 
     f.get('/trabajadores/:id', {
@@ -272,6 +274,8 @@ function registerSubResource(f, path, model, picker) {
   })
 }
 
+const TRABAJADOR_SEARCH_FIELDS = ['nombres', 'apellidoPaterno', 'apellidoMaterno', 'rut', 'cargo']
+
 const toDate = v => (v == null || v === '' ? null : new Date(v))
 const toTime = v => {
   if (v == null || v === '') return null
@@ -282,8 +286,49 @@ const toTime = v => {
 const toInt = v => (v == null || v === '' ? null : parseInt(v, 10))
 const toFloat = v => (v == null || v === '' ? null : parseFloat(v))
 const toBool = v => v === true || v === '1' || v === 1 || v === 'true'
+const queryText = v => (v == null ? '' : String(v).trim())
 
-function pickTrabajador(b, partial = false) {
+export function buildTrabajadorWhere(query = {}) {
+  const where = {}
+  const empresa = queryText(query.empresa)
+  const cargo = queryText(query.cargo)
+  const search = queryText(query.search)
+
+  if (empresa) where.empresa = empresa
+  if (query.estado !== undefined && queryText(query.estado) !== '') where.estado = toBool(query.estado)
+  if (cargo) where.cargo = { contains: cargo, mode: 'insensitive' }
+  if (search) {
+    where.OR = TRABAJADOR_SEARCH_FIELDS.map(field => ({
+      [field]: { contains: search, mode: 'insensitive' },
+    }))
+  }
+
+  return where
+}
+
+export function buildCargoListWhere(query = {}) {
+  const where = {
+    estado: true,
+    NOT: [{ cargo: null }, { cargo: '' }],
+  }
+  const empresa = queryText(query.empresa)
+  if (empresa) where.empresa = empresa
+  return where
+}
+
+function normalizeCargoList(rows) {
+  const seen = new Set()
+  const cargos = []
+  for (const row of rows) {
+    const cargo = queryText(row?.cargo)
+    if (!cargo || seen.has(cargo)) continue
+    seen.add(cargo)
+    cargos.push(cargo)
+  }
+  return cargos
+}
+
+export function pickTrabajador(b, partial = false) {
   const d = {}
   const set = (k, v) => { if (!partial || v !== undefined) d[k] = v ?? null }
   set('empresa', b.empresa)

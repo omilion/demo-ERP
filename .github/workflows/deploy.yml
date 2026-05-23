@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -35,6 +39,13 @@ jobs:
           npx prisma validate
           npx prisma generate
 
+      - name: Run backend focal tests
+        working-directory: backend
+        env:
+          JWT_ACCESS_SECRET: ci-access-secret
+          JWT_REFRESH_SECRET: ci-refresh-secret
+        run: npm test -- staging-smoke.test.js app.test.js rrhh-helpers.test.js despachos-traceability.test.js odt-consumos.test.js odt-item-workflow.test.js odt-operations.test.js pasar-taller.test.js
+
       - name: Install frontend deps
         working-directory: frontend
         run: npm ci
@@ -56,12 +67,11 @@ jobs:
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             'set -e
              cd /var/www/plastimar-erp/backend
-             set -a
-             . ./.env
-             set +a
+             database_url="$(node --input-type=module -e "import(\"dotenv/config\"); process.stdout.write(process.env.DATABASE_URL || \"\")")"
+             test -n "$database_url"
              mkdir -p /var/backups/plastimar/db
              backup="/var/backups/plastimar/db/plastimar_erp_$(date +%Y%m%d_%H%M%S).dump"
-             pg_dump -Fc "$DATABASE_URL" -f "$backup"
+             pg_dump -Fc "$database_url" -f "$backup"
              test -s "$backup"
              pg_restore --list "$backup" >/dev/null
              echo "Backup verified: $backup"'
@@ -82,11 +92,13 @@ jobs:
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             'set -e
              cd /var/www/plastimar-erp/backend
+             test -f ecosystem.config.cjs
              npm ci
              npx prisma generate
              npx prisma migrate deploy
+             node --input-type=module -e "import(\"./src/app.js\").then(async ({ buildApp }) => { const app = buildApp({ logger: false }); await app.ready(); await app.close(); console.log(\"API module ready\") })"
              npm prune --omit=dev
-             pm2 reload ecosystem.config.cjs --update-env'
+             pm2 startOrReload ecosystem.config.cjs --update-env'
 
       - name: Smoke API
         run: |
@@ -94,11 +106,9 @@ jobs:
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             'set -e
              cd /var/www/plastimar-erp/backend
-             set -a
-             . ./.env
-             set +a
+             port="$(node --input-type=module -e "import(\"dotenv/config\"); process.stdout.write(process.env.PORT || \"3001\")")"
              for attempt in $(seq 1 30); do
-               if curl -fsS "http://127.0.0.1:${PORT:-3001}/api/health"; then
+               if curl -fsS "http://127.0.0.1:${port}/api/health"; then
                  break
                fi
                echo "API health not ready yet (attempt ${attempt}/30)"
@@ -107,12 +117,16 @@ jobs:
                  echo "API health failed after retries"
                  pm2 status || true
                  pm2 logs --nostream --lines 80 || true
+                 ss -ltnp || true
                  exit 1
                fi
              done
              mkdir -p /var/backups/plastimar/smoke
              smoke_report="/var/backups/plastimar/smoke/staging_smoke_$(date +%Y%m%d_%H%M%S).json"
-             node scripts/staging-smoke.mjs --base-url="http://127.0.0.1:${PORT:-3001}" --json > "$smoke_report"
+             if ! node scripts/staging-smoke.mjs --base-url="http://127.0.0.1:${port}" --json > "$smoke_report"; then
+               cat "$smoke_report" || true
+               exit 1
+             fi
              test -s "$smoke_report"
              echo "Smoke verified: $smoke_report"'
 
@@ -120,6 +134,12 @@ jobs:
         run: |
           rsync -az --delete \
             --exclude='backend' \
+            --exclude='.env' \
+            --exclude='ecosystem.config.cjs' \
+            --exclude='.well-known' \
+            --exclude='uploads' \
+            --exclude='storage' \
+            --exclude='logs' \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
             frontend/dist/ \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/plastimar-erp/

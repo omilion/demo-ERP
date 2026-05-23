@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches-ignore: [main]
+    branches: ['**']
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -29,6 +29,8 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql://plastimar:plastimar@localhost:5432/plastimar_ci
+      JWT_ACCESS_SECRET: ci-access-secret
+      JWT_REFRESH_SECRET: ci-refresh-secret
 
     steps:
       - name: Checkout

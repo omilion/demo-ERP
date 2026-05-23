@@ -1,7 +1,9 @@
+import 'dotenv/config'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3101'
+const DEFAULT_TIMEOUT_MS = 15000
 
 const INTEGRITY_SUMMARY_KEYS = [
   'orden_items_huerfanos',
@@ -62,6 +64,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     baseUrl: process.env.SMOKE_BASE_URL || DEFAULT_BASE_URL,
     email: process.env.SMOKE_EMAIL || 'admin@plastimar.cl',
     password: process.env.SMOKE_PASSWORD || 'dev1234',
+    readonlyEmail: process.env.SMOKE_READONLY_EMAIL || 'solo_lectura@plastimar.cl',
+    timeoutMs: optionalInteger(process.env.SMOKE_TIMEOUT_MS, 'SMOKE_TIMEOUT_MS') ?? DEFAULT_TIMEOUT_MS,
     expectedIntegrity,
     json: false,
   }
@@ -72,6 +76,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg.startsWith('--base-url=')) options.baseUrl = arg.slice('--base-url='.length)
     else if (arg.startsWith('--email=')) options.email = arg.slice('--email='.length)
     else if (arg.startsWith('--password=')) options.password = arg.slice('--password='.length)
+    else if (arg.startsWith('--readonly-email=')) options.readonlyEmail = arg.slice('--readonly-email='.length)
+    else if (arg.startsWith('--timeout-ms=')) options.timeoutMs = optionalInteger(arg.slice('--timeout-ms='.length), '--timeout-ms')
     else if (arg.startsWith('--expect-orden-items-huerfanos=')) {
       options.expectedIntegrity ??= {}
       options.expectedIntegrity.orden_items_huerfanos = optionalInteger(
@@ -119,16 +125,29 @@ function validateIntegritySummary(integridad, expectedIntegrity = null) {
   }
 }
 
-async function request(baseUrl, path, { method = 'GET', token, body, expect = [200] } = {}) {
+async function request(baseUrl, path, { method = 'GET', token, body, expect = [200], timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const headers = { accept: 'application/json' }
   if (token) headers.authorization = `Bearer ${token}`
   if (body !== undefined) headers['content-type'] = 'application/json'
 
-  const res = await fetch(`${baseUrl}${path}`, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
+  const controller = timeoutMs > 0 ? new AbortController() : null
+  const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null
+  let res
+  try {
+    res = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller?.signal,
+    })
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`${method} ${path} timed out after ${timeoutMs}ms`)
+    }
+    throw error
+  } finally {
+    if (timeout) clearTimeout(timeout)
+  }
 
   const text = await res.text()
   let data = null
@@ -160,12 +179,16 @@ function firstId(data) {
 async function smoke(options) {
   const checks = []
   const record = (name, result = {}) => checks.push({ name, ok: true, ...result })
+  const api = (path, requestOptions = {}) => request(options.baseUrl, path, {
+    timeoutMs: options.timeoutMs,
+    ...requestOptions,
+  })
 
-  const health = await request(options.baseUrl, '/api/health')
+  const health = await api('/api/health')
   assert(health.data?.status === 'ok', 'health did not return status ok')
   record('health', { status: health.status })
 
-  const login = await request(options.baseUrl, '/api/auth/login', {
+  const login = await api('/api/auth/login', {
     method: 'POST',
     body: { email: options.email, password: options.password },
   })
@@ -174,13 +197,13 @@ async function smoke(options) {
   assert(login.data?.user?.role === 'admin', `expected admin role, got ${login.data?.user?.role}`)
   record('auth login admin', { user: login.data.user.email, role: login.data.user.role })
 
-  const soloLectura = await request(options.baseUrl, '/api/auth/login', {
+  const soloLectura = await api('/api/auth/login', {
     method: 'POST',
-    body: { email: 'solo_lectura@plastimar.cl', password: options.password },
+    body: { email: options.readonlyEmail, password: options.password },
   })
   assert(soloLectura.data?.accessToken, 'solo_lectura login did not return accessToken')
-  await request(options.baseUrl, '/api/productos', { token: soloLectura.data.accessToken })
-  await request(options.baseUrl, '/api/productos', {
+  await api('/api/productos', { token: soloLectura.data.accessToken })
+  await api('/api/productos', {
     method: 'POST',
     token: soloLectura.data.accessToken,
     body: {},
@@ -214,7 +237,7 @@ async function smoke(options) {
 
   const responses = {}
   for (const check of endpointChecks) {
-    const res = await request(options.baseUrl, check.path, { token })
+    const res = await api(check.path, { token })
     responses[check.name] = res.data
     record(check.name, { count: countItems(res.data) })
   }
@@ -226,26 +249,26 @@ async function smoke(options) {
 
   const productoId = firstId(productos)
   if (productoId) {
-    await request(options.baseUrl, `/api/productos/${productoId}`, { token })
+    await api(`/api/productos/${productoId}`, { token })
     record('producto detail', { id: productoId })
   }
 
   const clienteId = firstId(clientes)
   if (clienteId) {
-    await request(options.baseUrl, `/api/clientes/${clienteId}`, { token })
+    await api(`/api/clientes/${clienteId}`, { token })
     record('cliente detail', { id: clienteId })
   }
 
   const ventaId = firstId(ventas)
   if (ventaId) {
-    await request(options.baseUrl, `/api/ventas/${ventaId}`, { token })
+    await api(`/api/ventas/${ventaId}`, { token })
     record('venta detail', { id: ventaId })
   }
 
   const odtId = firstId(odts)
   if (odtId) {
-    await request(options.baseUrl, `/api/odts/${odtId}`, { token })
-    await request(options.baseUrl, `/api/odts/${odtId}/bitacora`, { token })
+    await api(`/api/odts/${odtId}`, { token })
+    await api(`/api/odts/${odtId}/bitacora`, { token })
     record('odt detail and bitacora', { id: odtId })
   }
 

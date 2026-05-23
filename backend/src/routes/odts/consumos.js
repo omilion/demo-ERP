@@ -1,0 +1,239 @@
+import { parsePositiveInt } from '../operational-utils.js'
+import { resolveOdtForWrite } from '../relation-guards.js'
+
+export const ODT_CONSUMO_TIPOS = Object.freeze(['producto', 'material_taller', 'tela'])
+
+export function getConsumoUsuario(user) {
+  const nombre = user?.nombre ? String(user.nombre).trim() : ''
+  if (nombre) return nombre
+  const username = user?.username ? String(user.username).trim() : ''
+  if (username) return username
+  const email = user?.email ? String(user.email).trim() : ''
+  return email || 'Sistema'
+}
+
+export function getConsumoUserId(user) {
+  const userId = Number(user?.id)
+  return Number.isInteger(userId) && userId > 0 ? userId : 1
+}
+
+export function parseConsumoRequest(body = {}) {
+  const tipo = typeof body.tipo === 'string' ? body.tipo.trim().toLowerCase() : ''
+  if (!ODT_CONSUMO_TIPOS.includes(tipo)) {
+    return { error: 'tipo debe ser producto, material_taller o tela' }
+  }
+
+  const id = parsePositiveInt(body.id)
+  if (!id) return { error: 'id invalido' }
+
+  const cantidad = Number(body.cantidad)
+  if (!Number.isFinite(cantidad) || cantidad <= 0) {
+    return { error: 'cantidad invalida' }
+  }
+  if (tipo === 'producto' && !Number.isInteger(cantidad)) {
+    return { error: 'cantidad debe ser entera para producto' }
+  }
+
+  const motivo = typeof body.motivo === 'string' ? body.motivo.trim() : ''
+  if (!motivo) return { error: 'motivo requerido' }
+
+  const taller = typeof body.taller === 'string' ? body.taller.trim() : ''
+
+  return { tipo, id, cantidad, motivo, taller: taller || null }
+}
+
+function stockError(item, cantidad) {
+  if (Number(item.stock ?? 0) >= cantidad) return null
+  return {
+    status: 409,
+    error: 'Stock insuficiente',
+    stockDisponible: Number(item.stock ?? 0),
+  }
+}
+
+export function buildHistorialMaterialData({ odt, item, cantidad, usuario, taller = null, now = new Date() }) {
+  return {
+    odtId: odt.id,
+    codigoInterno: item.codigoInterno ?? item.codigo ?? null,
+    nombre: item.nombre ?? null,
+    egreso: cantidad,
+    ingreso: 0,
+    unidad: item.unidadMedida ?? null,
+    usuario,
+    fecha: now,
+    taller,
+    sucursalId: item.sucursalId ?? null,
+  }
+}
+
+export async function consumirProducto({ tx, odt, itemId, cantidad, motivo, userId, usuario, taller, now = new Date() }) {
+  const producto = await tx.producto.findUnique({
+    where: { id: itemId },
+    select: { id: true, codigoInterno: true, nombre: true, unidadMedida: true, stock: true },
+  })
+  if (!producto) return { status: 404, error: 'Producto no encontrado' }
+  const insufficient = stockError(producto, cantidad)
+  if (insufficient) return insufficient
+
+  const decrement = await tx.producto.updateMany({
+    where: { id: producto.id, stock: { gte: cantidad } },
+    data: { stock: { decrement: cantidad } },
+  })
+  if (decrement.count !== 1) return { status: 409, error: 'Stock insuficiente', stockDisponible: Number(producto.stock ?? 0) }
+  const movimiento = await tx.movimientoBodega.create({
+    data: {
+      productoId: producto.id,
+      tipo: 'egreso',
+      cantidad: -cantidad,
+      motivo,
+      userId,
+      ordenId: odt.ordenId,
+      odtId: odt.id,
+      origenTipo: 'odt_consumo',
+      origenId: odt.id,
+    },
+  })
+  const historial = await tx.tallerHistorialMaterial.create({
+    data: buildHistorialMaterialData({ odt, item: producto, cantidad, usuario, taller, now }),
+  })
+
+  return {
+    tipo: 'producto',
+    id: producto.id,
+    stockFinal: producto.stock - cantidad,
+    movimiento,
+    historial,
+  }
+}
+
+export async function consumirMaterialTaller({ tx, odt, itemId, cantidad, motivo, userId, usuario, taller, now = new Date() }) {
+  const material = await tx.bodegaTaller.findUnique({
+    where: { id: itemId },
+    select: {
+      id: true,
+      codigoInterno: true,
+      nombre: true,
+      unidadMedida: true,
+      stock: true,
+      sucursalId: true,
+    },
+  })
+  if (!material) return { status: 404, error: 'Material de taller no encontrado' }
+  const insufficient = stockError(material, cantidad)
+  if (insufficient) return insufficient
+
+  const decrement = await tx.bodegaTaller.updateMany({
+    where: { id: material.id, stock: { gte: cantidad } },
+    data: { stock: { decrement: cantidad } },
+  })
+  if (decrement.count !== 1) return { status: 409, error: 'Stock insuficiente', stockDisponible: Number(material.stock ?? 0) }
+  const movimiento = await tx.bodegaTallerMovimiento.create({
+    data: {
+      bodegaTallerId: material.id,
+      tipo: 'egreso',
+      cantidad: -cantidad,
+      motivo,
+      userId,
+      origenTipo: 'odt_consumo',
+      origenId: odt.id,
+    },
+  })
+  const historial = await tx.tallerHistorialMaterial.create({
+    data: buildHistorialMaterialData({ odt, item: material, cantidad, usuario, taller, now }),
+  })
+
+  return {
+    tipo: 'material_taller',
+    id: material.id,
+    stockFinal: material.stock - cantidad,
+    movimiento,
+    historial,
+  }
+}
+
+export async function consumirTela({ tx, odt, itemId, cantidad, usuario, taller, now = new Date() }) {
+  const tela = await tx.tela.findUnique({
+    where: { id: itemId },
+    select: { id: true, codigo: true, nombre: true, stock: true, ubicacion: true },
+  })
+  if (!tela) return { status: 404, error: 'Tela no encontrada' }
+  const insufficient = stockError(tela, cantidad)
+  if (insufficient) return insufficient
+
+  const decrement = await tx.tela.updateMany({
+    where: { id: tela.id, stock: { gte: cantidad } },
+    data: { stock: { decrement: cantidad } },
+  })
+  if (decrement.count !== 1) return { status: 409, error: 'Stock insuficiente', stockDisponible: Number(tela.stock ?? 0) }
+  const movimiento = await tx.telaMovimiento.create({
+    data: {
+      telaId: tela.id,
+      tipo: 'egreso',
+      cantidad,
+      origenTipo: 'odt_consumo',
+      origenId: odt.id,
+      ubicacion: tela.ubicacion ?? null,
+      usuario,
+    },
+  })
+  const historial = await tx.tallerHistorialMaterial.create({
+    data: buildHistorialMaterialData({ odt, item: tela, cantidad, usuario, taller, now }),
+  })
+
+  return {
+    tipo: 'tela',
+    id: tela.id,
+    stockFinal: tela.stock - cantidad,
+    movimiento,
+    historial,
+  }
+}
+
+export function buildConsumoErrorResponse(result) {
+  const { status: _status, error, ...details } = result
+  return { error, ...details }
+}
+
+export async function applyOdtConsumo({ tx, odt, consumo, userId, usuario, now = new Date() }) {
+  const common = {
+    tx,
+    odt,
+    itemId: consumo.id,
+    cantidad: consumo.cantidad,
+    motivo: consumo.motivo,
+    taller: consumo.taller,
+    userId,
+    usuario,
+    now,
+  }
+
+  if (consumo.tipo === 'producto') return consumirProducto(common)
+  if (consumo.tipo === 'material_taller') return consumirMaterialTaller(common)
+  if (consumo.tipo === 'tela') return consumirTela(common)
+  return { status: 400, error: 'tipo debe ser producto, material_taller o tela' }
+}
+
+export default async function odtConsumosRoutes(fastify) {
+  fastify.post('/:id/consumos', {
+    preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
+  }, async (request, reply) => {
+    const consumo = parseConsumoRequest(request.body || {})
+    if (consumo.error) return reply.code(400).send({ error: consumo.error })
+
+    const resolved = await resolveOdtForWrite(fastify.prisma, request.params.id)
+    if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
+
+    const result = await fastify.prisma.$transaction((tx) => applyOdtConsumo({
+      tx,
+      odt: resolved.odt,
+      consumo,
+      userId: getConsumoUserId(request.user),
+      usuario: getConsumoUsuario(request.user),
+    }))
+    if (result.error) {
+      return reply.code(result.status || 400).send(buildConsumoErrorResponse(result))
+    }
+
+    return reply.code(201).send(result)
+  })
+}

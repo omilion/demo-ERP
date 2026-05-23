@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
 import {
   useTrabajadores, useTrabajador, useCreateTrabajador, useUpdateTrabajador, useDeleteTrabajador,
-  useResumenRRHH,
-  contratos, liquidaciones, anticipos, licencias, vacaciones, epps, hojasVida,
+  useRrhhCargos, useResumenRRHH,
 } from '../../api/rrhh'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 const fmtPeso = n => '$' + (Number(n) || 0).toLocaleString('es-CL')
 const fmtDate = d => d ? new Date(d).toLocaleDateString('es-CL') : '—'
@@ -28,13 +29,16 @@ function TabBtn({ active, onClick, children, badge }) {
 }
 
 // ── TabDatos ─────────────────────────────────────────────────────────────
-function TabDatos({ t }) {
-  const Row = ({ l, v }) => (
+function DataRow({ l, v }) {
+  return (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)', gap: 8 }}>
       <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{l}</span>
       <span style={{ fontSize: 12, textAlign: 'right' }}>{v || '—'}</span>
     </div>
   )
+}
+
+function TabDatos({ t }) {
   return (
     <>
       <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -48,35 +52,35 @@ function TabDatos({ t }) {
         </div>
       </div>
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-3)', marginBottom: 8 }}>Identificación</div>
-      <Row l="RUT" v={t.rut} />
-      <Row l="Nacimiento" v={t.fechaNacimiento} />
-      <Row l="Estado civil" v={t.estadoCivil} />
-      <Row l="Cargas familiares" v={t.cargasFamiliares} />
-      <Row l="Nacionalidad" v={t.nacionalidad} />
+      <DataRow l="RUT" v={t.rut} />
+      <DataRow l="Nacimiento" v={t.fechaNacimiento} />
+      <DataRow l="Estado civil" v={t.estadoCivil} />
+      <DataRow l="Cargas familiares" v={t.cargasFamiliares} />
+      <DataRow l="Nacionalidad" v={t.nacionalidad} />
 
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-3)', marginTop: 14, marginBottom: 8 }}>Contacto</div>
-      <Row l="Email" v={t.email} />
-      <Row l="Teléfono" v={t.telefono} />
-      <Row l="Dirección" v={t.direccion} />
-      <Row l="Comuna" v={t.comuna} />
-      <Row l="Emergencia" v={t.contactoEmergencia ? `${t.contactoEmergencia} — ${t.numeroEmergencia || ''}` : null} />
+      <DataRow l="Email" v={t.email} />
+      <DataRow l="Teléfono" v={t.telefono} />
+      <DataRow l="Dirección" v={t.direccion} />
+      <DataRow l="Comuna" v={t.comuna} />
+      <DataRow l="Emergencia" v={t.contactoEmergencia ? `${t.contactoEmergencia} — ${t.numeroEmergencia || ''}` : null} />
 
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-3)', marginTop: 14, marginBottom: 8 }}>Previsión</div>
-      <Row l="AFP" v={t.afp} />
-      <Row l="Salud" v={t.salud} />
+      <DataRow l="AFP" v={t.afp} />
+      <DataRow l="Salud" v={t.salud} />
 
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-3)', marginTop: 14, marginBottom: 8 }}>Pago</div>
-      <Row l="Banco" v={t.banco} />
-      <Row l="Tipo cuenta" v={t.tipoCuenta} />
-      <Row l="N° cuenta" v={t.numeroCuenta} />
-      <Row l="Sueldo líquido" v={t.sueldoLiquido} />
+      <DataRow l="Banco" v={t.banco} />
+      <DataRow l="Tipo cuenta" v={t.tipoCuenta} />
+      <DataRow l="N° cuenta" v={t.numeroCuenta} />
+      <DataRow l="Sueldo líquido" v={t.sueldoLiquido} />
 
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-3)', marginTop: 14, marginBottom: 8 }}>Contrato</div>
-      <Row l="Fecha ingreso" v={t.fechaIngreso} />
-      <Row l="Fecha término" v={fmtDate(t.fechaTermino)} />
-      <Row l="Tipo contrato" v={t.tipoContrato} />
-      <Row l="Cargo" v={t.cargo} />
-      {t.observacion && <Row l="Observación" v={t.observacion} />}
+      <DataRow l="Fecha ingreso" v={t.fechaIngreso} />
+      <DataRow l="Fecha término" v={fmtDate(t.fechaTermino)} />
+      <DataRow l="Tipo contrato" v={t.tipoContrato} />
+      <DataRow l="Cargo" v={t.cargo} />
+      {t.observacion && <DataRow l="Observación" v={t.observacion} />}
     </>
   )
 }
@@ -101,13 +105,14 @@ function ListTab({ items, columns, emptyText }) {
 }
 
 // ── ViewTrabajadorPanel ───────────────────────────────────────────────
-function ViewTrabajadorPanel({ trabajador, onClose, onEdit }) {
+function ViewTrabajadorPanel({ trabajador, onClose, onEdit, canWrite, canDelete }) {
   const [tab, setTab] = useState('datos')
   const { data: full, isLoading } = useTrabajador(trabajador.id)
   const t = full || trabajador
   const del = useDeleteTrabajador()
 
   const handleDelete = () => {
+    if (!canDelete) return
     if (!confirm(`¿Dar de baja a ${fullName(t)}? (estado=false)`)) return
     del.mutate(t.id, { onSuccess: onClose })
   }
@@ -125,8 +130,8 @@ function ViewTrabajadorPanel({ trabajador, onClose, onEdit }) {
             <div style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace", marginTop: 2 }}>{t.rut}</div>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-            <button onClick={() => onEdit(t)} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Editar</button>
-            <button onClick={handleDelete} disabled={del.isPending} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--red, #fca5a5)', background: '#fff', cursor: 'pointer', color: 'var(--red, #991b1b)' }}>Baja</button>
+            {canWrite && <button onClick={() => onEdit(t)} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Editar</button>}
+            {canDelete && <button onClick={handleDelete} disabled={del.isPending} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--red, #fca5a5)', background: '#fff', cursor: 'pointer', color: 'var(--red, #991b1b)' }}>Baja</button>}
             <button onClick={onClose} style={{ color: 'var(--text-3)', padding: 4, background: 'none', border: 'none' }}><Icon name="x" size={18} /></button>
           </div>
         </div>
@@ -278,9 +283,13 @@ function TrabajadorFormModal({ trabajador, onClose }) {
 
 // ── Main Page ───────────────────────────────────────────────────────────
 export default function RrhhPage() {
+  const { user } = useAuthStore()
+  const canWriteRrhh = can(user, 'rrhh', 'write')
+  const canDeleteRrhh = can(user, 'rrhh', 'delete')
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
   const [empresa, setEmpresa] = useState('')
+  const [cargo, setCargo] = useState('')
   const [selected, setSelected] = useState(null)
   const [editing, setEditing] = useState(null)
   const [creating, setCreating] = useState(false)
@@ -295,11 +304,15 @@ export default function RrhhPage() {
   const params = { estado: 'true' }
   if (debounced) params.search = debounced
   if (empresa) params.empresa = empresa
+  if (cargo) params.cargo = cargo
 
   const { data: result = { items: [], total: 0 }, isLoading } = useTrabajadores(params)
+  const { data: cargosResult = [] } = useRrhhCargos(empresa ? { empresa } : {})
   const { data: resumen } = useResumenRRHH(empresa)
   const trabajadores = result.items ?? []
   const total = result.total ?? 0
+  const cargoSource = Array.isArray(cargosResult) ? cargosResult : (cargosResult.items ?? [])
+  const cargos = [...new Set(cargoSource.map(c => typeof c === 'string' ? c : (c.cargo || c.nombre || c.name)).filter(Boolean))]
 
   const cols = [
     {
@@ -328,7 +341,7 @@ export default function RrhhPage() {
         title="RRHH — Trabajadores"
         subtitle={`${total.toLocaleString('es-CL')} trabajadores ${empresa ? `en ${empresa}` : 'activos'}`}
         breadcrumb={['Inicio', 'RRHH', 'Trabajadores']}
-        actions={<Btn variant="primary" icon="plus" size="sm" onClick={() => setCreating(true)}>Nuevo</Btn>}
+        actions={canWriteRrhh ? <Btn variant="primary" icon="plus" size="sm" onClick={() => setCreating(true)}>Nuevo</Btn> : null}
       />
 
       <div className="kpi-strip">
@@ -342,10 +355,14 @@ export default function RrhhPage() {
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13, fontWeight: 600 }}>{total.toLocaleString('es-CL')} trabajadores</span>
-            <select value={empresa} onChange={e => setEmpresa(e.target.value)} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12 }}>
+            <select value={empresa} onChange={e => { setEmpresa(e.target.value); setCargo('') }} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12 }}>
               <option value="">Todas las empresas</option>
               <option value="plastimar">Plastimar</option>
               <option value="allegro">Allegro</option>
+            </select>
+            <select value={cargo} onChange={e => setCargo(e.target.value)} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, maxWidth: 180 }}>
+              <option value="">Todos los cargos</option>
+              {cargos.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <SearchBar placeholder="Nombre, RUT…" value={search} onChange={setSearch} style={{ width: 'min(280px, 100%)' }} />
@@ -361,9 +378,9 @@ export default function RrhhPage() {
         )}
       </div>
 
-      {selected && <ViewTrabajadorPanel trabajador={selected} onClose={() => setSelected(null)} onEdit={t => { setSelected(null); setEditing(t) }} />}
-      {creating && <TrabajadorFormModal onClose={() => setCreating(false)} />}
-      {editing && <TrabajadorFormModal trabajador={editing} onClose={() => setEditing(null)} />}
+      {selected && <ViewTrabajadorPanel trabajador={selected} canWrite={canWriteRrhh} canDelete={canDeleteRrhh} onClose={() => setSelected(null)} onEdit={t => { setSelected(null); setEditing(t) }} />}
+      {creating && canWriteRrhh && <TrabajadorFormModal onClose={() => setCreating(false)} />}
+      {editing && canWriteRrhh && <TrabajadorFormModal trabajador={editing} onClose={() => setEditing(null)} />}
     </main>
   )
 }

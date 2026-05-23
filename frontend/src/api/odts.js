@@ -9,6 +9,22 @@ export const useOdts = (params = {}) =>
     placeholderData: { items: [], total: 0, limit: 100 },
   })
 
+export const useOdtOperarios = (params = {}) =>
+  useQuery({
+    queryKey: ['odts', 'operarios', params],
+    queryFn: () => api.get('/odts/meta/operarios', { params }).then(r => r.data),
+    placeholderData: { items: [], estados: [] },
+    staleTime: 5 * 60_000,
+  })
+
+export const useOdtCargaOperarios = () =>
+  useQuery({
+    queryKey: ['odts', 'carga-operarios'],
+    queryFn: () => api.get('/odts/meta/carga-operarios').then(r => r.data),
+    placeholderData: { items: [], estados: [] },
+    staleTime: 60_000,
+  })
+
 export const useOdt = (id) =>
   useQuery({
     queryKey: ['odts', id],
@@ -47,6 +63,34 @@ export const useOdtEstado = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['odts'] })
       qc.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+}
+
+export const useOdtItemTallerEstado = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ odtId, itemId, tallerItemId, estado }) =>
+      api.put(`/odts/${odtId}/items/${itemId}/talleres/${tallerItemId}/estado`, { estado }).then(r => r.data),
+    onSuccess: (_, { odtId }) => {
+      qc.invalidateQueries({ queryKey: ['odts'] })
+      qc.invalidateQueries({ queryKey: ['odts', odtId] })
+    },
+  })
+}
+
+export const useCreateOdtConsumo = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ odtId, data }) => api.post(`/odts/${odtId}/consumos`, data).then(r => r.data),
+    onSuccess: (_, { odtId }) => {
+      const id = Number(odtId)
+      qc.invalidateQueries({ queryKey: ['odts'] })
+      if (id) qc.invalidateQueries({ queryKey: ['odts', id] })
+      qc.invalidateQueries({ queryKey: ['historial-materiales'] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['bodega-taller'] })
+      qc.invalidateQueries({ queryKey: ['telas'] })
     },
   })
 }

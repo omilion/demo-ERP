@@ -1,13 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from './client'
 
-export const useDespachos = (params = {}) =>
-  useQuery({
-    queryKey: ['despachos', params],
-    queryFn: () => api.get('/despachos', { params }).then(r => r.data),
+const cleanParams = (params = {}) => Object.fromEntries(
+  Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+)
+
+export const useDespachos = (params = {}) => {
+  const queryParams = cleanParams(params)
+  return useQuery({
+    queryKey: ['despachos', queryParams],
+    queryFn: () => api.get('/despachos', { params: queryParams }).then(r => r.data),
     placeholderData: { items: [], total: 0, limit: 100 },
     staleTime: 60_000,
   })
+}
 
 export const useDespacho = (id) =>
   useQuery({
@@ -40,13 +46,15 @@ export const useDeleteDespacho = () => {
   })
 }
 
-export const useGuias = (params = {}) =>
-  useQuery({
-    queryKey: ['guias', params],
-    queryFn: () => api.get('/despachos/guias/list', { params }).then(r => r.data),
+export const useGuias = (params = {}) => {
+  const queryParams = cleanParams(params)
+  return useQuery({
+    queryKey: ['guias', queryParams],
+    queryFn: () => api.get('/despachos/guias/list', { params: queryParams }).then(r => r.data),
     placeholderData: { items: [], total: 0, limit: 100 },
     staleTime: 60_000,
   })
+}
 
 export const useCreateGuia = () => {
   const qc = useQueryClient()

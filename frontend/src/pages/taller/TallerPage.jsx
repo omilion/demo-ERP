@@ -1,15 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon, Badge, KpiCard, PageHeader, Btn, SearchBar, Tabs } from '../../components/shared'
-import { useOdts, useOdt, useOdtEstado, useAddBitacora, useDeleteBitacora, useDeleteOdt } from '../../api/odts'
+import { useOdts, useOdt, useOdtEstado, useAddBitacora, useDeleteBitacora, useDeleteOdt, useOdtOperarios, useOdtCargaOperarios } from '../../api/odts'
 import { useAuthStore } from '../../store/auth'
 import { can, ventaPath } from '../../utils/permissions'
 
 const ESTADO_TONE = {
   Prioritaria: 'red',
   'En proceso': 'blue',
+  Asignada: 'blue',
   Pendiente:   'amber',
+  'Control calidad': 'amber',
   Terminada:   'green',
+  Entregada:   'green',
 }
 
 const TALLER_TABS = [
@@ -30,6 +33,9 @@ const TAB_PARAMS = {
 const OdtCard = ({ odt, onSelect }) => {
   const [hov, setHov] = useState(false)
   const isPrioritaria = odt.estado === 'Prioritaria'
+  const responsable = odt.operario
+    ? `${odt.operario.nombres || ''} ${odt.operario.apellidoPaterno || ''}`.trim()
+    : ''
   return (
     <div
       onMouseEnter={() => setHov(true)}
@@ -64,6 +70,11 @@ const OdtCard = ({ odt, onSelect }) => {
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <Icon name="calendar" size={12} /> {new Date(odt.createdAt).toLocaleDateString('es-CL')}
         </span>
+        {responsable && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Icon name="user" size={12} /> {responsable}
+          </span>
+        )}
         {odt.tipo && (
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <Icon name="tag" size={12} /> {odt.tipo}
@@ -150,15 +161,22 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete, canWrite }) 
   const o = full || odt
   const orden = full?.orden ?? null
   const bitacora = full?.bitacora ?? []
+  const responsable = o.operario
+    ? `${o.operario.nombres || ''} ${o.operario.apellidoPaterno || ''}`.trim()
+    : ''
 
   const handleImprimir = () => window.print()
 
   const estadoActions = [
-    { from: ['Pendiente'], to: 'En proceso', label: 'Iniciar trabajo', tone: 'blue' },
-    { from: ['Pendiente', 'En proceso'], to: 'Prioritaria', label: 'Marcar Prioritaria', tone: 'red' },
+    { from: ['Pendiente'], to: 'Asignada', label: 'Marcar Asignada', tone: 'blue' },
+    { from: ['Pendiente', 'Asignada'], to: 'En proceso', label: 'Iniciar trabajo', tone: 'blue' },
+    { from: ['Pendiente', 'Asignada', 'En proceso'], to: 'Prioritaria', label: 'Marcar Prioritaria', tone: 'red' },
     { from: ['Prioritaria'], to: 'En proceso', label: 'Volver a En proceso', tone: 'blue' },
-    { from: ['Pendiente', 'En proceso', 'Prioritaria'], to: 'Terminada', label: 'Marcar Terminada', tone: 'green' },
+    { from: ['En proceso', 'Prioritaria'], to: 'Control calidad', label: 'Enviar a control', tone: 'amber' },
+    { from: ['Pendiente', 'Asignada', 'En proceso', 'Prioritaria', 'Control calidad'], to: 'Terminada', label: 'Marcar Terminada', tone: 'green' },
+    { from: ['Terminada'], to: 'Entregada', label: 'Marcar Entregada', tone: 'green' },
     { from: ['Terminada'], to: 'Pendiente', label: 'Reabrir ODT', tone: 'amber' },
+    { from: ['Entregada'], to: 'Terminada', label: 'Reabrir entrega', tone: 'amber' },
   ]
   const available = estadoActions.filter(a => a.from.includes(o.estado))
 
@@ -212,6 +230,7 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete, canWrite }) 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
             {[
               ['Tipo',         o.tipo || '—'],
+              ['Responsable',  responsable || '—'],
               ['Prioridad',    o.prioridad || 'normal'],
               ['Creada',       fmtDate(o.createdAt)],
               ['Plazo',        fmtDate(o.plazo)],
@@ -279,10 +298,13 @@ export default function TallerPage() {
   const [search, setSearch]         = useState(initialSearch)
   const [debouncedSearch, setDeb]   = useState(initialSearch)
   const [estadoFilter, setEst]      = useState(initialPrioridad === 'urgente' ? 'Prioritaria' : 'all')
+  const [operarioFilter, setOperarioFilter] = useState('all')
   const [selected, setSelected]     = useState(null)
   const debRef = useRef(null)
   const cambiarEstado = useOdtEstado()
   const deleteOdt = useDeleteOdt()
+  const { data: operariosMeta = { items: [] } } = useOdtOperarios()
+  const { data: cargaOperarios = { items: [] } } = useOdtCargaOperarios()
 
   useEffect(() => {
     clearTimeout(debRef.current)
@@ -292,6 +314,7 @@ export default function TallerPage() {
 
   const apiParams = { ...TAB_PARAMS[tab] }
   if (estadoFilter !== 'all') apiParams.estado = estadoFilter
+  if (operarioFilter !== 'all') apiParams.operarioId = operarioFilter
   if (debouncedSearch) apiParams.search = debouncedSearch
 
   const { data: odtResult = { items: [], total: 0, limit: 100, stats: {} }, isLoading } = useOdts(apiParams)
@@ -302,8 +325,10 @@ export default function TallerPage() {
 
   const prioritarias = stats['Prioritaria'] ?? 0
   const enProceso    = stats['En proceso'] ?? 0
+  const asignadas    = stats['Asignada'] ?? 0
+  const enControl    = stats['Control calidad'] ?? 0
   const pendientes   = stats['Pendiente'] ?? 0
-  const terminadas   = stats['Terminada'] ?? 0
+  const terminadas   = (stats['Terminada'] ?? 0) + (stats['Entregada'] ?? 0)
 
   function handleEstadoChange(id, estado) {
     cambiarEstado.mutate({ id, estado }, {
@@ -360,9 +385,62 @@ export default function TallerPage() {
       <div className="kpi-strip">
         <KpiCard label="Prioritarias" value={isLoading ? '…' : prioritarias.toLocaleString('es-CL')} icon="zap" tone={prioritarias > 0 ? 'red' : 'neutral'} sublabel="Urgencia máxima" onClick={() => setEst('Prioritaria')} />
         <KpiCard label="En Proceso"   value={isLoading ? '…' : enProceso.toLocaleString('es-CL')}    icon="tool"  tone="blue"   sublabel="Trabajos activos"   onClick={() => setEst('En proceso')} />
+        <KpiCard label="Asignadas"    value={isLoading ? '…' : asignadas.toLocaleString('es-CL')}    icon="user"  tone="blue"   sublabel="Con responsable"    onClick={() => setEst('Asignada')} />
         <KpiCard label="Pendientes"   value={isLoading ? '…' : pendientes.toLocaleString('es-CL')}   icon="clock" tone="amber"  sublabel="Por iniciar"       onClick={() => setEst('Pendiente')} />
-        <KpiCard label="Terminadas"   value={isLoading ? '…' : terminadas.toLocaleString('es-CL')}   icon="checkCircle" tone="neutral" sublabel="Completadas" onClick={() => setEst('Terminada')} />
+        <KpiCard label="Control"      value={isLoading ? '…' : enControl.toLocaleString('es-CL')}    icon="search" tone="amber" sublabel="Revision calidad"   onClick={() => setEst('Control calidad')} />
+        <KpiCard label="Cerradas"     value={isLoading ? '…' : terminadas.toLocaleString('es-CL')}   icon="checkCircle" tone="neutral" sublabel="Terminadas/entregadas" onClick={() => setEst('Terminada')} />
       </div>
+
+      {(cargaOperarios.items || []).length > 0 && (
+        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)', padding: 16, marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Carga por responsable</div>
+              <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 2 }}>ODTs abiertas asignadas</div>
+            </div>
+            <button
+              onClick={() => setOperarioFilter('all')}
+              style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, background: '#fff', color: 'var(--text-2)', cursor: 'pointer', opacity: operarioFilter === 'all' ? 0.5 : 1 }}
+            >
+              Ver todos
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 10 }}>
+            {(cargaOperarios.items || []).slice(0, 8).map(item => {
+              const nombre = item.operario
+                ? `${item.operario.nombres || ''} ${item.operario.apellidoPaterno || ''}`.trim()
+                : `Trabajador #${item.operarioId}`
+              const active = operarioFilter === String(item.operarioId)
+              return (
+                <button
+                  key={item.operarioId}
+                  onClick={() => setOperarioFilter(String(item.operarioId))}
+                  style={{
+                    textAlign: 'left',
+                    border: `1px solid ${active ? 'var(--green-600)' : 'var(--border)'}`,
+                    background: active ? 'var(--green-50)' : 'var(--bg)',
+                    borderRadius: 8,
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>{nombre}</span>
+                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: 'var(--green-700)', fontWeight: 700 }}>{item.total}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {['Prioritaria', 'En proceso', 'Asignada', 'Pendiente', 'Control calidad'].map(estado => (
+                      item.estados?.[estado] > 0
+                        ? <Badge key={estado} tone={ESTADO_TONE[estado]}>{estado}: {item.estados[estado]}</Badge>
+                        : null
+                    ))}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
         <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)' }}>
@@ -377,8 +455,23 @@ export default function TallerPage() {
                 <option value="all">Todos los estados</option>
                 <option value="Prioritaria">🔴 Prioritarias</option>
                 <option value="En proceso">🔵 En proceso</option>
+                <option value="Asignada">Asignadas</option>
                 <option value="Pendiente">🟡 Pendientes</option>
+                <option value="Control calidad">Control calidad</option>
                 <option value="Terminada">🟢 Terminadas</option>
+                <option value="Entregada">Entregadas</option>
+              </select>
+              <select
+                value={operarioFilter}
+                onChange={e => setOperarioFilter(e.target.value)}
+                style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff', cursor: 'pointer', maxWidth: 190 }}
+              >
+                <option value="all">Todos los responsables</option>
+                {(operariosMeta.items || []).map(t => (
+                  <option key={t.id} value={String(t.id)}>
+                    {`${t.nombres || ''} ${t.apellidoPaterno || ''}`.trim() || `Trabajador #${t.id}`}
+                  </option>
+                ))}
               </select>
               <SearchBar placeholder="Buscar N°, cliente, descripción…" value={search} onChange={setSearch} style={{ width: 260 }} />
             </div>

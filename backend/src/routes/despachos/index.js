@@ -60,6 +60,45 @@ function rejectInvalidOrigenTipo(origenTipo) {
   return null
 }
 
+export function buildOrdenEntregaSyncFromDespacho({ ordenId, parcial, fechaEntrega } = {}) {
+  const parsedOrdenId = parsePositiveInt(ordenId)
+  if (!parsedOrdenId) return null
+  if (parcial === true) return { ordenId: parsedOrdenId, estadoEntrega: 'Parcial' }
+  if (hasValue(fechaEntrega)) return { ordenId: parsedOrdenId, estadoEntrega: 'Entregada' }
+  return null
+}
+
+export function buildOrdenEntregaSyncFromGuia({
+  ordenId,
+  currentEstadoEntrega,
+  hasExplicitNonPartialDespachoSignal = false,
+} = {}) {
+  const parsedOrdenId = parsePositiveInt(ordenId)
+  if (!parsedOrdenId) return null
+  if (currentEstadoEntrega === 'Parcial' && !hasExplicitNonPartialDespachoSignal) return null
+  return { ordenId: parsedOrdenId, estadoEntrega: 'Entregada' }
+}
+
+async function applyOrdenEntregaSync(prisma, sync) {
+  if (!sync) return null
+  return prisma.orden.update({
+    where: { id: sync.ordenId },
+    data: { estadoEntrega: sync.estadoEntrega },
+  })
+}
+
+async function hasNonPartialDespachoEntregaSignal(prisma, ordenId) {
+  const despacho = await prisma.despacho.findFirst({
+    where: {
+      ordenId,
+      parcial: false,
+      fechaEntrega: { not: null },
+    },
+    select: { id: true },
+  })
+  return !!despacho
+}
+
 export async function resolveDispatchTraceability(prisma, input = {}) {
   const odtInput = parseOptionalPositiveId(input.odtId, 'odtId')
   if (odtInput.error) return { status: 400, error: odtInput.error }
@@ -198,12 +237,57 @@ export function buildGuideWhereForDespacho(despacho) {
   return { id: -1 }
 }
 
+export function buildClienteOrdenFilter(cliente) {
+  const text = cleanText(cliente)
+  if (!text) return null
+  return {
+    orden: {
+      is: {
+        OR: [
+          { rutCliente: { contains: text, mode: 'insensitive' } },
+          { emailCliente: { contains: text, mode: 'insensitive' } },
+          { clienteSucursal: { is: { nombre: { contains: text, mode: 'insensitive' } } } },
+          { clienteSucursal: { is: { cliente: { is: { nombre: { contains: text, mode: 'insensitive' } } } } } },
+        ],
+      },
+    },
+  }
+}
+
+export function applyDespachoEstadoFilter(where, estado) {
+  const normalized = cleanText(estado)?.toLowerCase()
+  if (!normalized) return null
+
+  if (['parcial', 'parciales'].includes(normalized)) {
+    where.parcial = true
+    return null
+  }
+  if (['multa', 'multado', 'multados'].includes(normalized)) {
+    where.tieneMulta = true
+    return null
+  }
+  if (['entregado', 'entregada', 'entregados', 'entregadas'].includes(normalized)) {
+    where.fechaEntrega = { ...(typeof where.fechaEntrega === 'object' && where.fechaEntrega !== null ? where.fechaEntrega : {}), not: null }
+    where.parcial = false
+    return null
+  }
+  if (['pendiente', 'pendientes'].includes(normalized)) {
+    if (where.fechaEntrega && typeof where.fechaEntrega === 'object') {
+      return { status: 400, error: 'estado pendiente no admite rango de fecha de entrega' }
+    }
+    where.fechaEntrega = null
+    where.parcial = false
+    return null
+  }
+  return { status: 400, error: 'estado debe ser pendiente, entregada, parcial o multa' }
+}
+
 export default async function despachosRoutes(fastify) {
   // GET /api/despachos?desde=&hasta=&ordenId=&odtId=&tipo=&page=1
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
   }, async (request, reply) => {
-    const { desde, hasta, ordenId, odtId, nInterno, interno, origenTipo, origenId, tipo, contacto, transporte, region, comuna, parcial, tieneMulta, search, page = '1' } = request.query
+    const { desde, hasta, ordenId, odtId, nInterno, interno, origenTipo, origenId, tipo, contacto, transporte, region, comuna, cliente, estado, parcial, tieneMulta, search, page = '1' } = request.query
     const LIMIT = 100
     const skip = (parsePage(page) - 1) * LIMIT
     const where = {}
@@ -225,8 +309,13 @@ export default async function despachosRoutes(fastify) {
     if (transporte) where.transporte = { contains: transporte, mode: 'insensitive' }
     if (region) where.region = { contains: region, mode: 'insensitive' }
     if (comuna) where.comuna = { contains: comuna, mode: 'insensitive' }
+    if (!applyDateRange(where, 'fechaEntrega', desde, hasta)) return reply.code(400).send({ error: 'Rango de fechas invalido' })
+    const estadoError = applyDespachoEstadoFilter(where, estado)
+    if (estadoError) return reply.code(estadoError.status).send({ error: estadoError.error })
     if (parcial === 'true') where.parcial = true
     if (tieneMulta === 'true') where.tieneMulta = true
+    const clienteFilter = buildClienteOrdenFilter(cliente)
+    if (clienteFilter) where.AND = [...(where.AND || []), clienteFilter]
     if (search) {
       const isNum = /^\d+$/.test(search.trim())
       where.OR = [
@@ -237,7 +326,6 @@ export default async function despachosRoutes(fastify) {
         ...(isNum ? [{ ordenId: parseInt(search, 10) }, { odtId: parseInt(search, 10) }] : []),
       ]
     }
-    if (!applyDateRange(where, 'fechaEntrega', desde, hasta)) return reply.code(400).send({ error: 'Rango de fechas invalido' })
     const [items, total, parciales, multas] = await Promise.all([
       fastify.prisma.despacho.findMany({
         where, orderBy: { fechaEntrega: 'desc' }, take: LIMIT, skip,
@@ -280,27 +368,35 @@ export default async function despachosRoutes(fastify) {
     if (b.fechaInterno && !fechaInterno) return reply.code(400).send({ error: 'fechaInterno invalida' })
     if (b.fechaEntrega && !fechaEntrega) return reply.code(400).send({ error: 'fechaEntrega invalida' })
     if (b.montoEnvio && (montoEnvio == null || montoEnvio < 0)) return reply.code(400).send({ error: 'montoEnvio invalido' })
-    return fastify.prisma.despacho.create({
-      data: {
-        ordenId: resolved.orden.id,
-        odtId: resolved.odt?.id ?? null,
-        interno: resolved.nInterno ? String(resolved.nInterno) : null,
-        plazoEntrega: b.plazoEntrega || null,
-        fechaInterno,
-        fechaEntrega,
-        tipoDespacho: b.tipoDespacho || null,
-        transporte: b.transporte || null,
-        montoEnvio,
-        direccion: b.direccion || null,
-        contacto: b.contacto || null,
-        region: b.region || null,
-        comuna: b.comuna || null,
-        parcial: !!b.parcial,
-        tieneMulta: !!b.tieneMulta,
-        origenTipo: resolved.origenTipo,
-        origenId: resolved.origenId,
-        usuario: request.user?.nombre || request.user?.username || null,
-      },
+    const data = {
+      ordenId: resolved.orden.id,
+      odtId: resolved.odt?.id ?? null,
+      interno: resolved.nInterno ? String(resolved.nInterno) : null,
+      plazoEntrega: b.plazoEntrega || null,
+      fechaInterno,
+      fechaEntrega,
+      tipoDespacho: b.tipoDespacho || null,
+      transporte: b.transporte || null,
+      montoEnvio,
+      direccion: b.direccion || null,
+      contacto: b.contacto || null,
+      region: b.region || null,
+      comuna: b.comuna || null,
+      parcial: !!b.parcial,
+      tieneMulta: !!b.tieneMulta,
+      origenTipo: resolved.origenTipo,
+      origenId: resolved.origenId,
+      usuario: request.user?.nombre || request.user?.username || null,
+    }
+    const entregaSync = buildOrdenEntregaSyncFromDespacho({
+      ordenId: data.ordenId,
+      parcial: data.parcial,
+      fechaEntrega: data.fechaEntrega,
+    })
+    return fastify.prisma.$transaction(async (tx) => {
+      const despacho = await tx.despacho.create({ data })
+      await applyOrdenEntregaSync(tx, entregaSync)
+      return despacho
     })
   })
 
@@ -355,7 +451,16 @@ export default async function despachosRoutes(fastify) {
     }
     if (b.parcial !== undefined) data.parcial = !!b.parcial
     if (b.tieneMulta !== undefined) data.tieneMulta = !!b.tieneMulta
-    return fastify.prisma.despacho.update({ where: { id }, data })
+    const entregaSync = buildOrdenEntregaSyncFromDespacho({
+      ordenId: data.ordenId !== undefined ? data.ordenId : existing.ordenId,
+      parcial: data.parcial !== undefined ? data.parcial : existing.parcial,
+      fechaEntrega: data.fechaEntrega !== undefined ? data.fechaEntrega : existing.fechaEntrega,
+    })
+    return fastify.prisma.$transaction(async (tx) => {
+      const despacho = await tx.despacho.update({ where: { id }, data })
+      await applyOrdenEntregaSync(tx, entregaSync)
+      return despacho
+    })
   })
 
   fastify.delete('/:id', {
@@ -371,7 +476,7 @@ export default async function despachosRoutes(fastify) {
   fastify.get('/guias/list', {
     preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
   }, async (request, reply) => {
-    const { desde, hasta, nGuia, ordenId, odtId, nInterno, origenTipo, origenId, search, page = '1' } = request.query
+    const { desde, hasta, nGuia, ordenId, odtId, nInterno, origenTipo, origenId, cliente, search, page = '1' } = request.query
     const LIMIT = 100
     const skip = (parsePage(page) - 1) * LIMIT
     const where = {}
@@ -383,6 +488,8 @@ export default async function despachosRoutes(fastify) {
     if (traceFilters.filters.nInterno) where.nInterno = traceFilters.filters.nInterno
     if (traceFilters.filters.origenTipo) where.origenTipo = traceFilters.filters.origenTipo
     if (traceFilters.filters.origenId) where.origenId = traceFilters.filters.origenId
+    const clienteFilter = buildClienteOrdenFilter(cliente)
+    if (clienteFilter) where.AND = [...(where.AND || []), clienteFilter]
     if (search) {
       const trimmed = search.trim()
       const isNum = /^\d+$/.test(trimmed)
@@ -418,17 +525,32 @@ export default async function despachosRoutes(fastify) {
     const parsedFechaGuia = fechaGuia ? parseDate(fechaGuia) : new Date()
     if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
     if (fechaGuia && !parsedFechaGuia) return reply.code(400).send({ error: 'fechaGuia invalida' })
-    return fastify.prisma.guiaDespacho.create({
-      data: {
-        ordenId: resolved.orden.id,
-        odtId: resolved.odt?.id ?? null,
-        nInterno: resolved.nInterno,
-        nGuia,
-        fechaGuia: parsedFechaGuia,
-        origen: origen || null,
-        origenTipo: resolved.origenTipo,
-        origenId: resolved.origenId,
-      },
+    const data = {
+      ordenId: resolved.orden.id,
+      odtId: resolved.odt?.id ?? null,
+      nInterno: resolved.nInterno,
+      nGuia,
+      fechaGuia: parsedFechaGuia,
+      origen: origen || null,
+      origenTipo: resolved.origenTipo,
+      origenId: resolved.origenId,
+    }
+    return fastify.prisma.$transaction(async (tx) => {
+      const guia = await tx.guiaDespacho.create({ data })
+      const orden = await tx.orden.findUnique({
+        where: { id: data.ordenId },
+        select: { estadoEntrega: true },
+      })
+      const hasExplicitNonPartialDespachoSignal = orden?.estadoEntrega === 'Parcial'
+        ? await hasNonPartialDespachoEntregaSignal(tx, data.ordenId)
+        : false
+      const entregaSync = buildOrdenEntregaSyncFromGuia({
+        ordenId: data.ordenId,
+        currentEstadoEntrega: orden?.estadoEntrega,
+        hasExplicitNonPartialDespachoSignal,
+      })
+      await applyOrdenEntregaSync(tx, entregaSync)
+      return guia
     })
   })
 

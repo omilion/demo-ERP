@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyDespachoEstadoFilter,
+  buildClienteOrdenFilter,
+  buildOrdenEntregaSyncFromDespacho,
+  buildOrdenEntregaSyncFromGuia,
   buildGuideWhereForDespacho,
   resolveDispatchTraceability,
   validateDispatchFilterCoherence,
@@ -26,6 +30,81 @@ function prismaMock({
     },
   }
 }
+
+describe('buildOrdenEntregaSyncFromDespacho', () => {
+  it('marks an order as partial when the despacho is partial', () => {
+    expect(buildOrdenEntregaSyncFromDespacho({
+      ordenId: 10,
+      parcial: true,
+      fechaEntrega: new Date('2026-05-23T00:00:00.000Z'),
+    })).toEqual({
+      ordenId: 10,
+      estadoEntrega: 'Parcial',
+    })
+  })
+
+  it('marks an order as delivered when a non-partial despacho has fechaEntrega', () => {
+    expect(buildOrdenEntregaSyncFromDespacho({
+      ordenId: '10',
+      parcial: false,
+      fechaEntrega: new Date('2026-05-23T00:00:00.000Z'),
+    })).toEqual({
+      ordenId: 10,
+      estadoEntrega: 'Entregada',
+    })
+  })
+
+  it('does not sync without a valid ordenId or delivery signal', () => {
+    expect(buildOrdenEntregaSyncFromDespacho({
+      ordenId: null,
+      parcial: true,
+      fechaEntrega: new Date('2026-05-23T00:00:00.000Z'),
+    })).toBeNull()
+    expect(buildOrdenEntregaSyncFromDespacho({
+      ordenId: 10,
+      parcial: false,
+      fechaEntrega: null,
+    })).toBeNull()
+  })
+})
+
+describe('buildOrdenEntregaSyncFromGuia', () => {
+  it('marks a non-partial order as delivered when a guia is created', () => {
+    expect(buildOrdenEntregaSyncFromGuia({
+      ordenId: 10,
+      currentEstadoEntrega: 'Pendiente entrega',
+    })).toEqual({
+      ordenId: 10,
+      estadoEntrega: 'Entregada',
+    })
+  })
+
+  it('keeps a partial order unchanged without an explicit non-partial despacho signal', () => {
+    expect(buildOrdenEntregaSyncFromGuia({
+      ordenId: 10,
+      currentEstadoEntrega: 'Parcial',
+      hasExplicitNonPartialDespachoSignal: false,
+    })).toBeNull()
+  })
+
+  it('marks a partial order as delivered when a non-partial despacho signal exists', () => {
+    expect(buildOrdenEntregaSyncFromGuia({
+      ordenId: '10',
+      currentEstadoEntrega: 'Parcial',
+      hasExplicitNonPartialDespachoSignal: true,
+    })).toEqual({
+      ordenId: 10,
+      estadoEntrega: 'Entregada',
+    })
+  })
+
+  it('does not sync without a valid ordenId', () => {
+    expect(buildOrdenEntregaSyncFromGuia({
+      ordenId: 0,
+      currentEstadoEntrega: 'Pendiente entrega',
+    })).toBeNull()
+  })
+})
 
 describe('resolveDispatchTraceability', () => {
   it('resolves a dispatch by ordenId', async () => {
@@ -233,6 +312,46 @@ describe('buildGuideWhereForDespacho', () => {
         { origenTipo: 'orden', origenId: 10 },
         { origenTipo: null, origenId: null },
       ],
+    })
+  })
+})
+
+describe('dispatch list filters', () => {
+  it('builds a client filter through order and branch data', () => {
+    expect(buildClienteOrdenFilter('  plastimar  ')).toEqual({
+      orden: {
+        is: {
+          OR: [
+            { rutCliente: { contains: 'plastimar', mode: 'insensitive' } },
+            { emailCliente: { contains: 'plastimar', mode: 'insensitive' } },
+            { clienteSucursal: { is: { nombre: { contains: 'plastimar', mode: 'insensitive' } } } },
+            { clienteSucursal: { is: { cliente: { is: { nombre: { contains: 'plastimar', mode: 'insensitive' } } } } } },
+          ],
+        },
+      },
+    })
+    expect(buildClienteOrdenFilter('')).toBeNull()
+  })
+
+  it('applies logistic state filters conservatively', () => {
+    const delivered = { fechaEntrega: { gte: new Date('2026-05-01T00:00:00.000Z') } }
+    expect(applyDespachoEstadoFilter(delivered, 'entregada')).toBeNull()
+    expect(delivered).toEqual({
+      fechaEntrega: {
+        gte: new Date('2026-05-01T00:00:00.000Z'),
+        not: null,
+      },
+      parcial: false,
+    })
+
+    const partial = {}
+    expect(applyDespachoEstadoFilter(partial, 'parcial')).toBeNull()
+    expect(partial).toEqual({ parcial: true })
+
+    const invalid = {}
+    expect(applyDespachoEstadoFilter(invalid, 'cerrada')).toEqual({
+      status: 400,
+      error: 'estado debe ser pendiente, entregada, parcial o multa',
     })
   })
 })
