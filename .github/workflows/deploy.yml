@@ -67,11 +67,13 @@ jobs:
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             'set -e
              cd /var/www/plastimar-erp/backend
-             database_url="$(node --input-type=module -e "import(\"dotenv/config\"); process.stdout.write(process.env.DATABASE_URL || \"\")")"
-             test -n "$database_url"
+             set -a
+             . ./.env
+             set +a
+             test -n "$DATABASE_URL"
              mkdir -p /var/backups/plastimar/db
              backup="/var/backups/plastimar/db/plastimar_erp_$(date +%Y%m%d_%H%M%S).dump"
-             pg_dump -Fc "$database_url" -f "$backup"
+             pg_dump -Fc "$DATABASE_URL" -f "$backup"
              test -s "$backup"
              pg_restore --list "$backup" >/dev/null
              echo "Backup verified: $backup"'
@@ -106,7 +108,10 @@ jobs:
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             'set -e
              cd /var/www/plastimar-erp/backend
-             port="$(node --input-type=module -e "import(\"dotenv/config\"); process.stdout.write(process.env.PORT || \"3001\")")"
+             set -a
+             . ./.env
+             set +a
+             port="${PORT:-3001}"
              for attempt in $(seq 1 30); do
                if curl -fsS "http://127.0.0.1:${port}/api/health"; then
                  break

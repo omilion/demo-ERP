@@ -159,7 +159,7 @@ Implementado:
   - valida que la API cargue y registre plugins/rutas antes de recargar PM2;
   - usa `pm2 startOrReload` para tolerar proceso ausente;
   - valida `ecosystem.config.cjs` antes de migrar;
-  - lee `DATABASE_URL` y `PORT` via `dotenv` en Node, no sourceando `.env` como shell;
+  - valida `DATABASE_URL` antes del respaldo;
   - agrega diagnostico de listeners si el health remoto vuelve a fallar;
   - muestra el JSON de smoke si el smoke productivo falla.
 - Smoke API con timeout por request y email read-only configurable.
