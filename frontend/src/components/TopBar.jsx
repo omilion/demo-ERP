@@ -30,7 +30,7 @@ const NAV_GROUPS = [
   ] },
   { label: 'Caja', items: [
     { label: 'Movimientos', route: '/caja', module: 'caja' },
-    { label: 'Cobranza', route: '/cobranza', module: 'cobranza' },
+    { label: 'Cobranza', route: '/cobranza', module: 'ventas' },
   ] },
   { label: 'Clientes', items: [
     { label: 'Clientes', route: '/clientes', module: 'clientes' },
@@ -58,19 +58,55 @@ function canUseNavItem(user, item) {
 
 const DropdownGroup = ({ group, currentPath }) => {
   const [open, setOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
   const navigate = useNavigate()
   const ref = useRef()
+  const menuRef = useRef()
+  const closeTimer = useRef()
   const isActive = group.items.some(i => currentPath === i.route || currentPath.startsWith(i.route + '/'))
 
+  const openMenu = () => {
+    clearTimeout(closeTimer.current)
+    const rect = ref.current?.getBoundingClientRect()
+    if (rect) setMenuPos({ top: rect.bottom + 6, left: rect.left })
+    setOpen(true)
+  }
+
+  const scheduleClose = () => {
+    clearTimeout(closeTimer.current)
+    closeTimer.current = setTimeout(() => setOpen(false), 120)
+  }
+
   useEffect(() => {
-    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const handler = e => {
+      if (
+        ref.current && !ref.current.contains(e.target) &&
+        menuRef.current && !menuRef.current.contains(e.target)
+      ) setOpen(false)
+    }
     if (open) document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
+  useEffect(() => () => clearTimeout(closeTimer.current), [])
+
+  useEffect(() => {
+    if (!open) return
+    const update = () => {
+      const rect = ref.current?.getBoundingClientRect()
+      if (rect) setMenuPos({ top: rect.bottom + 6, left: rect.left })
+    }
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
+  }, [open])
+
   return (
-    <div ref={ref} style={{ position: 'relative' }} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
-      <button style={{
+    <div ref={ref} style={{ position: 'relative' }} onMouseEnter={openMenu} onMouseLeave={scheduleClose}>
+      <button onClick={() => open ? setOpen(false) : openMenu()} style={{
         display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6,
         color: isActive || open ? '#fff' : 'rgba(255,255,255,0.78)',
         fontSize: 13, fontWeight: isActive ? 600 : 400, cursor: 'pointer',
@@ -82,7 +118,7 @@ const DropdownGroup = ({ group, currentPath }) => {
         </span>
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1000, paddingTop: 6 }}>
+        <div ref={menuRef} onMouseEnter={() => clearTimeout(closeTimer.current)} onMouseLeave={scheduleClose} style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 10000 }}>
           <div style={{
             background: '#fff', borderRadius: 10, minWidth: 180,
             boxShadow: '0 8px 32px oklch(0 0 0 / 0.15)', border: '1px solid var(--border)',
