@@ -5,9 +5,9 @@ Fecha de corte: 2026-05-27
 ## Resumen
 
 - Total de SPR documentados: 48.
-- Cerrados, aprobados o aprobados localmente: 31.
-- Pendientes de ejecucion: 17.
-- Estado del codigo: bloque acumulado grande pendiente de commit. No conviene seguir nuevos SPR sin cerrar este bloque, porque mezcla backend, frontend, migraciones, tests, assets y documentacion.
+- Cerrados, aprobados o aprobados localmente: 36.
+- Pendientes de ejecucion: 12.
+- Estado del codigo: bloque Taller/Historial implementado y validado localmente; queda pendiente consolidar commit final de este lote antes de seguir con nuevos SPR.
 
 ## Criterio de orden
 
@@ -27,11 +27,6 @@ Fecha de corte: 2026-05-27
 | SPR-08 | categorias | Pendiente de ejecucion |
 | SPR-09 | clase excel | Pendiente de ejecucion |
 | SPR-11 | cobranza cliente | Pendiente de ejecucion |
-| SPR-38 | taller confecciones | Pendiente de ejecucion |
-| SPR-39 | taller espumas | Pendiente de ejecucion |
-| SPR-40 | taller externo | Pendiente de ejecucion |
-| SPR-41 | taller historial materiales | Pendiente de ejecucion |
-| SPR-42 | taller | Pendiente de ejecucion |
 | SPR-43 | usuarios | Pendiente de ejecucion |
 | SPR-44 | vendor | Pendiente de ejecucion |
 | SPR-46 | venta web | Pendiente de ejecucion |
@@ -40,23 +35,18 @@ Fecha de corte: 2026-05-27
 
 ## Orden sugerido para continuar
 
-1. SPR-42 taller.
-2. SPR-38 taller confecciones.
-3. SPR-39 taller espumas.
-4. SPR-40 taller externo.
-5. SPR-41 taller historial materiales.
-6. SPR-03 bodega taller.
-7. SPR-07 categorias bodega taller.
-8. SPR-01 autocompleta nombre material.
-9. SPR-08 categorias.
-10. SPR-43 usuarios.
-11. SPR-46 venta web.
-12. SPR-47 web.
-13. SPR-11 cobranza cliente.
-14. SPR-06 cargo transporte.
-15. SPR-09 clase excel.
-16. SPR-44 vendor.
-17. SPR-48 word textarea.
+1. SPR-03 bodega taller.
+2. SPR-07 categorias bodega taller.
+3. SPR-01 autocompleta nombre material.
+4. SPR-08 categorias.
+5. SPR-43 usuarios.
+6. SPR-46 venta web.
+7. SPR-47 web.
+8. SPR-11 cobranza cliente.
+9. SPR-06 cargo transporte.
+10. SPR-09 clase excel.
+11. SPR-44 vendor.
+12. SPR-48 word textarea.
 
 Este orden prioriza flujo operativo y datos productivos antes que librerias, assets o utilidades legacy.
 
@@ -94,6 +84,11 @@ Este orden prioriza flujo operativo y datos productivos antes que librerias, ass
 | SPR-35 | reportes licitaciones | Cerrado y aprobado multiagente |
 | SPR-36 | subcategorias bodega taller | Cerrado y aprobado multiagente |
 | SPR-37 | subcategorias | Cerrado y aprobado multiagente |
+| SPR-38 | taller confecciones | Aprobado localmente con doble revision multiagente |
+| SPR-39 | taller espumas | Aprobado localmente con doble revision multiagente |
+| SPR-40 | taller externo | Aprobado localmente con doble revision multiagente |
+| SPR-41 | taller historial materiales | Aprobado localmente con doble revision multiagente |
+| SPR-42 | taller | Aprobado localmente con doble revision multiagente |
 | SPR-45 | venta directa | Aprobado |
 
 ## Estado de limpieza esperado
@@ -121,9 +116,9 @@ Resultados:
 | `npm.cmd exec prisma migrate status` | OK, base `plastimar_test` actualizada con 26 migraciones. |
 | `npm.cmd exec prisma validate` | OK, schema Prisma valido. |
 | `npm.cmd run db:seed` | OK, seed cargado. |
-| `npm.cmd run test:ci -- --reporter=dot` | OK, 16 archivos, 123 tests. |
-| `npm.cmd run test:full -- --reporter=dot` | OK en repeticion final, 48 archivos, 426 tests. |
+| `npm.cmd run test:ci -- --reporter=dot` | OK, 16 archivos, 126 tests. |
+| `npm.cmd run test:full -- --reporter=dot` | OK, 49 archivos, 432 tests. |
 | `frontend: npm.cmd run build` | OK, build Vite generado. Warning no bloqueante por chunk mayor a 500 kB. |
 | `frontend: npm.cmd run lint` | OK, ESLint sin errores. |
 
-Nota: una primera corrida backend sin `DATABASE_URL` fallo por ambiente local no configurado; no corresponde a una regresion del codigo. Una primera corrida completa con `DATABASE_URL` correcto tuvo error transitorio de worker de Vitest al cierre; la repeticion inmediata paso completa.
+Nota: una primera corrida backend sin `DATABASE_URL` fallo por ambiente local no configurado; no corresponde a una regresion del codigo. Con `DATABASE_URL` correcto, `odts.test.js`, `test:ci` y `test:full` pasaron.

@@ -2,7 +2,7 @@ import { rowsToCsv, sendCsv } from '../../utils/csv.js'
 import { can } from '../../middleware/rbac.js'
 import { normalizeTipoMovimiento, parseDate, parsePositiveInt } from '../operational-utils.js'
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenScope } from '../historico/corte.js'
-import { attachOperarios } from '../odts/operations.js'
+import { attachOperarios, attachOrdenes, normalizeOdtFechaField, tipoTallerFilter } from '../odts/operations.js'
 import { computeEstado } from '../productos/helpers.js'
 import { getUserSucursalId, withMovimientoSucursalScope } from '../caja/scope.js'
 import { attachClientes, computeDiscountAmount, computeTotal } from '../ventas/helpers.js'
@@ -334,27 +334,60 @@ async function buildCajaExportWhere(fastify, query, reply, user = null) {
   return { where: withMovimientoSucursalScope(user, where) }
 }
 
-export function buildOdtExportWhere(query = {}) {
-  const { tipo, estado, operarioId, search, fechaDesde, fechaHasta, includeEliminados } = query
+function addWhereAnd(where, clause) {
+  where.AND = [...(where.AND || []), clause]
+}
+
+async function findOrdenIdsByNInterno(prisma, nInterno) {
+  const ordenes = await prisma.orden.findMany({
+    where: { nInterno },
+    select: { id: true },
+    take: 500,
+  })
+  return ordenes.map(o => o.id)
+}
+
+export async function buildOdtExportWhere(fastify, query = {}, user = null) {
+  const { tipo, estado, operarioId, search, nInterno, fechaDesde, fechaHasta, fechaCampo, includeEliminados } = query
   const where = {}
+  const sucursalId = getUserSucursalId(user)
+  if (sucursalId) addWhereAnd(where, { OR: [{ sucursalId }, { sucursalId: null }] })
   if (includeEliminados !== 'true') where.eliminado = false
-  if (tipo) where.tipo = tipo
+  if (tipo) addWhereAnd(where, tipoTallerFilter(tipo))
   if (estado) where.estado = estado
   if (operarioId) {
     const parsedOperarioId = parsePositiveInt(operarioId)
     if (!parsedOperarioId) return { error: 'Operario invalido' }
     where.operarioId = parsedOperarioId
   }
+  const dateField = normalizeOdtFechaField(fechaCampo)
+  if (!dateField) return { error: 'Campo de fecha invalido' }
   const range = buildDateRange(fechaDesde, fechaHasta)
   if (range.error) return { error: range.error }
-  applyRange(where, 'createdAt', range)
+  applyRange(where, dateField, range)
+  if (nInterno) {
+    const parsedNInterno = parsePositiveInt(nInterno)
+    if (!parsedNInterno) return { error: 'nInterno invalido' }
+    const ordenIds = await findOrdenIdsByNInterno(fastify.prisma, parsedNInterno)
+    addWhereAnd(where, {
+      OR: [
+        { ordenId: parsedNInterno },
+        ...(ordenIds.length ? [{ ordenId: { in: ordenIds } }] : []),
+      ],
+    })
+  }
   if (search) {
     const isNum = /^\d+$/.test(search.trim())
-    where.OR = [
-      { clienteNombre: { contains: search, mode: 'insensitive' } },
-      { descripcion: { contains: search, mode: 'insensitive' } },
-      ...(isNum ? [{ id: parseInt(search, 10) }] : []),
-    ]
+    const numeric = isNum ? parsePositiveInt(search) : null
+    const ordenIds = numeric ? await findOrdenIdsByNInterno(fastify.prisma, numeric) : []
+    addWhereAnd(where, {
+      OR: [
+        { clienteNombre: { contains: search, mode: 'insensitive' } },
+        { descripcion: { contains: search, mode: 'insensitive' } },
+        ...(numeric ? [{ id: numeric }, { ordenId: numeric }] : []),
+        ...(ordenIds.length ? [{ ordenId: { in: ordenIds } }] : []),
+      ],
+    })
   }
   return { where }
 }
@@ -1010,13 +1043,13 @@ export default async function reportesRoutes(fastify) {
   fastify.get('/export/odts', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
   }, async (request, reply) => {
-    const built = buildOdtExportWhere(request.query)
+    const built = await buildOdtExportWhere(fastify, request.query, request.user)
     if (built.error) return reply.code(400).send({ error: built.error })
     const odts = await fastify.prisma.odt.findMany({
       where: built.where,
       orderBy: { createdAt: 'desc' },
     })
-    const enriched = await attachOperarios(fastify.prisma, odts)
+    const enriched = await attachOperarios(fastify.prisma, await attachOrdenes(fastify.prisma, odts))
     const rows = enriched.map(o => ({
       ...o,
       responsable: o.operario
@@ -1025,13 +1058,16 @@ export default async function reportesRoutes(fastify) {
     }))
     const csv = rowsToCsv(rows, [
       { key: 'id', label: 'ID' },
+      { key: 'nInterno', label: 'N Interno' },
       { key: 'tipo', label: 'Tipo' },
       { key: 'clienteNombre', label: 'Cliente' },
       { key: 'descripcion', label: 'Descripcion' },
+      { key: 'obsGeneral', label: 'Obs ODT' },
       { key: 'estado', label: 'Estado' },
       { key: 'prioridad', label: 'Prioridad' },
       { key: 'responsable', label: 'Responsable' },
       { key: 'createdAt', label: 'Creada' },
+      { key: 'fechaIngreso', label: 'Ingreso' },
       { key: 'plazo', label: 'Plazo' },
       { key: 'fechaInicio', label: 'Inicio' },
       { key: 'fechaTermino', label: 'Termino' },

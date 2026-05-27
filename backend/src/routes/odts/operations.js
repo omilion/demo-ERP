@@ -3,6 +3,44 @@ export const ODT_ESTADOS = ['Pendiente', 'Asignada', 'En proceso', 'Control cali
 export const ODT_ESTADOS_ACTUALES = ['Pendiente', 'Asignada', 'En proceso', 'Control calidad', 'Terminada', 'Entregada']
 export const ODT_ESTADOS_ABIERTOS = ['Pendiente', 'Asignada', 'En proceso', 'Control calidad', 'Prioritaria']
 
+export const ODT_FECHA_FIELDS = Object.freeze({
+  createdAt: 'createdAt',
+  fechaIngreso: 'fechaIngreso',
+  fechaInicio: 'fechaInicio',
+  fechaTermino: 'fechaTermino',
+  plazo: 'plazo',
+})
+
+export function normalizeOdtFechaField(value) {
+  if (!value) return 'createdAt'
+  return ODT_FECHA_FIELDS[value] || null
+}
+
+export function tipoTallerFilter(tipo) {
+  const text = String(tipo || '').toLowerCase()
+  const names = []
+  if (text.includes('espuma')) names.push('espuma')
+  else if (text.includes('confe')) names.push('confe')
+  else if (text.includes('madera')) names.push('madera', 'externo')
+  else if (text.includes('externo')) names.push('externo', 'madera')
+  if (!names.length) return { tipo }
+  return {
+    OR: [
+      { tipo },
+      ...names.map(name => ({
+        items: {
+          some: {
+            eliminado: false,
+            talleres: {
+              some: { taller: { is: { nombre: { contains: name, mode: 'insensitive' } } } },
+            },
+          },
+        },
+      })),
+    ],
+  }
+}
+
 export function isTerminalOdtEstado(estado) {
   return ['Terminada', 'Entregada', 'Anulada'].includes(estado)
 }
@@ -47,6 +85,25 @@ export async function attachOperarios(prisma, odts) {
   })
   const map = Object.fromEntries(trabajadores.map(t => [t.id, t]))
   const enriched = list.map(o => ({ ...o, operario: o.operarioId ? (map[o.operarioId] || null) : null }))
+  return Array.isArray(odts) ? enriched : enriched[0]
+}
+
+export async function attachOrdenes(prisma, odts) {
+  const list = Array.isArray(odts) ? odts : [odts]
+  const ids = [...new Set(list.map(o => o?.ordenId).filter(Boolean))]
+  if (!ids.length) {
+    const enrichedEmpty = list.map(o => ({ ...o, orden: null, nInterno: null }))
+    return Array.isArray(odts) ? enrichedEmpty : enrichedEmpty[0]
+  }
+  const ordenes = await prisma.orden.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, nInterno: true, tipo: true },
+  })
+  const map = Object.fromEntries(ordenes.map(o => [o.id, o]))
+  const enriched = list.map(o => {
+    const orden = o.ordenId ? (map[o.ordenId] || null) : null
+    return { ...o, orden, nInterno: orden?.nInterno ?? null }
+  })
   return Array.isArray(odts) ? enriched : enriched[0]
 }
 

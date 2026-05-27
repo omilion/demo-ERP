@@ -103,6 +103,18 @@ export const useOdtItemTallerEstado = () => {
   })
 }
 
+export const useOdtTallerEstadoMasivo = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ odtId, tallerId, estado }) =>
+      api.post(`/odts/${odtId}/talleres/${tallerId}/estado`, { estado }).then(r => r.data),
+    onSuccess: (_, { odtId }) => {
+      qc.invalidateQueries({ queryKey: ['odts'] })
+      qc.invalidateQueries({ queryKey: ['odts', odtId] })
+    },
+  })
+}
+
 export const useCreateOdtConsumo = () => {
   const qc = useQueryClient()
   return useMutation({
@@ -111,10 +123,31 @@ export const useCreateOdtConsumo = () => {
       const id = Number(odtId)
       qc.invalidateQueries({ queryKey: ['odts'] })
       if (id) qc.invalidateQueries({ queryKey: ['odts', id] })
+      if (id) qc.invalidateQueries({ queryKey: ['odts', id, 'materiales'] })
       qc.invalidateQueries({ queryKey: ['historial-materiales'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
       qc.invalidateQueries({ queryKey: ['bodega-taller'] })
       qc.invalidateQueries({ queryKey: ['telas'] })
+    },
+  })
+}
+
+export const useOdtMateriales = (odtId) =>
+  useQuery({
+    queryKey: ['odts', odtId, 'materiales'],
+    queryFn: () => api.get(`/odts/${odtId}/materiales`).then(r => r.data),
+    enabled: !!odtId,
+    placeholderData: { items: [], total: 0 },
+    staleTime: 30_000,
+  })
+
+export const useDeleteOdtMaterial = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ odtId, materialId }) => api.delete(`/odts/${odtId}/materiales/${materialId}`).then(r => r.data),
+    onSuccess: (_, { odtId }) => {
+      qc.invalidateQueries({ queryKey: ['odts', odtId, 'materiales'] })
+      qc.invalidateQueries({ queryKey: ['historial-materiales'] })
     },
   })
 }

@@ -12,6 +12,7 @@ function fakeFastify({ odts = [], corte = null } = {}) {
         findMany: async () => odts,
       },
       orden: {
+        findMany: async () => [],
         findFirst: async () => corte,
       },
     },
@@ -32,15 +33,36 @@ describe('reportes export filter helpers', () => {
     expect(where.OR).toContainEqual({ email: { contains: 'contacto', mode: 'insensitive' } })
   })
 
-  it('keeps odt export filters aligned with taller list filters', () => {
-    expect(buildOdtExportWhere({ estado: 'Anulada' }).where).toMatchObject({
+  it('keeps odt export filters aligned with taller list filters', async () => {
+    await expect(buildOdtExportWhere(fakeFastify(), { estado: 'Anulada' })).resolves.toMatchObject({
+      where: {
+        eliminado: false,
+        estado: 'Anulada',
+      },
+    })
+    await expect(buildOdtExportWhere(fakeFastify(), { estado: 'Anulada', includeEliminados: 'true' })).resolves.toMatchObject({
+      where: {
+        estado: 'Anulada',
+      },
+    })
+    await expect(buildOdtExportWhere(fakeFastify(), { operarioId: 'abc' })).resolves.toEqual({ error: 'Operario invalido' })
+  })
+
+  it('matches odt export numeric search against ODT id and order internal number', async () => {
+    const fastify = fakeFastify()
+    fastify.prisma.orden.findMany = async () => [{ id: 77 }]
+    const built = await buildOdtExportWhere(fastify, { search: '123' })
+
+    expect(built.where).toMatchObject({
       eliminado: false,
-      estado: 'Anulada',
+      AND: [{
+        OR: expect.arrayContaining([
+          { id: 123 },
+          { ordenId: 123 },
+          { ordenId: { in: [77] } },
+        ]),
+      }],
     })
-    expect(buildOdtExportWhere({ estado: 'Anulada', includeEliminados: 'true' }).where).toEqual({
-      estado: 'Anulada',
-    })
-    expect(buildOdtExportWhere({ operarioId: 'abc' })).toEqual({ error: 'Operario invalido' })
   })
 
   it('normalizes visible matriz ventas export filters', async () => {

@@ -1,37 +1,32 @@
-import { applyDateRange, parsePagination } from '../operational-utils.js'
+import { applyDateRange, parsePagination, parsePositiveInt } from '../operational-utils.js'
 import { getUserSucursalId } from '../caja/scope.js'
-import { attachOperarios } from './operations.js'
+import { attachOperarios, attachOrdenes, normalizeOdtFechaField, tipoTallerFilter } from './operations.js'
 
-function tipoTallerFilter(tipo) {
-  const text = String(tipo || '').toLowerCase()
-  const names = []
-  if (text.includes('espuma')) names.push('espuma')
-  else if (text.includes('confe')) names.push('confe')
-  else if (text.includes('madera')) names.push('madera', 'externo')
-  else if (text.includes('externo')) names.push('externo', 'madera')
-  if (!names.length) return { tipo }
-  return {
-    OR: [
-      { tipo },
-      ...names.map(name => ({
-        items: {
-          some: {
-            eliminado: false,
-            talleres: {
-              some: { taller: { is: { nombre: { contains: name, mode: 'insensitive' } } } },
-            },
-          },
-        },
-      })),
-    ],
-  }
+function addAnd(where, clause) {
+  where.AND = [...(where.AND || []), clause]
+}
+
+async function buildNumericOdtSearchConditions(prisma, value) {
+  const parsed = parsePositiveInt(value)
+  if (!parsed) return [{ id: -1 }]
+  const ordenes = await prisma.orden.findMany({
+    where: { nInterno: parsed },
+    select: { id: true },
+    take: 200,
+  })
+  const ordenIds = ordenes.map(o => o.id)
+  return [
+    { id: parsed },
+    { ordenId: parsed },
+    ...(ordenIds.length ? [{ ordenId: { in: ordenIds } }] : []),
+  ]
 }
 
 export default async function listOdts(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
   }, async (request, reply) => {
-    const { tipo, estado, operarioId, search, fechaDesde, fechaHasta, includeEliminados } = request.query
+    const { tipo, estado, operarioId, search, nInterno, fechaDesde, fechaHasta, fechaCampo, includeEliminados } = request.query
     const pagination = parsePagination(request.query, { defaultLimit: 100, maxLimit: 500 })
     if (!pagination) return reply.code(400).send({ error: 'Paginacion invalida' })
 
@@ -39,24 +34,42 @@ export default async function listOdts(fastify) {
     const sucursalId = getUserSucursalId(request.user)
     if (sucursalId) where.AND = [{ OR: [{ sucursalId }, { sucursalId: null }] }]
     if (includeEliminados !== 'true') where.eliminado = false
-    if (tipo) where.AND = [...(where.AND || []), tipoTallerFilter(tipo)]
+    if (tipo) addAnd(where, tipoTallerFilter(tipo))
     if (estado) where.estado = estado
     if (operarioId) {
       if (!/^\d+$/.test(String(operarioId))) return reply.code(400).send({ error: 'Operario invalido' })
       const parsedOperarioId = parseInt(operarioId, 10)
       where.operarioId = parsedOperarioId
     }
-    if (!applyDateRange(where, 'createdAt', fechaDesde, fechaHasta)) return reply.code(400).send({ error: 'Rango de fechas invalido' })
+    const dateField = normalizeOdtFechaField(fechaCampo)
+    if (!dateField) return reply.code(400).send({ error: 'Campo de fecha invalido' })
+    if (!applyDateRange(where, dateField, fechaDesde, fechaHasta)) return reply.code(400).send({ error: 'Rango de fechas invalido' })
+    if (nInterno) {
+      const parsedNInterno = parsePositiveInt(nInterno)
+      if (!parsedNInterno) return reply.code(400).send({ error: 'nInterno invalido' })
+      const ordenes = await fastify.prisma.orden.findMany({
+        where: { nInterno: parsedNInterno },
+        select: { id: true },
+        take: 200,
+      })
+      const ordenIds = ordenes.map(o => o.id)
+      addAnd(where, {
+        OR: [
+          { ordenId: parsedNInterno },
+          ...(ordenIds.length ? [{ ordenId: { in: ordenIds } }] : []),
+        ],
+      })
+    }
     if (search) {
       const isNum = /^\d+$/.test(search.trim())
-      where.AND = [...(where.AND || []), {
+      addAnd(where, {
         OR: isNum
-          ? [{ id: parseInt(search, 10) }]
+          ? await buildNumericOdtSearchConditions(fastify.prisma, search)
           : [
               { clienteNombre: { contains: search, mode: 'insensitive' } },
               { descripcion: { contains: search, mode: 'insensitive' } },
             ],
-      }]
+      })
     }
 
     const ESTADO_ORDER = {
@@ -99,12 +112,14 @@ export default async function listOdts(fastify) {
       Anulada: 0,
     }
     for (const g of byEstado) stats[g.estado] = g._count._all
+    const withOrdenes = await attachOrdenes(fastify.prisma, odts)
 
     return {
-      items: await attachOperarios(fastify.prisma, odts),
+      items: await attachOperarios(fastify.prisma, withOrdenes),
       total,
       limit: pagination.limit,
       page: pagination.page,
+      pages: Math.max(1, Math.ceil(total / pagination.limit)),
       stats,
     }
   })

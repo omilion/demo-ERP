@@ -3,7 +3,7 @@
 Prioridad: **P1 - crítico funcional**
 Dominio: **Operaciones / Taller / Despacho**
 Subagente especialista asignado: **Subagente Operaciones-Taller-Despacho**
-Estado: **Pendiente de ejecución**
+Estado: **Aprobado localmente - cerrado el 2026-05-27**
 
 ## Objetivo
 
@@ -121,9 +121,9 @@ Navegación legacy detectada:
 
 ## Resultado de ejecución
 
-- Implementación realizada: Pendiente.
-- Archivos modificados: Pendiente.
-- Pruebas ejecutadas: Pendiente.
-- Riesgos residuales: Pendiente.
-- Validación del lead: Pendiente.
-- Decisión final: Pendiente.
+- Implementacion realizada: listado y export ODT alineados con legacy para `n_interno`, filtros por fecha configurable (`createdAt`, `fechaIngreso`, `fechaInicio`, `fechaTermino`, `plazo`), scope por sucursal, paginacion y enriquecimiento con venta interna. UI Taller agrega filtros de fecha, muestra N interno, fecha ingreso, Obs OT y conserva tabs por Espumas/Confecciones/Madera/Externo.
+- Archivos modificados: `backend/src/routes/odts/list.js`, `backend/src/routes/odts/operations.js`, `backend/src/routes/reportes/index.js`, `backend/src/routes/odts/create.js`, `backend/src/routes/odts/update.js`, `frontend/src/pages/taller/TallerPage.jsx`, `frontend/src/pages/taller/TallerFormPage.jsx`, `frontend/src/api/odts.js`.
+- Pruebas ejecutadas: `npm.cmd test -- odt-item-workflow.test.js odt-consumos.test.js historial-materiales.test.js reportes-export-helpers.test.js --reporter=dot` OK; `DATABASE_URL=postgresql://plastimar:plastimar@localhost:55432/plastimar_test?schema=public npm.cmd test -- odts.test.js --reporter=dot` OK; `frontend: npm.cmd run lint` OK; `frontend: npm.cmd run build` OK.
+- Riesgos residuales: la ficha/lista impresa legacy no se replica pixel-perfect como PDF dedicado; queda reemplazada operativamente por impresion del detalle y CSV backend filtrado. Si el cliente exige XLS/PDF con formato identico, debe tratarse como mejora documental/impresion separada.
+- Validacion del lead: Aprobado localmente con doble auditoria multiagente.
+- Decision final: Cerrado para continuar.

@@ -2,11 +2,13 @@ import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../components/forms/index'
-import { useOdt, useCreateOdt, useUpdateOdt, useOdtOperarios, useOdtItemTallerEstado, useCreateOdtConsumo } from '../../api/odts'
+import { useOdt, useCreateOdt, useUpdateOdt, useOdtOperarios, useOdtItemTallerEstado, useOdtTallerEstadoMasivo, useCreateOdtConsumo, useOdtMateriales, useDeleteOdtMaterial } from '../../api/odts'
 import { useProductos } from '../../api/productos'
 import { useBodegaTaller } from '../../api/bodegaTaller'
 import { useTelas } from '../../api/telas'
 import { useHistorialMateriales } from '../../api/historialMateriales'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 const ESTADOS_ODT = ['Pendiente', 'Asignada', 'En proceso', 'Control calidad', 'Terminada', 'Entregada', 'Prioritaria']
 
@@ -23,7 +25,8 @@ export default function TallerFormPage() {
 
   const { data, set, errors, validate } = useForm({
     tipo: 'Espumas', clienteNombre: '', descripcion: '',
-    estado: 'Pendiente', prioridad: 'normal', plazo: '', ordenId: ordenIdParam, operarioId: '',
+    obsGeneral: '', estado: 'Pendiente', prioridad: 'normal', plazo: '', fechaIngreso: '',
+    fechaInicio: '', fechaTermino: '', ordenId: ordenIdParam, operarioId: '',
   })
 
   const initializedRef = useRef(false)
@@ -32,9 +35,13 @@ export default function TallerFormPage() {
       set('tipo', found.tipo || 'Espumas')
       set('clienteNombre', found.clienteNombre ?? '')
       set('descripcion', found.descripcion ?? '')
+      set('obsGeneral', found.obsGeneral ?? '')
       set('estado', found.estado || 'Pendiente')
       set('prioridad', found.prioridad || 'normal')
       set('plazo', found.plazo ? new Date(found.plazo).toISOString().slice(0, 10) : '')
+      set('fechaIngreso', found.fechaIngreso ? new Date(found.fechaIngreso).toISOString().slice(0, 10) : '')
+      set('fechaInicio', found.fechaInicio ? new Date(found.fechaInicio).toISOString().slice(0, 10) : '')
+      set('fechaTermino', found.fechaTermino ? new Date(found.fechaTermino).toISOString().slice(0, 10) : '')
       set('ordenId', found.ordenId ? String(found.ordenId) : '')
       set('operarioId', found.operarioId ? String(found.operarioId) : '')
       initializedRef.current = true
@@ -55,11 +62,15 @@ export default function TallerFormPage() {
       tipo: data.tipo,
       clienteNombre: data.clienteNombre,
       descripcion: data.descripcion,
+      obsGeneral: data.obsGeneral || null,
       estado: data.estado,
       prioridad: data.prioridad,
       ordenId: Number(data.ordenId),
       operarioId: data.operarioId ? Number(data.operarioId) : null,
       plazo: data.plazo ? new Date(data.plazo).toISOString() : undefined,
+      fechaIngreso: data.fechaIngreso ? new Date(data.fechaIngreso).toISOString() : null,
+      fechaInicio: data.fechaInicio ? new Date(data.fechaInicio).toISOString() : null,
+      fechaTermino: data.fechaTermino ? new Date(data.fechaTermino).toISOString() : null,
     }
     if (isEdit) {
       updateOdt.mutate({ id: Number(id), data: payload }, {
@@ -110,9 +121,23 @@ export default function TallerFormPage() {
       <FormField label="Descripción del trabajo" required error={errors.descripcion}>
         <Textarea value={data.descripcion} onChange={v => set('descripcion', v)} placeholder="Detalle del trabajo a realizar" rows={3} error={errors.descripcion} />
       </FormField>
-      <FormField label="Plazo de entrega">
-        <Input type="date" value={data.plazo} onChange={v => set('plazo', v)} />
+      <FormField label="Obs OT / observacion general">
+        <Textarea value={data.obsGeneral} onChange={v => set('obsGeneral', v)} placeholder="Observaciones internas de produccion" rows={3} />
       </FormField>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+        <FormField label="Fecha ingreso">
+          <Input type="date" value={data.fechaIngreso} onChange={v => set('fechaIngreso', v)} />
+        </FormField>
+        <FormField label="Fecha inicio">
+          <Input type="date" value={data.fechaInicio} onChange={v => set('fechaInicio', v)} />
+        </FormField>
+        <FormField label="Fecha termino">
+          <Input type="date" value={data.fechaTermino} onChange={v => set('fechaTermino', v)} />
+        </FormField>
+        <FormField label="Plazo de entrega">
+          <Input type="date" value={data.plazo} onChange={v => set('plazo', v)} />
+        </FormField>
+      </div>
 
       {isEdit && <OdtConsumosSection odtId={Number(id)} />}
 
@@ -173,6 +198,8 @@ function consumoLabel(tipo, item) {
 }
 
 function OdtConsumosSection({ odtId }) {
+  const user = useAuthStore(s => s.user)
+  const canDelete = can(user, 'taller', 'delete')
   const [tipo, setTipo] = useState('producto')
   const [search, setSearch] = useState('')
   const [itemId, setItemId] = useState('')
@@ -180,6 +207,7 @@ function OdtConsumosSection({ odtId }) {
   const [taller, setTaller] = useState('')
   const [motivo, setMotivo] = useState('')
   const createConsumo = useCreateOdtConsumo()
+  const deleteMaterial = useDeleteOdtMaterial()
 
   const trimmedSearch = search.trim()
   const productoParams = tipo === 'producto' && trimmedSearch ? { search: trimmedSearch } : {}
@@ -193,6 +221,7 @@ function OdtConsumosSection({ odtId }) {
   const { data: bodegaResult = { items: [] }, isLoading: loadingBodega } = useBodegaTaller(bodegaParams)
   const { data: telasResult = { items: [] }, isLoading: loadingTelas } = useTelas(telaParams)
   const { data: historial = { items: [] }, isLoading: loadingHistorial } = useHistorialMateriales({ odtId })
+  const { data: materiales = { items: [] }, isLoading: loadingMateriales } = useOdtMateriales(odtId)
 
   const source = {
     producto: { items: productosResult.items || [], loading: loadingProductos },
@@ -237,7 +266,15 @@ function OdtConsumosSection({ odtId }) {
   }
 
   const recent = (historial.items || []).slice(0, 5)
+  const materialesActuales = materiales.items || []
   const disabled = createConsumo.isPending || !itemId || !cantidad
+
+  const handleDeleteMaterial = material => {
+    if (!confirm(`Eliminar material ${material.nombre || material.codigoInterno || material.id} de la ODT?`)) return
+    deleteMaterial.mutate({ odtId, materialId: material.id }, {
+      onError: error => alert(error?.response?.data?.error || 'Error al eliminar material'),
+    })
+  }
 
   return (
     <>
@@ -280,6 +317,39 @@ function OdtConsumosSection({ odtId }) {
         </div>
 
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <strong style={{ fontSize: 12, color: 'var(--text-2)' }}>Materiales asignados</strong>
+            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{materiales.total || 0} registros</span>
+          </div>
+          {loadingMateriales ? (
+            <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '6px 0' }}>Cargando materiales...</div>
+          ) : materialesActuales.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '6px 0' }}>Sin materiales asignados a esta ODT</div>
+          ) : (
+            <div style={{ display: 'grid', gap: 4, marginBottom: 12 }}>
+              {materialesActuales.map(material => (
+                <div key={material.id} style={{ display: 'grid', gridTemplateColumns: '112px minmax(0, 1fr) 90px 70px', gap: 8, alignItems: 'center', fontSize: 11, padding: '5px 0', borderTop: '1px dashed var(--border)' }}>
+                  <span style={{ color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>{material.codigoInterno || 'Sin codigo'}</span>
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {material.nombre || '-'}{material.taller ? ` (${material.taller})` : ''}
+                  </span>
+                  <span style={{ textAlign: 'right', fontFamily: "'DM Mono', monospace", color: 'var(--green-700)', fontWeight: 700 }}>
+                    {fmtCantidad(material.cantidad)}{material.unidad ? ` ${material.unidad}` : ''}
+                  </span>
+                  {canDelete ? (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteMaterial(material)}
+                      disabled={deleteMaterial.isPending}
+                      style={{ border: 'none', background: 'transparent', color: 'var(--red-700)', fontSize: 11, cursor: deleteMaterial.isPending ? 'default' : 'pointer' }}
+                    >
+                      Quitar
+                    </button>
+                  ) : <span />}
+                </div>
+              ))}
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <strong style={{ fontSize: 12, color: 'var(--text-2)' }}>Historial reciente</strong>
             <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{historial.total || 0} movimientos</span>
@@ -334,6 +404,25 @@ function normalizeTallerEstado(estado) {
 
 function OdtItemsTable({ odtId, items }) {
   const cambiarEstadoTaller = useOdtItemTallerEstado()
+  const cambiarTallerMasivo = useOdtTallerEstadoMasivo()
+
+  const talleresResumen = []
+  const talleresMap = new Map()
+  for (const item of items) {
+    for (const taller of item.talleres || []) {
+      const key = taller.tallerId
+      const current = talleresMap.get(key) || {
+        tallerId: taller.tallerId,
+        nombre: taller.taller?.nombre || `Taller ${taller.tallerId}`,
+        total: 0,
+        pendientes: 0,
+      }
+      current.total += 1
+      if (normalizeTallerEstado(taller.estado) !== 'listo') current.pendientes += 1
+      talleresMap.set(key, current)
+    }
+  }
+  talleresResumen.push(...talleresMap.values())
 
   const handleTallerEstado = (item, taller, action) => {
     cambiarEstadoTaller.mutate({
@@ -346,8 +435,43 @@ function OdtItemsTable({ odtId, items }) {
     })
   }
 
+  const handleTallerMasivo = taller => {
+    if (!confirm(`Marcar como listos ${taller.pendientes} item(s) de ${taller.nombre}?`)) return
+    cambiarTallerMasivo.mutate({
+      odtId,
+      tallerId: taller.tallerId,
+      estado: 'listo',
+    }, {
+      onError: () => alert('Error al actualizar el taller completo'),
+    })
+  }
+
   return (
     <div style={{ display: 'grid', gap: 10 }}>
+      {talleresResumen.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 10, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-muted)' }}>
+          {talleresResumen.map(taller => {
+            const isPending = cambiarTallerMasivo.isPending && cambiarTallerMasivo.variables?.tallerId === taller.tallerId
+            return (
+              <button
+                key={taller.tallerId}
+                type="button"
+                onClick={() => handleTallerMasivo(taller)}
+                disabled={cambiarTallerMasivo.isPending || taller.pendientes === 0}
+                style={{
+                  padding: '6px 10px', borderRadius: 7, border: '1px solid var(--green-100)',
+                  background: taller.pendientes === 0 ? '#fff' : 'var(--green-600)',
+                  color: taller.pendientes === 0 ? 'var(--green-700)' : '#fff',
+                  fontSize: 11, fontWeight: 700, cursor: taller.pendientes === 0 ? 'default' : 'pointer',
+                  opacity: cambiarTallerMasivo.isPending && !isPending ? 0.45 : 1,
+                }}
+              >
+                {isPending ? 'Actualizando...' : `Marcar todo listo: ${taller.nombre} (${taller.pendientes}/${taller.total})`}
+              </button>
+            )
+          })}
+        </div>
+      )}
       {items.map(it => (
         <div key={it.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: '#fff' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>

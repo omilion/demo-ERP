@@ -23,6 +23,7 @@ async function createTestOrden(app) {
       estadoEntrega: 'Pendiente entrega',
       clienteId: cliente.id,
       userId: user.id,
+      nInterno: 970000000 + Math.floor(Math.random() * 100000),
     },
   })
 }
@@ -45,6 +46,35 @@ describe('GET /api/odts', () => {
     const t = await loginAs(app, 'cajero')
     const res = await app.inject({ method: 'GET', url: '/api/odts', headers: { authorization: `Bearer ${t}` } })
     expect(res.statusCode).toBe(403)
+  })
+
+  it('finds ODTs by the linked order internal number', async () => {
+    const orden = await createTestOrden(app)
+    const odt = await app.prisma.odt.create({
+      data: {
+        ordenId: orden.id,
+        tipo: 'Confecciones',
+        clienteNombre: 'Busqueda N Interno',
+        descripcion: 'ODT vinculada a venta interna',
+        estado: 'Pendiente',
+        eliminado: false,
+      },
+    })
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/odts?search=${orden.nInterno}`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: odt.id, ordenId: orden.id, nInterno: orden.nInterno }),
+    ]))
+
+    await app.prisma.odt.delete({ where: { id: odt.id } }).catch(() => {})
+    await app.prisma.orden.delete({ where: { id: orden.id } }).catch(() => {})
   })
 })
 

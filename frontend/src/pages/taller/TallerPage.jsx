@@ -53,9 +53,16 @@ const OdtCard = ({ odt, onSelect }) => {
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 600, color: 'var(--green-700)' }}>
-          ODT #{odt.id}
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 600, color: 'var(--green-700)' }}>
+            ODT #{odt.id}
+          </span>
+          {odt.nInterno && (
+            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-3)' }}>
+              N interno {odt.nInterno}
+            </span>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 5 }}>
           {odt.prioridad && odt.prioridad !== 'normal' && (
             <Badge tone={odt.prioridad === 'urgente' ? 'red' : 'amber'} style={{ fontSize: 10 }}>{odt.prioridad}</Badge>
@@ -229,7 +236,7 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onCloseOdt, onAnularOd
               <div>
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--green-700)', marginBottom: 3 }}>Venta origen</div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>
-                  #{orden.id} - {orden.cliente?.nombre || 'Sin cliente'}
+                  #{orden.nInterno || orden.id} - {orden.cliente?.nombre || 'Sin cliente'}
                 </div>
                 {orden.cliente?.rut && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>{orden.cliente.rut}</div>}
               </div>
@@ -247,12 +254,22 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onCloseOdt, onAnularOd
             {o.descripcion || '-'}
           </div>
 
+          {o.obsGeneral && (
+            <>
+              <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Obs OT</div>
+              <div style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.6, marginBottom: 18, background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
+                {o.obsGeneral}
+              </div>
+            </>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
             {[
               ['Tipo',         o.tipo || '-'],
               ['Responsable',  responsable || '-'],
               ['Prioridad',    o.prioridad || 'normal'],
               ['Creada',       fmtDate(o.createdAt)],
+              ['Ingreso',      fmtDate(o.fechaIngreso)],
               ['Plazo',        fmtDate(o.plazo)],
               ['Inicio',       fmtDate(o.fechaInicio)],
               ['Termino',      fmtDate(o.fechaTermino)],
@@ -314,6 +331,10 @@ export default function TallerPage() {
   const initialSearch = searchParams.get('search') || ''
   const initialTipo = searchParams.get('tipo')
   const initialPrioridad = searchParams.get('prioridad')
+  const initialPendiente = searchParams.get('pendiente') === 'si'
+  const initialFechaCampo = searchParams.get('fechaCampo') || 'createdAt'
+  const initialFechaDesde = searchParams.get('fechaDesde') || ''
+  const initialFechaHasta = searchParams.get('fechaHasta') || ''
   const { user } = useAuthStore()
   const canWriteTaller = can(user, 'taller', 'write')
   const canDeleteTaller = can(user, 'taller', 'delete')
@@ -321,8 +342,11 @@ export default function TallerPage() {
   const [search, setSearch]         = useState(initialSearch)
   const [debouncedSearch, setDeb]   = useState(initialSearch)
   const [pageState, setPageState]   = useState({ key: '', page: 1 })
-  const [estadoFilter, setEst]      = useState(initialPrioridad === 'urgente' ? 'Prioritaria' : 'all')
+  const [estadoFilter, setEst]      = useState(initialPendiente ? 'Pendiente' : initialPrioridad === 'urgente' || initialPrioridad === 'alta' ? 'Prioritaria' : 'all')
   const [operarioFilter, setOperarioFilter] = useState('all')
+  const [fechaCampo, setFechaCampo] = useState(initialFechaCampo)
+  const [fechaDesde, setFechaDesde] = useState(initialFechaDesde)
+  const [fechaHasta, setFechaHasta] = useState(initialFechaHasta)
   const [selected, setSelected]     = useState(null)
   const debRef = useRef(null)
   const cambiarEstado = useOdtEstado()
@@ -342,6 +366,9 @@ export default function TallerPage() {
   if (estadoFilter === 'Anulada') filterParams.includeEliminados = 'true'
   if (operarioFilter !== 'all') filterParams.operarioId = operarioFilter
   if (debouncedSearch) filterParams.search = debouncedSearch
+  if (fechaDesde) filterParams.fechaDesde = fechaDesde
+  if (fechaHasta) filterParams.fechaHasta = fechaHasta
+  if (fechaDesde || fechaHasta) filterParams.fechaCampo = fechaCampo
   const filterKey = JSON.stringify(filterParams)
   const page = pageState.key === filterKey ? pageState.page : 1
   const setPagerPage = nextPage => setPageState({ key: filterKey, page: nextPage })
@@ -490,7 +517,7 @@ export default function TallerPage() {
         <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Tabs tabs={TALLER_TABS} active={tab} onChange={t => { setTab(t); setSearch('') }} />
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <select
                 value={estadoFilter}
                 onChange={e => setEst(e.target.value)}
@@ -518,7 +545,42 @@ export default function TallerPage() {
                   </option>
                 ))}
               </select>
-              <SearchBar placeholder="Buscar Nro, cliente, descripcion..." value={search} onChange={setSearch} style={{ width: 260 }} />
+              <select
+                value={fechaCampo}
+                onChange={e => setFechaCampo(e.target.value)}
+                style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff', cursor: 'pointer', maxWidth: 150 }}
+              >
+                <option value="createdAt">Fecha creada</option>
+                <option value="fechaIngreso">Fecha ingreso</option>
+                <option value="fechaInicio">Fecha inicio</option>
+                <option value="fechaTermino">Fecha termino</option>
+                <option value="plazo">Plazo</option>
+              </select>
+              <input
+                type="date"
+                value={fechaDesde}
+                onChange={e => setFechaDesde(e.target.value)}
+                style={{ padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff' }}
+                title="Fecha desde"
+              />
+              <input
+                type="date"
+                value={fechaHasta}
+                onChange={e => setFechaHasta(e.target.value)}
+                style={{ padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff' }}
+                title="Fecha hasta"
+              />
+              {(fechaDesde || fechaHasta) && (
+                <button
+                  type="button"
+                  onClick={() => { setFechaDesde(''); setFechaHasta('') }}
+                  style={{ padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, background: '#fff', color: 'var(--text-2)', cursor: 'pointer' }}
+                  title="Limpiar fechas"
+                >
+                  <Icon name="x" size={13} />
+                </button>
+              )}
+              <SearchBar placeholder="Buscar ODT, N interno, cliente..." value={search} onChange={setSearch} style={{ width: 260 }} />
             </div>
           </div>
         </div>

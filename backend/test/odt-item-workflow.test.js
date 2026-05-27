@@ -4,10 +4,12 @@ import itemWorkflowRoutes, {
   ODT_ITEM_TALLER_ESTADOS_ERROR,
   buildTallerItemEstadoBitacoraEntry,
   buildTallerItemEstadoUpdate,
+  buildTallerBulkRelationWhere,
   buildTallerItemRelationWhere,
   canChangeTallerItemEstado,
   getRequestUsuario,
   normalizeTallerItemEstado,
+  parseBulkWorkflowParams,
   parseWorkflowParams,
 } from '../src/routes/odts/item-workflow.js'
 
@@ -25,6 +27,9 @@ async function buildHandlers(prisma) {
     },
     patch: (path, opts, handler) => {
       handlers[`PATCH ${path}`] = { opts, handler }
+    },
+    post: (path, opts, handler) => {
+      handlers[`POST ${path}`] = { opts, handler }
     },
   }
   await itemWorkflowRoutes(fastify)
@@ -79,6 +84,18 @@ describe('ODT item/taller workflow helpers', () => {
     expect(parseWorkflowParams({ odtId: '0', itemId: '20', tallerItemId: '30' })).toEqual({ error: 'odtId invalido' })
     expect(parseWorkflowParams({ odtId: '10', itemId: 'abc', tallerItemId: '30' })).toEqual({ error: 'itemId invalido' })
     expect(parseWorkflowParams({ odtId: '10', itemId: '20', tallerItemId: '-1' })).toEqual({ error: 'tallerItemId invalido' })
+  })
+
+  it('parses bulk taller workflow params and builds the scoped relationship where clause', () => {
+    const params = parseBulkWorkflowParams({ odtId: '10', tallerId: '3' })
+
+    expect(params).toEqual({ odtId: 10, tallerId: 3 })
+    expect(buildTallerBulkRelationWhere(params, { sucursalId: 4 })).toEqual({
+      tallerId: 3,
+      odtItem: { is: { odtId: 10, eliminado: false, odt: { is: { id: 10, OR: [{ sucursalId: 4 }, { sucursalId: null }] } } } },
+    })
+    expect(parseBulkWorkflowParams({ odtId: 'x', tallerId: '3' })).toEqual({ error: 'odtId invalido' })
+    expect(parseBulkWorkflowParams({ odtId: '10', tallerId: '0' })).toEqual({ error: 'tallerId invalido' })
   })
 
   it('chooses the usuario from request user nombre before email', () => {
@@ -211,6 +228,7 @@ describe('ODT item/taller workflow route', () => {
     expect(fastify.rbac).toHaveBeenCalledWith('taller', 'write')
     expect(handlers[`PUT ${ROUTE}`]).toBeTruthy()
     expect(handlers[`PATCH ${ROUTE}`]).toBeTruthy()
+    expect(handlers['POST /:odtId/talleres/:tallerId/estado']).toBeTruthy()
     expect(handlers[`PUT ${ROUTE}`].opts.preHandler).toHaveLength(2)
   })
 
@@ -386,6 +404,67 @@ describe('ODT item/taller workflow route', () => {
         fecha: expect.any(Date),
         texto: 'Estado taller Costura / MK-1 - Colchoneta: pendiente -> en_proceso',
       },
+    })
+  })
+
+  it('marks all items for a taller as ready with audit entries', async () => {
+    const items = [
+      {
+        id: 30,
+        odtItemId: 20,
+        tallerId: 3,
+        estado: 'pendiente',
+        fechaInicio: null,
+        fechaListo: null,
+        usuario: null,
+        usuarioListo: null,
+        odtItem: { odtId: 10, codigoInterno: 'MK-1', nombre: 'Colchoneta', odt: { id: 10, estado: 'Pendiente', eliminado: false, sucursalId: null } },
+        taller: { nombre: 'Costura' },
+      },
+      {
+        id: 31,
+        odtItemId: 21,
+        tallerId: 3,
+        estado: 'en_proceso',
+        fechaInicio: new Date('2026-05-22T08:00:00.000Z'),
+        fechaListo: null,
+        usuario: 'Previo',
+        usuarioListo: null,
+        odtItem: { odtId: 10, codigoInterno: 'MK-2', nombre: 'Respaldo', odt: { id: 10, estado: 'Pendiente', eliminado: false, sucursalId: null } },
+        taller: { nombre: 'Costura' },
+      },
+    ]
+    const tx = {
+      odtItemTaller: {
+        findMany: vi.fn().mockResolvedValue(items),
+        update: vi.fn(async ({ where, data }) => ({ id: where.id, ...data })),
+      },
+      bitacoraTaller: {
+        createMany: vi.fn().mockResolvedValue({ count: 2 }),
+      },
+    }
+    const prisma = {
+      odtItemTaller: {
+        findMany: vi.fn().mockResolvedValue(items),
+      },
+      $transaction: vi.fn(async callback => callback(tx)),
+    }
+    const { handlers } = await buildHandlers(prisma)
+    const reply = replyStub()
+
+    const response = await handlers['POST /:odtId/talleres/:tallerId/estado'].handler({
+      params: { odtId: '10', tallerId: '3' },
+      body: { estado: 'listo' },
+      user: { nombre: 'Ana Taller' },
+    }, reply)
+
+    expect(response).toEqual({ odtId: 10, tallerId: 3, estado: 'listo', updated: 2 })
+    expect(tx.odtItemTaller.update).toHaveBeenCalledTimes(2)
+    expect(tx.bitacoraTaller.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({ odtId: 10, texto: 'Estado taller Costura / MK-1 - Colchoneta: pendiente -> listo' }),
+        expect.objectContaining({ odtId: 10, texto: 'Estado taller Costura / MK-2 - Respaldo: en_proceso -> listo' }),
+      ]),
     })
   })
 })

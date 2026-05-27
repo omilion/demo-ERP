@@ -34,6 +34,12 @@ async function buildHandlers(prisma) {
     post: (path, opts, handler) => {
       handlers[`POST ${path}`] = { opts, handler }
     },
+    get: (path, opts, handler) => {
+      handlers[`GET ${path}`] = { opts, handler }
+    },
+    delete: (path, opts, handler) => {
+      handlers[`DELETE ${path}`] = { opts, handler }
+    },
   }
   await odtConsumosRoutes(fastify)
   return { fastify, handlers }
@@ -128,6 +134,7 @@ describe('ODT consumos helpers', () => {
       },
       movimientoBodega: { create: vi.fn().mockResolvedValue({ id: 100 }) },
       tallerHistorialMaterial: { create: vi.fn().mockResolvedValue({ id: 200 }) },
+      tallerMaterial: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 300 }), update: vi.fn() },
     }
 
     const result = await applyOdtConsumo({
@@ -246,6 +253,7 @@ describe('ODT consumos helpers', () => {
       },
       bodegaTallerMovimiento: { create: vi.fn().mockResolvedValue({ id: 101 }) },
       tallerHistorialMaterial: { create: vi.fn().mockResolvedValue({ id: 201 }) },
+      tallerMaterial: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 301 }), update: vi.fn() },
     }
 
     const result = await applyOdtConsumo({
@@ -310,6 +318,7 @@ describe('ODT consumos helpers', () => {
       },
       bodegaTallerMovimiento: { create: vi.fn().mockResolvedValue({ id: 101 }) },
       tallerHistorialMaterial: { create: vi.fn().mockResolvedValue({ id: 201 }) },
+      tallerMaterial: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 301 }), update: vi.fn() },
     }
 
     const result = await applyOdtConsumo({
@@ -355,6 +364,7 @@ describe('ODT consumos helpers', () => {
       },
       telaMovimiento: { create: vi.fn().mockResolvedValue({ id: 102 }) },
       tallerHistorialMaterial: { create: vi.fn().mockResolvedValue({ id: 202 }) },
+      tallerMaterial: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 302 }), update: vi.fn() },
     }
 
     const result = await applyOdtConsumo({
@@ -387,7 +397,7 @@ describe('ODT consumos helpers', () => {
         odtId: 13,
         codigoInterno: 'T1',
         egreso: 2.5,
-        unidad: null,
+        unidad: 'm',
       }),
     })
   })
@@ -416,6 +426,7 @@ describe('ODT consumos route', () => {
       },
       movimientoBodega: { create: vi.fn().mockResolvedValue({ id: 100 }) },
       tallerHistorialMaterial: { create: vi.fn().mockResolvedValue({ id: 200 }) },
+      tallerMaterial: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 300 }), update: vi.fn() },
     }
     const prisma = {
       odt: {

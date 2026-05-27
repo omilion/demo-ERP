@@ -24,3 +24,11 @@ export const useDeleteHistorialMaterial = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['historial-materiales'] }),
   })
 }
+
+export const useDeleteManyHistorialMaterial = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (ids) => api.delete('/historial-materiales/bulk', { data: { ids } }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['historial-materiales'] }),
+  })
+}

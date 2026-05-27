@@ -8,7 +8,9 @@ const Schema = z.object({
   tipo: z.enum(['Espumas', 'Confecciones', 'Madera', 'Externo']).optional(),
   clienteNombre: z.string().optional(),
   descripcion: z.string().optional(),
+  obsGeneral: z.string().optional().nullable(),
   plazo: z.string().datetime({ offset: true }).optional().or(z.string().date().optional()),
+  fechaIngreso: z.string().datetime({ offset: true }).optional().or(z.string().date().optional()).nullable().optional(),
   fechaInicio: z.string().datetime({ offset: true }).optional().or(z.string().date().optional()).nullable().optional(),
   fechaTermino: z.string().datetime({ offset: true }).optional().or(z.string().date().optional()).nullable().optional(),
   estado: z.enum(ODT_ESTADOS).optional(),
@@ -81,6 +83,7 @@ export default async function updateOdt(fastify) {
       const operario = await validateOperario(fastify.prisma, data.operarioId)
       if (operario?.error) return reply.code(400).send({ error: operario.error })
       if (data.plazo) data.plazo = new Date(data.plazo)
+      if (data.fechaIngreso) data.fechaIngreso = new Date(data.fechaIngreso)
       if (data.fechaInicio) data.fechaInicio = new Date(data.fechaInicio)
       if (data.fechaTermino) data.fechaTermino = new Date(data.fechaTermino)
       const updateData = applyOdtStateSideEffects(data, current)

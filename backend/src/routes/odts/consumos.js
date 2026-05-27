@@ -64,8 +64,42 @@ export function buildHistorialMaterialData({ odt, item, cantidad, usuario, talle
     usuario,
     fecha: now,
     taller,
-    sucursalId: item.sucursalId ?? null,
+    sucursalId: item.sucursalId ?? odt.sucursalId ?? null,
   }
+}
+
+async function upsertTallerMaterial({ tx, odt, item, cantidad, taller = null }) {
+  const codigoInterno = item.codigoInterno ?? item.codigo ?? null
+  const current = await tx.tallerMaterial.findFirst({
+    where: {
+      odtId: odt.id,
+      codigoInterno,
+      taller,
+    },
+    select: { id: true },
+  })
+  const data = {
+    odtId: odt.id,
+    codigoInterno,
+    nombre: item.nombre ?? null,
+    unidad: item.unidadMedida ?? null,
+    taller,
+  }
+  if (current) {
+    return tx.tallerMaterial.update({
+      where: { id: current.id },
+      data: {
+        ...data,
+        cantidad: { increment: cantidad },
+      },
+    })
+  }
+  return tx.tallerMaterial.create({
+    data: {
+      ...data,
+      cantidad,
+    },
+  })
 }
 
 export async function consumirProducto({ tx, odt, itemId, cantidad, motivo, userId, usuario, taller, now = new Date() }) {
@@ -98,6 +132,7 @@ export async function consumirProducto({ tx, odt, itemId, cantidad, motivo, user
   const historial = await tx.tallerHistorialMaterial.create({
     data: buildHistorialMaterialData({ odt, item: producto, cantidad, usuario, taller, now }),
   })
+  const materialAsignado = await upsertTallerMaterial({ tx, odt, item: producto, cantidad, taller })
 
   return {
     tipo: 'producto',
@@ -105,6 +140,7 @@ export async function consumirProducto({ tx, odt, itemId, cantidad, motivo, user
     stockFinal: producto.stock - cantidad,
     movimiento,
     historial,
+    materialAsignado,
   }
 }
 
@@ -151,6 +187,7 @@ export async function consumirMaterialTaller({ tx, odt, itemId, cantidad, motivo
   const historial = await tx.tallerHistorialMaterial.create({
     data: buildHistorialMaterialData({ odt, item: material, cantidad, usuario, taller, now }),
   })
+  const materialAsignado = await upsertTallerMaterial({ tx, odt, item: material, cantidad, taller })
 
   return {
     tipo: 'material_taller',
@@ -158,6 +195,7 @@ export async function consumirMaterialTaller({ tx, odt, itemId, cantidad, motivo
     stockFinal: material.stock - cantidad,
     movimiento,
     historial,
+    materialAsignado,
   }
 }
 
@@ -186,9 +224,11 @@ export async function consumirTela({ tx, odt, itemId, cantidad, usuario, taller,
       usuario,
     },
   })
+  const telaConUnidad = { ...tela, unidadMedida: 'm' }
   const historial = await tx.tallerHistorialMaterial.create({
-    data: buildHistorialMaterialData({ odt, item: tela, cantidad, usuario, taller, now }),
+    data: buildHistorialMaterialData({ odt, item: telaConUnidad, cantidad, usuario, taller, now }),
   })
+  const materialAsignado = await upsertTallerMaterial({ tx, odt, item: telaConUnidad, cantidad, taller })
 
   return {
     tipo: 'tela',
@@ -196,6 +236,7 @@ export async function consumirTela({ tx, odt, itemId, cantidad, usuario, taller,
     stockFinal: tela.stock - cantidad,
     movimiento,
     historial,
+    materialAsignado,
   }
 }
 
@@ -225,6 +266,39 @@ export async function applyOdtConsumo({ tx, odt, consumo, userId, usuario, sucur
 }
 
 export default async function odtConsumosRoutes(fastify) {
+  fastify.get('/:id/materiales', {
+    preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
+  }, async (request, reply) => {
+    const resolved = await resolveOdtForWrite(fastify.prisma, request.params.id, {
+      user: request.user,
+      allowWithoutOrden: true,
+    })
+    if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
+    const items = await fastify.prisma.tallerMaterial.findMany({
+      where: { odtId: resolved.odt.id },
+      orderBy: [{ taller: 'asc' }, { nombre: 'asc' }, { id: 'asc' }],
+    })
+    return { items, total: items.length }
+  })
+
+  fastify.delete('/:id/materiales/:materialId', {
+    preHandler: [fastify.authenticate, fastify.rbac('taller', 'delete')],
+  }, async (request, reply) => {
+    const resolved = await resolveOdtForWrite(fastify.prisma, request.params.id, {
+      user: request.user,
+      allowWithoutOrden: true,
+    })
+    if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
+    const materialId = parsePositiveInt(request.params.materialId)
+    if (!materialId) return reply.code(400).send({ error: 'materialId invalido' })
+    const current = await fastify.prisma.tallerMaterial.findFirst({
+      where: { id: materialId, odtId: resolved.odt.id },
+      select: { id: true },
+    })
+    if (!current) return reply.code(404).send({ error: 'Material no encontrado' })
+    return fastify.prisma.tallerMaterial.delete({ where: { id: materialId } })
+  })
+
   fastify.post('/:id/consumos', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
   }, async (request, reply) => {

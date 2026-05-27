@@ -3,7 +3,7 @@
 Prioridad: **P2 - completar equivalencia**
 Dominio: **Operaciones / Taller / Despacho**
 Subagente especialista asignado: **Subagente Operaciones-Taller-Despacho**
-Estado: **Pendiente de ejecución**
+Estado: **Aprobado localmente - cerrado el 2026-05-27**
 
 ## Objetivo
 
@@ -100,9 +100,9 @@ Navegación legacy detectada:
 
 ## Resultado de ejecución
 
-- Implementación realizada: Pendiente.
-- Archivos modificados: Pendiente.
-- Pruebas ejecutadas: Pendiente.
-- Riesgos residuales: Pendiente.
-- Validación del lead: Pendiente.
-- Decisión final: Pendiente.
+- Implementacion realizada: Historial Materiales queda con scope por sucursal, paginacion real, filtros por fechas/operario/taller/codigo/material/ODT/tipo movimiento, columnas de saldo y ubicacion inferida, export backend de todos los resultados filtrados, borrado individual y borrado masivo solo con permiso `taller.delete`.
+- Archivos modificados: `backend/src/routes/historial-materiales/index.js`, `frontend/src/pages/historial-materiales/HistorialMaterialesPage.jsx`, `frontend/src/api/historialMateriales.js`.
+- Pruebas ejecutadas: `npm.cmd test -- odt-item-workflow.test.js odt-consumos.test.js historial-materiales.test.js reportes-export-helpers.test.js --reporter=dot` OK; `DATABASE_URL=postgresql://plastimar:plastimar@localhost:55432/plastimar_test?schema=public npm.cmd test -- odts.test.js --reporter=dot` OK; `frontend: npm.cmd run lint` OK; `frontend: npm.cmd run build` OK.
+- Riesgos residuales: el export legacy Excel con autofiltro/freeze no se replica como XLS nativo; se reemplaza por CSV backend completo y filtrado. La ubicacion se infiere por codigo desde catalogo/telas porque el modelo historico actual no guarda una columna `ubicacion` propia.
+- Validacion del lead: Aprobado localmente con doble auditoria multiagente.
+- Decision final: Cerrado para continuar.

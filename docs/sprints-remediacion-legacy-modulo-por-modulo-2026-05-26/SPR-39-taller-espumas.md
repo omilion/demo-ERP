@@ -3,7 +3,7 @@
 Prioridad: **P2 - completar equivalencia**
 Dominio: **Operaciones / Taller / Despacho**
 Subagente especialista asignado: **Subagente Operaciones-Taller-Despacho**
-Estado: **Pendiente de ejecución**
+Estado: **Aprobado localmente - cerrado el 2026-05-27**
 
 ## Objetivo
 
@@ -104,9 +104,9 @@ Navegación legacy detectada:
 
 ## Resultado de ejecución
 
-- Implementación realizada: Pendiente.
-- Archivos modificados: Pendiente.
-- Pruebas ejecutadas: Pendiente.
-- Riesgos residuales: Pendiente.
-- Validación del lead: Pendiente.
-- Decisión final: Pendiente.
+- Implementacion realizada: el flujo legacy de Espumas queda cubierto en el modulo Taller unificado con tab/filtro `Espumas`, busqueda por N interno, filtros de fecha, fechas editables, Obs OT, estado por producto/taller, materiales asignados por ODT, consumo trazable y actualizacion de `taller_materiales`.
+- Archivos modificados: `backend/src/routes/odts/item-workflow.js`, `backend/src/routes/odts/consumos.js`, `backend/src/routes/odts/list.js`, `frontend/src/pages/taller/TallerFormPage.jsx`, `frontend/src/pages/taller/TallerPage.jsx`, `frontend/src/api/odts.js`.
+- Pruebas ejecutadas: `npm.cmd test -- odt-item-workflow.test.js odt-consumos.test.js historial-materiales.test.js reportes-export-helpers.test.js --reporter=dot` OK; `DATABASE_URL=postgresql://plastimar:plastimar@localhost:55432/plastimar_test?schema=public npm.cmd test -- odts.test.js --reporter=dot` OK; `frontend: npm.cmd run lint` OK; `frontend: npm.cmd run build` OK.
+- Riesgos residuales: el modulo nuevo no replica una pantalla separada `taller_espumas`; se aprueba como reemplazo por modulo unificado con tab y filtros. La impresion formal legacy queda reemplazada por impresion del detalle y export CSV.
+- Validacion del lead: Aprobado localmente con doble auditoria multiagente.
+- Decision final: Cerrado para continuar.

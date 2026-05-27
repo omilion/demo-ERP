@@ -50,6 +50,16 @@ export function parseWorkflowParams(params = {}) {
   return { odtId, itemId, tallerItemId }
 }
 
+export function parseBulkWorkflowParams(params = {}) {
+  const odtId = parsePositiveInt(params.odtId)
+  if (!odtId) return { error: 'odtId invalido' }
+
+  const tallerId = parsePositiveInt(params.tallerId)
+  if (!tallerId) return { error: 'tallerId invalido' }
+
+  return { odtId, tallerId }
+}
+
 export function buildTallerItemRelationWhere({ odtId, itemId, tallerItemId }, options = {}) {
   const odtWhere = {
     id: odtId,
@@ -58,6 +68,17 @@ export function buildTallerItemRelationWhere({ odtId, itemId, tallerItemId }, op
   return {
     id: tallerItemId,
     odtItemId: itemId,
+    odtItem: { is: { odtId, eliminado: false, odt: { is: odtWhere } } },
+  }
+}
+
+export function buildTallerBulkRelationWhere({ odtId, tallerId }, options = {}) {
+  const odtWhere = {
+    id: odtId,
+    ...(options.sucursalId ? { OR: [{ sucursalId: options.sucursalId }, { sucursalId: null }] } : {}),
+  }
+  return {
+    tallerId,
     odtItem: { is: { odtId, eliminado: false, odt: { is: odtWhere } } },
   }
 }
@@ -118,6 +139,27 @@ export function canChangeTallerItemEstado(user, estado, current = {}) {
 }
 
 const ROUTE = '/:odtId/items/:itemId/talleres/:tallerItemId/estado'
+const BULK_ROUTE = '/:odtId/talleres/:tallerId/estado'
+
+const relationSelect = {
+  id: true,
+  odtItemId: true,
+  tallerId: true,
+  estado: true,
+  fechaInicio: true,
+  fechaListo: true,
+  usuario: true,
+  usuarioListo: true,
+  odtItem: {
+    select: {
+      odtId: true,
+      codigoInterno: true,
+      nombre: true,
+      odt: { select: { id: true, sucursalId: true, estado: true, eliminado: true } },
+    },
+  },
+  taller: { select: { nombre: true } },
+}
 
 export default async function itemWorkflowRoutes(fastify) {
   async function updateEstado(request, reply) {
@@ -130,25 +172,6 @@ export default async function itemWorkflowRoutes(fastify) {
     const { tallerItemId } = parsedParams
     const sucursalId = getUserSucursalId(request.user)
     const relationWhere = buildTallerItemRelationWhere(parsedParams, { sucursalId })
-    const relationSelect = {
-      id: true,
-      odtItemId: true,
-      tallerId: true,
-      estado: true,
-      fechaInicio: true,
-      fechaListo: true,
-      usuario: true,
-      usuarioListo: true,
-      odtItem: {
-        select: {
-          odtId: true,
-          codigoInterno: true,
-          nombre: true,
-          odt: { select: { id: true, sucursalId: true, estado: true, eliminado: true } },
-        },
-      },
-      taller: { select: { nombre: true } },
-    }
     const current = await fastify.prisma.odtItemTaller.findFirst({
       where: relationWhere,
       select: relationSelect,
@@ -197,7 +220,76 @@ export default async function itemWorkflowRoutes(fastify) {
     }
   }
 
+  async function updateTallerEstadoMasivo(request, reply) {
+    const parsedParams = parseBulkWorkflowParams(request.params)
+    if (parsedParams.error) return reply.code(400).send({ error: parsedParams.error })
+
+    const estado = normalizeTallerItemEstado(request.body?.estado)
+    if (!estado) return reply.code(400).send({ error: ODT_ITEM_TALLER_ESTADOS_ERROR })
+
+    const sucursalId = getUserSucursalId(request.user)
+    const relationWhere = buildTallerBulkRelationWhere(parsedParams, { sucursalId })
+    const currentItems = await fastify.prisma.odtItemTaller.findMany({
+      where: relationWhere,
+      select: relationSelect,
+      orderBy: { id: 'asc' },
+    })
+    if (!currentItems.length) return reply.code(404).send({ error: 'No hay items para ese taller en la ODT' })
+    const odt = currentItems[0]?.odtItem?.odt
+    if (!isOdtWorkflowWritable(odt)) {
+      return reply.code(409).send({ error: 'ODT cerrada o anulada' })
+    }
+    if (currentItems.some(item => !canChangeTallerItemEstado(request.user, estado, item))) {
+      return reply.code(403).send({ error: 'Forbidden' })
+    }
+
+    try {
+      return await fastify.prisma.$transaction(async (tx) => {
+        const txItems = await tx.odtItemTaller.findMany({
+          where: relationWhere,
+          select: relationSelect,
+          orderBy: { id: 'asc' },
+        })
+        if (!txItems.length) {
+          const error = new Error('No hay items para ese taller en la ODT')
+          error.statusCode = 404
+          throw error
+        }
+        if (!isOdtWorkflowWritable(txItems[0]?.odtItem?.odt)) {
+          const error = new Error('ODT cerrada o anulada')
+          error.statusCode = 409
+          throw error
+        }
+        if (txItems.some(item => !canChangeTallerItemEstado(request.user, estado, item))) {
+          const error = new Error('Forbidden')
+          error.statusCode = 403
+          throw error
+        }
+        const updated = []
+        const bitacora = []
+        for (const item of txItems) {
+          const data = buildTallerItemEstadoUpdate({ estado, current: item, user: request.user })
+          const row = await tx.odtItemTaller.update({ where: { id: item.id }, data })
+          updated.push(row)
+          const entry = buildTallerItemEstadoBitacoraEntry({ current: item, estado, user: request.user })
+          if (entry.odtId && estado !== item.estado) bitacora.push(entry)
+        }
+        if (bitacora.length) await tx.bitacoraTaller.createMany({ data: bitacora })
+        return {
+          odtId: parsedParams.odtId,
+          tallerId: parsedParams.tallerId,
+          estado,
+          updated: updated.length,
+        }
+      })
+    } catch (error) {
+      if (error.statusCode) return reply.code(error.statusCode).send({ error: error.message })
+      throw error
+    }
+  }
+
   const opts = { preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')] }
   fastify.put(ROUTE, opts, updateEstado)
   fastify.patch(ROUTE, opts, updateEstado)
+  fastify.post(BULK_ROUTE, opts, updateTallerEstadoMasivo)
 }
