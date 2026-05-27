@@ -162,32 +162,47 @@ describe('operational route hardening', () => {
     expect(res.statusCode).toBe(404)
   })
 
-  it('does not allow new bitacora on legacy ODTs without orden', async () => {
-    const odt = await app.prisma.odt.create({
+  it('does not allow new legacy ODTs without orden', async () => {
+    await expect(app.prisma.odt.create({
       data: { tipo: 'Espumas', descripcion: 'Legacy suelta', estado: 'Pendiente' },
-    })
-    const res = await app.inject({
-      method: 'POST',
-      url: `/api/odts/${odt.id}/bitacora`,
-      headers: { authorization: `Bearer ${tallerToken}` },
-      payload: { texto: 'Debe rechazarse' },
-    })
-    await app.prisma.odt.delete({ where: { id: odt.id } }).catch(() => {})
-    expect(res.statusCode).toBe(409)
+    })).rejects.toThrow(/odts_orden_id_required_new|violates check constraint/)
   })
 
   it('requires taller assignment when passing items to workshop', async () => {
     const { orden, odt } = await createLinkedOdt(app)
-    const producto = await app.prisma.producto.findFirst({ select: { id: true } })
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/pasar-taller/enviar',
-      headers: { authorization: `Bearer ${tallerToken}` },
-      payload: { odtId: odt.id, items: [{ productoId: producto.id, cantidad: 1 }] },
+    const marker = `op-pt-${Date.now()}`
+    const producto = await app.prisma.producto.create({
+      data: {
+        codigoInterno: marker,
+        nombre: 'Producto transitorio operacional',
+        estadoInventario: 'Transitorio',
+        activo: true,
+        precioLista: 1000,
+      },
     })
-    await app.prisma.odt.delete({ where: { id: odt.id } }).catch(() => {})
-    await app.prisma.orden.delete({ where: { id: orden.id } }).catch(() => {})
-    expect(res.statusCode).toBe(400)
-    expect(JSON.parse(res.body).error).toMatch(/tallerId/)
+    const item = await app.prisma.ordenItem.create({
+      data: {
+        ordenId: orden.id,
+        productoId: producto.id,
+        codigoInterno: producto.codigoInterno,
+        nombre: producto.nombre,
+        cantidad: 1,
+        precioUnitario: 1000,
+      },
+    })
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/pasar-taller/enviar',
+        headers: { authorization: `Bearer ${tallerToken}` },
+        payload: { odtId: odt.id, items: [{ ordenItemId: item.id, cantidad: 1 }] },
+      })
+      expect(res.statusCode).toBe(400)
+      expect(JSON.parse(res.body).error).toMatch(/talleres/)
+    } finally {
+      await app.prisma.odt.delete({ where: { id: odt.id } }).catch(() => {})
+      await app.prisma.orden.delete({ where: { id: orden.id } }).catch(() => {})
+      await app.prisma.producto.delete({ where: { id: producto.id } }).catch(() => {})
+    }
   })
 })

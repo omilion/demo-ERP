@@ -1,7 +1,7 @@
 // G7: autocomplete productos para búsqueda rápida AJAX
 export default async function autocompleteRoute(fastify) {
   fastify.get('/autocomplete', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, fastify.rbac('catalogo', 'read')],
   }, async (request) => {
     const q = (request.query.q || '').trim()
     if (q.length < 2) return []
@@ -21,6 +21,9 @@ export default async function autocompleteRoute(fastify) {
       orderBy: { nombre: 'asc' },
       take: 20,
     })
-    return items
+    const canReadCosto = can(request.user?.role, 'bodega', 'read', request.user?.permisosExtra)
+    return items.map(item => sanitizeProductoCosto(item, canReadCosto))
   })
 }
+import { can } from '../../middleware/rbac.js'
+import { sanitizeProductoCosto } from './helpers.js'

@@ -53,6 +53,11 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Run frontend lint (advisory)
+        working-directory: frontend
+        continue-on-error: true
+        run: npm run lint
+
       - name: Install backend deps
         working-directory: backend
         run: npm ci
@@ -73,6 +78,11 @@ jobs:
         working-directory: backend
         run: npm run db:seed
 
-      - name: Run backend tests
+      - name: Run backend CI gate
         working-directory: backend
-        run: npm test -- staging-smoke.test.js app.test.js rrhh-helpers.test.js despachos-traceability.test.js odt-consumos.test.js odt-item-workflow.test.js odt-operations.test.js pasar-taller.test.js
+        run: npm run test:ci
+
+      - name: Run backend full suite (advisory)
+        working-directory: backend
+        continue-on-error: true
+        run: npm run test:full

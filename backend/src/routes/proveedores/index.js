@@ -1,100 +1,195 @@
+import { normalizePagoDocumento, normalizePagoEstado } from '../pagos-proveedores/index.js'
+import { can } from '../../middleware/rbac.js'
+import { getUserSucursalId } from '../caja/scope.js'
+import {
+  buildProveedorWhere,
+  canReadProveedorSensitive,
+  cleanProveedorPayload,
+  ensureProveedorUnique,
+  handleProveedorUniqueError,
+  nextCodigoProveedor,
+  proveedorOrderBy,
+  sanitizeProveedor,
+  validateProveedorPayload,
+} from './helpers.js'
+
+function cleanText(value) {
+  if (value === undefined || value === null) return null
+  const text = String(value).trim()
+  return text || null
+}
+
+async function findPagoProveedorDuplicate(prisma, data, excludeId = null) {
+  const providers = []
+  if (data.proveedorId) providers.push({ proveedorId: data.proveedorId })
+  if (data.codigoProveedor) providers.push({ codigoProveedor: data.codigoProveedor })
+  if (!data.nDoc || providers.length === 0) return null
+  return prisma.pagoProveedor.findFirst({
+    where: {
+      OR: providers,
+      nDoc: { equals: data.nDoc, mode: 'insensitive' },
+      ...(data.documento ? { documento: { equals: data.documento, mode: 'insensitive' } } : {}),
+      sucursalId: data.sucursalId ?? null,
+      eliminado: false,
+      estado: { not: 'Anulado' },
+      ...(excludeId ? { NOT: { id: excludeId } } : {}),
+    },
+    orderBy: { id: 'asc' },
+  })
+}
+
+function scopedPagoWhere(user, where = {}) {
+  const sucursalId = getUserSucursalId(user)
+  return { ...where, ...(sucursalId ? { sucursalId } : {}) }
+}
+
+function proveedorPagoWhere(user, proveedor, where = {}) {
+  const providers = [{ proveedorId: proveedor.id }]
+  if (proveedor.codigoProveedor && proveedor.codigoProveedorUnico) providers.push({ proveedorId: null, codigoProveedor: proveedor.codigoProveedor })
+  const providerWhere = providers.length > 1 ? { OR: providers } : providers[0]
+  return scopedPagoWhere(user, { ...where, ...providerWhere })
+}
+
+async function withCodigoProveedorUnico(prisma, proveedor) {
+  if (!proveedor?.codigoProveedor) return { ...proveedor, codigoProveedorUnico: false }
+  const count = await prisma.proveedor.count({
+    where: { activo: true, codigoProveedor: proveedor.codigoProveedor },
+  })
+  return { ...proveedor, codigoProveedorUnico: count === 1 }
+}
+
+function canReadPagosProveedor(user) {
+  return can(user?.role, 'proveedores', 'read', user?.permisosExtra)
+}
+
+function canReadProveedorList(user) {
+  return can(user?.role, 'proveedores', 'read', user?.permisosExtra)
+    || can(user?.role, 'catalogo', 'read', user?.permisosExtra)
+}
+
+async function lockProveedorWrite(tx) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('proveedores-master-write')::bigint)`
+}
+
+async function lockPagoProveedorWrite(tx, { proveedorId, codigoProveedor, documento, nDoc, sucursalId }) {
+  const provider = proveedorId ? `proveedor:${proveedorId}` : `codigo:${codigoProveedor}`
+  const key = [provider, documento || '', nDoc || '', sucursalId || 'global'].join('|').toLowerCase()
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key})::bigint)`
+}
+
+async function requireActiveProveedor(prisma, proveedorId, reply) {
+  const proveedor = await prisma.proveedor.findFirst({
+    where: { id: proveedorId, activo: true },
+  })
+  if (!proveedor) {
+    reply.code(404).send({ error: 'Proveedor no encontrado' })
+    return null
+  }
+  return withCodigoProveedorUnico(prisma, proveedor)
+}
+
 export default async function proveedoresRoutes(fastify) {
   fastify.register(async function (f) {
-    // ── Proveedores CRUD ──────────────────────────────────────────────────
     f.get('/', {
-      preHandler: [f.authenticate, f.rbac('catalogo', 'read')],
-    }, async (request) => {
-      const { search, page = '1' } = request.query
+      preHandler: [f.authenticate],
+    }, async (request, reply) => {
+      if (!canReadProveedorList(request.user)) return reply.code(403).send({ error: 'Forbidden' })
+      const { page = '1' } = request.query
       const LIMIT = 100
-      const offset = (parseInt(page) - 1) * LIMIT
-
-      const where = { activo: true }
-      if (search) {
-        where.OR = [
-          { nombre: { contains: search, mode: 'insensitive' } },
-          { rut: { contains: search, mode: 'insensitive' } },
-          { razonSocial: { contains: search, mode: 'insensitive' } },
-        ]
-      }
+      const offset = (parseInt(page, 10) - 1) * LIMIT
+      const includeSensitive = canReadProveedorSensitive(request.user)
+      const where = buildProveedorWhere(request.query)
 
       const [items, total] = await Promise.all([
-        f.prisma.proveedor.findMany({ where, orderBy: { nombre: 'asc' }, take: LIMIT, skip: offset }),
+        f.prisma.proveedor.findMany({ where, orderBy: proveedorOrderBy(), take: LIMIT, skip: offset }),
         f.prisma.proveedor.count({ where }),
       ])
-      return { items, total, limit: LIMIT }
+      return { items: items.map(item => sanitizeProveedor(item, includeSensitive)), total, limit: LIMIT }
     })
 
     f.get('/:id', {
-      preHandler: [f.authenticate, f.rbac('catalogo', 'read')],
+      preHandler: [f.authenticate, f.rbac('proveedores', 'read')],
     }, async (request, reply) => {
-      const id = parseInt(request.params.id)
-      if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
-      const p = await f.prisma.proveedor.findUnique({ where: { id } })
+      const id = parseInt(request.params.id, 10)
+      if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
+      const p = await f.prisma.proveedor.findFirst({ where: { id, activo: true } })
       if (!p) return reply.code(404).send({ error: 'No encontrado' })
+      const proveedorPagos = await withCodigoProveedorUnico(f.prisma, p)
 
-      // Attach pagos
-      const pagos = await f.prisma.pagoProveedor.findMany({
-        where: { proveedorId: id },
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-      })
+      const pagos = canReadPagosProveedor(request.user)
+        ? await f.prisma.pagoProveedor.findMany({
+            where: proveedorPagoWhere(request.user, proveedorPagos, { eliminado: false }),
+            orderBy: { createdAt: 'desc' },
+            take: 100,
+          })
+        : []
       return { ...p, pagos }
     })
 
     f.post('/', {
-      preHandler: [f.authenticate, f.rbac('catalogo', 'write')],
+      preHandler: [f.authenticate, f.rbac('proveedores', 'write')],
     }, async (request, reply) => {
-      const b = request.body || {}
-      if (!b.nombre) return reply.code(400).send({ error: 'nombre requerido' })
-      const data = {
-        nombre: b.nombre,
-        razonSocial: b.razonSocial || null,
-        rut: b.rut || null,
-        giro: b.giro || null,
-        email: b.email || null,
-        telefono: b.telefono || null,
-        direccion: b.direccion || null,
-        region: b.region || null,
-        comuna: b.comuna || null,
-        codigoProveedor: b.codigoProveedor ? parseInt(b.codigoProveedor, 10) : null,
-        porcVentaSala: b.porcVentaSala != null ? parseInt(b.porcVentaSala, 10) : 0,
-        porcMarco: b.porcMarco != null ? parseInt(b.porcMarco, 10) : 0,
-        porcLicitacion: b.porcLicitacion != null ? parseInt(b.porcLicitacion, 10) : 0,
-        activo: true,
+      const { data, error } = cleanProveedorPayload(request.body || {})
+      if (error) return reply.code(400).send({ error })
+      try {
+        const result = await f.prisma.$transaction(async (tx) => {
+          await lockProveedorWrite(tx)
+          const next = { ...data }
+          if (next.codigoProveedor == null) next.codigoProveedor = await nextCodigoProveedor(tx)
+          const validation = validateProveedorPayload(next)
+          if (validation) return { status: 400, payload: { error: validation } }
+          const duplicate = await ensureProveedorUnique(tx, next)
+          if (duplicate) return { status: 409, payload: { error: duplicate } }
+          const created = await tx.proveedor.create({ data: { ...next, activo: true } })
+          return { status: 201, payload: created }
+        })
+        return reply.code(result.status).send(result.payload)
+      } catch (e) {
+        if (handleProveedorUniqueError(e, reply)) return reply
+        throw e
       }
-      const created = await f.prisma.proveedor.create({ data })
-      return reply.code(201).send(created)
     })
 
     f.put('/:id', {
-      preHandler: [f.authenticate, f.rbac('catalogo', 'write')],
+      preHandler: [f.authenticate, f.rbac('proveedores', 'write')],
     }, async (request, reply) => {
-      const id = parseInt(request.params.id)
-      if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
-      const b = request.body || {}
-      const data = {}
-      for (const k of ['nombre', 'razonSocial', 'rut', 'giro', 'email', 'telefono', 'direccion', 'region', 'comuna']) {
-        if (b[k] !== undefined) data[k] = b[k] || null
-      }
-      if (b.codigoProveedor !== undefined) data.codigoProveedor = b.codigoProveedor ? parseInt(b.codigoProveedor, 10) : null
-      if (b.porcVentaSala !== undefined) data.porcVentaSala = b.porcVentaSala === null ? null : parseFloat(b.porcVentaSala)
-      if (b.porcMarco !== undefined) data.porcMarco = b.porcMarco === null ? null : parseFloat(b.porcMarco)
-      if (b.porcLicitacion !== undefined) data.porcLicitacion = b.porcLicitacion === null ? null : parseFloat(b.porcLicitacion)
-      if (b.activo !== undefined) data.activo = !!b.activo
+      const id = parseInt(request.params.id, 10)
+      if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
+      const { data, error } = cleanProveedorPayload(request.body || {}, { partial: true })
+      if (error) return reply.code(400).send({ error })
       try {
-        return await f.prisma.proveedor.update({ where: { id }, data })
+        const result = await f.prisma.$transaction(async (tx) => {
+          await lockProveedorWrite(tx)
+          const current = await tx.proveedor.findFirst({ where: { id, activo: true } })
+          if (!current) return { status: 404, payload: { error: 'No encontrado' } }
+          if (data.codigoProveedor === null) return { status: 400, payload: { error: 'codigoProveedor requerido' } }
+          const validation = validateProveedorPayload(data, { partial: true })
+          if (validation) return { status: 400, payload: { error: validation } }
+          const merged = { ...current, ...data }
+          if (merged.codigoProveedor == null) return { status: 400, payload: { error: 'codigoProveedor requerido' } }
+          const mergedValidation = validateProveedorPayload(merged)
+          if (mergedValidation) return { status: 400, payload: { error: mergedValidation } }
+          const duplicate = await ensureProveedorUnique(tx, data, id)
+          if (duplicate) return { status: 409, payload: { error: duplicate } }
+          const updated = await tx.proveedor.update({ where: { id }, data })
+          return { status: 200, payload: updated }
+        })
+        return reply.code(result.status).send(result.payload)
       } catch (e) {
         if (e.code === 'P2025') return reply.code(404).send({ error: 'No encontrado' })
+        if (handleProveedorUniqueError(e, reply)) return reply
         throw e
       }
     })
 
     f.delete('/:id', {
-      preHandler: [f.authenticate, f.rbac('catalogo', 'write')],
+      preHandler: [f.authenticate, f.rbac('proveedores', 'delete')],
     }, async (request, reply) => {
-      const id = parseInt(request.params.id)
-      if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
+      const id = parseInt(request.params.id, 10)
+      if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
       try {
+        const current = await f.prisma.proveedor.findFirst({ where: { id, activo: true }, select: { id: true } })
+        if (!current) return reply.code(404).send({ error: 'No encontrado' })
         await f.prisma.proveedor.update({ where: { id }, data: { activo: false } })
         return reply.code(204).send()
       } catch (e) {
@@ -103,15 +198,16 @@ export default async function proveedoresRoutes(fastify) {
       }
     })
 
-    // ── Pagos de Proveedor ────────────────────────────────────────────────
     f.get('/:id/pagos', {
-      preHandler: [f.authenticate, f.rbac('catalogo', 'read')],
+      preHandler: [f.authenticate, f.rbac('proveedores', 'read')],
     }, async (request, reply) => {
-      const proveedorId = parseInt(request.params.id)
-      if (isNaN(proveedorId)) return reply.code(400).send({ error: 'ID inválido' })
+      const proveedorId = parseInt(request.params.id, 10)
+      if (isNaN(proveedorId)) return reply.code(400).send({ error: 'ID invalido' })
+      const proveedor = await requireActiveProveedor(f.prisma, proveedorId, reply)
+      if (!proveedor) return reply
       const { estado } = request.query
-      const where = { proveedorId }
-      if (estado) where.estado = estado
+      const where = proveedorPagoWhere(request.user, proveedor, { eliminado: false })
+      if (estado) where.estado = normalizePagoEstado(estado) || estado
       const pagos = await f.prisma.pagoProveedor.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -121,69 +217,163 @@ export default async function proveedoresRoutes(fastify) {
     })
 
     f.post('/:id/pagos', {
-      preHandler: [f.authenticate, f.rbac('catalogo', 'write')],
+      preHandler: [f.authenticate, f.rbac('proveedores', 'write')],
     }, async (request, reply) => {
-      const proveedorId = parseInt(request.params.id)
-      if (isNaN(proveedorId)) return reply.code(400).send({ error: 'ID inválido' })
+      const proveedorId = parseInt(request.params.id, 10)
+      if (isNaN(proveedorId)) return reply.code(400).send({ error: 'ID invalido' })
       const { documento, nDoc, fechaDoc, fechaPago, fechaVencimiento, estado, total, bodega, nc, ncMonto, obs } = request.body || {}
-      const usuario = request.user?.nombre || request.user?.email || 'Sistema'
-      const pago = await f.prisma.pagoProveedor.create({
-        data: {
-          proveedorId,
-          documento,
-          nDoc,
-          fechaDoc: fechaDoc ? new Date(fechaDoc) : null,
-          fechaPago: fechaPago ? new Date(fechaPago) : null,
-          fechaVencimiento: fechaVencimiento ? new Date(fechaVencimiento) : null,
-          estado: estado || 'Pendiente',
-          total: parseFloat(total) || 0,
-          usuario,
-          bodega,
-          nc: !!nc,
-          ncMonto: ncMonto ? parseFloat(ncMonto) : null,
-          obs,
-        },
-      })
-      return reply.code(201).send(pago)
-    })
+      const normalizedDocumento = normalizePagoDocumento(documento)
+      const normalizedNDoc = cleanText(nDoc)
+      const sucursalId = getUserSucursalId(request.user)
+      if (!normalizedDocumento) return reply.code(400).send({ error: 'documento requerido' })
+      if (!normalizedNDoc) return reply.code(400).send({ error: 'nDoc requerido' })
 
-    f.put('/:id/pagos/:pagoId', {
-      preHandler: [f.authenticate, f.rbac('catalogo', 'write')],
-    }, async (request, reply) => {
-      const pagoId = parseInt(request.params.pagoId)
-      if (isNaN(pagoId)) return reply.code(400).send({ error: 'ID inválido' })
-      const { documento, nDoc, fechaDoc, fechaPago, fechaVencimiento, estado, total, bodega, nc, ncMonto, obs } = request.body || {}
-      try {
-        const pago = await f.prisma.pagoProveedor.update({
-          where: { id: pagoId },
+      const usuario = request.user?.nombre || request.user?.email || 'Sistema'
+      const result = await f.prisma.$transaction(async (tx) => {
+        const proveedor = await tx.proveedor.findFirst({
+          where: { id: proveedorId, activo: true },
+          select: { id: true, codigoProveedor: true },
+        })
+        if (!proveedor) return { status: 404, payload: { error: 'Proveedor no encontrado' } }
+        const codigoProveedor = proveedor.codigoProveedor
+        await lockPagoProveedorWrite(tx, {
+          proveedorId,
+          codigoProveedor,
+          documento: normalizedDocumento,
+          nDoc: normalizedNDoc,
+          sucursalId,
+        })
+        const duplicate = await findPagoProveedorDuplicate(tx, {
+          proveedorId,
+          codigoProveedor,
+          documento: normalizedDocumento,
+          nDoc: normalizedNDoc,
+          sucursalId,
+        })
+        if (duplicate) return { status: 409, payload: { error: 'documento proveedor duplicado', duplicateId: duplicate.id } }
+        const pago = await tx.pagoProveedor.create({
           data: {
-            documento,
-            nDoc,
-            fechaDoc: fechaDoc ? new Date(fechaDoc) : undefined,
-            fechaPago: fechaPago ? new Date(fechaPago) : undefined,
-            fechaVencimiento: fechaVencimiento ? new Date(fechaVencimiento) : undefined,
-            estado,
-            total: total !== undefined ? parseFloat(total) : undefined,
+            proveedorId,
+            codigoProveedor,
+            sucursalId,
+            documento: normalizedDocumento,
+            nDoc: normalizedNDoc,
+            fechaDoc: fechaDoc ? new Date(fechaDoc) : null,
+            fechaPago: fechaPago ? new Date(fechaPago) : null,
+            fechaVencimiento: fechaVencimiento ? new Date(fechaVencimiento) : null,
+            estado: normalizePagoEstado(estado) || 'Pendiente',
+            total: parseFloat(total) || 0,
+            usuario,
             bodega,
-            nc: nc !== undefined ? !!nc : undefined,
-            ncMonto: ncMonto !== undefined ? parseFloat(ncMonto) : undefined,
+            nc: !!nc || normalizedDocumento === 'Nota',
+            ncMonto: ncMonto ? parseFloat(ncMonto) : null,
             obs,
           },
         })
-        return pago
+        return { status: 201, payload: pago }
+      })
+      return reply.code(result.status).send(result.payload)
+    })
+
+    f.put('/:id/pagos/:pagoId', {
+      preHandler: [f.authenticate, f.rbac('proveedores', 'write')],
+    }, async (request, reply) => {
+      const proveedorId = parseInt(request.params.id, 10)
+      const pagoId = parseInt(request.params.pagoId, 10)
+      if (isNaN(proveedorId) || isNaN(pagoId)) return reply.code(400).send({ error: 'ID invalido' })
+      const { documento, nDoc, fechaDoc, fechaPago, fechaVencimiento, estado, total, bodega, nc, ncMonto, obs } = request.body || {}
+      try {
+        const result = await f.prisma.$transaction(async (tx) => {
+          const proveedor = await tx.proveedor.findFirst({
+            where: { id: proveedorId, activo: true },
+            select: { id: true, codigoProveedor: true },
+          })
+          if (!proveedor) return { status: 404, payload: { error: 'Proveedor no encontrado' } }
+          const proveedorPagos = await withCodigoProveedorUnico(tx, proveedor)
+          const current = await tx.pagoProveedor.findFirst({
+            where: proveedorPagoWhere(request.user, proveedorPagos, { id: pagoId, eliminado: false }),
+          })
+          if (!current) return { status: 404, payload: { error: 'Pago no encontrado' } }
+          const normalizedEstado = estado !== undefined ? normalizePagoEstado(estado) : undefined
+          if (normalizedEstado === 'Anulado') {
+            return { status: 409, payload: { error: 'Use la accion Anular para reversar stock y conservar trazabilidad' } }
+          }
+          if (current.stockAplicadoAt && (documento !== undefined || nDoc !== undefined || total !== undefined || bodega !== undefined || fechaDoc !== undefined)) {
+            return { status: 409, payload: { error: 'No se puede modificar documento, total o bodega con stock aplicado' } }
+          }
+          const normalizedDocumento = documento !== undefined ? normalizePagoDocumento(documento) : current.documento
+          const normalizedNDoc = nDoc !== undefined ? cleanText(nDoc) : current.nDoc
+          const codigoProveedor = proveedor.codigoProveedor || current.codigoProveedor
+          await lockPagoProveedorWrite(tx, {
+            proveedorId,
+            codigoProveedor,
+            documento: normalizedDocumento,
+            nDoc: normalizedNDoc,
+            sucursalId: current.sucursalId,
+          })
+          const duplicate = await findPagoProveedorDuplicate(tx, {
+            proveedorId,
+            codigoProveedor,
+            documento: normalizedDocumento,
+            nDoc: normalizedNDoc,
+            sucursalId: current.sucursalId,
+          }, pagoId)
+          if (duplicate) return { status: 409, payload: { error: 'documento proveedor duplicado', duplicateId: duplicate.id } }
+
+          const pago = await tx.pagoProveedor.update({
+            where: { id: pagoId },
+            data: {
+              codigoProveedor,
+              proveedorId,
+              documento: normalizedDocumento,
+              nDoc: normalizedNDoc,
+              fechaDoc: fechaDoc ? new Date(fechaDoc) : undefined,
+              fechaPago: fechaPago ? new Date(fechaPago) : undefined,
+              fechaVencimiento: fechaVencimiento ? new Date(fechaVencimiento) : undefined,
+              estado: normalizedEstado,
+              total: total !== undefined ? parseFloat(total) : undefined,
+              bodega,
+              nc: nc !== undefined ? !!nc : undefined,
+              ncMonto: ncMonto !== undefined ? parseFloat(ncMonto) : undefined,
+              obs,
+            },
+          })
+          return { status: 200, payload: pago }
+        })
+        return reply.code(result.status).send(result.payload)
       } catch (e) {
+        if (e.code === 'P2002') return reply.code(409).send({ error: 'documento proveedor duplicado' })
         if (e.code === 'P2025') return reply.code(404).send({ error: 'Pago no encontrado' })
         throw e
       }
     })
 
     f.delete('/:id/pagos/:pagoId', {
-      preHandler: [f.authenticate, f.rbac('catalogo', 'write')],
+      preHandler: [f.authenticate, f.rbac('proveedores', 'delete')],
     }, async (request, reply) => {
-      const pagoId = parseInt(request.params.pagoId)
-      if (isNaN(pagoId)) return reply.code(400).send({ error: 'ID inválido' })
+      const proveedorId = parseInt(request.params.id, 10)
+      const pagoId = parseInt(request.params.pagoId, 10)
+      if (isNaN(proveedorId) || isNaN(pagoId)) return reply.code(400).send({ error: 'ID invalido' })
       try {
-        await f.prisma.pagoProveedor.delete({ where: { id: pagoId } })
+        const proveedor = await requireActiveProveedor(f.prisma, proveedorId, reply)
+        if (!proveedor) return reply
+        const pago = await f.prisma.pagoProveedor.findFirst({
+          where: proveedorPagoWhere(request.user, proveedor, { id: pagoId, eliminado: false }),
+        })
+        if (!pago) return reply.code(404).send({ error: 'Pago no encontrado' })
+        if (pago.stockAplicadoAt && !pago.stockReversadoAt) {
+          return reply.code(409).send({ error: 'Use la accion Anular en pagos proveedores para reversar stock' })
+        }
+        await f.prisma.pagoProveedor.update({
+          where: { id: pagoId },
+          data: {
+            estado: 'Anulado',
+            eliminado: true,
+            userMod: request.user?.nombre || request.user?.email || request.user?.role || 'Sistema',
+            fecham: new Date(),
+            motivoEliminacion: 'Anulado desde ficha proveedor',
+          },
+        })
         return reply.code(204).send()
       } catch (e) {
         if (e.code === 'P2025') return reply.code(404).send({ error: 'Pago no encontrado' })

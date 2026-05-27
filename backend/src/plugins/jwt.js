@@ -21,6 +21,8 @@ export function createErpAccessTokenPayload(user) {
     id: user.id,
     role: user.role,
     nombre: user.nombre,
+    sucursalId: user.sucursalId ?? null,
+    permisoDescuentos: !!user.permisoDescuentos,
     permisosExtra: user.permisosExtra || null,
     scope: TOKEN_SCOPES.ERP,
     aud: TOKEN_AUDIENCES.ERP,
@@ -61,6 +63,10 @@ export function isErpRefreshToken(payload) {
 }
 
 export default fp(async (fastify) => {
+  if (!process.env.JWT_ACCESS_SECRET) {
+    throw new Error('JWT_ACCESS_SECRET is required')
+  }
+
   fastify.register(fjwt, {
     secret: process.env.JWT_ACCESS_SECRET,
     sign: { expiresIn: process.env.JWT_ACCESS_EXPIRES || '15m' },

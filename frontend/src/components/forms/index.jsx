@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Icon, Btn } from '../shared'
 
 // ── FormPanel (slide-in from right) ──────────────────────────────────────────
@@ -139,22 +139,24 @@ export const DetailRow = ({ label, value, mono }) => (
 )
 
 // ── useForm ───────────────────────────────────────────────────────────────────
+// eslint-disable-next-line react-refresh/only-export-components
 export const useForm = (initial) => {
   const [data, setData] = useState(initial)
   const [errors, setErrors] = useState({})
-  const set = (key, val) => { setData(d => ({ ...d, [key]: val })); setErrors(e => ({ ...e, [key]: '' })) }
-  const validate = (rules) => {
+  const set = useCallback((key, val) => { setData(d => ({ ...d, [key]: val })); setErrors(e => ({ ...e, [key]: '' })) }, [])
+  const validate = useCallback((rules) => {
     const errs = {}
     for (const [k, r] of Object.entries(rules)) {
       if (r.required && !data[k]) errs[k] = 'Campo requerido'
     }
     setErrors(errs)
     return Object.keys(errs).length === 0
-  }
+  }, [data])
   return { data, set, errors, validate }
 }
 
 // ── useSave ───────────────────────────────────────────────────────────────────
+// eslint-disable-next-line react-refresh/only-export-components
 export const useSave = (onDone) => {
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)

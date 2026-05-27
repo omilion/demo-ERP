@@ -10,7 +10,7 @@ const DB_URL = process.env.DATABASE_URL || 'postgresql://postgres:1q2w3e4rlala@l
 
 const PHASE = process.env.PHASE || '1';
 const PHASES = {
-  '1': ['gastos', 'descuentos_porc', 'descuentos_porc_marco', 'descuentos_ventas',
+  '1': ['gastos', 'descuentos_porc', 'descuentos_porc_marco', 'descuentos_ventas', 'descuentos_marco',
         'talleres', 'firmas_email', 'bloqueo_pagina', 'perfil_sistema',
         'relacion_productos', 'categorias', 'subcategorias'],
   '2': ['usuarios_sistema', 'accesos', 'accesos_ventas', 'bodega_taller',
@@ -223,22 +223,29 @@ async function main() {
 
   // 3. descuentos_ventas (n_interno → orden_id needs mapping; skip if no ordenes mapping; fall back to keep n_interno field?)
   // Note: ventas.descuentos_ventas schema requires orden_id. We backfill via n_interno = ordenes.n_interno
-  if (data.descuentos_ventas?.rows.length) {
+  for (const [src, dst] of [['descuentos_ventas', 'descuentos_ventas'], ['descuentos_marco', 'descuentos_marco']]) {
+    if (!data[src]?.rows.length) continue;
     const map = new Map();
     const r = await exec(pgClient, `SELECT id, n_interno FROM ventas.ordenes WHERE n_interno IS NOT NULL`);
     for (const row of r.rows) map.set(row.n_interno, row.id);
     const rows = [];
     let missing = 0;
-    for (const t of data.descuentos_ventas.rows) {
-      const o = rowAsObj(data.descuentos_ventas.cols, t);
+    for (const t of data[src].rows) {
+      const o = rowAsObj(data[src].cols, t);
       const oid = map.get(o.n_interno);
       if (!oid) { missing++; continue; }
       rows.push([o.id, oid, o.porc]);
     }
     if (rows.length) {
-      const n = await bulkInsert(pgClient, 'ventas', 'descuentos_ventas', ['id', 'orden_id', 'porcentaje'], rows, { onConflict: 'ON CONFLICT (id) DO NOTHING' });
-      await exec(pgClient, `SELECT setval(pg_get_serial_sequence('ventas.descuentos_ventas','id'), GREATEST((SELECT MAX(id) FROM ventas.descuentos_ventas), 1))`);
-      console.log(`descuentos_ventas: ${n} inserted (skipped ${missing} w/o orden)`);
+      const n = await bulkInsert(pgClient, 'ventas', dst, ['id', 'orden_id', 'porcentaje'], rows, { onConflict: 'ON CONFLICT (id) DO NOTHING' });
+      await exec(pgClient, `SELECT setval(pg_get_serial_sequence('ventas.${dst}','id'), GREATEST((SELECT MAX(id) FROM ventas.${dst}), 1))`);
+      await exec(pgClient, `
+        UPDATE ventas.ordenes o
+        SET descuento_pct = d.porcentaje
+        FROM ventas.${dst} d
+        WHERE d.orden_id = o.id
+      `);
+      console.log(`${dst}: ${n} inserted and ordenes.descuento_pct backfilled (skipped ${missing} w/o orden)`);
     }
   }
 

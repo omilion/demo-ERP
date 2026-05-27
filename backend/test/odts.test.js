@@ -78,3 +78,138 @@ describe('POST /api/odts', () => {
     expect(JSON.parse(res.body).error).toMatch(/ordenId/)
   })
 })
+
+describe('DELETE /api/odts/:id', () => {
+  let app
+
+  beforeAll(async () => { app = buildApp({ logger: false }); await app.ready() })
+  afterAll(() => app.close())
+
+  it('requires taller delete permission for destructive ODT removal', async () => {
+    const token = await loginAs(app, 'taller')
+    const res = await app.inject({
+      method: 'DELETE', url: '/api/odts/999999',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('allows admin through the gate before returning not found', async () => {
+    const token = await loginAs(app, 'admin')
+    const res = await app.inject({
+      method: 'DELETE', url: '/api/odts/999999',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+})
+
+describe('ODT lifecycle', () => {
+  let app, tallerToken, adminToken
+  const created = { odtIds: [], ordenIds: [] }
+
+  beforeAll(async () => {
+    app = buildApp({ logger: false })
+    await app.ready()
+    tallerToken = await loginAs(app, 'taller')
+    adminToken = await loginAs(app, 'admin')
+  })
+  afterAll(async () => {
+    await app.prisma.odt.deleteMany({ where: { id: { in: created.odtIds } } }).catch(() => {})
+    await app.prisma.orden.deleteMany({ where: { id: { in: created.ordenIds } } }).catch(() => {})
+    await app.close()
+  })
+
+  it('closes an ODT with terminal state, fechaTermino and bitacora', async () => {
+    const orden = await createTestOrden(app)
+    created.ordenIds.push(orden.id)
+    const odt = await app.prisma.odt.create({
+      data: { ordenId: orden.id, tipo: 'Espumas', clienteNombre: 'Lifecycle ODT', estado: 'En proceso', eliminado: false },
+    })
+    created.odtIds.push(odt.id)
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/odts/${odt.id}/cerrar`,
+      headers: { authorization: `Bearer ${tallerToken}` },
+      payload: { estado: 'Terminada', razon: 'Trabajo terminado', usuario: 'QA Taller' },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body).toMatchObject({ id: odt.id, estado: 'Terminada', eliminado: false })
+    expect(body.fechaTermino).toBeTruthy()
+
+    await expect(app.prisma.odt.findUnique({ where: { id: odt.id } }))
+      .resolves.toMatchObject({ estado: 'Terminada', eliminado: false })
+    const bitacora = await app.prisma.bitacoraTaller.findFirst({ where: { odtId: odt.id, texto: { contains: 'ODT cerrada' } } })
+    expect(bitacora).toBeTruthy()
+  })
+
+  it('annuls an ODT as soft delete and list respects active/deleted state', async () => {
+    const orden = await createTestOrden(app)
+    created.ordenIds.push(orden.id)
+    const odt = await app.prisma.odt.create({
+      data: { ordenId: orden.id, tipo: 'Madera', clienteNombre: 'Lifecycle Anulada', estado: 'Pendiente', eliminado: false },
+    })
+    created.odtIds.push(odt.id)
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/odts/${odt.id}/anular`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { razon: 'Duplicada', usuario: 'QA Taller' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body)).toMatchObject({ id: odt.id, estado: 'Anulada', eliminado: true })
+
+    await expect(app.prisma.odt.findUnique({ where: { id: odt.id } }))
+      .resolves.toMatchObject({ estado: 'Anulada', eliminado: true })
+
+    const hidden = await app.inject({
+      method: 'GET',
+      url: `/api/odts?search=${odt.id}`,
+      headers: { authorization: `Bearer ${tallerToken}` },
+    })
+    expect(JSON.parse(hidden.body).items).toHaveLength(0)
+
+    const hiddenDetail = await app.inject({
+      method: 'GET',
+      url: `/api/odts/${odt.id}`,
+      headers: { authorization: `Bearer ${tallerToken}` },
+    })
+    expect(hiddenDetail.statusCode).toBe(404)
+
+    const visible = await app.inject({
+      method: 'GET',
+      url: `/api/odts?includeEliminados=true&estado=Anulada&search=${odt.id}`,
+      headers: { authorization: `Bearer ${tallerToken}` },
+    })
+    expect(JSON.parse(visible.body).items).toMatchObject([{ id: odt.id, estado: 'Anulada', eliminado: true }])
+  })
+
+  it('requires delete permission to annul through generic ODT update', async () => {
+    const orden = await createTestOrden(app)
+    created.ordenIds.push(orden.id)
+    const odt = await app.prisma.odt.create({
+      data: { ordenId: orden.id, tipo: 'Madera', clienteNombre: 'Lifecycle Put Anulada', estado: 'Pendiente', eliminado: false },
+    })
+    created.odtIds.push(odt.id)
+
+    const forbidden = await app.inject({
+      method: 'PUT',
+      url: `/api/odts/${odt.id}`,
+      headers: { authorization: `Bearer ${tallerToken}` },
+      payload: { estado: 'Anulada' },
+    })
+    expect(forbidden.statusCode).toBe(403)
+
+    const allowed = await app.inject({
+      method: 'PUT',
+      url: `/api/odts/${odt.id}`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { estado: 'Anulada' },
+    })
+    expect(allowed.statusCode).toBe(200)
+    expect(JSON.parse(allowed.body)).toMatchObject({ id: odt.id, estado: 'Anulada', eliminado: true })
+  })
+})

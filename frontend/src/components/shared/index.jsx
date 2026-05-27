@@ -231,7 +231,7 @@ export const SearchBar = ({ placeholder, value, onChange, style }) => (
 )
 
 // ── Table ─────────────────────────────────────────────────────────────────────
-export const Table = ({ columns, rows, onRowClick, emptyMessage = 'Sin resultados' }) => {
+export const Table = ({ columns, rows, onRowClick, onRowDoubleClick, emptyMessage = 'Sin resultados' }) => {
   const [hovRow, setHovRow] = useState(null)
   if (!rows.length) return (
     <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
@@ -258,10 +258,11 @@ export const Table = ({ columns, rows, onRowClick, emptyMessage = 'Sin resultado
           {rows.map((row, ri) => (
             <tr key={ri} onMouseEnter={() => setHovRow(ri)} onMouseLeave={() => setHovRow(null)}
               onClick={() => onRowClick && onRowClick(row)}
+              onDoubleClick={() => onRowDoubleClick && onRowDoubleClick(row)}
               style={{
                 borderBottom: '1px solid var(--border)',
                 background: hovRow === ri ? 'var(--green-50)' : (ri % 2 === 0 ? '#fff' : 'oklch(0.99 0.002 220)'),
-                cursor: onRowClick ? 'pointer' : 'default', transition: 'background 0.1s',
+                cursor: (onRowClick || onRowDoubleClick) ? 'pointer' : 'default', transition: 'background 0.1s',
               }}>
               {columns.map((col, ci) => (
                 <td key={ci} style={{ padding: '9px 14px', verticalAlign: 'middle', textAlign: col.align || 'left', whiteSpace: col.wrap ? 'normal' : 'nowrap' }}>
@@ -272,6 +273,55 @@ export const Table = ({ columns, rows, onRowClick, emptyMessage = 'Sin resultado
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+// Pager
+export const Pager = ({ page = 1, pages = 1, total = 0, limit = 0, shown = 0, onChange, disabled = false }) => {
+  const safePage = Math.max(1, Number(page) || 1)
+  const safePages = Math.max(1, Number(pages) || 1)
+  const from = total > 0 && shown > 0 ? ((safePage - 1) * limit) + 1 : 0
+  const to = total > 0 && shown > 0 ? Math.min(total, ((safePage - 1) * limit) + shown) : 0
+  const prevDisabled = disabled || safePage <= 1
+  const nextDisabled = disabled || safePage >= safePages
+  const btn = isDisabled => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    padding: '6px 10px',
+    borderRadius: 7,
+    border: '1px solid var(--border)',
+    background: isDisabled ? 'oklch(0.97 0.002 220)' : '#fff',
+    color: isDisabled ? 'var(--text-3)' : 'var(--text-2)',
+    cursor: isDisabled ? 'not-allowed' : 'pointer',
+    fontSize: 12,
+    fontFamily: 'inherit',
+    fontWeight: 500,
+  })
+
+  if (safePages <= 1 && total <= limit) return null
+
+  return (
+    <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', background: '#fff' }}>
+      <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+        {total > 0 ? (
+          <>Mostrando {from.toLocaleString('es-CL')}-{to.toLocaleString('es-CL')} de {total.toLocaleString('es-CL')}</>
+        ) : (
+          <>Sin registros</>
+        )}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button disabled={prevDisabled} onClick={() => onChange?.(safePage - 1)} style={btn(prevDisabled)}>
+          <Icon name="chevronLeft" size={13} /> Anterior
+        </button>
+        <span style={{ minWidth: 74, textAlign: 'center', fontSize: 12, color: 'var(--text-2)', fontFamily: "'DM Mono', monospace" }}>
+          {safePage} / {safePages}
+        </span>
+        <button disabled={nextDisabled} onClick={() => onChange?.(safePage + 1)} style={btn(nextDisabled)}>
+          Siguiente <Icon name="chevronRight" size={13} />
+        </button>
+      </div>
     </div>
   )
 }

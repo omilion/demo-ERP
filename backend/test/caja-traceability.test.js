@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { resolveCajaMovementTraceability } from '../src/routes/caja/movimientos.js'
+import {
+  resolveCajaMovementTraceability,
+  resolveOrdenPaymentReversal,
+  resolveOrdenPaymentUpdate,
+  validateCajaMovementReversal,
+} from '../src/routes/caja/movimientos.js'
 
 function prismaMock({ orden = { id: 10 }, gasto = { id: 3, activo: true } } = {}) {
   return {
@@ -144,6 +149,65 @@ describe('resolveCajaMovementTraceability', () => {
     expect(result).toMatchObject({
       status: 409,
       error: 'origenId no coincide con gastoTipoId',
+    })
+  })
+})
+
+describe('caja payment/reversal guards', () => {
+  const orden = {
+    abono: 6000,
+    descuentoPct: 0,
+    items: [{ cantidad: 1, precioUnitario: 10000 }],
+  }
+
+  it('calculates partial payment saldo and state', () => {
+    const result = resolveOrdenPaymentUpdate({ ...orden, abono: 0 }, 4000)
+
+    expect(result).toMatchObject({
+      total: 10000,
+      abono: 4000,
+      estadoPago: 'Parcial',
+      saldoPosterior: 6000,
+    })
+  })
+
+  it('rejects overpayments before writing caja or venta', () => {
+    const result = resolveOrdenPaymentUpdate(orden, 5000)
+
+    expect(result).toMatchObject({
+      status: 409,
+      error: 'El monto excede el saldo pendiente',
+    })
+  })
+
+  it('calculates payment reversal state from the remaining abono', () => {
+    const result = resolveOrdenPaymentReversal({ ...orden, abono: 10000 }, 4000)
+
+    expect(result).toMatchObject({
+      total: 10000,
+      abono: 6000,
+      estadoPago: 'Parcial',
+    })
+  })
+
+  it('rejects incoherent payment reversals', () => {
+    const result = resolveOrdenPaymentReversal({ ...orden, abono: 1000 }, 4000)
+
+    expect(result).toMatchObject({
+      status: 409,
+      error: 'El abono de la venta es menor al pago a reversar',
+    })
+  })
+
+  it('rejects double reversal of an already eliminated movimiento', () => {
+    const result = validateCajaMovementReversal({
+      eliminado: true,
+      turno: { estado: 'abierto' },
+    })
+
+    expect(result).toMatchObject({
+      status: 409,
+      error: 'Movimiento ya eliminado',
     })
   })
 })

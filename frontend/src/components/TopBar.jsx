@@ -9,9 +9,9 @@ const NAV_GROUPS = [
   { label: 'Ventas', items: [
     { label: 'Ventas', route: '/ventas', module: 'ventas' },
     { label: 'Matriz Ventas', route: '/matriz-ventas', module: 'ventas' },
-    { label: 'Licitaciones', route: '/licitaciones', module: 'ventas' },
+    { label: 'Licitaciones', route: '/licitaciones', module: 'licitaciones' },
     { label: 'Reporteria Gerencial', route: '/reportes/gerenciales', module: 'reportes' },
-    { label: 'Reportes Licitaciones', route: '/reportes/licitaciones', module: 'ventas' },
+    { label: 'Reportes Licitaciones', route: '/reportes/licitaciones', module: 'licitaciones' },
     { label: 'CRM', route: '/crm', module: 'ventas' },
   ] },
   { label: 'Bodega', items: [
@@ -19,7 +19,7 @@ const NAV_GROUPS = [
     { label: 'Consulta Precios', route: '/consulta-precios', module: 'catalogo' },
     { label: 'Ingreso Mercaderia', route: '/stock-ingresos', module: 'bodega' },
     { label: 'Despachos', route: '/despachos', module: 'despacho' },
-    { label: 'Proveedores', route: '/proveedores', module: 'catalogo' },
+    { label: 'Proveedores', route: '/proveedores', module: 'proveedores' },
     { label: 'Pagos Proveedores', route: '/pagos-proveedores', module: 'proveedores' },
   ] },
   { label: 'Taller', items: [
@@ -42,7 +42,7 @@ const NAV_GROUPS = [
     { label: 'Usuarios', route: '/usuarios', roles: ['admin'] },
     { label: 'Accesos', route: '/accesos', roles: ['admin'] },
     { label: 'Configuracion', route: '/config', roles: ['admin'] },
-    { label: 'Descuentos', route: '/descuentos', requirements: [{ module: 'ventas', permission: 'write' }] },
+    { label: 'Descuentos', route: '/descuentos', requirements: [{ module: 'descuentos', permission: 'write' }] },
     { label: 'Integridad', route: '/admin/integridad', roles: ['admin'] },
     { label: 'Saneamiento Legacy', route: '/admin/saneamiento-legacy', roles: ['admin'] },
     { label: 'Auditoria', route: '/admin/auditoria', roles: ['admin'] },

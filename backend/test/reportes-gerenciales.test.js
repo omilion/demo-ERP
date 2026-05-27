@@ -22,8 +22,24 @@ async function loginAs(app, role = 'admin') {
   return JSON.parse(res.body).accessToken
 }
 
+function tokenFor(app, role = 'admin', sucursalId = null) {
+  return app.jwt.sign({
+    id: 1,
+    role,
+    nombre: `Test ${role}`,
+    permisosExtra: null,
+    sucursalId,
+    scope: 'erp',
+    aud: 'plastimar:erp',
+    tokenType: 'access',
+  })
+}
+
 function ordenTotal(orden) {
-  return (orden.items || []).reduce((s, i) => s + i.cantidad * i.precioUnitario, 0) * (1 - (orden.descuentoPct || 0) / 100)
+  const subtotal = (orden.items || []).reduce((s, i) => s + i.cantidad * i.precioUnitario, 0)
+  const cargos = (orden.cargos || []).reduce((s, c) => s + Number(c.valor || 0), 0)
+  const base = subtotal + cargos
+  return base - Math.round(base * (orden.descuentoPct || 0) / 100)
 }
 
 const describeDb = hasUsableDatabaseUrl() ? describe : describe.skip
@@ -69,13 +85,16 @@ describeDb('reportes gerenciales backend', () => {
   })
 
   it('cuadra ventas por periodo, cliente, vendedor y tipo contra ordenes base', async () => {
+    const cliente = await app.prisma.cliente.findFirst({ select: { id: true } })
     const orden = await app.prisma.orden.create({
       data: {
         nInterno: 910000 + Math.floor(Math.random() * 50000),
         tipo: 'Venta directa',
+        clienteId: cliente.id,
         rutCliente: rut,
         userId: 1,
         creadorNombre: marker,
+        sucursalId: 1,
         createdAt: fecha,
         items: {
           create: [
@@ -105,6 +124,83 @@ describeDb('reportes gerenciales backend', () => {
     expect(body.byTipo['Venta directa'].total).toBe(expected)
   })
 
+  it('exporta ventas respetando la sucursal del usuario', async () => {
+    const cliente = await app.prisma.cliente.findFirst({ select: { id: true } })
+    const scopedMarker = `${marker}-EXP-${Date.now()}`
+    const ventaScoped = await app.prisma.orden.create({
+      data: {
+        nInterno: 920000 + Math.floor(Math.random() * 50000),
+        tipo: 'Venta directa',
+        clienteId: cliente.id,
+        rutCliente: `${rut}-a`,
+        userId: 1,
+        creadorNombre: `${scopedMarker}-A`,
+        sucursalId: 9701,
+        createdAt: fecha,
+        items: { create: [{ productoId: 1, cantidad: 1, precioUnitario: 1000 }] },
+      },
+    })
+    const ventaOtraSucursal = await app.prisma.orden.create({
+      data: {
+        nInterno: 930000 + Math.floor(Math.random() * 50000),
+        tipo: 'Venta directa',
+        clienteId: cliente.id,
+        rutCliente: `${rut}-b`,
+        userId: 1,
+        creadorNombre: `${scopedMarker}-B`,
+        sucursalId: 9702,
+        createdAt: fecha,
+        items: { create: [{ productoId: 1, cantidad: 1, precioUnitario: 1000 }] },
+      },
+    })
+    const ventaNormalScoped = await app.prisma.orden.create({
+      data: {
+        nInterno: 940000 + Math.floor(Math.random() * 50000),
+        tipo: 'Normal',
+        clienteId: cliente.id,
+        rutCliente: `${rut}-c`,
+        userId: 1,
+        creadorNombre: `${scopedMarker}-C`,
+        sucursalId: 9701,
+        createdAt: fecha,
+        items: { create: [{ productoId: 1, cantidad: 1, precioUnitario: 2000 }] },
+      },
+    })
+    createdIds.ordenes.push(ventaScoped.id, ventaOtraSucursal.id, ventaNormalScoped.id)
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/export/ventas?scope=todos&search=${encodeURIComponent(scopedMarker)}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin', 9701)}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toContain(`${scopedMarker}-A`)
+    expect(res.body).not.toContain(`${scopedMarker}-B`)
+
+    const exportTipo = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/export/ventas?scope=todos&tipo=venta-directa&search=${encodeURIComponent(scopedMarker)}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin', 9701)}` },
+    })
+    expect(exportTipo.statusCode).toBe(200)
+    expect(exportTipo.body).toContain(`${scopedMarker}-A`)
+    expect(exportTipo.body).toContain(`${scopedMarker}-C`)
+    expect(exportTipo.body).not.toContain(`${scopedMarker}-B`)
+
+    const gerencial = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/gerencial/ventas?desde=${desde}&hasta=${hasta}&tipo=venta-directa&vendedor=${encodeURIComponent(scopedMarker)}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin', 9701)}` },
+    })
+    expect(gerencial.statusCode).toBe(200)
+    const body = JSON.parse(gerencial.body)
+    expect(body.fuentes.ordenes.count).toBe(2)
+    expect(body.fuentes.ordenes.total).toBe(3000)
+    expect(body.byVendedor[`${scopedMarker}-A`].total).toBe(1000)
+    expect(body.byVendedor[`${scopedMarker}-C`].total).toBe(2000)
+    expect(body.byVendedor[`${scopedMarker}-B`]).toBeUndefined()
+  })
+
   it('cuadra cuentas por cobrar y caja contra registros fuente', async () => {
     const pendiente = await app.prisma.cobranzaHistorico.create({
       data: { rut, cliente: marker, fechaFactura: fecha, estado: 'PENDIENTE', valorFactura: 7000, monto: 0 },
@@ -113,10 +209,10 @@ describeDb('reportes gerenciales backend', () => {
       data: { rut, cliente: marker, fechaFactura: fecha, estado: 'CANCELADA', valorFactura: 3000, monto: 3000 },
     })
     const ingreso = await app.prisma.movimientoCaja.create({
-      data: { tipo: 'Ingreso', monto: 5000, medioPago: 'Efectivo', referencia: marker, fecha, usuario: marker },
+      data: { tipo: 'Ingreso', monto: 5000, medioPago: 'Efectivo', referencia: marker, fecha, usuario: marker, sucursalId: 1 },
     })
     const egreso = await app.prisma.movimientoCaja.create({
-      data: { tipo: 'Egreso', monto: -1200, medioPago: 'Transferencia', referencia: marker, fecha, usuario: marker },
+      data: { tipo: 'Egreso', monto: -1200, medioPago: 'Transferencia', referencia: marker, fecha, usuario: marker, sucursalId: 1 },
     })
     createdIds.cobranza.push(pendiente.id, cancelada.id)
     createdIds.movimientosCaja.push(ingreso.id, egreso.id)
@@ -124,12 +220,12 @@ describeDb('reportes gerenciales backend', () => {
     const res = await app.inject({
       method: 'GET',
       url: `/api/reportes/gerencial/cobranza-caja?desde=${desde}&hasta=${hasta}`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
     const baseCobranza = await app.prisma.cobranzaHistorico.findMany({ where: { fechaFactura: { gte: new Date(2026, 3, 1), lte: new Date(2026, 3, 30, 23, 59, 59, 999) } } })
-    const baseCaja = await app.prisma.movimientoCaja.findMany({ where: { eliminado: false, fecha: { gte: new Date(2026, 3, 1), lte: new Date(2026, 3, 30, 23, 59, 59, 999) } } })
+    const baseCaja = await app.prisma.movimientoCaja.findMany({ where: { eliminado: false, fecha: { gte: new Date(2026, 3, 1), lte: new Date(2026, 3, 30, 23, 59, 59, 999) }, NOT: { medioPago: { equals: 'Referencial', mode: 'insensitive' } } } })
     const expectedPorCobrar = baseCobranza.filter(c => c.estado === 'PENDIENTE').reduce((s, c) => s + (c.valorFactura || 0), 0)
     const expectedIngresos = baseCaja.filter(m => m.tipo === 'Ingreso').reduce((s, m) => s + (m.monto || 0), 0)
     const expectedEgresos = baseCaja.filter(m => m.tipo === 'Egreso').reduce((s, m) => s + Math.abs(m.monto || 0), 0)
@@ -202,11 +298,16 @@ describeDb('reportes gerenciales backend', () => {
   })
 
   it('cuadra taller y despachos pendientes contra la base', async () => {
+    const cliente = await app.prisma.cliente.findFirst({ select: { id: true } })
+    const orden = await app.prisma.orden.create({
+      data: { tipo: 'Normal', clienteId: cliente.id, userId: 1, creadorNombre: marker, createdAt: fecha },
+    })
+    createdIds.ordenes.push(orden.id)
     const odt = await app.prisma.odt.create({
-      data: { tipo: 'Confeccion', clienteNombre: marker, descripcion: marker, estado: 'Pendiente', createdAt: fecha },
+      data: { ordenId: orden.id, tipo: 'Confeccion', clienteNombre: marker, descripcion: marker, estado: 'Pendiente', createdAt: fecha },
     })
     const despacho = await app.prisma.despacho.create({
-      data: { odtId: odt.id, fechaEntrega: fecha, contacto: marker, origenTipo: 'odt', origenId: odt.id },
+      data: { ordenId: orden.id, odtId: odt.id, fechaEntrega: fecha, contacto: marker, origenTipo: 'odt', origenId: odt.id },
     })
     createdIds.odts.push(odt.id)
     createdIds.despachos.push(despacho.id)

@@ -44,7 +44,7 @@ export default async function loginRoute(fastify) {
 
     return {
       accessToken,
-      user: { id: user.id, email: user.email, role: user.role, nombre: user.nombre },
+      user: { id: user.id, email: user.email, role: user.role, nombre: user.nombre, sucursalId: user.sucursalId ?? null },
     }
   })
 }

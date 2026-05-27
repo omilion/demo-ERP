@@ -1,32 +1,83 @@
-import { computeTotal, attachClientes, attachProductos } from './helpers.js'
-import { parsePositiveInt } from '../operational-utils.js'
+import { attachClientes, attachProductos } from './helpers.js'
+import { computeVentaFinancialState } from './financial.js'
+import { parsePagination, parsePositiveInt } from '../operational-utils.js'
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenScope } from '../historico/corte.js'
+import { getUserSucursalId } from '../caja/scope.js'
+
+function normalizeTipo(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function buildTipoWhere(tipo) {
+  const text = normalizeTipo(tipo)
+  if (text === 'licitacion-convenio' || text === 'licitacion convenio') return { in: ['Licitación', 'Convenio Marco'] }
+  if (text === 'licitacion') return 'Licitación'
+  if (text === 'convenio-marco' || text === 'convenio marco' || text === 'convenio') return 'Convenio Marco'
+  return tipo
+}
 
 export default async function listVentas(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request, reply) => {
     const { estadoPago, estadoEntrega, tipo, search, orderBy: orderParam, clienteId, scope: scopeParam } = request.query
-    const LIMIT = 100
+    const pagination = parsePagination(request.query, { defaultLimit: 100, maxLimit: 500 })
+    if (!pagination) return reply.code(400).send({ error: 'Paginacion invalida' })
     const scope = parseOrdenScope(scopeParam, 'operacional')
     if (!scope) return reply.code(400).send({ error: 'scope invalido' })
 
-    let where = { eliminada: false }
+    const sucursalId = getUserSucursalId(request.user)
+    let where = { eliminada: false, ...(sucursalId ? { sucursalId } : {}) }
     if (estadoPago) where.estadoPago = estadoPago
     if (estadoEntrega) where.estadoEntrega = estadoEntrega
-    if (tipo) where.tipo = tipo
+    if (tipo) where.tipo = buildTipoWhere(tipo)
     if (clienteId) {
       const parsedClienteId = parsePositiveInt(clienteId)
       if (!parsedClienteId) return reply.code(400).send({ error: 'clienteId invalido' })
       where.clienteId = parsedClienteId
     }
     if (search) {
-      const isNum = /^\d+$/.test(search.trim())
+      const text = search.trim()
+      const isNum = /^\d+$/.test(text)
+      const [clientes, documentos] = await Promise.all([
+        fastify.prisma.cliente.findMany({
+          where: {
+            OR: [
+              { nombre: { contains: text, mode: 'insensitive' } },
+              { razonSocial: { contains: text, mode: 'insensitive' } },
+              { rut: { contains: text, mode: 'insensitive' } },
+            ],
+          },
+          select: { id: true },
+          take: 100,
+        }),
+        fastify.prisma.movimientoCaja.findMany({
+          where: {
+            eliminado: false,
+            OR: [
+              { documento: { contains: text, mode: 'insensitive' } },
+              { nDoc: { contains: text, mode: 'insensitive' } },
+            ],
+          },
+          select: { ordenId: true },
+          take: 500,
+        }),
+      ])
+      const clienteIds = clientes.map(c => c.id)
+      const ordenIds = [...new Set(documentos.map(d => d.ordenId).filter(Boolean))]
       where.OR = [
         { creadorNombre: { contains: search, mode: 'insensitive' } },
         { licitacion: { contains: search, mode: 'insensitive' } },
         { observaciones: { contains: search, mode: 'insensitive' } },
-        ...(isNum ? [{ id: parseInt(search, 10) }] : []),
+        { rutCliente: { contains: search, mode: 'insensitive' } },
+        { emailCliente: { contains: search, mode: 'insensitive' } },
+        ...(clienteIds.length ? [{ clienteId: { in: clienteIds } }] : []),
+        ...(ordenIds.length ? [{ id: { in: ordenIds } }] : []),
+        ...(isNum ? [{ id: parseInt(search, 10) }, { nInterno: parseInt(search, 10) }] : []),
       ]
     }
 
@@ -36,28 +87,73 @@ export default async function listVentas(fastify) {
 
     const orderBy = orderParam === 'asc' ? { createdAt: 'asc' } : { createdAt: 'desc' }
 
-    const [ordenes, total] = await Promise.all([
+    const [ordenes, total, statsOrdenes] = await Promise.all([
       fastify.prisma.orden.findMany({
         where,
-        include: { items: true },
+        include: { items: true, cargos: true },
         orderBy,
-        take: LIMIT,
+        skip: pagination.skip,
+        take: pagination.limit,
       }),
       fastify.prisma.orden.count({ where }),
+      fastify.prisma.orden.findMany({
+        where,
+        include: { items: true, cargos: true },
+      }),
     ])
+
+    const ordenIds = [...new Set([...ordenes, ...statsOrdenes].map(o => o.id))]
+    const [pagosArr, multasArr] = ordenIds.length ? await Promise.all([
+      fastify.prisma.movimientoCaja.findMany({
+        where: { ordenId: { in: ordenIds }, eliminado: false },
+        orderBy: { createdAt: 'desc' },
+      }),
+      fastify.prisma.multa.findMany({
+        where: { ordenId: { in: ordenIds } },
+        orderBy: { fecha: 'desc' },
+      }),
+    ]) : [[], []]
+    const pagosMap = {}
+    for (const pago of pagosArr) (pagosMap[pago.ordenId] ||= []).push(pago)
+    const multasMap = {}
+    for (const multa of multasArr) (multasMap[multa.ordenId] ||= []).push(multa)
 
     const withClientes = await attachClientes(fastify, ordenes)
     const enriched = await Promise.all(
-      withClientes.map(async o => ({
-        ...o,
-        total: computeTotal(o.items, o.descuentoPct),
-        items: await attachProductos(fastify, o.items),
-      }))
+      withClientes.map(async o => {
+        const financialState = computeVentaFinancialState(o, {
+          movimientos: pagosMap[o.id] || [],
+          multas: multasMap[o.id] || [],
+        })
+        return {
+          ...o,
+          ...financialState,
+          items: await attachProductos(fastify, o.items),
+          pagos: pagosMap[o.id] || [],
+          multas: multasMap[o.id] || [],
+        }
+      })
     )
     return {
       items: enriched,
       total,
-      limit: LIMIT,
+      limit: pagination.limit,
+      page: pagination.page,
+      stats: statsOrdenes.reduce((acc, o) => {
+        const financialState = computeVentaFinancialState(o, {
+          movimientos: pagosMap[o.id] || [],
+          multas: multasMap[o.id] || [],
+        })
+        acc.montoPendiente += financialState.saldo
+        if (diasDesde(o.createdAt) > 30) acc.masDe30 += 1
+        if (Number(o.abono || 0) > 0) acc.conAbono += 1
+        return acc
+      }, { montoPendiente: 0, masDe30: 0, conAbono: 0 }),
     }
   })
+}
+
+function diasDesde(fecha) {
+  if (!fecha) return 0
+  return Math.floor((Date.now() - new Date(fecha).getTime()) / 86400000)
 }

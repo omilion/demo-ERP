@@ -5,8 +5,16 @@ export const useBitacoraTaller = (params = {}) =>
   useQuery({
     queryKey: ['bitacora-taller', params],
     queryFn: () => api.get('/bitacora-taller', { params }).then(r => r.data),
-    placeholderData: { items: [], total: 0, limit: 100 },
+    placeholderData: { items: [], total: 0, limit: 20, page: 1, pages: 1 },
     staleTime: 60_000,
+  })
+
+export const useBitacoraOperarios = () =>
+  useQuery({
+    queryKey: ['bitacora-taller', 'operarios'],
+    queryFn: () => api.get('/bitacora-taller/operarios').then(r => r.data),
+    placeholderData: { items: [] },
+    staleTime: 300_000,
   })
 
 export const useCreateBitacora = () => {

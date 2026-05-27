@@ -12,7 +12,50 @@ export const useUpdateEmpresa = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data) => api.put('/config/empresa', data).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['config', 'empresa'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['config', 'empresa'] })
+      qc.invalidateQueries({ queryKey: ['config', 'empresas'] })
+    },
+  })
+}
+
+export const useEmpresas = () =>
+  useQuery({
+    queryKey: ['config', 'empresas'],
+    queryFn: () => api.get('/config/empresas').then(r => r.data),
+    staleTime: 60_000,
+  })
+
+export const useCreateEmpresa = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data) => api.post('/config/empresas', data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['config', 'empresa'] })
+      qc.invalidateQueries({ queryKey: ['config', 'empresas'] })
+    },
+  })
+}
+
+export const useUpdateEmpresaById = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }) => api.put(`/config/empresas/${id}`, data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['config', 'empresa'] })
+      qc.invalidateQueries({ queryKey: ['config', 'empresas'] })
+    },
+  })
+}
+
+export const useDeleteEmpresa = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/config/empresas/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['config', 'empresa'] })
+      qc.invalidateQueries({ queryKey: ['config', 'empresas'] })
+    },
   })
 }
 

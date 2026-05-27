@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../components/forms/index'
-import { useAuthStore } from '../../store/auth'
-import { useProducto, useUpdateProducto, useCreateProducto, useHistorialPrecios, useAddPrecio, useMovimientos, useAddMovimiento } from '../../api/productos'
+import { useProducto, useUpdateProducto, useCreateProducto, useHistorialPrecios, useMovimientos, useAddMovimiento } from '../../api/productos'
 import { useCategorias } from '../../api/categorias'
 
 function PrecioHistorial({ historial }) {
@@ -54,18 +53,16 @@ export default function BodegaFormPage() {
   const navigate = useNavigate()
   const { id } = useParams()
   const isEdit = !!id
-  const user = useAuthStore(s => s.user)
-
   const { data: found } = useProducto(isEdit ? Number(id) : null)
   const { data: categoriasApi = [] } = useCategorias()
   const createProducto = useCreateProducto()
   const updateProducto = useUpdateProducto()
   const { data: historial = [] } = useHistorialPrecios(found?.id)
-  const addPrecio = useAddPrecio()
 
   const { data, set, errors, validate } = useForm({
-    cod: '', nombre: '', cat: 'Espumas', bodega: 'Inventario', stock: '', minimo: '', precio: '',
+    cod: '', nombre: '', cat: '', bodega: 'Inventario', stock: '', minimo: '', precio: '',
     codigoBarra: '', proveedor: '', ubicacion: '', descripcion: '', precioMarco: '',
+    categoriaId: '', subcategoriaId: '', porcDesc: '',
     idMarco: '', unidadMedida: '', estadoInventario: '',
     visibleWeb: false, destacadoWeb: false, fotoUrl: '', fotoUrlGrande: '', fotosGaleria: '',
     descripcionWeb: '', precioWeb: '', ordenWeb: '',
@@ -76,10 +73,13 @@ export default function BodegaFormPage() {
       set('cod', found.codigoInterno)
       set('nombre', found.nombre)
       set('cat', found.categoria || '')
+      set('categoriaId', found.categoriaId != null ? String(found.categoriaId) : '')
+      set('subcategoriaId', found.subcategoriaId != null ? String(found.subcategoriaId) : '')
       set('bodega', found.bodega)
       set('stock', String(found.stock))
       set('minimo', String(found.stockCritico))
       set('precio', String(found.precioLista))
+      set('porcDesc', found.porcDesc != null ? String(found.porcDesc) : '')
       set('visibleWeb', !!found.visibleWeb)
       set('destacadoWeb', !!found.destacadoWeb)
       set('fotoUrl', found.fotoUrl || '')
@@ -102,15 +102,36 @@ export default function BodegaFormPage() {
 
   if (isEdit && !found) return <main style={{ padding: 24 }}><p>Cargando...</p></main>
 
+  const selectedCategoria = categoriasApi.find(c => String(c.id) === String(data.categoriaId))
+    || categoriasApi.find(c => c.nombre === data.cat)
+  const subcategorias = selectedCategoria?.subcategorias || []
+  const categoriaOptions = categoriasApi.length
+    ? [
+        { value: '', label: 'Sin categoria' },
+        ...categoriasApi.map(c => ({ value: String(c.id), label: c.nombre })),
+      ]
+    : [
+        { value: '', label: data.cat || 'Sin categoria' },
+        ...['Espumas','Viscoelastico','Telas','Maderas','Colchones','Fibras','Accesorios','Latex','Bases','Protectores'].map(v => ({ value: v, label: v })),
+      ]
+
+  const setCategoria = (value) => {
+    const cat = categoriasApi.find(c => String(c.id) === String(value))
+    set('categoriaId', cat ? String(cat.id) : '')
+    set('cat', cat?.nombre || value)
+    set('subcategoriaId', '')
+  }
+
   const handleSave = () => {
     if (!validate({ nombre: { required: true }, cod: { required: true } })) return
     const payload = {
       nombre: data.nombre,
-      categoria: data.cat,
+      categoriaId: data.categoriaId !== '' ? Number(data.categoriaId) : undefined,
+      subcategoriaId: data.subcategoriaId !== '' ? Number(data.subcategoriaId) : undefined,
       bodega: data.bodega,
-      stock: Number(data.stock),
       stockCritico: Number(data.minimo),
       precioLista: Number(data.precio),
+      porcDesc: data.porcDesc !== '' ? Number(data.porcDesc) : 0,
       codigoBarra: data.codigoBarra || undefined,
       proveedor: data.proveedor || undefined,
       ubicacion: data.ubicacion || undefined,
@@ -128,19 +149,16 @@ export default function BodegaFormPage() {
       precioWeb: data.precioWeb !== '' ? Number(data.precioWeb) : undefined,
       ordenWeb: data.ordenWeb !== '' ? Number(data.ordenWeb) : undefined,
     }
+    if (isEdit && data.subcategoriaId === '') payload.subcategoriaId = null
+    if (isEdit && data.categoriaId === '') {
+      payload.categoriaId = null
+      payload.subcategoriaId = null
+      payload.categoria = ''
+    }
+    if (!isEdit) payload.stock = Number(data.stock)
     if (isEdit) {
       updateProducto.mutate({ id: found.id, data: payload }, {
         onSuccess: () => {
-          if (Number(data.precio) !== found.precioLista) {
-            addPrecio.mutate({
-              productoId: found.id,
-              data: {
-                precioAnterior: found.precioLista,
-                precioNuevo: Number(data.precio),
-                usuarioNombre: user?.email || 'sistema',
-              },
-            })
-          }
           navigate('/bodega')
         },
         onError: () => alert('Error al guardar el producto. Intente nuevamente.'),
@@ -176,15 +194,9 @@ export default function BodegaFormPage() {
         </FormField>
         <FormField label="Categoría">
           <Select
-            value={data.cat}
-            onChange={v => set('cat', v)}
-            options={(() => {
-              const fromApi = categoriasApi.map(c => c.nombre).filter(Boolean)
-              const fallback = ['Espumas','Viscoelástico','Telas','Maderas','Colchones','Fibras','Accesorios','Látex','Bases','Protectores']
-              const all = fromApi.length ? fromApi : fallback
-              if (data.cat && !all.includes(data.cat)) return [data.cat, ...all]
-              return all
-            })()}
+            value={data.categoriaId || data.cat}
+            onChange={setCategoria}
+            options={categoriaOptions}
           />
         </FormField>
       </div>
@@ -198,26 +210,37 @@ export default function BodegaFormPage() {
         <FormField label="Bodega">
           <Select value={data.bodega} onChange={v => set('bodega', v)} options={['Inventario','Taller']} />
         </FormField>
+        <FormField label="Subcategoria">
+          <Select
+            value={data.subcategoriaId}
+            onChange={v => set('subcategoriaId', v)}
+            disabled={!subcategorias.length}
+            options={[{ value: '', label: 'Sin subcategoria' }, ...subcategorias.map(sc => ({ value: String(sc.id), label: sc.nombre }))]}
+          />
+        </FormField>
         <FormField label="Unidad medida" hint="ej. UN, MT, KG">
           <Input value={data.unidadMedida} onChange={v => set('unidadMedida', v)} placeholder="UN" />
         </FormField>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <FormField label="Ubicación física" hint="Pasillo/Rack">
           <Input value={data.ubicacion} onChange={v => set('ubicacion', v)} placeholder="A-12" />
         </FormField>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <FormField label="Proveedor habitual">
           <Input value={data.proveedor} onChange={v => set('proveedor', v)} placeholder="Nombre proveedor" />
         </FormField>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14 }}>
         <FormField label="Estado inventario" hint="Activo/Descontinuado/etc">
-          <Select value={data.estadoInventario} onChange={v => set('estadoInventario', v)} options={['', 'Activo', 'Descontinuado', 'En tránsito', 'Reserva']} />
+          <Select value={data.estadoInventario} onChange={v => set('estadoInventario', v)} options={['', 'Inventariado', 'Activo', 'Descontinuado', 'En transito', 'Reserva']} />
         </FormField>
       </div>
 
       <FormDivider label="Stock y Precio" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14 }}>
         <FormField label="Stock actual" hint="Unidades">
-          <Input value={data.stock} onChange={v => set('stock', v)} type="number" placeholder="0" />
+          <Input value={data.stock} onChange={v => set('stock', v)} type="number" placeholder="0" disabled={isEdit} />
+          {isEdit && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Para cambiar stock use movimientos de bodega.</div>}
         </FormField>
         <FormField label="Stock mínimo" hint="Alerta bajo">
           <Input value={data.minimo} onChange={v => set('minimo', v)} type="number" placeholder="0" />
@@ -229,6 +252,9 @@ export default function BodegaFormPage() {
           <Input value={data.precioMarco} onChange={v => set('precioMarco', v)} type="number" prefix="$" placeholder="0" />
         </FormField>
       </div>
+      <FormField label="Descuento (%)" hint="Equivalente a descuento legacy">
+        <Input value={data.porcDesc} onChange={v => set('porcDesc', v)} type="number" placeholder="0" />
+      </FormField>
       <FormField label="ID Convenio Marco" hint="Código del rubro/línea en CM">
         <Input value={data.idMarco} onChange={v => set('idMarco', v)} placeholder="123456" />
       </FormField>

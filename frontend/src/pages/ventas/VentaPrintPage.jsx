@@ -35,8 +35,10 @@ export default function VentaPrintPage() {
 
   const items = (venta.items || []).map(normalizeItem)
   const subtotal = items.reduce((s, i) => s + i.subtotal, 0)
-  const descMonto = subtotal * ((venta.descuentoPct || 0) / 100)
-  const total = subtotal - descMonto
+  const cargosTotal = (venta.cargos || []).reduce((s, c) => s + Number(c.valor || 0), 0)
+  const totalBase = subtotal + cargosTotal
+  const descMonto = Math.round(totalBase * ((venta.descuentoPct || 0) / 100))
+  const total = totalBase - descMonto
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto', padding: 28, fontFamily: 'system-ui, sans-serif', color: '#111', background: '#fff' }}>
@@ -99,6 +101,9 @@ export default function VentaPrintPage() {
         <table style={{ fontSize: 12, minWidth: 280 }}>
           <tbody>
             <tr><td style={{ padding: '4px 12px', color: '#555' }}>Subtotal</td><td style={{ padding: '4px 12px', textAlign: 'right', fontFamily: 'monospace' }}>{fmt(subtotal)}</td></tr>
+            {cargosTotal > 0 && (
+              <tr><td style={{ padding: '4px 12px', color: '#555' }}>Cargos transporte</td><td style={{ padding: '4px 12px', textAlign: 'right', fontFamily: 'monospace' }}>{fmt(cargosTotal)}</td></tr>
+            )}
             {(venta.descuentoPct || 0) > 0 && (
               <tr><td style={{ padding: '4px 12px', color: '#555' }}>Descuento ({venta.descuentoPct}%)</td><td style={{ padding: '4px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#a00' }}>-{fmt(descMonto)}</td></tr>
             )}

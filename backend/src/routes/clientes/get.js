@@ -1,4 +1,6 @@
 import { computeSaldo } from './helpers.js'
+import { can } from '../../middleware/rbac.js'
+import { computeTotal } from '../ventas/helpers.js'
 
 export default async function getCliente(fastify) {
   fastify.get('/:id', {
@@ -7,15 +9,18 @@ export default async function getCliente(fastify) {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
 
+    const includeInactivos = request.query?.includeInactivos === 'true'
+    const canReadVentas = can(request.user?.role, 'ventas', 'read', request.user?.permisosExtra)
+    const canReadTaller = can(request.user?.role, 'taller', 'read', request.user?.permisosExtra)
     const [c, saldo, ventas] = await Promise.all([
-      fastify.prisma.cliente.findFirst({ where: { id, activo: true } }),
+      fastify.prisma.cliente.findFirst({ where: { id, ...(includeInactivos ? {} : { activo: true }) } }),
       computeSaldo(fastify.prisma, id),
-      fastify.prisma.orden.findMany({
+      canReadVentas ? fastify.prisma.orden.findMany({
         where: { clienteId: id },
-        include: { items: true },
+        include: { items: true, cargos: true },
         orderBy: { createdAt: 'desc' },
         take: 50,
-      }),
+      }) : Promise.resolve([]),
     ])
     if (!c) return reply.code(404).send({ error: 'Cliente no encontrado' })
     const sucursales = await fastify.prisma.clienteSucursal.findMany({
@@ -29,12 +34,16 @@ export default async function getCliente(fastify) {
       estadoPago: o.estadoPago, estadoEntrega: o.estadoEntrega,
       licitacion: o.licitacion, createdAt: o.createdAt,
       creadorNombre: o.creadorNombre, abono: o.abono,
-      total: o.items.reduce((s, i) => s + i.cantidad * i.precioUnitario, 0) * (1 - (o.descuentoPct || 0) / 100),
+      total: computeTotal(o.items, o.descuentoPct, o.cargos),
     }))
 
     // Fetch ODTs linked to any of this client's ventas
-    const ordenIds = ventas.map(o => o.id)
-    const odts = ordenIds.length > 0
+    const ordenIds = canReadTaller
+      ? (canReadVentas
+          ? ventas.map(o => o.id)
+          : (await fastify.prisma.orden.findMany({ where: { clienteId: id }, select: { id: true } })).map(o => o.id))
+      : []
+    const odts = canReadTaller && ordenIds.length > 0
       ? await fastify.prisma.odt.findMany({
           where: { ordenId: { in: ordenIds } },
           orderBy: { createdAt: 'desc' },

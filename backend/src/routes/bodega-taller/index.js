@@ -1,3 +1,38 @@
+function parseOptionalPositiveInt(value) {
+  if (value === undefined) return { provided: false, value: undefined }
+  if (value === null || value === '') return { provided: true, value: null }
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isInteger(parsed) || parsed <= 0) return { provided: true, error: 'ID invalido' }
+  return { provided: true, value: parsed }
+}
+
+function parseOptionalNumber(value, field) {
+  if (value === undefined) return { provided: false, value: undefined }
+  if (value === null || value === '') return { provided: true, value: 0 }
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return { provided: true, error: `${field} invalido` }
+  return { provided: true, value: parsed }
+}
+
+async function validateClasificacionTaller(prisma, { categoriaId, subcategoriaId }) {
+  if (subcategoriaId && !categoriaId) return { status: 400, error: 'categoria requerida para subcategoria' }
+
+  if (categoriaId) {
+    const categoria = await prisma.categoriaBodegaTaller.findFirst({ where: { id: categoriaId, activo: true } })
+    if (!categoria) return { status: 404, error: 'Categoria no encontrada' }
+  }
+
+  if (subcategoriaId) {
+    const subcategoria = await prisma.subcategoriaBodegaTaller.findFirst({ where: { id: subcategoriaId, activo: true } })
+    if (!subcategoria) return { status: 404, error: 'Subcategoria no encontrada' }
+    if (subcategoria.categoriaId !== categoriaId) {
+      return { status: 400, error: 'Subcategoria no pertenece a la categoria' }
+    }
+  }
+
+  return null
+}
+
 export default async function bodegaTallerRoutes(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
@@ -63,14 +98,31 @@ export default async function bodegaTallerRoutes(fastify) {
   }, async (request, reply) => {
     const { codigoInterno, codigoBarra, nombre, unidadMedida, stock, stockCritico, precio, categoriaId, subcategoriaId } = request.body || {}
     if (!codigoInterno || !nombre) return reply.code(400).send({ error: 'codigoInterno y nombre requeridos' })
+    const parsedCategoria = parseOptionalPositiveInt(categoriaId)
+    const parsedSubcategoria = parseOptionalPositiveInt(subcategoriaId)
+    if (parsedCategoria.error) return reply.code(400).send({ error: 'categoriaId invalido' })
+    if (parsedSubcategoria.error) return reply.code(400).send({ error: 'subcategoriaId invalido' })
+    const parsedStock = parseOptionalNumber(stock, 'stock')
+    const parsedStockCritico = parseOptionalNumber(stockCritico, 'stockCritico')
+    const parsedPrecio = parseOptionalNumber(precio, 'precio')
+    if (parsedStock.error) return reply.code(400).send({ error: parsedStock.error })
+    if (parsedStockCritico.error) return reply.code(400).send({ error: parsedStockCritico.error })
+    if (parsedPrecio.error) return reply.code(400).send({ error: parsedPrecio.error })
+    const categoriaFinal = parsedCategoria.value ?? null
+    const subcategoriaFinal = parsedSubcategoria.value ?? null
+    const clasificacionError = await validateClasificacionTaller(fastify.prisma, {
+      categoriaId: categoriaFinal,
+      subcategoriaId: subcategoriaFinal,
+    })
+    if (clasificacionError) return reply.code(clasificacionError.status).send({ error: clasificacionError.error })
     const item = await fastify.prisma.bodegaTaller.create({
       data: {
         codigoInterno, codigoBarra, nombre, unidadMedida,
-        categoriaId: categoriaId != null ? parseInt(categoriaId, 10) : null,
-        subcategoriaId: subcategoriaId != null ? parseInt(subcategoriaId, 10) : null,
-        stock: stock != null ? parseFloat(stock) : 0,
-        stockCritico: stockCritico != null ? parseFloat(stockCritico) : 0,
-        precio: precio != null ? parseFloat(precio) : null,
+        categoriaId: categoriaFinal,
+        subcategoriaId: subcategoriaFinal,
+        stock: parsedStock.value ?? 0,
+        stockCritico: parsedStockCritico.value ?? 0,
+        precio: parsedPrecio.value ?? 0,
       },
     })
     return reply.code(201).send(item)
@@ -82,10 +134,35 @@ export default async function bodegaTallerRoutes(fastify) {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
     const body = request.body || {}
+    const current = await fastify.prisma.bodegaTaller.findUnique({
+      where: { id },
+      select: { id: true, categoriaId: true, subcategoriaId: true },
+    })
+    if (!current) return reply.code(404).send({ error: 'No encontrado' })
     const data = {}
-    for (const f of ['codigoBarra', 'nombre', 'unidadMedida', 'stockCritico', 'stock', 'precio', 'activo', 'categoriaId', 'subcategoriaId']) {
+    for (const f of ['codigoBarra', 'nombre', 'unidadMedida', 'activo']) {
       if (body[f] !== undefined) data[f] = body[f]
     }
+    for (const f of ['stockCritico', 'stock', 'precio']) {
+      if (body[f] !== undefined) {
+        const parsed = parseOptionalNumber(body[f], f)
+        if (parsed.error) return reply.code(400).send({ error: parsed.error })
+        data[f] = parsed.value
+      }
+    }
+    const parsedCategoria = parseOptionalPositiveInt(body.categoriaId)
+    const parsedSubcategoria = parseOptionalPositiveInt(body.subcategoriaId)
+    if (parsedCategoria.error) return reply.code(400).send({ error: 'categoriaId invalido' })
+    if (parsedSubcategoria.error) return reply.code(400).send({ error: 'subcategoriaId invalido' })
+    const nextCategoriaId = parsedCategoria.provided ? parsedCategoria.value : current.categoriaId
+    const nextSubcategoriaId = parsedSubcategoria.provided ? parsedSubcategoria.value : current.subcategoriaId
+    const clasificacionError = await validateClasificacionTaller(fastify.prisma, {
+      categoriaId: nextCategoriaId,
+      subcategoriaId: nextSubcategoriaId,
+    })
+    if (clasificacionError) return reply.code(clasificacionError.status).send({ error: clasificacionError.error })
+    if (parsedCategoria.provided) data.categoriaId = parsedCategoria.value
+    if (parsedSubcategoria.provided) data.subcategoriaId = parsedSubcategoria.value
     try {
       const item = await fastify.prisma.bodegaTaller.update({ where: { id }, data })
       return item

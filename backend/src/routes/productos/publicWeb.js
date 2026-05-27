@@ -26,7 +26,6 @@ export default async function publicWebRoute(fastify) {
           fotoUrlGrande: true,
           fotosGaleria: true,
           precioWeb: true,
-          precioLista: true,
           destacadoWeb: true,
           stock: true,
         },
@@ -36,7 +35,7 @@ export default async function publicWebRoute(fastify) {
     return {
       items: items.map(p => normalizeProductoFotos({
         ...p,
-        precio: p.precioWeb ?? p.precioLista,
+        precio: p.precioWeb ?? null,
         disponible: p.stock > 0,
       })),
       total,
@@ -58,12 +57,11 @@ export default async function publicWebRoute(fastify) {
         fotoUrlGrande: true,
         fotosGaleria: true,
         precioWeb: true,
-        precioLista: true,
         stock: true,
         categoria: true,
       },
     })
     if (!p) return reply.code(404).send({ error: 'Producto no disponible' })
-    return normalizeProductoFotos({ ...p, precio: p.precioWeb ?? p.precioLista, disponible: p.stock > 0 })
+    return normalizeProductoFotos({ ...p, precio: p.precioWeb ?? null, disponible: p.stock > 0 })
   })
 }

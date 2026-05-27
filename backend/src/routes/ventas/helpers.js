@@ -1,6 +1,12 @@
-export function computeTotal(items, descuentoPct = 0) {
+export function computeTotal(items, descuentoPct = 0, cargos = []) {
   const subtotal = items.reduce((s, i) => s + i.cantidad * i.precioUnitario, 0)
-  return subtotal * (1 - descuentoPct / 100)
+  const cargosTotal = (cargos || []).reduce((s, c) => s + Number(c.valor || 0), 0)
+  const base = subtotal + cargosTotal
+  return base - computeDiscountAmount(base, descuentoPct)
+}
+
+export function computeDiscountAmount(subtotal, descuentoPct = 0) {
+  return Math.round(Number(subtotal || 0) * Number(descuentoPct || 0) / 100)
 }
 
 export async function attachCliente(fastify, orden) {

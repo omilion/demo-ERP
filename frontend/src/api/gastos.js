@@ -29,3 +29,7 @@ export const useDeleteGasto = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: K }),
   })
 }
+
+export function gastosExportUrl() {
+  return '/gastos/export'
+}

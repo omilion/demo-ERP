@@ -5,6 +5,7 @@ import itemWorkflowRoutes, {
   buildTallerItemEstadoBitacoraEntry,
   buildTallerItemEstadoUpdate,
   buildTallerItemRelationWhere,
+  canChangeTallerItemEstado,
   getRequestUsuario,
   normalizeTallerItemEstado,
   parseWorkflowParams,
@@ -68,7 +69,12 @@ describe('ODT item/taller workflow helpers', () => {
     expect(buildTallerItemRelationWhere(params)).toEqual({
       id: 30,
       odtItemId: 20,
-      odtItem: { is: { odtId: 10 } },
+      odtItem: { is: { odtId: 10, eliminado: false, odt: { is: { id: 10 } } } },
+    })
+    expect(buildTallerItemRelationWhere(params, { sucursalId: 4 })).toEqual({
+      id: 30,
+      odtItemId: 20,
+      odtItem: { is: { odtId: 10, eliminado: false, odt: { is: { id: 10, OR: [{ sucursalId: 4 }, { sucursalId: null }] } } } },
     })
     expect(parseWorkflowParams({ odtId: '0', itemId: '20', tallerItemId: '30' })).toEqual({ error: 'odtId invalido' })
     expect(parseWorkflowParams({ odtId: '10', itemId: 'abc', tallerItemId: '30' })).toEqual({ error: 'itemId invalido' })
@@ -181,8 +187,19 @@ describe('ODT item/taller workflow helpers', () => {
     })).toEqual({
       odtId: 10,
       usuario: 'taller@example.com',
+      usuarioReporta: 'taller@example.com',
+      sucursalId: null,
+      fecha: expect.any(Date),
       texto: 'Estado taller Costura / MK-1 - Colchoneta: pendiente -> en_proceso',
     })
+  })
+
+  it('requires taller delete permission to cancel or reopen canceled item workflow states', () => {
+    expect(canChangeTallerItemEstado({ role: 'taller' }, 'cancelado', { estado: 'pendiente' })).toBe(false)
+    expect(canChangeTallerItemEstado({ role: 'taller' }, 'pendiente', { estado: 'cancelado' })).toBe(false)
+    expect(canChangeTallerItemEstado({ role: 'admin' }, 'cancelado', { estado: 'pendiente' })).toBe(true)
+    expect(canChangeTallerItemEstado({ role: 'taller', permisosExtra: { taller: ['delete'] } }, 'cancelado', { estado: 'pendiente' })).toBe(true)
+    expect(canChangeTallerItemEstado({ role: 'taller' }, 'listo', { estado: 'pendiente' })).toBe(true)
   })
 })
 
@@ -253,7 +270,7 @@ describe('ODT item/taller workflow route', () => {
       where: {
         id: 30,
         odtItemId: 20,
-        odtItem: { is: { odtId: 10 } },
+        odtItem: { is: { odtId: 10, eliminado: false, odt: { is: { id: 10 } } } },
       },
       select: {
         id: true,
@@ -264,11 +281,52 @@ describe('ODT item/taller workflow route', () => {
         fechaListo: true,
         usuario: true,
         usuarioListo: true,
-        odtItem: { select: { odtId: true, codigoInterno: true, nombre: true } },
+        odtItem: {
+          select: {
+            odtId: true,
+            codigoInterno: true,
+            nombre: true,
+            odt: { select: { id: true, sucursalId: true, estado: true, eliminado: true } },
+          },
+        },
         taller: { select: { nombre: true } },
       },
     })
     expect(prisma.odtItemTaller.update).not.toHaveBeenCalled()
+  })
+
+  it('rejects canceling a taller item without delete permission', async () => {
+    const current = {
+      id: 30,
+      odtItemId: 20,
+      tallerId: 3,
+      estado: 'pendiente',
+      fechaInicio: null,
+      fechaListo: null,
+      usuario: null,
+      usuarioListo: null,
+      odtItem: { odtId: 10, codigoInterno: 'MK-1', nombre: 'Colchoneta', odt: { id: 10, estado: 'Pendiente', eliminado: false, sucursalId: null } },
+      taller: { nombre: 'Costura' },
+    }
+    const prisma = {
+      odtItemTaller: {
+        findFirst: vi.fn().mockResolvedValue(current),
+        update: vi.fn(),
+      },
+      $transaction: vi.fn(),
+    }
+    const { handlers } = await buildHandlers(prisma)
+    const reply = replyStub()
+
+    await handlers[`PATCH ${ROUTE}`].handler({
+      params: { odtId: '10', itemId: '20', tallerItemId: '30' },
+      body: { estado: 'cancelado' },
+      user: { role: 'taller', nombre: 'Ana Taller' },
+    }, reply)
+
+    expect(reply.statusCode).toBe(403)
+    expect(reply.body).toEqual({ error: 'Forbidden' })
+    expect(prisma.$transaction).not.toHaveBeenCalled()
   })
 
   it('updates the matched taller item state with workflow side effects', async () => {
@@ -281,12 +339,13 @@ describe('ODT item/taller workflow route', () => {
       fechaListo: null,
       usuario: null,
       usuarioListo: null,
-      odtItem: { odtId: 10, codigoInterno: 'MK-1', nombre: 'Colchoneta' },
+      odtItem: { odtId: 10, codigoInterno: 'MK-1', nombre: 'Colchoneta', odt: { id: 10, estado: 'Pendiente', eliminado: false, sucursalId: null } },
       taller: { nombre: 'Costura' },
     }
     const updated = { ...current, estado: 'en_proceso', usuario: 'Ana Taller' }
     const tx = {
       odtItemTaller: {
+        findFirst: vi.fn().mockResolvedValue(current),
         update: vi.fn().mockResolvedValue(updated),
       },
       bitacoraTaller: {
@@ -309,6 +368,7 @@ describe('ODT item/taller workflow route', () => {
     }, reply)
 
     expect(response).toBe(updated)
+    expect(tx.odtItemTaller.findFirst).toHaveBeenCalledOnce()
     expect(tx.odtItemTaller.update).toHaveBeenCalledOnce()
     const updateArgs = tx.odtItemTaller.update.mock.calls[0][0]
     expect(updateArgs.where).toEqual({ id: 30 })
@@ -321,6 +381,9 @@ describe('ODT item/taller workflow route', () => {
       data: {
         odtId: 10,
         usuario: 'Ana Taller',
+        usuarioReporta: 'Ana Taller',
+        sucursalId: null,
+        fecha: expect.any(Date),
         texto: 'Estado taller Costura / MK-1 - Colchoneta: pendiente -> en_proceso',
       },
     })

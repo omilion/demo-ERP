@@ -17,7 +17,7 @@ function parseOptionalPositiveInt(value, field) {
   return { value: parsed }
 }
 
-async function resolveTraceability(prisma, body) {
+async function resolveTraceability(prisma, body, options = {}) {
   const ordenInput = parseOptionalPositiveInt(body.ordenId, 'ordenId')
   if (ordenInput.error) return { status: 400, error: ordenInput.error }
   const odtInput = parseOptionalPositiveInt(body.odtId, 'odtId')
@@ -32,7 +32,7 @@ async function resolveTraceability(prisma, body) {
   const pagoProveedorId = pagoInput.value
 
   if (odtId) {
-    const resolvedOdt = await resolveOdtForWrite(prisma, odtId)
+    const resolvedOdt = await resolveOdtForWrite(prisma, odtId, { user: options.user })
     if (resolvedOdt.error) return resolvedOdt
     if (ordenId && ordenId !== resolvedOdt.odt.ordenId) {
       return { status: 409, error: 'ODT no pertenece a la orden indicada' }
@@ -41,7 +41,7 @@ async function resolveTraceability(prisma, body) {
   }
 
   if (ordenId) {
-    const resolvedOrden = await resolveOrdenForWrite(prisma, { ordenId })
+    const resolvedOrden = await resolveOrdenForWrite(prisma, { ordenId }, { user: options.user })
     if (resolvedOrden.error) return resolvedOrden
   }
 
@@ -82,18 +82,26 @@ export default async function movimientosProductoRoutes(fastify) {
       return reply.code(403).send({ error: 'Forbidden' })
     }
     const qty = parseInt(cantidad, 10)
-    if (isNaN(qty) || qty === 0) return reply.code(400).send({ error: 'cantidad invalida' })
+    if (isNaN(qty)) return reply.code(400).send({ error: 'cantidad invalida' })
+    if (tipo === 'ajuste' ? qty < 0 : qty <= 0) {
+      return reply.code(400).send({ error: 'cantidad invalida' })
+    }
     if (!motivo || !String(motivo).trim()) return reply.code(400).send({ error: 'motivo requerido' })
     const prod = await fastify.prisma.producto.findUnique({ where: { id } })
     if (!prod) return reply.code(404).send({ error: 'Producto no encontrado' })
 
-    const traceability = await resolveTraceability(fastify.prisma, request.body || {})
+    const traceability = await resolveTraceability(fastify.prisma, request.body || {}, { user: request.user })
     if (traceability.error) return reply.code(traceability.status || 400).send({ error: traceability.error })
 
-    const delta = tipo === 'ingreso' ? Math.abs(qty)
-      : tipo === 'egreso' ? -Math.abs(qty)
+    if (tipo === 'egreso' && qty > prod.stock) {
+      return reply.code(409).send({ error: 'Egreso supera el stock disponible' })
+    }
+
+    const delta = tipo === 'ingreso' ? qty
+      : tipo === 'egreso' ? -qty
       : qty - prod.stock // ajuste = setear stock al valor `cantidad`
-    const newStock = Math.max(0, prod.stock + delta)
+    if (delta === 0) return reply.code(400).send({ error: 'El movimiento no cambia el stock' })
+    const newStock = prod.stock + delta
     const userId = request.user?.id || 1
 
     const [, mov] = await fastify.prisma.$transaction([

@@ -72,8 +72,52 @@ function ErrorBlock({ text = 'No fue posible cargar esta seccion.' }) {
   return <div style={{ padding: 24, color: 'var(--red)', fontSize: 13, textAlign: 'center' }}>{text}</div>
 }
 
+function NoPermissionBlock({ text = 'Sin permiso para ver esta informacion.' }) {
+  return <div style={{ padding: 24, color: 'var(--text-3)', fontSize: 13, textAlign: 'center' }}>{text}</div>
+}
+
 function EmptyBlock({ text = 'Sin datos para los filtros aplicados.' }) {
   return <div style={{ padding: 24, color: 'var(--text-3)', fontSize: 13, textAlign: 'center' }}>{text}</div>
+}
+
+const statusText = {
+  noPermission: 'Sin permiso',
+  loading: 'Cargando...',
+  error: 'Error',
+}
+
+function combinedProblem(allowed, queries) {
+  if (!allowed) return 'noPermission'
+  if (queries.some(query => query.data)) return null
+  if (queries.some(query => query.isError)) return 'error'
+  return 'loading'
+}
+
+function statusValue(problem, value, format = num) {
+  return problem ? statusText[problem] : format(value)
+}
+
+function statusSublabel(problem, readyText) {
+  if (problem === 'noPermission') return 'acceso restringido'
+  if (problem === 'loading') return 'esperando datos'
+  if (problem === 'error') return 'fuente no disponible'
+  return readyText
+}
+
+function statusTone(problem, readyTone = 'neutral') {
+  if (problem === 'error') return 'red'
+  return problem ? 'neutral' : readyTone
+}
+
+function statusCount(problem, value) {
+  return problem ? '-' : value
+}
+
+function QueryBlock({ problem, children }) {
+  if (problem === 'noPermission') return <NoPermissionBlock />
+  if (problem === 'error') return <ErrorBlock />
+  if (problem === 'loading') return <LoadingBlock />
+  return children
 }
 
 function GroupList({ rows, labelKey = 'label', valueKey = 'value', format = num }) {
@@ -123,7 +167,7 @@ function sumBy(items, keyFn, valueFn) {
 export default function ReportesGerencialesPage() {
   const navigate = useNavigate()
   const user = useAuthStore(state => state.user)
-  const initialRange = useMemo(currentYearRange, [])
+  const initialRange = useMemo(() => currentYearRange(), [])
   const [filters, setFilters] = useState({
     desde: initialRange.desde,
     hasta: initialRange.hasta,
@@ -170,6 +214,13 @@ export default function ReportesGerencialesPage() {
   const odtsQuery = useReporteOdts({ fechaDesde: filters.desde || undefined, fechaHasta: filters.hasta || undefined }, perms.taller)
   const despachosQuery = useReporteDespachos({ desde: filters.desde || undefined, hasta: filters.hasta || undefined }, perms.despacho)
 
+  const ventasProblem = combinedProblem(perms.ventas, [ventasGerencialQuery, ventasQuery])
+  const cajaProblem = combinedProblem(perms.caja, [cobranzaCajaGerencialQuery, cajaQuery])
+  const cobranzaProblem = combinedProblem(perms.cobranza, [cobranzaCajaGerencialQuery, cobranzaQuery])
+  const stockProblem = combinedProblem(perms.stock, [stockGerencialQuery, stockQuery])
+  const licitacionesProblem = combinedProblem(perms.licitaciones, [licitacionesGerencialQuery, licitacionesQuery])
+  const operacionProblem = combinedProblem(perms.taller || perms.despacho, [operacionesGerencialQuery, odtsQuery, despachosQuery])
+
   const ventas = useMemo(() => filterVentas(ventasQuery.data?.items || [], filters), [ventasQuery.data, filters])
   const cajaItems = useMemo(() => (cajaQuery.data?.items || []).filter(item => inRange(item.fecha, filters.desde, filters.hasta)), [cajaQuery.data, filters])
   const odts = odtsQuery.data?.items || []
@@ -202,6 +253,8 @@ export default function ReportesGerencialesPage() {
   ]
   const isLoading = queries.some(query => query.isLoading && query.fetchStatus !== 'idle')
   const hasError = queries.some(query => query.isError)
+  const licitacionesPendientesCount = Number(licitacionesGerencialQuery.data?.byResultado?.pendiente?.count ?? licitacionesPendientes.length)
+  const riesgoProblem = stockProblem || licitacionesProblem
 
   const ventaPorTipo = sumBy(ventas, item => item.tipo, item => item.total)
   const ventaPorVendedor = sumBy(ventas, item => item.creadorNombre, item => item.total)
@@ -212,9 +265,9 @@ export default function ReportesGerencialesPage() {
 
   const tabs = [
     { id: 'resumen', label: 'Resumen' },
-    { id: 'ventas', label: 'Ventas', count: ventaCount || ventas.length },
-    { id: 'operacion', label: 'Operacion', count: pendientesOperacionTotal },
-    { id: 'riesgos', label: 'Riesgos', count: stockCriticoTotal + Number(licitacionesGerencialQuery.data?.byResultado?.pendiente?.count ?? licitacionesPendientes.length) },
+    { id: 'ventas', label: 'Ventas', count: statusCount(ventasProblem, ventaCount || ventas.length) },
+    { id: 'operacion', label: 'Operacion', count: statusCount(operacionProblem, pendientesOperacionTotal) },
+    { id: 'riesgos', label: 'Riesgos', count: statusCount(riesgoProblem, stockCriticoTotal + licitacionesPendientesCount) },
   ]
 
   return (
@@ -259,12 +312,12 @@ export default function ReportesGerencialesPage() {
       {isLoading && <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--blue-bg)', color: 'var(--blue)', borderRadius: 8, fontSize: 13 }}>Actualizando reportes...</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 22 }}>
-        <KpiCard label="Ventas periodo" value={money(ventaTotal)} sublabel={`${num(ventaCount)} operaciones`} icon="shoppingCart" tone="blue" />
-        <KpiCard label="Ticket promedio" value={money(ventaTicket)} sublabel="sobre operaciones cargadas" icon="barChart2" tone="neutral" />
-        <KpiCard label="CxC pendiente" value={money(cobranzaPendiente)} sublabel={`${num(cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.count || cobranzaQuery.data?.stats?.n_pendientes || 0)} docs`} icon="creditCard" tone="amber" />
-        <KpiCard label="Caja neta" value={money(ingresos - egresos)} sublabel={`${money(ingresos)} ing. / ${money(egresos)} egr.`} icon="dollarSign" tone="neutral" />
-        <KpiCard label="Stock critico" value={stockCriticoTotal} sublabel="productos y materiales" icon="alertTriangle" tone={stockCriticoTotal ? 'red' : 'neutral'} />
-        <KpiCard label="Pendientes operacion" value={pendientesOperacionTotal} sublabel="taller y despachos" icon="clock" tone="amber" />
+        <KpiCard label="Ventas periodo" value={statusValue(ventasProblem, ventaTotal, money)} sublabel={statusSublabel(ventasProblem, `${num(ventaCount)} operaciones`)} icon="shoppingCart" tone={statusTone(ventasProblem, 'blue')} />
+        <KpiCard label="Ticket promedio" value={statusValue(ventasProblem, ventaTicket, money)} sublabel={statusSublabel(ventasProblem, 'sobre operaciones cargadas')} icon="barChart2" tone={statusTone(ventasProblem)} />
+        <KpiCard label="CxC pendiente" value={statusValue(cobranzaProblem, cobranzaPendiente, money)} sublabel={statusSublabel(cobranzaProblem, `${num(cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.count || cobranzaQuery.data?.stats?.n_pendientes || 0)} docs`)} icon="creditCard" tone={statusTone(cobranzaProblem, 'amber')} />
+        <KpiCard label="Caja neta" value={statusValue(cajaProblem, ingresos - egresos, money)} sublabel={statusSublabel(cajaProblem, `${money(ingresos)} ing. / ${money(egresos)} egr.`)} icon="dollarSign" tone={statusTone(cajaProblem)} />
+        <KpiCard label="Stock critico" value={statusValue(stockProblem, stockCriticoTotal)} sublabel={statusSublabel(stockProblem, 'productos y materiales')} icon="alertTriangle" tone={statusTone(stockProblem, stockCriticoTotal ? 'red' : 'neutral')} />
+        <KpiCard label="Pendientes operacion" value={statusValue(operacionProblem, pendientesOperacionTotal)} sublabel={statusSublabel(operacionProblem, 'taller y despachos')} icon="clock" tone={statusTone(operacionProblem, 'amber')} />
       </div>
 
       <Tabs tabs={tabs} active={active} onChange={setActive} />
@@ -272,26 +325,28 @@ export default function ReportesGerencialesPage() {
       {active === 'resumen' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
           <Panel title="Ventas por tipo" icon="barChart2">
-            {ventasQuery.isError ? <ErrorBlock /> : ventasQuery.isLoading ? <LoadingBlock /> : <GroupList rows={ventaPorTipo} format={money} />}
+            <QueryBlock problem={combinedProblem(perms.ventas, [ventasQuery])}>
+              <GroupList rows={ventaPorTipo} format={money} />
+            </QueryBlock>
           </Panel>
           <Panel title="Caja y cobranza" icon="dollarSign">
             <div style={{ display: 'grid', gap: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Ingresos caja</span><strong>{money(ingresos)}</strong></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Egresos caja</span><strong>{money(egresos)}</strong></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Cobrado historico</span><strong>{money(cobranzaQuery.data?.stats?.cobrado)}</strong></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Pendiente CxC</span><strong style={{ color: 'var(--amber)' }}>{money(cobranzaPendiente)}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Ingresos caja</span><strong>{statusValue(cajaProblem, ingresos, money)}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Egresos caja</span><strong>{statusValue(cajaProblem, egresos, money)}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Cobrado historico</span><strong>{statusValue(cobranzaProblem, cobranzaQuery.data?.stats?.cobrado ?? cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.cobrado ?? 0, money)}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Pendiente CxC</span><strong style={{ color: cobranzaProblem ? 'var(--text-3)' : 'var(--amber)' }}>{statusValue(cobranzaProblem, cobranzaPendiente, money)}</strong></div>
             </div>
           </Panel>
           <Panel title="Alertas activas" icon="alertTriangle">
             <div style={{ display: 'grid', gap: 9 }}>
               <button onClick={() => setActive('riesgos')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', cursor: 'pointer' }}>
-                <span style={{ color: 'var(--text-2)', fontSize: 13 }}>Stock critico</span><Badge tone={stockCriticoTotal ? 'red' : 'green'}>{stockCriticoTotal}</Badge>
+                <span style={{ color: 'var(--text-2)', fontSize: 13 }}>Stock critico</span><Badge tone={stockProblem ? 'gray' : stockCriticoTotal ? 'red' : 'green'}>{statusCount(stockProblem, stockCriticoTotal)}</Badge>
               </button>
               <button onClick={() => setActive('riesgos')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', cursor: 'pointer' }}>
-                <span style={{ color: 'var(--text-2)', fontSize: 13 }}>Licitaciones pendientes</span><Badge tone={(licitacionesGerencialQuery.data?.byResultado?.pendiente?.count ?? licitacionesPendientes.length) ? 'amber' : 'green'}>{licitacionesGerencialQuery.data?.byResultado?.pendiente?.count ?? licitacionesPendientes.length}</Badge>
+                <span style={{ color: 'var(--text-2)', fontSize: 13 }}>Licitaciones pendientes</span><Badge tone={licitacionesPendientesCount ? 'amber' : 'green'}>{statusCount(licitacionesProblem, licitacionesPendientesCount)}</Badge>
               </button>
               <button onClick={() => setActive('operacion')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', cursor: 'pointer' }}>
-                <span style={{ color: 'var(--text-2)', fontSize: 13 }}>Taller / despachos</span><Badge tone={pendientesOperacionTotal ? 'amber' : 'green'}>{pendientesOperacionTotal}</Badge>
+                <span style={{ color: 'var(--text-2)', fontSize: 13 }}>Taller / despachos</span><Badge tone={pendientesOperacionTotal ? 'amber' : 'green'}>{statusCount(operacionProblem, pendientesOperacionTotal)}</Badge>
               </button>
             </div>
           </Panel>
@@ -300,102 +355,122 @@ export default function ReportesGerencialesPage() {
 
       {active === 'ventas' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
-          <Panel title="Por vendedor" icon="user"><GroupList rows={ventaPorVendedor} format={money} /></Panel>
-          <Panel title="Por cliente" icon="users"><GroupList rows={ventaPorCliente} format={money} /></Panel>
-          <Panel title="Ultimas ventas filtradas" icon="shoppingCart" action={<Badge tone="blue">{ventas.length}</Badge>}>
-            <Table
-              columns={[
-                { key: 'nInterno', label: 'N interno' },
-                { key: 'createdAt', label: 'Fecha', render: value => date(value) },
-                { key: 'tipo', label: 'Tipo' },
-                { key: 'creadorNombre', label: 'Vendedor' },
-                { key: 'cliente', label: 'Cliente', render: (_, row) => row.cliente?.razonSocial || row.cliente?.nombre || row.rutCliente || '-' },
-                { key: 'total', label: 'Total', align: 'right', render: value => money(value) },
-              ]}
-              rows={ventas.slice(0, 12)}
-              onRowClick={row => navigate(`/ventas/${row.id}`)}
-              emptyMessage="Sin ventas para los filtros aplicados"
-            />
+          <Panel title="Por vendedor" icon="user">
+            <QueryBlock problem={combinedProblem(perms.ventas, [ventasQuery])}>
+              <GroupList rows={ventaPorVendedor} format={money} />
+            </QueryBlock>
           </Panel>
-          <Panel title="Licitaciones" icon="clipboard" action={<Badge tone="amber">{licitacionesPendingCount(licitaciones)}</Badge>}>
-            <Table
-              columns={[
-                { key: 'idLicitacion', label: 'ID licit.' },
-                { key: 'fechaCreacion', label: 'Fecha', render: value => date(value) },
-                { key: 'rutCliente', label: 'RUT' },
-                { key: 'estado', label: 'Estado', render: value => <Badge tone={value === 'Adjudicada' ? 'green' : value === 'Rechazada' ? 'red' : 'amber'}>{value || '-'}</Badge> },
-                { key: 'nItems', label: 'Items', align: 'right' },
-              ]}
-              rows={licitaciones.slice(0, 12)}
-              onRowClick={row => navigate(`/licitaciones/${row.id}`)}
-              emptyMessage="Sin licitaciones para el periodo"
-            />
+          <Panel title="Por cliente" icon="users">
+            <QueryBlock problem={combinedProblem(perms.ventas, [ventasQuery])}>
+              <GroupList rows={ventaPorCliente} format={money} />
+            </QueryBlock>
+          </Panel>
+          <Panel title="Ultimas ventas filtradas" icon="shoppingCart" action={<Badge tone="blue">{statusCount(combinedProblem(perms.ventas, [ventasQuery]), ventas.length)}</Badge>}>
+            <QueryBlock problem={combinedProblem(perms.ventas, [ventasQuery])}>
+              <Table
+                columns={[
+                  { key: 'nInterno', label: 'N interno' },
+                  { key: 'createdAt', label: 'Fecha', render: value => date(value) },
+                  { key: 'tipo', label: 'Tipo' },
+                  { key: 'creadorNombre', label: 'Vendedor' },
+                  { key: 'cliente', label: 'Cliente', render: (_, row) => row.cliente?.razonSocial || row.cliente?.nombre || row.rutCliente || '-' },
+                  { key: 'total', label: 'Total', align: 'right', render: value => money(value) },
+                ]}
+                rows={ventas.slice(0, 12)}
+                onRowClick={row => navigate(`/ventas/${row.id}`)}
+                emptyMessage="Sin ventas para los filtros aplicados"
+              />
+            </QueryBlock>
+          </Panel>
+          <Panel title="Licitaciones" icon="clipboard" action={<Badge tone="amber">{statusCount(licitacionesProblem, licitacionesPendingCount(licitaciones))}</Badge>}>
+            <QueryBlock problem={licitacionesProblem}>
+              <Table
+                columns={[
+                  { key: 'idLicitacion', label: 'ID licit.' },
+                  { key: 'fechaCreacion', label: 'Fecha', render: value => date(value) },
+                  { key: 'rutCliente', label: 'RUT' },
+                  { key: 'estado', label: 'Estado', render: value => <Badge tone={value === 'Adjudicada' ? 'green' : value === 'Rechazada' ? 'red' : 'amber'}>{value || '-'}</Badge> },
+                  { key: 'nItems', label: 'Items', align: 'right' },
+                ]}
+                rows={licitaciones.slice(0, 12)}
+                onRowClick={row => navigate(`/licitaciones/${row.id}`)}
+                emptyMessage="Sin licitaciones para el periodo"
+              />
+            </QueryBlock>
           </Panel>
         </div>
       )}
 
       {active === 'operacion' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
-          <Panel title="ODTs pendientes" icon="wrench" action={<Badge tone="amber">{odtsPendientes.length}</Badge>}>
-            <Table
-              columns={[
-                { key: 'id', label: 'ODT' },
-                { key: 'createdAt', label: 'Fecha', render: value => date(value) },
-                { key: 'clienteNombre', label: 'Cliente', wrap: true },
-                { key: 'estado', label: 'Estado', render: value => <Badge tone={value === 'Prioritaria' ? 'red' : 'amber'}>{value || '-'}</Badge> },
-                { key: 'tipo', label: 'Tipo' },
-              ]}
-              rows={odtsPendientes.slice(0, 14)}
-              onRowClick={row => navigate(`/taller/${row.id}`)}
-              emptyMessage="Sin ODTs pendientes"
-            />
+          <Panel title="ODTs pendientes" icon="wrench" action={<Badge tone="amber">{statusCount(combinedProblem(perms.taller, [odtsQuery]), odtsPendientes.length)}</Badge>}>
+            <QueryBlock problem={combinedProblem(perms.taller, [odtsQuery])}>
+              <Table
+                columns={[
+                  { key: 'id', label: 'ODT' },
+                  { key: 'createdAt', label: 'Fecha', render: value => date(value) },
+                  { key: 'clienteNombre', label: 'Cliente', wrap: true },
+                  { key: 'estado', label: 'Estado', render: value => <Badge tone={value === 'Prioritaria' ? 'red' : 'amber'}>{value || '-'}</Badge> },
+                  { key: 'tipo', label: 'Tipo' },
+                ]}
+                rows={odtsPendientes.slice(0, 14)}
+                onRowClick={row => navigate(`/taller/${row.id}`)}
+                emptyMessage="Sin ODTs pendientes"
+              />
+            </QueryBlock>
           </Panel>
-          <Panel title="Despachos pendientes" icon="truck" action={<Badge tone="amber">{despachosPendientes.length}</Badge>}>
-            <Table
-              columns={[
-                { key: 'interno', label: 'N interno' },
-                { key: 'fechaEntrega', label: 'Entrega', render: value => date(value) },
-                { key: 'contacto', label: 'Contacto', wrap: true },
-                { key: 'comuna', label: 'Comuna' },
-                { key: 'transporte', label: 'Transporte' },
-              ]}
-              rows={despachosPendientes.slice(0, 14)}
-              onRowClick={() => navigate('/despachos')}
-              emptyMessage="Sin despachos pendientes"
-            />
+          <Panel title="Despachos pendientes" icon="truck" action={<Badge tone="amber">{statusCount(combinedProblem(perms.despacho, [despachosQuery]), despachosPendientes.length)}</Badge>}>
+            <QueryBlock problem={combinedProblem(perms.despacho, [despachosQuery])}>
+              <Table
+                columns={[
+                  { key: 'interno', label: 'N interno' },
+                  { key: 'fechaEntrega', label: 'Entrega', render: value => date(value) },
+                  { key: 'contacto', label: 'Contacto', wrap: true },
+                  { key: 'comuna', label: 'Comuna' },
+                  { key: 'transporte', label: 'Transporte' },
+                ]}
+                rows={despachosPendientes.slice(0, 14)}
+                onRowClick={() => navigate('/despachos')}
+                emptyMessage="Sin despachos pendientes"
+              />
+            </QueryBlock>
           </Panel>
         </div>
       )}
 
       {active === 'riesgos' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
-          <Panel title="Productos con stock critico" icon="package" action={<Badge tone={stockProductos.length ? 'red' : 'green'}>{stockProductos.length}</Badge>}>
-            <Table
-              columns={[
-                { key: 'codigoInterno', label: 'Codigo' },
-                { key: 'nombre', label: 'Producto', wrap: true },
-                { key: 'stock', label: 'Stock', align: 'right' },
-                { key: 'stockCritico', label: 'Critico', align: 'right' },
-                { key: 'bodega', label: 'Bodega' },
-              ]}
-              rows={stockProductos.slice(0, 14)}
-              onRowClick={() => navigate('/bodega')}
-              emptyMessage="Sin productos criticos"
-            />
+          <Panel title="Productos con stock critico" icon="package" action={<Badge tone={stockProblem ? 'gray' : stockProductos.length ? 'red' : 'green'}>{statusCount(stockProblem, stockProductos.length)}</Badge>}>
+            <QueryBlock problem={stockProblem}>
+              <Table
+                columns={[
+                  { key: 'codigoInterno', label: 'Codigo' },
+                  { key: 'nombre', label: 'Producto', wrap: true },
+                  { key: 'stock', label: 'Stock', align: 'right' },
+                  { key: 'stockCritico', label: 'Critico', align: 'right' },
+                  { key: 'bodega', label: 'Bodega' },
+                ]}
+                rows={stockProductos.slice(0, 14)}
+                onRowClick={() => navigate('/bodega')}
+                emptyMessage="Sin productos criticos"
+              />
+            </QueryBlock>
           </Panel>
-          <Panel title="Materiales de taller criticos" icon="warehouse" action={<Badge tone={stockMateriales.length ? 'red' : 'green'}>{stockMateriales.length}</Badge>}>
-            <Table
-              columns={[
-                { key: 'codigoInterno', label: 'Codigo' },
-                { key: 'nombre', label: 'Material', wrap: true },
-                { key: 'stock', label: 'Stock', align: 'right' },
-                { key: 'stockCritico', label: 'Critico', align: 'right' },
-                { key: 'precio', label: 'Precio', align: 'right', render: value => money(value) },
-              ]}
-              rows={stockMateriales.slice(0, 14)}
-              onRowClick={() => navigate('/bodega-taller')}
-              emptyMessage="Sin materiales criticos"
-            />
+          <Panel title="Materiales de taller criticos" icon="warehouse" action={<Badge tone={stockProblem ? 'gray' : stockMateriales.length ? 'red' : 'green'}>{statusCount(stockProblem, stockMateriales.length)}</Badge>}>
+            <QueryBlock problem={stockProblem}>
+              <Table
+                columns={[
+                  { key: 'codigoInterno', label: 'Codigo' },
+                  { key: 'nombre', label: 'Material', wrap: true },
+                  { key: 'stock', label: 'Stock', align: 'right' },
+                  { key: 'stockCritico', label: 'Critico', align: 'right' },
+                  { key: 'precio', label: 'Precio', align: 'right', render: value => money(value) },
+                ]}
+                rows={stockMateriales.slice(0, 14)}
+                onRowClick={() => navigate('/bodega-taller')}
+                emptyMessage="Sin materiales criticos"
+              />
+            </QueryBlock>
           </Panel>
         </div>
       )}

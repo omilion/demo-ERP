@@ -1,4 +1,6 @@
 // G12: CRUD de multas asociadas a ventas/licitaciones
+import { syncOrdenFinancialState } from '../ventas/financial.js'
+
 export default async function multasRoutes(fastify) {
   // GET /api/multas?ordenId=&desde=&hasta=
   fastify.get('/', {
@@ -30,22 +32,24 @@ export default async function multasRoutes(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
   }, async (request, reply) => {
     const b = request.body || {}
-    if (!b.monto) return reply.code(400).send({ error: 'monto requerido' })
-    const m = await fastify.prisma.multa.create({
-      data: {
-        ordenId: b.ordenId ? parseInt(b.ordenId, 10) : null,
-        interno: b.interno || null,
-        monto: parseInt(b.monto, 10),
-        nDocumento: b.nDocumento || null,
-        fecha: b.fecha ? new Date(b.fecha) : new Date(),
-        numero: b.numero || null,
-        usuario: request.user?.nombre || request.user?.username || null,
-      },
+    const monto = Number(b.monto)
+    if (!Number.isInteger(monto) || monto <= 0) return reply.code(400).send({ error: 'monto requerido' })
+    const usuario = request.user?.nombre || request.user?.username || null
+    const m = await fastify.prisma.$transaction(async (tx) => {
+      const multa = await tx.multa.create({
+        data: {
+          ordenId: b.ordenId ? parseInt(b.ordenId, 10) : null,
+          interno: b.interno || null,
+          monto,
+          nDocumento: b.nDocumento || null,
+          fecha: b.fecha ? new Date(b.fecha) : new Date(),
+          numero: b.numero || null,
+          usuario,
+        },
+      })
+      if (multa.ordenId) await syncOrdenFinancialState(tx, multa.ordenId, { userMod: usuario, fecha: new Date() })
+      return multa
     })
-    // Marcar orden con multa
-    if (m.ordenId) {
-      try { await fastify.prisma.orden.update({ where: { id: m.ordenId }, data: { tieneMulta: true } }) } catch {}
-    }
     return reply.code(201).send(m)
   })
 
@@ -55,12 +59,27 @@ export default async function multasRoutes(fastify) {
     const id = parseInt(request.params.id, 10)
     const b = request.body || {}
     const data = {}
-    if (b.monto !== undefined) data.monto = parseInt(b.monto, 10)
+    if (b.monto !== undefined) {
+      const monto = Number(b.monto)
+      if (!Number.isInteger(monto) || monto <= 0) return reply.code(400).send({ error: 'monto invalido' })
+      data.monto = monto
+    }
     if (b.nDocumento !== undefined) data.nDocumento = b.nDocumento
     if (b.numero !== undefined) data.numero = b.numero
     if (b.interno !== undefined) data.interno = b.interno
     if (b.fecha !== undefined) data.fecha = b.fecha ? new Date(b.fecha) : null
-    try { return await fastify.prisma.multa.update({ where: { id }, data }) }
+    try {
+      return await fastify.prisma.$transaction(async (tx) => {
+        const multa = await tx.multa.update({ where: { id }, data })
+        if (multa.ordenId) {
+          await syncOrdenFinancialState(tx, multa.ordenId, {
+            userMod: request.user?.nombre || request.user?.username || null,
+            fecha: new Date(),
+          })
+        }
+        return multa
+      })
+    }
     catch (e) { if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrada' }); throw e }
   })
 
@@ -69,14 +88,16 @@ export default async function multasRoutes(fastify) {
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     try {
-      const m = await fastify.prisma.multa.delete({ where: { id } })
-      // Si era la última multa de la orden, desmarcar
-      if (m.ordenId) {
-        const restantes = await fastify.prisma.multa.count({ where: { ordenId: m.ordenId } })
-        if (restantes === 0) {
-          try { await fastify.prisma.orden.update({ where: { id: m.ordenId }, data: { tieneMulta: false } }) } catch {}
+      const m = await fastify.prisma.$transaction(async (tx) => {
+        const multa = await tx.multa.delete({ where: { id } })
+        if (multa.ordenId) {
+          await syncOrdenFinancialState(tx, multa.ordenId, {
+            userMod: request.user?.nombre || request.user?.username || null,
+            fecha: new Date(),
+          })
         }
-      }
+        return multa
+      })
       return m
     } catch (e) { if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrada' }); throw e }
   })

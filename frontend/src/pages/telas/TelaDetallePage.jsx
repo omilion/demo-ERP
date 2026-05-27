@@ -1,8 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Badge, PageHeader, Btn, Table } from '../../components/shared'
 import { FormField, Input } from '../../components/forms'
 import { useTela, useCreateTelaMovimiento, useUpdateTela } from '../../api/telas'
+
+const telaForm = data => ({
+  codigo: data.codigo || '', nombre: data.nombre || '', tipo: data.tipo || '',
+  color: data.color || '', ubicacion: data.ubicacion || '', proveedor: data.proveedor || '',
+  ancho: data.ancho ?? '', gramaje: data.gramaje ?? '', precio: data.precio ?? '', stockMin: data.stockMin ?? 0,
+})
 
 export default function TelaDetallePage() {
   const { id } = useParams()
@@ -12,14 +18,6 @@ export default function TelaDetallePage() {
   const updateMut = useUpdateTela()
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({})
-
-  useEffect(() => {
-    if (data) setForm({
-      codigo: data.codigo || '', nombre: data.nombre || '', tipo: data.tipo || '',
-      color: data.color || '', ubicacion: data.ubicacion || '', proveedor: data.proveedor || '',
-      ancho: data.ancho ?? '', gramaje: data.gramaje ?? '', precio: data.precio ?? '', stockMin: data.stockMin ?? 0,
-    })
-  }, [data])
 
   const [tipo, setTipo] = useState('ingreso')
   const [cantidad, setCantidad] = useState('')
@@ -67,7 +65,7 @@ export default function TelaDetallePage() {
         breadcrumb={['Inicio', 'Taller', 'Telas', data.codigo]}
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
-            {!editing && <Btn variant="primary" size="sm" onClick={() => setEditing(true)}>Editar</Btn>}
+            {!editing && <Btn variant="primary" size="sm" onClick={() => { setForm(telaForm(data)); setEditing(true) }}>Editar</Btn>}
             {editing && <>
               <Btn variant="secondary" size="sm" onClick={() => setEditing(false)} disabled={updateMut.isPending}>Cancelar</Btn>
               <Btn variant="primary" size="sm" onClick={() => updateMut.mutate({ id, data: form }, { onSuccess: () => setEditing(false) })} disabled={updateMut.isPending}>

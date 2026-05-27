@@ -27,7 +27,10 @@ export const useUpdateVenta = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, data }) => api.put(`/ventas/${id}`, data).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ventas'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+    },
   })
 }
 
@@ -37,6 +40,7 @@ export const useDeleteVenta = () => {
     mutationFn: (id) => api.delete(`/ventas/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
       qc.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
@@ -46,7 +50,10 @@ export const useAnularVenta = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id) => api.post(`/ventas/${id}/anular`).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ventas'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+    },
   })
 }
 
@@ -54,7 +61,10 @@ export const useActivarVenta = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id) => api.post(`/ventas/${id}/activar`).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ventas'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+    },
   })
 }
 
@@ -69,15 +79,21 @@ export const useAddCargo = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ ordenId, nombre, valor }) => api.post(`/ventas/${ordenId}/cargos`, { nombre, valor }).then(r => r.data),
-    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['ventas', vars.ordenId, 'cargos'] }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['ventas', vars.ordenId, 'cargos'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+    },
   })
 }
 
 export const useDeleteCargo = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ ordenId, cargoId }) => api.delete(`/ventas/cargos/${cargoId}`),
-    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['ventas', vars.ordenId, 'cargos'] }),
+    mutationFn: ({ cargoId }) => api.delete(`/ventas/cargos/${cargoId}`),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['ventas', vars.ordenId, 'cargos'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+    },
   })
 }
 
@@ -85,6 +101,9 @@ export const useUpdateItemEntregados = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ itemId, nEntregados }) => api.put(`/ventas/items/${itemId}/entregados`, { nEntregados }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ventas'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+    },
   })
 }

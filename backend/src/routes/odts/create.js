@@ -18,10 +18,13 @@ export default async function createOdt(fastify) {
   fastify.post('/', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
   }, async (request, reply) => {
+    if (request.body?.ordenId === undefined || request.body?.ordenId === null || request.body?.ordenId === '') {
+      return reply.code(400).send({ error: 'ordenId requerido' })
+    }
     const parsed = Schema.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     const data = { ...parsed.data }
-    const resolved = await resolveOrdenForWrite(fastify.prisma, { ordenId: data.ordenId })
+    const resolved = await resolveOrdenForWrite(fastify.prisma, { ordenId: data.ordenId }, { user: request.user })
     if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
 
     const cliente = resolved.orden.clienteId
@@ -33,6 +36,7 @@ export default async function createOdt(fastify) {
     data.ordenId = resolved.orden.id
     if (!data.clienteNombre && cliente?.nombre) data.clienteNombre = cliente.nombre
     if (data.plazo) data.plazo = new Date(data.plazo)
+    data.sucursalId = resolved.orden.sucursalId ?? request.user?.sucursalId ?? null
     const o = await fastify.prisma.odt.create({ data: applyOdtStateSideEffects(data) })
     return reply.code(201).send(o)
   })

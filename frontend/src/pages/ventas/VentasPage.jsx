@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Icon, Badge, PageHeader, Btn, SearchBar, Table, Tabs, StatusDot } from '../../components/shared'
+import { Icon, Badge, PageHeader, Btn, SearchBar, Table, Tabs, StatusDot, Pager } from '../../components/shared'
 import { ViewVentaPanel } from '../../components/forms/ViewVentaPanel'
 import { useVentas } from '../../api/ventas'
 import { downloadFromBackend } from '../../utils/csv'
@@ -20,7 +20,7 @@ const TAB_PARAMS = {
   no_pagada:    { estadoPago: 'No pagada' },
   pend_entrega: { estadoEntrega: 'Pendiente entrega' },
   web:           { tipo: 'Venta Web' },
-  licitacion:   { tipo: 'Licitación' },
+  licitacion:   { tipo: 'licitacion-convenio' },
 }
 
 const URL_FILTERS = {
@@ -32,18 +32,28 @@ const URL_FILTERS = {
   licitacion: 'licitacion',
 }
 
+const todayIso = () => {
+  const d = new Date()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${month}-${day}`
+}
+
 export default function VentasPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const initialFiltro = URL_FILTERS[searchParams.get('filtro')] || 'all'
   const initialSearch = searchParams.get('search') || ''
+  const initialOpen = searchParams.get('open') || ''
   const { user } = useAuthStore()
   const canWriteVentas = can(user, 'ventas', 'write')
   const canDeleteVentas = can(user, 'ventas', 'delete')
   const [tab, setTab] = useState(initialFiltro)
   const [search, setSearch] = useState(initialSearch)
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch)
+  const [pageState, setPageState] = useState({ key: '', page: 1 })
   const [selected, setSelected] = useState(null)
+  const [openVentaId, setOpenVentaId] = useState(initialOpen)
   const debounceRef = useRef(null)
 
   useEffect(() => {
@@ -52,27 +62,48 @@ export default function VentasPage() {
     return () => clearTimeout(debounceRef.current)
   }, [search])
 
-  const apiParams = { ...TAB_PARAMS[tab] }
-  if (debouncedSearch) apiParams.search = debouncedSearch
+  const filterParams = { ...TAB_PARAMS[tab] }
+  if (debouncedSearch) filterParams.search = debouncedSearch
+  const filterKey = JSON.stringify(filterParams)
+  const page = pageState.key === filterKey ? pageState.page : 1
+  const setPagerPage = nextPage => setPageState({ key: filterKey, page: nextPage })
+  const apiParams = { ...filterParams, page: String(page) }
+  const exportParams = { ...filterParams }
+  if (tab === 'hoy') {
+    const today = todayIso()
+    exportParams.desde = today
+    exportParams.hasta = today
+  }
 
   const { data: result = { items: [], total: 0, limit: 100 }, isLoading } = useVentas(apiParams)
   const ventas = result.items ?? []
   const total = result.total ?? 0
   const LIMIT = result.limit ?? 100
-
+  const pages = result.pages ?? Math.max(1, Math.ceil(total / LIMIT))
   // For hoy filter (client-side, small set)
   const today = new Date().toLocaleDateString('es-CL')
   const filtered = tab === 'hoy'
     ? ventas.filter(v => new Date(v.createdAt).toLocaleDateString('es-CL') === today)
     : ventas
 
+  useEffect(() => {
+    if (!openVentaId || isLoading || selected) return
+    const venta = filtered.find(v => String(v.id) === String(openVentaId))
+    if (!venta) return
+    const timer = setTimeout(() => {
+      setSelected(venta)
+      setOpenVentaId('')
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [filtered, isLoading, openVentaId, selected])
+
   const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
   const cols = [
-    { key: 'id', label: 'N° Interno', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{v}</span> },
+    { key: 'id', label: 'Nro. Interno', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{v}</span> },
     { key: 'cliente', label: 'Cliente', wrap: true, render: v => (
       <div style={{ maxWidth: 200 }}>
-        <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v?.nombre || '—'}</div>
+        <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v?.nombre || '-'}</div>
         {v?.rut && <div style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>{v.rut}</div>}
       </div>
     )},
@@ -81,16 +112,16 @@ export default function VentasPage() {
     { key: 'abono', label: 'Abono', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: v > 0 ? 'var(--green-600)' : 'var(--text-3)' }}>{fmt(v)}</span> },
     { key: 'estadoPago', label: 'Pago', render: v => <StatusDot status={v} /> },
     { key: 'estadoEntrega', label: 'Entrega', render: v => <StatusDot status={v} /> },
-    { key: 'licitacion', label: 'Licitación / OC', render: v => v
+    { key: 'licitacion', label: 'Licitacion / OC', render: v => v
       ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-2)' }}>{v}</span>
-      : <span style={{ color: 'var(--text-3)' }}>—</span>
+      : <span style={{ color: 'var(--text-3)' }}>-</span>
     },
-    { key: 'guias', label: 'Guía', render: v => v
+    { key: 'guias', label: 'Guia', render: v => v
       ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--green-700)' }}>#{v}</span>
-      : <span style={{ color: 'var(--text-3)' }}>—</span>
+      : <span style={{ color: 'var(--text-3)' }}>-</span>
     },
     { key: 'createdAt', label: 'Fecha', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-3)' }}>{new Date(v).toLocaleDateString('es-CL')}</span> },
-    { key: 'creadorNombre', label: 'Vendedor', render: v => <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{v || '—'}</span> },
+    { key: 'creadorNombre', label: 'Vendedor', render: v => <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{v || '-'}</span> },
     { key: '_actions', label: '', render: (_, row) => (
       <button onClick={e => { e.stopPropagation(); setSelected(row) }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}>Ver</button>
     )},
@@ -104,7 +135,7 @@ export default function VentasPage() {
         breadcrumb={['Inicio', 'Ventas', 'Matriz Ventas']}
         actions={<>
           <Btn variant="secondary" icon="download" size="sm"
-            onClick={() => downloadFromBackend('/reportes/export/ventas', `ventas_${new Date().toISOString().slice(0, 10)}.csv`)}
+            onClick={() => downloadFromBackend('/reportes/export/ventas', `ventas_${todayIso()}.csv`, exportParams)}
           >Exportar CSV</Btn>
           {canWriteVentas && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/ventas/nueva')}>Nueva Venta</Btn>}
         </>}
@@ -127,18 +158,14 @@ export default function VentasPage() {
         <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <Tabs tabs={FILTER_TABS} active={tab} onChange={t => { setTab(t); setSearch('') }} />
-            <SearchBar placeholder="Buscar N°, vendedor, licitación…" value={search} onChange={setSearch} style={{ width: 280 }} />
+            <SearchBar placeholder="Buscar Nro., vendedor, licitacion u OC..." value={search} onChange={setSearch} style={{ width: 280 }} />
           </div>
         </div>
-        {total > LIMIT && (
-          <div style={{ padding: '7px 16px', background: 'var(--amber-bg, #fffbeb)', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text-2)' }}>
-            Mostrando las {LIMIT} más recientes de {total.toLocaleString('es-CL')}. Use el buscador o los filtros para encontrar ventas específicas.
-          </div>
-        )}
         {isLoading
-          ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
+          ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
           : <Table columns={cols} rows={filtered} onRowClick={row => setSelected(row)} />
         }
+        <Pager page={page} pages={pages} total={total} limit={LIMIT} shown={ventas.length} onChange={setPagerPage} disabled={isLoading} />
       </div>
 
       {selected && <ViewVentaPanel venta={selected} canWrite={canWriteVentas} canDelete={canDeleteVentas} onClose={() => setSelected(null)} onEdit={() => { navigate('/ventas/' + selected.id + '/editar'); setSelected(null) }} />}

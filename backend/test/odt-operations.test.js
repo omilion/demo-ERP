@@ -7,6 +7,7 @@ import {
   attachOperarios,
   buildOdtUpdateBitacoraEntries,
   buildOperarioCargaItems,
+  isOpenOdtEstado,
   isTerminalOdtEstado,
   validateOperario,
 } from '../src/routes/odts/operations.js'
@@ -23,6 +24,7 @@ describe('ODT operation helpers', () => {
       'Terminada',
       'Entregada',
       'Prioritaria',
+      'Anulada',
     ])
     expect(ODT_ESTADOS_ACTUALES).toEqual([
       'Pendiente',
@@ -41,7 +43,10 @@ describe('ODT operation helpers', () => {
     ])
     expect(isTerminalOdtEstado('Terminada')).toBe(true)
     expect(isTerminalOdtEstado('Entregada')).toBe(true)
+    expect(isTerminalOdtEstado('Anulada')).toBe(true)
     expect(isTerminalOdtEstado('En proceso')).toBe(false)
+    expect(isOpenOdtEstado('Pendiente')).toBe(true)
+    expect(isOpenOdtEstado('Terminada')).toBe(false)
   })
 
   it('sets fechaInicio when moving to En proceso and leaves other states untouched', () => {
@@ -64,6 +69,12 @@ describe('ODT operation helpers', () => {
     expect(applyOdtStateSideEffects({ estado: 'Entregada' }, {}, NOW)).toEqual({
       estado: 'Entregada',
       fechaTermino: NOW,
+    })
+
+    expect(applyOdtStateSideEffects({ estado: 'Anulada' }, {}, NOW)).toEqual({
+      estado: 'Anulada',
+      fechaTermino: NOW,
+      eliminado: true,
     })
   })
 
@@ -96,6 +107,28 @@ describe('ODT operation helpers', () => {
       {},
       NOW,
     )).toEqual({ estado: 'Entregada', fechaTermino: explicitTermino })
+  })
+
+  it('clears fechaTermino when reopening to an open state unless explicitly provided', () => {
+    const existingTermino = new Date('2026-05-21T16:00:00.000Z')
+
+    expect(applyOdtStateSideEffects(
+      { estado: 'Pendiente' },
+      { estado: 'Terminada', fechaTermino: existingTermino },
+      NOW,
+    )).toEqual({ estado: 'Pendiente', fechaTermino: null })
+
+    expect(applyOdtStateSideEffects(
+      { estado: 'En proceso' },
+      { estado: 'Entregada', fechaInicio: new Date('2026-05-20T08:00:00.000Z'), fechaTermino: existingTermino },
+      NOW,
+    )).toEqual({ estado: 'En proceso', fechaTermino: null })
+
+    expect(applyOdtStateSideEffects(
+      { estado: 'Pendiente', fechaTermino: existingTermino },
+      { estado: 'Terminada', fechaTermino: existingTermino },
+      NOW,
+    )).toEqual({ estado: 'Pendiente', fechaTermino: existingTermino })
   })
 
   it('validates operario with an active trabajador lookup and allows empty values', async () => {
@@ -214,15 +247,29 @@ describe('ODT operation helpers', () => {
 
   it('builds audit bitacora entries for state and responsible changes', () => {
     const entries = buildOdtUpdateBitacoraEntries({
-      current: { id: 15, estado: 'Pendiente', operarioId: null },
+      current: { id: 15, estado: 'Pendiente', operarioId: null, sucursalId: 3 },
       data: { estado: 'En proceso', operarioId: 7 },
       operario: { id: 7, nombres: 'Ana', apellidoPaterno: 'Rojas' },
       user: { nombre: 'Jefe Taller' },
     })
 
     expect(entries).toEqual([
-      { odtId: 15, usuario: 'Jefe Taller', texto: 'Estado ODT: Pendiente -> En proceso' },
-      { odtId: 15, usuario: 'Jefe Taller', texto: 'Responsable ODT actualizado: Ana Rojas' },
+      {
+        odtId: 15,
+        usuario: 'Jefe Taller',
+        usuarioReporta: 'Jefe Taller',
+        sucursalId: 3,
+        fecha: expect.any(Date),
+        texto: 'Estado ODT: Pendiente -> En proceso',
+      },
+      {
+        odtId: 15,
+        usuario: 'Jefe Taller',
+        usuarioReporta: 'Jefe Taller',
+        sucursalId: 3,
+        fecha: expect.any(Date),
+        texto: 'Responsable ODT actualizado: Ana Rojas',
+      },
     ])
   })
 

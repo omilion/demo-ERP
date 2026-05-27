@@ -1,3 +1,5 @@
+import { getUserSucursalId } from '../caja/scope.js'
+import { computeTotal } from '../ventas/helpers.js'
 import { attachOperarios } from './operations.js'
 
 export default async function getOdt(fastify) {
@@ -5,17 +7,17 @@ export default async function getOdt(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
-    if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
-    const o = await fastify.prisma.odt.findUnique({
-      where: { id },
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
+    const sucursalId = getUserSucursalId(request.user)
+    const o = await fastify.prisma.odt.findFirst({
+      where: { id, eliminado: false, ...(sucursalId ? { OR: [{ sucursalId }, { sucursalId: null }] } : {}) },
       include: {
-        items: { include: { talleres: { include: { taller: true } } } },
-        bitacora: { orderBy: { createdAt: 'asc' } },
+        items: { where: { eliminado: false }, include: { talleres: { include: { taller: true } } } },
+        bitacora: { orderBy: [{ fecha: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }] },
       },
     })
     if (!o) return reply.code(404).send({ error: 'ODT no encontrada' })
 
-    // Attach linked venta if exists
     let orden = null
     if (o.ordenId) {
       orden = await fastify.prisma.orden.findUnique({
@@ -27,8 +29,7 @@ export default async function getOdt(fastify) {
         },
       })
       if (orden) {
-        const subtotal = (orden.items || []).reduce((s, i) => s + (i.cantidad || 0) * (i.precioUnitario || 0), 0)
-        orden = { ...orden, total: subtotal * (1 - (orden.descuentoPct || 0) / 100) }
+        orden = { ...orden, total: computeTotal(orden.items || [], orden.descuentoPct) }
       }
       if (orden?.clienteId) {
         const cliente = await fastify.prisma.cliente.findUnique({

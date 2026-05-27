@@ -9,6 +9,7 @@ async function buildPostHandler(prisma) {
     prisma,
     get: () => {},
     put: () => {},
+    delete: () => {},
     post: (path, _opts, routeHandler) => {
       if (path === '/') handler = routeHandler
     },
@@ -41,6 +42,10 @@ describe('POST /api/pagos-proveedores stock mixto', () => {
         findFirst: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue({ id: 123, documento: 'Factura', nDoc: 'MIX-1' }),
         update: vi.fn(),
+      },
+      proveedor: {
+        findFirst: vi.fn().mockResolvedValue({ id: 55, codigoProveedor: 55 }),
+        findMany: vi.fn(),
       },
       detalleFacturaProveedor: {
         create: vi.fn().mockResolvedValue({}),
@@ -75,11 +80,12 @@ describe('POST /api/pagos-proveedores stock mixto', () => {
     const reply = replyStub()
 
     await handler({
-      user: { id: 7, nombre: 'QA' },
+      user: { id: 7, role: 'admin', nombre: 'QA' },
       body: {
         proveedorId: 55,
         documento: 'Factura',
         nDoc: 'MIX-1',
+        bodega: 'Inventario',
         ingresaStock: true,
         detalles: [{ codigoInterno: 'P-MISSING', destino: 'producto', cantidad: 2, precio: 100 }],
       },
@@ -112,6 +118,10 @@ describe('POST /api/pagos-proveedores stock mixto', () => {
         create: vi.fn(),
         update: vi.fn(),
       },
+      proveedor: {
+        findFirst: vi.fn().mockResolvedValue({ id: 55, codigoProveedor: 55 }),
+        findMany: vi.fn(),
+      },
       detalleFacturaProveedor: {
         create: vi.fn(),
       },
@@ -128,11 +138,12 @@ describe('POST /api/pagos-proveedores stock mixto', () => {
     const reply = replyStub()
 
     const response = await handler({
-      user: { id: 7, nombre: 'QA' },
+      user: { id: 7, role: 'admin', nombre: 'QA' },
       body: {
         proveedorId: 55,
         documento: 'Factura',
         nDoc: 'MIX-2',
+        bodega: 'Inventario',
         ingresaStock: true,
         detalles: [{ codigoInterno: 'P1', destino: 'producto', cantidad: 2, precio: 100 }],
       },
@@ -144,5 +155,101 @@ describe('POST /api/pagos-proveedores stock mixto', () => {
     expect(tx.detalleFacturaProveedor.create).not.toHaveBeenCalled()
     expect(tx.producto.update).not.toHaveBeenCalled()
     expect(tx.movimientoBodega.create).not.toHaveBeenCalled()
+  })
+
+  it('rejects duplicate provider document before creating a second payment', async () => {
+    const existing = {
+      id: 777,
+      proveedorId: 55,
+      documento: 'Factura',
+      nDoc: 'DUP-1',
+      stockAplicadoAt: null,
+    }
+    const tx = {
+      $executeRaw: vi.fn(),
+      pagoProveedor: {
+        findFirst: vi.fn().mockResolvedValue(existing),
+        create: vi.fn(),
+        update: vi.fn(),
+      },
+      proveedor: {
+        findFirst: vi.fn().mockResolvedValue({ id: 55, codigoProveedor: 55 }),
+        findMany: vi.fn(),
+      },
+      detalleFacturaProveedor: { create: vi.fn() },
+    }
+    const prisma = {
+      $transaction: vi.fn(async (callback) => callback(tx)),
+    }
+    const handler = await buildPostHandler(prisma)
+    const reply = replyStub()
+
+    await handler({
+      user: { id: 7, nombre: 'QA' },
+      body: {
+        proveedorId: 55,
+        documento: 'Factura',
+        nDoc: 'DUP-1',
+        total: 1000,
+      },
+    }, reply)
+
+    expect(reply.statusCode).toBe(409)
+    expect(reply.body).toMatchObject({ error: 'documento proveedor duplicado', duplicateId: 777 })
+    expect(tx.pagoProveedor.create).not.toHaveBeenCalled()
+    expect(tx.detalleFacturaProveedor.create).not.toHaveBeenCalled()
+  })
+
+  it('requires bodega write permission when creating a document that applies stock', async () => {
+    const prisma = {
+      $transaction: vi.fn(),
+    }
+    const handler = await buildPostHandler(prisma)
+    const reply = replyStub()
+
+    await handler({
+      user: {
+        id: 7,
+        role: 'solo_lectura',
+        nombre: 'QA',
+        permisosExtra: { proveedores: ['write'] },
+      },
+      body: {
+        proveedorId: 55,
+        documento: 'Factura',
+        nDoc: 'PERM-1',
+        bodega: 'Inventario',
+        ingresaStock: true,
+        detalles: [{ codigoInterno: 'P1', destino: 'producto', cantidad: 2, precio: 100 }],
+      },
+    }, reply)
+
+    expect(reply.statusCode).toBe(403)
+    expect(reply.body).toMatchObject({ error: 'No tiene permiso para aplicar stock' })
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+  })
+
+  it('rejects stock application for non-stock bodegas', async () => {
+    const prisma = {
+      $transaction: vi.fn(),
+    }
+    const handler = await buildPostHandler(prisma)
+    const reply = replyStub()
+
+    await handler({
+      user: { id: 7, role: 'admin', nombre: 'QA' },
+      body: {
+        proveedorId: 55,
+        documento: 'Factura',
+        nDoc: 'GASTO-1',
+        bodega: 'GTransporte',
+        ingresaStock: true,
+        detalles: [{ codigoInterno: 'P1', destino: 'producto', cantidad: 2, precio: 100 }],
+      },
+    }, reply)
+
+    expect(reply.statusCode).toBe(400)
+    expect(reply.body).toMatchObject({ error: 'La bodega seleccionada no permite aplicar stock' })
+    expect(prisma.$transaction).not.toHaveBeenCalled()
   })
 })

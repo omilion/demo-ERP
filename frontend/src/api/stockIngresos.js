@@ -19,3 +19,20 @@ export const useAplicarStock = () => {
     },
   })
 }
+
+export const stockIngresosExportUrl = (params = {}) => {
+  const qs = new URLSearchParams({ ...params, onlyBodega: 'true' })
+  return `/pagos-proveedores/export${qs.toString() ? `?${qs.toString()}` : ''}`
+}
+
+export const downloadStockIngresosCsv = async (params = {}, filename = 'facturas_bodega.csv') => {
+  const res = await api.get(stockIngresosExportUrl(params), { responseType: 'blob' })
+  const url = URL.createObjectURL(res.data)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}

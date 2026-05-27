@@ -8,12 +8,39 @@ export const useTalleres = () =>
     staleTime: 300_000,
   })
 
+export const usePasarTallerOrden = ({ ordenId, nInterno } = {}) =>
+  useQuery({
+    queryKey: ['pasar-taller', 'orden', ordenId || null, nInterno || null],
+    queryFn: () => api.get('/pasar-taller/orden', {
+      params: {
+        ...(ordenId ? { ordenId } : {}),
+        ...(nInterno ? { nInterno } : {}),
+      },
+    }).then(r => r.data),
+    enabled: Boolean(ordenId || nInterno),
+    placeholderData: { orden: null, odt: null, odts: [], items: [], talleres: [] },
+  })
+
 export const useEnviarTaller = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data) => api.post('/pasar-taller/enviar', data).then(r => r.data),
+    onSuccess: (_, data) => {
+      qc.invalidateQueries({ queryKey: ['odts'] })
+      qc.invalidateQueries({ queryKey: ['pasar-taller'] })
+      if (data?.odtId) qc.invalidateQueries({ queryKey: ['odts', Number(data.odtId)] })
+      if (data?.ordenId) qc.invalidateQueries({ queryKey: ['ventas', Number(data.ordenId)] })
+    },
+  })
+}
+
+export const useEliminarItemTaller = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/pasar-taller/items/${id}`).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['odts'] })
+      qc.invalidateQueries({ queryKey: ['pasar-taller'] })
     },
   })
 }

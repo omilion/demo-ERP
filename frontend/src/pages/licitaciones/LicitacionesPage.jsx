@@ -8,11 +8,12 @@ import { can } from '../../utils/permissions'
 const ESTADO_TONE = {
   'Pendiente':    'amber',
   'Adjudicada':   'green',
+  'No Adjudicada': 'red',
   'Cerrada':      'neutral',
   'Rechazada':    'red',
   'En proceso':   'blue',
 }
-const ESTADOS = ['', 'Pendiente', 'En proceso', 'Adjudicada', 'Rechazada', 'Cerrada']
+const ESTADOS = ['', 'Pendiente', 'En proceso', 'Adjudicada', 'No Adjudicada', 'Rechazada', 'Cerrada']
 
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
@@ -43,6 +44,8 @@ export default function LicitacionesPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const canWriteVentas = can(user, 'ventas', 'write')
+  const canReadVentas = can(user, 'ventas', 'read')
+  const canWriteLicitaciones = can(user, 'licitaciones', 'write')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [estado, setEstado] = useState('')
@@ -57,8 +60,6 @@ export default function LicitacionesPage() {
     return () => clearTimeout(debounceRef.current)
   }, [search])
 
-  useEffect(() => { setPage(1) }, [estado, fechaDesde, fechaHasta])
-
   const params = { page: String(page) }
   if (debouncedSearch) params.search = debouncedSearch
   if (estado) params.estado = estado
@@ -70,6 +71,7 @@ export default function LicitacionesPage() {
   const reportesParams = {}
   if (fechaDesde) reportesParams.fechaDesde = fechaDesde
   if (fechaHasta) reportesParams.fechaHasta = fechaHasta
+  if (!fechaDesde && !fechaHasta) reportesParams.todosEstados = 'true'
   const { data: reportes } = useReportesLicitaciones(reportesParams)
 
   const cotizaciones = result.items ?? []
@@ -110,7 +112,7 @@ export default function LicitacionesPage() {
             onClick={e => { e.stopPropagation(); navigate('/licitaciones/' + row.id) }}
             style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}
           >Ver</button>
-          {canWriteVentas && row.estado === 'Adjudicada' && !row.ordenId && (
+          {canWriteLicitaciones && canWriteVentas && row.estado === 'Adjudicada' && !row.ordenId && (
             <button
               onClick={e => {
                 e.stopPropagation()
@@ -128,9 +130,9 @@ export default function LicitacionesPage() {
               title="Crear orden de venta desde adjudicación"
             >Crear venta</button>
           )}
-          {row.ordenId && (
+          {canReadVentas && row.ordenId && (
             <button
-              onClick={e => { e.stopPropagation(); navigate(`/ventas/${row.ordenId}/editar`) }}
+              onClick={e => { e.stopPropagation(); navigate(`/ventas/${row.ordenId}`) }}
               style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--blue, #2563eb)', fontWeight: 500 }}
               title="Ver venta vinculada"
             >Venta</button>
@@ -153,7 +155,7 @@ export default function LicitacionesPage() {
         breadcrumb={['Inicio', 'Ventas', 'Licitaciones']}
         actions={<>
           <Btn variant="secondary" icon="download" size="sm" onClick={handleExport}>Exportar</Btn>
-          {canWriteVentas && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/licitaciones/nueva')}>Nueva Cotización</Btn>}
+          {canWriteLicitaciones && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/licitaciones/nueva')}>Nueva Cotización</Btn>}
         </>}
       />
 
@@ -168,12 +170,12 @@ export default function LicitacionesPage() {
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <SearchBar placeholder="Buscar ID licitación, OC, referencia…" value={search} onChange={setSearch} style={{ width: 280 }} />
-            <select value={estado} onChange={e => setEstado(e.target.value)} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, background: '#fff' }}>
+            <select value={estado} onChange={e => { setEstado(e.target.value); setPage(1) }} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, background: '#fff' }}>
               {ESTADOS.map(s => <option key={s} value={s}>{s || 'Todos los estados'}</option>)}
             </select>
-            <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12 }} />
+            <input type="date" value={fechaDesde} onChange={e => { setFechaDesde(e.target.value); setPage(1) }} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12 }} />
             <span style={{ fontSize: 11, color: 'var(--text-3)' }}>a</span>
-            <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12 }} />
+            <input type="date" value={fechaHasta} onChange={e => { setFechaHasta(e.target.value); setPage(1) }} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12 }} />
             {(estado || fechaDesde || fechaHasta) && (
               <button onClick={() => { setEstado(''); setFechaDesde(''); setFechaHasta('') }} style={{ padding: '5px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Limpiar</button>
             )}

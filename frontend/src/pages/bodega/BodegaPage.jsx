@@ -1,27 +1,44 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs } from '../../components/shared'
-import { useProductos } from '../../api/productos'
-import { downloadFromBackend, parseCsv } from '../../utils/csv'
+import { useDeleteProducto, useProductos } from '../../api/productos'
+import { useCategorias } from '../../api/categorias'
+import { downloadFromBackend, parseTabularFile } from '../../utils/csv'
+import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
 import api from '../../api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 
+const estadoInventarioOptions = ['', 'Inventariado', 'Activo', 'Descontinuado', 'En transito', 'Reserva']
+
+function money(value) {
+  return '$' + Number(value || 0).toLocaleString('es-CL')
+}
+
+function mono(value, fallback = '-') {
+  return <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--text-2)' }}>{value || fallback}</span>
+}
+
 export default function BodegaPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const canWriteCatalogo = can(user, 'catalogo', 'write')
+  const canDeleteCatalogo = can(user, 'catalogo', 'delete')
   const canWriteBodega = can(user, 'bodega', 'write')
-  const canDeleteBodega = can(user, 'bodega', 'delete')
   const qc = useQueryClient()
+  const deleteProducto = useDeleteProducto()
+  const { data: categoriasApi = [] } = useCategorias()
   const [tab, setTab] = useState('inventario')
   const [importing, setImporting] = useState(false)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [proveedor, setProveedor] = useState('')
-  const [categoria, setCategoria] = useState('')
+  const [categoriaId, setCategoriaId] = useState('')
+  const [subcategoriaId, setSubcategoriaId] = useState('')
+  const [visibleWeb, setVisibleWeb] = useState('all')
+  const [estadoInventario, setEstadoInventario] = useState('')
   const [ubicacion, setUbicacion] = useState('')
   const [idMarco, setIdMarco] = useState('')
   const debounceRef = useRef(null)
@@ -36,7 +53,10 @@ export default function BodegaPage() {
   const queryParams = { bodega: bodegaParam }
   if (debouncedSearch) queryParams.search = debouncedSearch
   if (proveedor) queryParams.proveedor = proveedor
-  if (categoria) queryParams.categoria = categoria
+  if (categoriaId) queryParams.categoriaId = categoriaId
+  if (subcategoriaId) queryParams.subcategoriaId = subcategoriaId
+  if (visibleWeb !== 'all') queryParams.visibleWeb = visibleWeb
+  if (estadoInventario) queryParams.estadoInventario = estadoInventario
   if (ubicacion) queryParams.ubicacion = ubicacion
   if (idMarco) queryParams.idMarco = idMarco
   if (filter === 'critico') queryParams.estado = 'critico'
@@ -47,44 +67,44 @@ export default function BodegaPage() {
   const productos = result.items ?? []
   const totalEnBodega = result.total ?? 0
   const LIMIT = result.limit ?? 500
+  const selectedCategoria = categoriasApi.find(c => String(c.id) === String(categoriaId))
+  const subcategorias = selectedCategoria?.subcategorias || []
+  const valorInventario = productos.reduce((sum, p) => sum + Number(p.precioLista || 0) * Number(p.stock || 0), 0)
 
-  const displayed = productos
-
-  const valorInventario = productos.reduce((sum, p) => sum + p.precioLista * p.stock, 0)
+  const handleDelete = (row) => {
+    if (!window.confirm(`Eliminar producto ${row.codigoInterno}?`)) return
+    deleteProducto.mutate(row.id, {
+      onError: e => alert(e.response?.data?.error || 'No se pudo eliminar el producto'),
+    })
+  }
 
   const cols = [
-    { key: 'fotoUrl', label: '', render: v => v
-      ? <img src={v} alt="" loading="lazy" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} onError={e => { e.currentTarget.style.display = 'none' }} />
-      : <div style={{ width: 36, height: 36, borderRadius: 4, background: 'var(--border)' }} /> },
-    { key: 'codigoInterno', label: 'Código', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--text-2)' }}>{v}</span> },
-    { key: 'nombre', label: 'Producto', wrap: true },
-    { key: 'categoria', label: 'Categoría', render: v => v ? <Badge tone="gray">{v}</Badge> : null },
-    { key: 'stock', label: 'Stock / Mínimo', render: (v, row) => {
-      const min = row.stockCritico || 0
-      const color = v === 0 ? 'var(--red)' : v < min ? 'var(--amber)' : 'var(--green-600)'
-      const pct = min > 0 ? Math.min(100, Math.round((v / min) * 100)) : (v > 0 ? 100 : 0)
-      return (
-        <div style={{ minWidth: 110 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-            <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, fontSize: 12, color }}>{v}</span>
-            {min > 0 && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-3)' }}>/ {min}</span>}
-          </div>
-          <div style={{ height: 4, background: 'var(--border)', borderRadius: 99 }}>
-            <div style={{ height: '100%', width: pct + '%', background: color, borderRadius: 99, transition: 'width 0.3s' }} />
-          </div>
-        </div>
-      )
-    }},
+    { key: 'fotoUrl', label: 'Foto', render: v => v
+      ? <img src={v} alt="" loading="lazy" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} onError={useProductPlaceholderOnError} />
+      : <img src={PRODUCT_PLACEHOLDER_IMAGE} alt="" loading="lazy" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} onError={useProductPlaceholderOnError} /> },
+    { key: 'codigoInterno', label: 'Cod.', render: v => mono(v) },
+    { key: 'idMarco', label: 'ID Marco', render: v => mono(v) },
+    { key: 'codigoBarra', label: 'Cod. Barra', render: v => mono(v) },
+    { key: 'visibleWeb', label: 'Web', render: v => <Badge tone={v ? 'green' : 'gray'}>{v ? 'Si' : 'No'}</Badge> },
+    { key: 'nombre', label: 'Nombre', wrap: true },
+    { key: 'categoria', label: 'Categoria', render: v => v ? <Badge tone="gray">{v}</Badge> : '-' },
+    { key: 'subcategoria', label: 'Subcategoria', render: (_, row) => row.subcategoria?.nombre || '-' },
+    { key: 'porcDesc', label: 'Desc.', align: 'right', render: v => `${Number(v || 0).toLocaleString('es-CL')}%` },
+    { key: 'precioLista', label: 'P. costo/lista', align: 'right', render: v => mono(money(v)) },
+    { key: 'precioWeb', label: 'P. venta/web', align: 'right', render: (v, row) => mono(money(v ?? row.precioLista)) },
+    { key: 'precioMarco', label: 'P. licitacion', align: 'right', render: v => mono(money(v)) },
+    { key: 'stockCritico', label: 'Stock crit.', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
+    { key: 'stock', label: 'Stock', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
+    { key: 'proveedor', label: 'Proveedor', render: v => v || '-' },
+    { key: 'estadoInventario', label: 'Estado inv.', render: v => v || '-' },
     { key: 'estado', label: 'Estado', render: v => (
       <Badge tone={v === 'Sin stock' ? 'red' : v === 'Crítico' ? 'amber' : 'green'}>{v}</Badge>
     )},
-    { key: 'precioLista', label: 'Precio', align: 'right', render: v => (
-      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 600 }}>${Number(v).toLocaleString('es-CL')}</span>
-    )},
     { key: '_acc', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 4 }}>
-        {canWriteCatalogo && <button onClick={e => { e.stopPropagation(); navigate('/bodega/' + row.id + '/editar') }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}>Editar</button>}
-        {canWriteCatalogo && <button onClick={e => { e.stopPropagation(); navigate('/bodega/' + row.id + '/editar#movimientos') }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--blue, #2563eb)', fontWeight: 500 }} title="Ver movimientos de stock">Movs</button>}
+        {canWriteCatalogo && <button onClick={e => { e.stopPropagation(); navigate('/bodega/' + row.id + '/editar') }} style={actionBtn}>Editar</button>}
+        {canWriteBodega && <button onClick={e => { e.stopPropagation(); navigate('/bodega/' + row.id + '/editar#movimientos') }} style={{ ...actionBtn, color: 'var(--blue, #2563eb)' }} title="Ver movimientos de stock">Movs</button>}
+        {canDeleteCatalogo && <button onClick={e => { e.stopPropagation(); handleDelete(row) }} style={{ ...actionBtn, color: 'var(--red)' }}>Borrar</button>}
       </div>
     )},
   ]
@@ -93,139 +113,187 @@ export default function BodegaPage() {
   const sinStock = productos.filter(p => p.estado === 'Sin stock').length
 
   return (
-    <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px' }}>
+    <main style={{ maxWidth: 1680, margin: '0 auto', padding: '24px' }}>
       <PageHeader
         title="Bodega"
         subtitle="Control de stock e inventario"
         breadcrumb={['Inicio', 'Bodega']}
         actions={<>
           <Btn variant="secondary" icon="download" size="sm"
-            onClick={() => downloadFromBackend('/reportes/export/productos', `productos_${new Date().toISOString().slice(0, 10)}.csv`)}
-          >Exportar CSV</Btn>
-          {(canWriteBodega || canDeleteBodega) && <Btn variant="secondary" icon="upload" size="sm" onClick={() => setImporting(true)}>Importar</Btn>}
-          {canWriteCatalogo && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/bodega/nuevo')}>Ingreso Mercadería</Btn>}
+            onClick={() => downloadFromBackend('/reportes/export/productos', `productos_${new Date().toISOString().slice(0, 10)}.csv`, queryParams)}
+          >Exportar Excel</Btn>
+          {canWriteBodega && <Btn variant="secondary" icon="upload" size="sm" onClick={() => setImporting(true)}>Importar</Btn>}
+          {canWriteCatalogo && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/bodega/nuevo')}>Crear nuevo</Btn>}
         </>}
       />
 
       <div className="kpi-strip">
-        <KpiCard label="Total productos" value={totalEnBodega} icon="package" sublabel="En ambas bodegas" />
-        <KpiCard label="Stock Crítico" value={criticos} icon="alertTriangle" tone="amber" sublabel="Bajo mínimo" />
-        <KpiCard label="Sin Stock" value={sinStock} icon="x" tone="red" sublabel="Requiere reposición urgente" />
-        <KpiCard label="Valor Inventario" value={'$' + Math.round(valorInventario / 1_000_000 * 10) / 10 + 'M'} icon="dollarSign" sublabel="Aprox. valorizado" />
+        <KpiCard label="Total productos" value={totalEnBodega} icon="package" sublabel={bodegaParam} />
+        <KpiCard label="Stock critico" value={criticos} icon="alertTriangle" tone="amber" sublabel="Stock igual o bajo minimo" />
+        <KpiCard label="Sin stock" value={sinStock} icon="x" tone="red" sublabel="Requiere reposicion" />
+        <KpiCard label="Valor inventario" value={'$' + Math.round(valorInventario / 1_000_000 * 10) / 10 + 'M'} icon="dollarSign" sublabel="Costo/lista valorizado" />
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
         <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 }}>
-            <Tabs tabs={[
-              { id: 'inventario', label: 'Bodega Inventario' },
-              { id: 'taller', label: 'Bodega Taller' },
-            ]} active={tab} onChange={t => { setTab(t); setSearch('') }} />
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-              <select value={filter} onChange={e => setFilter(e.target.value)} style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', color: 'var(--text-1)', background: '#fff', cursor: 'pointer' }}>
-                <option value="all">Todos los estados</option>
-                <option value="critico">Solo críticos</option>
-                <option value="sin-stock">Sin stock</option>
-              </select>
-              <input value={proveedor} onChange={e => setProveedor(e.target.value)} placeholder="Proveedor" style={miniInput} />
-              <input value={categoria} onChange={e => setCategoria(e.target.value)} placeholder="Categoría" style={miniInput} />
-              <input value={ubicacion} onChange={e => setUbicacion(e.target.value)} placeholder="Ubicación" style={miniInput} />
-              <input value={idMarco} onChange={e => setIdMarco(e.target.value)} placeholder="ID Marco" style={miniInput} />
-              <SearchBar placeholder="Buscar código o producto…" value={search} onChange={setSearch} style={{ width: 240 }} />
-            </div>
+          <Tabs tabs={[
+            { id: 'inventario', label: 'Bodega Inventario' },
+            { id: 'taller', label: 'Bodega Taller' },
+          ]} active={tab} onChange={t => { setTab(t); setSearch('') }} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+            <select value={filter} onChange={e => setFilter(e.target.value)} style={selectStyle}>
+              <option value="all">Todos los estados</option>
+              <option value="critico">Solo criticos</option>
+              <option value="sin-stock">Sin stock</option>
+            </select>
+            <select value={visibleWeb} onChange={e => setVisibleWeb(e.target.value)} style={selectStyle}>
+              <option value="all">Web: todos</option>
+              <option value="true">Web: si</option>
+              <option value="false">Web: no</option>
+            </select>
+            <select value={categoriaId} onChange={e => { setCategoriaId(e.target.value); setSubcategoriaId('') }} style={selectStyle}>
+              <option value="">Todas las categorias</option>
+              {categoriasApi.map(c => <option key={c.id || c.nombre} value={c.id}>{c.nombre}</option>)}
+            </select>
+            <select value={subcategoriaId} onChange={e => setSubcategoriaId(e.target.value)} style={selectStyle} disabled={!subcategorias.length}>
+              <option value="">Todas las subcategorias</option>
+              {subcategorias.map(sc => <option key={sc.id} value={sc.id}>{sc.nombre}</option>)}
+            </select>
+            <select value={estadoInventario} onChange={e => setEstadoInventario(e.target.value)} style={selectStyle}>
+              <option value="">Estado inventario</option>
+              {estadoInventarioOptions.filter(Boolean).map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+            <input value={proveedor} onChange={e => setProveedor(e.target.value)} placeholder="Proveedor" style={miniInput} />
+            <input value={ubicacion} onChange={e => setUbicacion(e.target.value)} placeholder="Ubicacion" style={miniInput} />
+            <input value={idMarco} onChange={e => setIdMarco(e.target.value)} placeholder="ID Marco" style={miniInput} />
+            <SearchBar placeholder="Buscar codigo, barra o producto..." value={search} onChange={setSearch} style={{ width: 260 }} />
           </div>
         </div>
         {totalEnBodega > LIMIT && !debouncedSearch && (
           <div style={{ padding: '8px 16px', background: 'var(--amber-bg, #fffbeb)', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text-2)' }}>
-            Mostrando los primeros {LIMIT.toLocaleString('es-CL')} de {totalEnBodega.toLocaleString('es-CL')} productos. Use el buscador para filtrar.
+            Mostrando los primeros {LIMIT.toLocaleString('es-CL')} de {totalEnBodega.toLocaleString('es-CL')} productos. Use filtros para acotar.
           </div>
         )}
         {isLoading
-          ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando productos…</div>
-          : <Table columns={cols} rows={displayed} emptyMessage="No hay productos con ese criterio" />
+          ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando productos...</div>
+          : <Table columns={cols} rows={productos} emptyMessage="No hay productos con ese criterio" onRowDoubleClick={row => canWriteCatalogo && navigate('/bodega/' + row.id + '/editar')} />
         }
       </div>
 
-      {importing && <ImportModal canWriteBodega={canWriteBodega} canDeleteBodega={canDeleteBodega} onClose={() => setImporting(false)} onDone={() => qc.invalidateQueries({ queryKey: ['productos'] })} />}
+      {importing && <ImportModal canWriteBodega={canWriteBodega} onClose={() => setImporting(false)} onDone={() => qc.invalidateQueries({ queryKey: ['productos'] })} />}
     </main>
   )
 }
 
 const miniInput = { padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff', width: 120 }
+const selectStyle = { ...miniInput, width: 'auto', minWidth: 138, cursor: 'pointer' }
+const actionBtn = { padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }
 
-function ImportModal({ canWriteBodega, canDeleteBodega, onClose, onDone }) {
-  const importOptions = [
-    ...(canWriteBodega ? [
-      ['precios', 'Actualizar precios'],
-      ['nuevo', 'Crear nuevos productos'],
-    ] : []),
-    ...(canDeleteBodega ? [['stock', 'Actualizar stock']] : []),
-  ]
+function ImportModal({ canWriteBodega, onClose, onDone }) {
+  const importOptions = canWriteBodega ? [
+    ['precios', 'Actualizar precios'],
+    ['stock', 'Actualizar stock'],
+    ['web', 'Actualizar web'],
+    ['nuevo', 'Crear nuevos productos'],
+  ] : []
   const [tipo, setTipo] = useState(importOptions[0]?.[0] || '')
   const [rows, setRows] = useState([])
   const [filename, setFilename] = useState('')
+  const [motivo, setMotivo] = useState('Importacion masiva validada')
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const text = await file.text()
-    const { headers, rows } = parseCsv(text)
-    setRows(rows)
-    setFilename(`${file.name} (${rows.length} filas, columnas: ${headers.join(', ')})`)
-    setResult(null)
+    try {
+      const parsed = await parseTabularFile(file)
+      setRows(parsed.rows)
+      setFilename(`${file.name} (${parsed.format}, ${parsed.rows.length} filas, columnas: ${parsed.headers.join(', ')})`)
+      setResult(null)
+    } catch (err) {
+      setRows([])
+      setFilename(file.name)
+      setResult({ error: err.message || 'No se pudo leer el archivo' })
+    }
   }
 
-  const submit = async () => {
-    if (!rows.length) return
-    if (tipo === 'stock' && !canDeleteBodega) return
-    if (tipo !== 'stock' && !canWriteBodega) return
+  const preview = async () => {
+    if (!rows.length || !tipo) return
     setLoading(true)
     try {
-      const { data } = await api.post(`/productos/importar/${tipo}`, { rows })
+      const { data } = await api.post(`/productos/importar/${tipo}`, { rows, dryRun: true })
       setResult(data)
-      onDone()
     } catch (e) {
-      setResult({ error: e.response?.data?.error || e.message })
+      setResult({ error: e.response?.data?.error || e.message, errores: e.response?.data?.errores || [] })
     } finally { setLoading(false) }
   }
 
-  const cols = tipo === 'precios' ? 'codigo, precioLista, precioOferta, precioWeb'
+  const submit = async () => {
+    if (!rows.length || !tipo) return
+    if (!result?.aplicable) { await preview(); return }
+    setLoading(true)
+    try {
+      const payload = { rows, confirm: true }
+      if (tipo === 'stock') payload.motivo = motivo
+      const { data } = await api.post(`/productos/importar/${tipo}`, payload)
+      setResult(data)
+      onDone()
+    } catch (e) {
+      setResult({ error: e.response?.data?.error || e.message, errores: e.response?.data?.errores || [] })
+    } finally { setLoading(false) }
+  }
+
+  const cols = tipo === 'precios' ? 'codigo, precioLista|precio costo, precioMarco, precioWeb, descuento'
     : tipo === 'stock' ? 'codigo, stock, stockCritico'
-    : 'codigo, nombre, unidadMedida, precioLista, stock, stockCritico, codigoBarra, descripcion'
+    : tipo === 'web' ? 'codigo, visibleWeb|mostrarWeb|web'
+    : 'codigo, nombre, unidadMedida, categoria, proveedor, precioLista, stock, stockCritico, codigoBarra, bodega, visibleWeb'
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 20, width: 600, maxWidth: '90vw' }}>
-        <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 16 }}>Importar productos (CSV)</div>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 20, width: 680, maxWidth: '92vw' }}>
+        <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 16 }}>Importar productos (CSV o Excel XLSX)</div>
         <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 12, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>Tipo de importación</label>
-          <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, width: '100%' }}>
+          <label style={{ fontSize: 12, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>Tipo de importacion</label>
+          <select value={tipo} onChange={e => { setTipo(e.target.value); setResult(null) }} style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, width: '100%' }}>
             {importOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
           <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Columnas esperadas: {cols}</div>
         </div>
+        {tipo === 'stock' && (
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 12, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>Motivo obligatorio</label>
+            <input value={motivo} onChange={e => setMotivo(e.target.value)} style={{ ...miniInput, width: '100%' }} />
+          </div>
+        )}
         <div style={{ marginBottom: 12 }}>
-          <input type="file" accept=".csv,text/csv" onChange={handleFile} style={{ fontSize: 12 }} />
+          <input type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleFile} style={{ fontSize: 12 }} />
           {filename && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>{filename}</div>}
         </div>
         {result && (
-          <div style={{ background: result.error ? 'var(--red-bg)' : 'var(--green-50)', padding: 10, borderRadius: 6, fontSize: 12, marginBottom: 12 }}>
+          <div style={{ background: result.error ? 'var(--red-bg)' : result.aplicable === false ? 'var(--amber-bg)' : 'var(--green-50)', padding: 10, borderRadius: 6, fontSize: 12, marginBottom: 12 }}>
             {result.error
               ? <span style={{ color: 'var(--red)' }}>{result.error}</span>
               : <span>
+                  {result.aplicable != null && <>Prevalidacion: <b>{result.aplicable ? 'apta' : 'con errores'}</b> / </>}
+                  {result.actualizables != null && <>Actualizables: <b>{result.actualizables}</b> / </>}
                   {result.actualizados != null && <>Actualizados: <b>{result.actualizados}</b> / </>}
+                  {result.creables != null && <>Creables: <b>{result.creables}</b> / </>}
                   {result.creados != null && <>Creados: <b>{result.creados}</b> / Ignorados: <b>{result.ignorados}</b> / </>}
-                  Total: <b>{result.total}</b>
-                  {result.errores?.length > 0 && <><br />Errores: {result.errores.length} ({result.errores.slice(0, 3).map(e => e.codigo || 'fila').join(', ')}…)</>}
+                  Total: <b>{result.total ?? rows.length}</b>
                 </span>}
+            {result.errores?.length > 0 && (
+              <div style={{ color: result.error ? 'var(--red)' : 'var(--text-2)', marginTop: 6 }}>
+                Errores: {result.errores.slice(0, 5).map(e => e.codigo || `fila ${e.fila || '?'}`).join(', ')}
+              </div>
+            )}
           </div>
         )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <Btn variant="secondary" size="sm" onClick={onClose} disabled={loading}>Cerrar</Btn>
-          <Btn variant="primary" size="sm" onClick={submit} disabled={loading || !rows.length || !tipo}>
-            {loading ? 'Importando…' : `Importar ${rows.length} filas`}
+          <Btn variant="secondary" size="sm" onClick={preview} disabled={loading || !rows.length || !tipo}>Prevalidar</Btn>
+          <Btn variant="primary" size="sm" onClick={submit} disabled={loading || !rows.length || !tipo || (tipo === 'stock' && !motivo.trim())}>
+            {loading ? 'Procesando...' : result?.aplicable ? `Confirmar ${rows.length} filas` : 'Validar antes de importar'}
           </Btn>
         </div>
       </div>

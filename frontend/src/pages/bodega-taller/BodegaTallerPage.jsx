@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
-import { FormField, Input } from '../../components/forms'
+import { FormField, Input, Select } from '../../components/forms'
 import { useBodegaTaller, useCreateBodegaTaller, useUpdateBodegaTaller } from '../../api/bodegaTaller'
 import { useCategoriasBodegaTaller } from '../../api/categoriasBodegaTaller'
 
@@ -125,22 +125,26 @@ export default function BodegaTallerPage() {
           initial={editing || {}}
           allowCodigo={creating}
           saving={createMut.isPending || updateMut.isPending}
+          categorias={categorias}
         />
       )}
     </main>
   )
 }
 
-function Modal({ title, onClose, onSave, initial, allowCodigo, saving }) {
+function Modal({ title, onClose, onSave, initial, allowCodigo, saving, categorias = [] }) {
   const [form, setForm] = useState({
     codigoInterno: initial.codigoInterno || '',
     codigoBarra: initial.codigoBarra || '',
     nombre: initial.nombre || '',
     unidadMedida: initial.unidadMedida || '',
+    categoriaId: initial.categoriaId != null ? String(initial.categoriaId) : '',
+    subcategoriaId: initial.subcategoriaId != null ? String(initial.subcategoriaId) : '',
     stock: initial.stock ?? 0,
     stockCritico: initial.stockCritico ?? 0,
     precio: initial.precio ?? 0,
   })
+  const subcategorias = categorias.find(c => String(c.id) === String(form.categoriaId))?.subcategorias ?? []
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 20, width: 520, maxWidth: '90vw' }}>
@@ -157,6 +161,21 @@ function Modal({ title, onClose, onSave, initial, allowCodigo, saving }) {
           </FormField>
           <FormField label="Unidad">
             <Input value={form.unidadMedida} onChange={v => setForm(f => ({ ...f, unidadMedida: v }))} />
+          </FormField>
+          <FormField label="Categoria">
+            <Select
+              value={form.categoriaId}
+              onChange={v => setForm(f => ({ ...f, categoriaId: v, subcategoriaId: '' }))}
+              options={[{ value: '', label: 'Sin categoria' }, ...categorias.map(c => ({ value: String(c.id), label: c.nombre }))]}
+            />
+          </FormField>
+          <FormField label="Subcategoria">
+            <Select
+              value={form.subcategoriaId}
+              onChange={v => setForm(f => ({ ...f, subcategoriaId: v }))}
+              disabled={!form.categoriaId || !subcategorias.length}
+              options={[{ value: '', label: 'Sin subcategoria' }, ...subcategorias.map(s => ({ value: String(s.id), label: s.nombre }))]}
+            />
           </FormField>
           <FormField label="Stock">
             <Input type="number" value={form.stock} onChange={v => setForm(f => ({ ...f, stock: v }))} />

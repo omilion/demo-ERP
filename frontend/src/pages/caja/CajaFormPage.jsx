@@ -5,7 +5,7 @@ import { FormField, FormDivider, Input, Select, useForm } from '../../components
 import { Icon } from '../../components/shared'
 import { useTurnoActivo, useCreateMovimiento, useGastos } from '../../api/caja'
 
-const MEDIOS = ['Efectivo', 'Débito', 'Crédito', 'Transferencia', 'Cheque', 'Webpay', 'Transbank', 'Referencial']
+const MEDIOS = ['Efectivo', 'Debito', 'Credito', 'Transferencia', 'Cheque dia', 'Cheque fecha', 'Webpay', 'Transbank', 'Referencial']
 
 export default function CajaFormPage() {
   const navigate = useNavigate()
@@ -24,7 +24,7 @@ export default function CajaFormPage() {
     const ordenId = params.get('ordenId')
     const nInterno = params.get('nInterno')
     const tipo = params.get('tipo')
-    if (ordenId) set('ordenId', ordenId)
+    if (ordenId && (tipo === 'egreso' || tipo === 'Egreso')) set('ordenId', ordenId)
     if (nInterno) set('referencia', `N° interno ${nInterno}`)
     if (tipo === 'egreso' || tipo === 'Egreso') set('tipo', 'Egreso')
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -33,19 +33,27 @@ export default function CajaFormPage() {
   const handleSave = () => {
     if (!validate({ monto: { required: true } })) return
     if (!turno) { alert('No hay turno activo. Abre un turno primero.'); return }
+    if (data.tipo === 'Ingreso' && data.ordenId) {
+      alert('Los pagos de ventas se registran desde Cobranza, no como movimiento manual.')
+      return
+    }
+    if (data.tipo === 'Egreso' && !data.gastoTipoId && !data.ordenId) {
+      alert('Para un egreso debes indicar categoria de gasto o N Venta.')
+      return
+    }
     const payload = {
       tipo: data.tipo,
       monto: Number(data.monto),
       medioPago: data.medioPago,
       referencia: data.referencia || undefined,
-      ordenId: data.ordenId ? Number(data.ordenId) : undefined,
+      ordenId: data.tipo === 'Egreso' && data.ordenId ? Number(data.ordenId) : undefined,
       documento: data.documento || undefined,
       nDoc: data.nDoc || undefined,
       tipoDocumento: data.tipoDocumento || undefined,
       cuotas: data.cuotas ? Number(data.cuotas) : undefined,
       pagaCon: data.pagaCon ? Number(data.pagaCon) : undefined,
       nMedioPago: data.nMedioPago || undefined,
-      gastoTipoId: data.gastoTipoId ? Number(data.gastoTipoId) : undefined,
+      gastoTipoId: data.tipo === 'Egreso' && data.gastoTipoId ? Number(data.gastoTipoId) : undefined,
     }
     createMovimiento.mutate({ turnoId: turno.id, data: payload }, {
       onSuccess: () => navigate('/caja'),
@@ -67,7 +75,13 @@ export default function CajaFormPage() {
       <FormDivider label="Tipo de movimiento" />
       <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
         {['Ingreso', 'Egreso'].map(t => (
-          <button key={t} onClick={() => set('tipo', t)} style={{
+          <button key={t} onClick={() => {
+            set('tipo', t)
+            if (t === 'Ingreso') {
+              set('ordenId', '')
+              set('gastoTipoId', '')
+            }
+          }} style={{
             flex: 1, padding: '12px', borderRadius: 10, cursor: 'pointer', fontWeight: 600, fontSize: 14, transition: 'all 0.15s', fontFamily: 'inherit',
             background: data.tipo === t ? (t === 'Ingreso' ? 'var(--green-100)' : 'var(--red-bg)') : '#fff',
             color: data.tipo === t ? (t === 'Ingreso' ? 'var(--green-700)' : 'var(--red)') : 'var(--text-3)',
@@ -103,7 +117,7 @@ export default function CajaFormPage() {
         </div>
       )}
 
-      {data.tipo === 'Ingreso' && (data.medioPago === 'Crédito' || data.medioPago === 'Débito') && (
+      {data.tipo === 'Ingreso' && (data.medioPago === 'Credito' || data.medioPago === 'Debito') && (
         <FormField label="Cuotas" hint="1 para sin cuotas">
           <Input value={data.cuotas} onChange={v => set('cuotas', v)} type="number" placeholder="1" />
         </FormField>
@@ -123,9 +137,11 @@ export default function CajaFormPage() {
         <FormField label="N° Documento">
           <Input value={data.nDoc} onChange={v => set('nDoc', v)} placeholder="0000123" />
         </FormField>
-        <FormField label="N° Venta (ordenId)" hint="Asocia a venta">
-          <Input value={data.ordenId} onChange={v => set('ordenId', v)} type="number" placeholder="0" />
-        </FormField>
+        {data.tipo === 'Egreso' && (
+          <FormField label="N Venta (ordenId)" hint="Solo egresos asociados a venta">
+            <Input value={data.ordenId} onChange={v => set('ordenId', v)} type="number" placeholder="0" />
+          </FormField>
+        )}
       </div>
       <FormField label="Referencia / Glosa">
         <Input value={data.referencia} onChange={v => set('referencia', v)} placeholder="Detalle libre" />

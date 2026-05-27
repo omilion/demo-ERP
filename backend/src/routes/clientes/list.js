@@ -1,31 +1,40 @@
+import { parsePagination } from '../operational-utils.js'
+
 export default async function listClientes(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('clientes', 'read')],
   }, async (request, reply) => {
-    const { search, tipo, region, ciudad, segmento, conDeuda } = request.query
-    const LIMIT = 500
+    const { search, tipo, region, ciudad, email, segmento, conDeuda, estado, activo } = request.query
+    const pagination = parsePagination(request.query, { defaultLimit: 500, maxLimit: 500 })
+    if (!pagination) return reply.code(400).send({ error: 'Paginacion invalida' })
 
-    const where = { activo: true }
+    const where = {}
+    if (estado === 'inactivo') where.activo = false
+    else if (estado === 'todos') {}
+    else if (activo !== undefined) where.activo = activo === 'true'
+    else where.activo = true
     if (tipo) where.tipo = tipo
     if (region) where.region = { contains: region, mode: 'insensitive' }
     if (ciudad) where.ciudad = { contains: ciudad, mode: 'insensitive' }
+    if (email) where.email = { contains: email, mode: 'insensitive' }
     if (segmento) where.segmento = segmento
     if (search) where.OR = [
       { nombre: { contains: search, mode: 'insensitive' } },
+      { razonSocial: { contains: search, mode: 'insensitive' } },
       { rut: { contains: search } },
+      { email: { contains: search, mode: 'insensitive' } },
+      { telefono: { contains: search, mode: 'insensitive' } },
+      { direccion: { contains: search, mode: 'insensitive' } },
+      { region: { contains: search, mode: 'insensitive' } },
+      { comuna: { contains: search, mode: 'insensitive' } },
       { ciudad: { contains: search, mode: 'insensitive' } },
     ]
-
-    const [clientes, total] = await Promise.all([
-      fastify.prisma.cliente.findMany({ where, orderBy: { nombre: 'asc' }, take: LIMIT }),
-      fastify.prisma.cliente.count({ where }),
-    ])
 
     // Compute all saldos in one SQL query
     const saldos = await fastify.prisma.$queryRaw`
       SELECT o.cliente_id,
         COALESCE(SUM(
-          COALESCE(t.subtotal, 0) * (1 - o.descuento_pct / 100.0) - o.abono
+          COALESCE(t.subtotal, 0) + COALESCE(c.cargos, 0) - ROUND((COALESCE(t.subtotal, 0) + COALESCE(c.cargos, 0)) * COALESCE(o.descuento_pct, 0) / 100.0) - o.abono
         ), 0)::float AS saldo
       FROM ventas.ordenes o
       LEFT JOIN (
@@ -33,18 +42,43 @@ export default async function listClientes(fastify) {
         FROM ventas.orden_items
         GROUP BY orden_id
       ) t ON t.orden_id = o.id
+      LEFT JOIN (
+        SELECT orden_id, SUM(valor) AS cargos
+        FROM ventas.orden_cargos
+        GROUP BY orden_id
+      ) c ON c.orden_id = o.id
       WHERE o.estado_pago != 'Pagada' AND o.cliente_id IS NOT NULL
       GROUP BY o.cliente_id
     `
     const saldoMap = {}
     for (const row of saldos) saldoMap[Number(row.cliente_id)] = Number(row.saldo)
 
-    let items = clientes.map(c => ({ ...c, saldo: saldoMap[c.id] ?? 0 }))
-    if (conDeuda === 'true') items = items.filter(c => c.saldo > 0)
+    if (conDeuda === 'true') {
+      const deudorIds = Object.entries(saldoMap)
+        .filter(([, saldo]) => saldo > 0)
+        .map(([id]) => Number(id))
+      if (deudorIds.length === 0) {
+        return { items: [], total: 0, limit: pagination.limit, page: pagination.page }
+      }
+      where.id = { in: deudorIds }
+    }
+
+    const [clientes, total] = await Promise.all([
+      fastify.prisma.cliente.findMany({
+        where,
+        orderBy: { nombre: 'asc' },
+        skip: pagination.skip,
+        take: pagination.limit,
+      }),
+      fastify.prisma.cliente.count({ where }),
+    ])
+
+    const items = clientes.map(c => ({ ...c, saldo: saldoMap[c.id] ?? 0 }))
     return {
       items,
-      total: conDeuda === 'true' ? items.length : total,
-      limit: LIMIT,
+      total,
+      limit: pagination.limit,
+      page: pagination.page,
     }
   })
 }

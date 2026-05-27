@@ -31,10 +31,11 @@ export const useUpdateCotizacion = () => {
   })
 }
 
-export const useReportesLicitaciones = (params = {}) =>
+export const useReportesLicitaciones = (params = {}, enabled = true) =>
   useQuery({
     queryKey: ['cotizaciones-reportes', params],
     queryFn: () => api.get('/cotizaciones/reportes', { params }).then(r => r.data),
+    enabled,
     staleTime: 30_000,
   })
 
@@ -42,7 +43,10 @@ export const useDeleteCotizacion = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id) => api.delete(`/cotizaciones/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['cotizaciones'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cotizaciones'] })
+      qc.invalidateQueries({ queryKey: ['cotizaciones-reportes'] })
+    },
   })
 }
 
@@ -76,6 +80,18 @@ export const useCrearVentaDesdeLicitacion = () => {
     mutationFn: (id) => api.post(`/cotizaciones/${id}/crear-venta`).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cotizaciones'] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+    },
+  })
+}
+
+export const useActualizarVentaDesdeLicitacion = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.post(`/cotizaciones/${id}/actualizar-venta`).then(r => r.data),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: ['cotizaciones'] })
+      qc.invalidateQueries({ queryKey: ['cotizaciones', id] })
       qc.invalidateQueries({ queryKey: ['ventas'] })
     },
   })

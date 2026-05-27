@@ -98,6 +98,13 @@ function TabDatos({ c }) {
 
       <FormDivider label="Identificación" />
       <DetailRow label="RUT" value={c.rut} mono />
+      {c.razonSocial && <DetailRow label="Razon Social" value={c.razonSocial} />}
+      {c.giro && <DetailRow label="Giro" value={c.giro} />}
+
+      <FormDivider label="Direccion" />
+      {c.direccion && <DetailRow label="Direccion" value={c.direccion} />}
+      {c.region && <DetailRow label="Region" value={c.region} />}
+      {c.comuna && <DetailRow label="Comuna" value={c.comuna} />}
       {c.ciudad && <DetailRow label="Ciudad" value={c.ciudad} />}
 
       <FormDivider label="Contacto" />
@@ -226,7 +233,7 @@ export function ViewClientePanel({ cliente, onClose, onEdit, canWrite = true }) 
   const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
   const [tab, setTab] = useState('datos')
-  const { data: full, isLoading } = useCliente(cliente.id)
+  const { data: full, isLoading } = useCliente(cliente.id, cliente.activo === false ? { includeInactivos: 'true' } : {})
 
   const c = full || cliente
   const ventas = full?.ventas ?? []

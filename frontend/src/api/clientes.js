@@ -8,10 +8,10 @@ export const useClientes = (params = {}) =>
     staleTime: 30_000,
   })
 
-export const useCliente = (id) =>
+export const useCliente = (id, options = {}) =>
   useQuery({
-    queryKey: ['clientes', id],
-    queryFn: () => api.get(`/clientes/${id}`).then(r => r.data),
+    queryKey: ['clientes', id, options],
+    queryFn: () => api.get(`/clientes/${id}`, { params: options }).then(r => r.data),
     enabled: !!id,
   })
 
@@ -28,6 +28,21 @@ export const useUpdateCliente = () => {
   return useMutation({
     mutationFn: ({ id, data }) => api.put(`/clientes/${id}`, data).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['clientes'] }),
+  })
+}
+
+export const useClienteActivo = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, activo, razon }) => (
+      activo
+        ? api.post(`/clientes/${id}/reactivar`, { razon }).then(r => r.data)
+        : api.delete(`/clientes/${id}`, { data: { razon } }).then(r => r.data)
+    ),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['clientes'] })
+      qc.invalidateQueries({ queryKey: ['clientes', Number(id)] })
+    },
   })
 }
 

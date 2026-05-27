@@ -19,6 +19,7 @@ import CobranzaPage from './pages/cobranza/CobranzaPage'
 import LicitacionesPage from './pages/licitaciones/LicitacionesPage'
 import LicitacionFormPage from './pages/licitaciones/LicitacionFormPage'
 import LicitacionDetallePage from './pages/licitaciones/LicitacionDetallePage'
+import LicitacionFichaPage from './pages/licitaciones/LicitacionFichaPage'
 import OrdenesCompraPage from './pages/ordenes-compra/OrdenesCompraPage'
 import OrdenCompraDetallePage from './pages/ordenes-compra/OrdenCompraDetallePage'
 import PagosProveedoresPage from './pages/pagos-proveedores/PagosProveedoresPage'
@@ -68,9 +69,9 @@ export const router = createBrowserRouter([
       { path: 'ventas/nueva', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
       { path: 'ventas/:id/editar', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
       { path: 'ventas/:id/imprimir', element: protect(<VentaPrintPage />, { module: 'ventas' }) },
-      { path: 'bodega', element: protect(<BodegaPage />, { module: 'catalogo' }) },
-      { path: 'bodega/nuevo', element: protect(<BodegaFormPage />, { module: 'catalogo', permission: 'write' }) },
-      { path: 'bodega/:id/editar', element: protect(<BodegaFormPage />, { module: 'catalogo', permission: 'write' }) },
+      { path: 'bodega', element: protect(<BodegaPage />, { module: 'bodega' }) },
+      { path: 'bodega/nuevo', element: protect(<BodegaFormPage />, { module: 'bodega', permission: 'write' }) },
+      { path: 'bodega/:id/editar', element: protect(<BodegaFormPage />, { module: 'bodega', permission: 'write' }) },
       { path: 'taller', element: protect(<TallerPage />, { module: 'taller' }) },
       { path: 'taller/nueva', element: protect(<TallerFormPage />, { module: 'taller', permission: 'write' }) },
       { path: 'taller/:id', element: protect(<OdtLegacyRedirect />, { module: 'taller' }) },
@@ -83,9 +84,10 @@ export const router = createBrowserRouter([
       { path: 'clientes/nuevo', element: protect(<ClientesFormPage />, { module: 'clientes', permission: 'write' }) },
       { path: 'clientes/:id/editar', element: protect(<ClientesFormPage />, { module: 'clientes', permission: 'write' }) },
       { path: 'cobranza/*', element: protect(<CobranzaPage />, { module: 'cobranza' }) },
-      { path: 'licitaciones', element: protect(<LicitacionesPage />, { module: 'ventas' }) },
-      { path: 'licitaciones/nueva', element: protect(<LicitacionFormPage />, { module: 'ventas', permission: 'write' }) },
-      { path: 'licitaciones/:id', element: protect(<LicitacionDetallePage />, { module: 'ventas' }) },
+      { path: 'licitaciones', element: protect(<LicitacionesPage />, { module: 'licitaciones' }) },
+      { path: 'licitaciones/nueva', element: protect(<LicitacionFormPage />, { module: 'licitaciones', permission: 'write' }) },
+      { path: 'licitaciones/:id/ficha', element: protect(<LicitacionFichaPage />, { module: 'licitaciones' }) },
+      { path: 'licitaciones/:id', element: protect(<LicitacionDetallePage />, { module: 'licitaciones' }) },
       { path: 'ordenes-compra', element: protect(<OrdenesCompraPage />, { module: 'ventas' }) },
       { path: 'ordenes-compra/:id', element: protect(<OrdenCompraDetallePage />, { module: 'ventas' }) },
       { path: 'pagos-proveedores', element: protect(<PagosProveedoresPage />, { module: 'proveedores' }) },
@@ -95,8 +97,8 @@ export const router = createBrowserRouter([
       { path: 'bodega-taller', element: protect(<BodegaTallerPage />, { module: 'taller' }) },
       { path: 'accesos',    element: <ProtectedRoute allowedRoles={['admin']}><AccesosPage /></ProtectedRoute> },
       { path: 'usuarios',   element: <ProtectedRoute allowedRoles={['admin']}><UsuariosPage /></ProtectedRoute> },
-      { path: 'descuentos', element: protect(<DescuentosPage />, { module: 'ventas' }) },
-      { path: 'proveedores', element: protect(<ProveedoresPage />, { module: 'catalogo' }) },
+      { path: 'descuentos', element: protect(<DescuentosPage />, { module: 'descuentos', permission: 'write' }) },
+      { path: 'proveedores', element: protect(<ProveedoresPage />, { module: 'proveedores' }) },
       { path: 'crm', element: protect(<CrmPage />, { module: 'ventas' }) },
       { path: 'config',        element: <ProtectedRoute allowedRoles={['admin']}><ConfigPage /></ProtectedRoute> },
       { path: 'matriz-ventas', element: protect(<MatrizVentasPage />, { module: 'ventas' }) },
@@ -104,10 +106,10 @@ export const router = createBrowserRouter([
       { path: 'bitacora-taller', element: protect(<BitacoraTallerPage />, { module: 'taller' }) },
       { path: 'historial-materiales', element: protect(<HistorialMaterialesPage />, { module: 'taller' }) },
       { path: 'stock-ingresos', element: protect(<StockIngresosPage />, { module: 'bodega' }) },
-      { path: 'pasar-taller', element: protect(<PasarTallerPage />, { module: 'taller', permission: 'write' }) },
+      { path: 'pasar-taller', element: protect(<PasarTallerPage />, { requirements: [['taller', 'write'], ['ventas', 'write']] }) },
       { path: 'consulta-precios', element: protect(<ConsultaPreciosPage />, { module: 'catalogo' }) },
       { path: 'reportes/gerenciales', element: protect(<ReportesGerencialesPage />, { module: 'reportes' }) },
-      { path: 'reportes/licitaciones', element: protect(<ReportesLicitacionesPage />, { module: 'ventas' }) },
+      { path: 'reportes/licitaciones', element: protect(<ReportesLicitacionesPage />, { module: 'licitaciones' }) },
       { path: 'rrhh', element: protect(<RrhhPage />, { module: 'rrhh' }) },
       { path: 'admin/integridad', element: <ProtectedRoute allowedRoles={['admin']}><IntegridadPage /></ProtectedRoute> },
       { path: 'admin/auditoria',  element: <ProtectedRoute allowedRoles={['admin']}><AuditoriaPage /></ProtectedRoute> },

@@ -1,7 +1,49 @@
+function parseId(value) {
+  const id = Number.parseInt(value, 10)
+  return Number.isInteger(id) && id > 0 ? id : null
+}
+
+function cleanName(value) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function parsePorcDesc(value) {
+  if (value === undefined || value === null || value === '') return 0
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+async function ensureActiveCategoria(prisma, id) {
+  if (!id) return null
+  return prisma.categoria.findFirst({ where: { id, activo: true } })
+}
+
+async function findDuplicateCategoria(prisma, { id, nombre }) {
+  if (!nombre) return null
+  return prisma.categoria.findFirst({
+    where: {
+      activo: true,
+      nombre: { equals: nombre, mode: 'insensitive' },
+      ...(id ? { id: { not: id } } : {}),
+    },
+  })
+}
+
+async function findDuplicateSubcategoria(prisma, { id, nombre, categoriaId }) {
+  if (!nombre || !categoriaId) return null
+  return prisma.subcategoria.findFirst({
+    where: {
+      activo: true,
+      categoriaId,
+      nombre: { equals: nombre, mode: 'insensitive' },
+      ...(id ? { id: { not: id } } : {}),
+    },
+  })
+}
+
 export default async function categoriasRoutes(fastify) {
-  // ── Categorías ────────────────────────────────────────────────────────────
   fastify.get('/', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, fastify.rbac('catalogo', 'read')],
   }, async () => {
     return fastify.prisma.categoria.findMany({
       where: { activo: true },
@@ -11,45 +53,77 @@ export default async function categoriasRoutes(fastify) {
   })
 
   fastify.post('/', {
-    preHandler: [fastify.authenticate, fastify.rbac('catalogo', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('config', 'write', { allowExtra: false })],
   }, async (request, reply) => {
-    const { nombre, porcDesc, mostrar } = request.body || {}
+    const nombre = cleanName(request.body?.nombre)
     if (!nombre) return reply.code(400).send({ error: 'nombre requerido' })
-    const c = await fastify.prisma.categoria.create({
-      data: { nombre, porcDesc: parseFloat(porcDesc) || 0, mostrar: mostrar !== false },
+    const duplicate = await findDuplicateCategoria(fastify.prisma, { nombre })
+    if (duplicate) return reply.code(409).send({ error: 'Categoria ya existe' })
+    const categoria = await fastify.prisma.categoria.create({
+      data: {
+        nombre,
+        porcDesc: parsePorcDesc(request.body?.porcDesc),
+        mostrar: request.body?.mostrar !== false,
+      },
     })
-    return reply.code(201).send(c)
+    return reply.code(201).send(categoria)
   })
 
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('catalogo', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('config', 'write', { allowExtra: false })],
   }, async (request, reply) => {
-    const id = parseInt(request.params.id, 10)
-    if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
+    const id = parseId(request.params.id)
+    if (!id) return reply.code(400).send({ error: 'ID invalido' })
+    const data = {}
+    if (request.body?.nombre !== undefined) {
+      const nombre = cleanName(request.body.nombre)
+      if (!nombre) return reply.code(400).send({ error: 'nombre requerido' })
+      const duplicate = await findDuplicateCategoria(fastify.prisma, { id, nombre })
+      if (duplicate) return reply.code(409).send({ error: 'Categoria ya existe' })
+      data.nombre = nombre
+    }
+    if (request.body?.porcDesc !== undefined) data.porcDesc = parsePorcDesc(request.body.porcDesc)
+    if (request.body?.mostrar !== undefined) data.mostrar = Boolean(request.body.mostrar)
+
     try {
-      const data = { ...request.body }
-      if (data.porcDesc !== undefined) data.porcDesc = parseFloat(data.porcDesc)
       return await fastify.prisma.categoria.update({ where: { id }, data })
-    } catch (e) {
-      if (e.code === 'P2025') return reply.code(404).send({ error: 'Categoría no encontrada' })
-      throw e
+    } catch (error) {
+      if (error.code === 'P2025') return reply.code(404).send({ error: 'Categoria no encontrada' })
+      throw error
     }
   })
 
   fastify.delete('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('catalogo', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('config', 'write', { allowExtra: false })],
   }, async (request, reply) => {
-    const id = parseInt(request.params.id, 10)
-    if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
-    await fastify.prisma.categoria.update({ where: { id }, data: { activo: false } })
-    return reply.code(204).send()
+    const id = parseId(request.params.id)
+    if (!id) return reply.code(400).send({ error: 'ID invalido' })
+    const categoria = await fastify.prisma.categoria.findUnique({ where: { id } })
+    if (!categoria) return reply.code(404).send({ error: 'Categoria no encontrada' })
+    const usados = await fastify.prisma.producto.count({
+      where: {
+        activo: true,
+        OR: [
+          { categoriaId: id },
+          ...(categoria.nombre ? [{ categoria: { equals: categoria.nombre, mode: 'insensitive' } }] : []),
+        ],
+      },
+    })
+    if (usados > 0) return reply.code(409).send({ error: 'Categoria en uso por productos' })
+    try {
+      await fastify.prisma.categoria.update({ where: { id }, data: { activo: false } })
+      return reply.code(204).send()
+    } catch (error) {
+      if (error.code === 'P2025') return reply.code(404).send({ error: 'Categoria no encontrada' })
+      throw error
+    }
   })
 
-  // ── Subcategorías ─────────────────────────────────────────────────────────
   fastify.get('/:id/subcategorias', {
-    preHandler: [fastify.authenticate],
-  }, async (request) => {
-    const categoriaId = parseInt(request.params.id, 10)
+    preHandler: [fastify.authenticate, fastify.rbac('catalogo', 'read')],
+  }, async (request, reply) => {
+    const categoriaId = parseId(request.params.id)
+    if (!categoriaId) return reply.code(400).send({ error: 'ID invalido' })
     return fastify.prisma.subcategoria.findMany({
       where: { categoriaId, activo: true },
       orderBy: { nombre: 'asc' },
@@ -57,12 +131,77 @@ export default async function categoriasRoutes(fastify) {
   })
 
   fastify.post('/:id/subcategorias', {
-    preHandler: [fastify.authenticate, fastify.rbac('catalogo', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('config', 'write', { allowExtra: false })],
   }, async (request, reply) => {
-    const categoriaId = parseInt(request.params.id, 10)
-    const { nombre } = request.body || {}
+    const categoriaId = parseId(request.params.id)
+    const nombre = cleanName(request.body?.nombre)
+    if (!categoriaId) return reply.code(400).send({ error: 'ID invalido' })
     if (!nombre) return reply.code(400).send({ error: 'nombre requerido' })
-    const s = await fastify.prisma.subcategoria.create({ data: { nombre, categoriaId } })
-    return reply.code(201).send(s)
+
+    const categoria = await ensureActiveCategoria(fastify.prisma, categoriaId)
+    if (!categoria) return reply.code(404).send({ error: 'Categoria no encontrada' })
+
+    const duplicate = await findDuplicateSubcategoria(fastify.prisma, { nombre, categoriaId })
+    if (duplicate) return reply.code(409).send({ error: 'Subcategoria ya existe en la categoria' })
+
+    const subcategoria = await fastify.prisma.subcategoria.create({ data: { nombre, categoriaId } })
+    return reply.code(201).send(subcategoria)
+  })
+
+  fastify.put('/subcategorias/:id', {
+    preHandler: [fastify.authenticate, fastify.rbac('config', 'write', { allowExtra: false })],
+  }, async (request, reply) => {
+    const id = parseId(request.params.id)
+    if (!id) return reply.code(400).send({ error: 'ID invalido' })
+    const current = await fastify.prisma.subcategoria.findUnique({ where: { id } })
+    if (!current || !current.activo) return reply.code(404).send({ error: 'No encontrada' })
+
+    const data = {}
+    const nextNombre = request.body?.nombre !== undefined ? cleanName(request.body.nombre) : current.nombre
+    if (!nextNombre) return reply.code(400).send({ error: 'nombre requerido' })
+    if (request.body?.nombre !== undefined) data.nombre = nextNombre
+
+    let nextCategoriaId = current.categoriaId
+    if (request.body?.categoriaId !== undefined) {
+      nextCategoriaId = parseId(request.body.categoriaId)
+      if (!nextCategoriaId) return reply.code(400).send({ error: 'categoriaId invalido' })
+      const categoria = await ensureActiveCategoria(fastify.prisma, nextCategoriaId)
+      if (!categoria) return reply.code(404).send({ error: 'Categoria no encontrada' })
+      data.categoriaId = nextCategoriaId
+    }
+
+    const duplicate = await findDuplicateSubcategoria(fastify.prisma, {
+      id,
+      nombre: nextNombre,
+      categoriaId: nextCategoriaId,
+    })
+    if (duplicate) return reply.code(409).send({ error: 'Subcategoria ya existe en la categoria' })
+
+    return fastify.prisma.$transaction(async tx => {
+      const updated = await tx.subcategoria.update({ where: { id }, data })
+      if (data.categoriaId !== undefined && data.categoriaId !== current.categoriaId) {
+        await tx.producto.updateMany({
+          where: { subcategoriaId: id },
+          data: { categoriaId: data.categoriaId },
+        })
+      }
+      return updated
+    })
+  })
+
+  fastify.delete('/subcategorias/:id', {
+    preHandler: [fastify.authenticate, fastify.rbac('config', 'write', { allowExtra: false })],
+  }, async (request, reply) => {
+    const id = parseId(request.params.id)
+    if (!id) return reply.code(400).send({ error: 'ID invalido' })
+    const usados = await fastify.prisma.producto.count({ where: { activo: true, subcategoriaId: id } })
+    if (usados > 0) return reply.code(409).send({ error: 'Subcategoria en uso por productos' })
+    try {
+      await fastify.prisma.subcategoria.update({ where: { id }, data: { activo: false } })
+      return reply.code(204).send()
+    } catch (error) {
+      if (error.code === 'P2025') return reply.code(404).send({ error: 'No encontrada' })
+      throw error
+    }
   })
 }

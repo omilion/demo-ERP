@@ -1,6 +1,6 @@
 export function computeEstado(p) {
   if (p.stock === 0) return 'Sin stock'
-  if (p.stock < p.stockCritico) return 'Crítico'
+  if ((p.stockCritico ?? 0) > 0 && p.stock <= p.stockCritico) return 'Crítico'
   return 'Normal'
 }
 
@@ -40,6 +40,55 @@ export function normalizeProductoFotos(producto) {
     fotoUrlGrande: normalizeProductoFotoUrl(producto.fotoUrlGrande),
     fotosGaleria: normalizeProductoGaleria(producto.fotosGaleria),
   }
+}
+
+export function sanitizeProductoCosto(producto, canReadCosto = true) {
+  if (canReadCosto || !producto || typeof producto !== 'object') return producto
+  const { precioLista, ...safeProducto } = producto
+  return safeProducto
+}
+
+export async function validateProductoClasificacion(prisma, { categoriaId, subcategoriaId }) {
+  if (subcategoriaId && !categoriaId) return { status: 400, error: 'categoria requerida para subcategoria' }
+
+  if (categoriaId) {
+    const categoria = await prisma.categoria.findFirst({ where: { id: categoriaId, activo: true } })
+    if (!categoria) return { status: 404, error: 'Categoria no encontrada' }
+  }
+
+  if (subcategoriaId) {
+    const subcategoria = await prisma.subcategoria.findFirst({ where: { id: subcategoriaId, activo: true } })
+    if (!subcategoria) return { status: 404, error: 'Subcategoria no encontrada' }
+    if (subcategoria.categoriaId !== categoriaId) {
+      return { status: 400, error: 'Subcategoria no pertenece a la categoria' }
+    }
+  }
+
+  return null
+}
+
+export async function syncProductoCategoriaText(prisma, data) {
+  const hasCategoria = Object.prototype.hasOwnProperty.call(data, 'categoria')
+  const hasCategoriaId = Object.prototype.hasOwnProperty.call(data, 'categoriaId')
+
+  if (data.categoriaId) {
+    const categoria = await prisma.categoria.findFirst({ where: { id: data.categoriaId, activo: true } })
+    if (!categoria) return { status: 404, error: 'Categoria no encontrada' }
+    data.categoria = categoria.nombre
+    return null
+  }
+
+  if (hasCategoriaId && data.categoriaId == null) {
+    data.categoria = ''
+    return null
+  }
+
+  if (hasCategoria && String(data.categoria || '').trim()) {
+    return { status: 400, error: 'categoriaId requerido para asignar categoria' }
+  }
+
+  if (hasCategoria) data.categoria = ''
+  return null
 }
 
 export function normalizeProductoFotoFields(data) {

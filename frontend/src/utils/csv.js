@@ -1,4 +1,3 @@
-// Cliente: descarga CSV desde array de filas
 import api from '../api/client'
 
 // Descarga endpoint backend que ya devuelve CSV con auth
@@ -42,6 +41,60 @@ export function parseCsv(text) {
     return Object.fromEntries(headers.map((h, i) => [h, vals[i]?.trim() ?? '']))
   })
   return { headers, rows }
+}
+
+function cleanCell(value) {
+  if (value == null) return ''
+  return typeof value === 'string' ? value.trim() : value
+}
+
+function uniqueHeader(header, index, used) {
+  const base = String(header || '').trim() || `columna_${index + 1}`
+  let candidate = base
+  let suffix = 2
+  while (used.has(candidate)) {
+    candidate = `${base}_${suffix}`
+    suffix += 1
+  }
+  used.add(candidate)
+  return candidate
+}
+
+export function tableRowsToObjects(tableRows) {
+  const table = (tableRows || [])
+    .map(row => (Array.isArray(row) ? row : []).map(cleanCell))
+    .filter(row => row.some(value => String(value ?? '').trim() !== ''))
+
+  if (!table.length) return { headers: [], rows: [] }
+
+  const used = new Set()
+  const headers = table[0].map((header, index) => uniqueHeader(header, index, used))
+  const rows = table.slice(1)
+    .map(row => Object.fromEntries(headers.map((header, index) => [header, cleanCell(row[index])])))
+    .filter(row => Object.values(row).some(value => String(value ?? '').trim() !== ''))
+
+  return { headers, rows }
+}
+
+function fileExtension(file) {
+  return String(file?.name || '').split('.').pop()?.toLowerCase() || ''
+}
+
+export async function parseTabularFile(file) {
+  const ext = fileExtension(file)
+  if (ext === 'csv' || file?.type === 'text/csv') {
+    const parsed = parseCsv(await file.text())
+    return { ...parsed, format: 'CSV' }
+  }
+
+  if (ext === 'xlsx' || file?.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+    const { default: readXlsxFile } = await import('read-excel-file/browser')
+    const table = await readXlsxFile(file)
+    const parsed = tableRowsToObjects(table)
+    return { ...parsed, format: 'Excel XLSX' }
+  }
+
+  throw new Error('Formato no soportado. Use CSV o Excel .xlsx.')
 }
 
 

@@ -49,15 +49,22 @@ const CLIENTES_SEED = [
 async function main() {
   const passwordHash = await bcrypt.hash('dev1234', 12)
 
+  await prisma.sucursal.upsert({
+    where: { id: 1 },
+    update: { nombre: 'Casa Matriz', activo: true },
+    create: { id: 1, nombre: 'Casa Matriz', activo: true },
+  })
+
   for (const role of ROLES) {
     await prisma.user.upsert({
       where: { email: `${role}@plastimar.cl` },
-      update: {},
+      update: { sucursalId: 1 },
       create: {
         email: `${role}@plastimar.cl`,
         passwordHash,
         role,
         nombre: role.charAt(0).toUpperCase() + role.slice(1).replace('_', ' '),
+        sucursalId: 1,
       },
     })
   }
@@ -65,7 +72,7 @@ async function main() {
   for (const [i, nombre] of [['1', 'Caja 1'], ['2', 'Caja 2']]) {
     await prisma.caja.upsert({
       where: { id: Number(i) },
-      update: {},
+      update: { sucursalId: 1, activa: true },
       create: { nombre, sucursalId: 1 },
     })
   }

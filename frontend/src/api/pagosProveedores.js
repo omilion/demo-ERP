@@ -15,6 +15,35 @@ export const usePagoProveedor = (id) =>
     enabled: !!id,
   })
 
+export const exportPagosProveedoresUrl = (params = {}) => {
+  const qs = new URLSearchParams(params)
+  return `/pagos-proveedores/export${qs.toString() ? `?${qs.toString()}` : ''}`
+}
+
+export const downloadPagosProveedoresCsv = async (params = {}, filename = 'pagos_proveedores.csv') => {
+  const res = await api.get(exportPagosProveedoresUrl(params), { responseType: 'blob' })
+  const url = URL.createObjectURL(res.data)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+export const useCreatePagoProveedor = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data) => api.post('/pagos-proveedores', data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pagos-proveedores'] })
+      qc.invalidateQueries({ queryKey: ['stock-ingresos'] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+    },
+  })
+}
+
 export const useUpdatePagoProveedor = () => {
   const qc = useQueryClient()
   return useMutation({
@@ -22,6 +51,19 @@ export const useUpdatePagoProveedor = () => {
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['pagos-proveedores'] })
       qc.invalidateQueries({ queryKey: ['pagos-proveedores', vars.id] })
+    },
+  })
+}
+
+export const useAnularPagoProveedor = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, motivo }) => api.post(`/pagos-proveedores/${id}/anular`, { motivo }).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['pagos-proveedores'] })
+      qc.invalidateQueries({ queryKey: ['pagos-proveedores', vars.id] })
+      qc.invalidateQueries({ queryKey: ['stock-ingresos'] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
     },
   })
 }

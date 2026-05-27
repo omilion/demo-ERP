@@ -1,5 +1,10 @@
 import { z } from 'zod'
 import { computeTotal, attachCliente, attachProductos } from './helpers.js'
+import { getUserSucursalId } from '../caja/scope.js'
+import { applyVentaStockDeltas, buildReplacementStockDeltas } from './stock.js'
+import { validateConvenioMarcoOcForWrite } from './convenio-marco.js'
+import { canApplyDescuento } from './descuentos-permissions.js'
+import { getVentaDescuentoCatalogKind, validateVentaDescuentoCatalogForWrite } from './descuentos-catalog.js'
 
 export const ESTADO_PAGO_VALUES = ['No pagada', 'Pagada', 'Parcial']
 export const ESTADO_ENTREGA_VALUES = ['Pendiente entrega', 'En despacho', 'Entregada', 'Parcial']
@@ -27,6 +32,27 @@ const Schema = z.object({
   }).optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'El cuerpo no puede estar vacío' })
 
+const DESTRUCTIVE_ESTADOS = new Set(['nula', 'anulada', 'cancelada'])
+
+function normalizeEstado(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+export function requiresVentaLifecycleDelete(current = {}, data = {}) {
+  if (data.estado === undefined) return false
+  const currentEstado = normalizeEstado(current.estado)
+  const nextEstado = normalizeEstado(data.estado)
+  return DESTRUCTIVE_ESTADOS.has(nextEstado) || (
+    DESTRUCTIVE_ESTADOS.has(currentEstado) &&
+    nextEstado &&
+    nextEstado !== currentEstado
+  )
+}
+
 export default async function updateVenta(fastify) {
   fastify.put('/:id', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
@@ -37,14 +63,65 @@ export default async function updateVenta(fastify) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     try {
       const { items, ...ordenData } = parsed.data
-      const current = await fastify.prisma.orden.findUnique({
-        where: { id },
+      const sucursalId = getUserSucursalId(request.user)
+      const current = await fastify.prisma.orden.findFirst({
+        where: { id, ...(sucursalId ? { sucursalId } : {}) },
         select: {
+          id: true,
+          nInterno: true,
+          tipo: true,
+          licitacion: true,
           clienteId: true,
-          items: { select: { nEntregados: true } },
+          estado: true,
+          estadoPago: true,
+          estadoEntrega: true,
+          abono: true,
+          descuentoPct: true,
+          eliminada: true,
+          items: { where: { eliminado: false }, select: { productoId: true, cantidad: true, nEntregados: true } },
         },
       })
       if (!current) return reply.code(404).send({ error: 'Venta no encontrada' })
+      if (current.eliminada) return reply.code(409).send({ error: 'No se puede editar una venta anulada' })
+      if (Object.prototype.hasOwnProperty.call(ordenData, 'abono') ||
+        Object.prototype.hasOwnProperty.call(ordenData, 'estadoPago') ||
+        Object.prototype.hasOwnProperty.call(ordenData, 'facturado')) {
+        return reply.code(400).send({ error: 'Los abonos, facturado y estado de pago se registran desde Cobranza/Caja' })
+      }
+      if (requiresVentaLifecycleDelete(current, ordenData)) {
+        return reply.code(400).send({ error: 'Los estados de anulacion o reactivacion se gestionan desde el flujo auditado de ventas' })
+      }
+      if (Object.prototype.hasOwnProperty.call(ordenData, 'descuentoPct') &&
+        Number(ordenData.descuentoPct || 0) !== Number(current.descuentoPct || 0)) {
+        const activeCajaMovements = await fastify.prisma.movimientoCaja.count({
+          where: { ordenId: id, eliminado: false },
+        })
+        const hasFinancialTrace = Number(current.abono || 0) > 0 || current.estadoPago !== 'No pagada' || activeCajaMovements > 0
+        if (!hasFinancialTrace && !canApplyDescuento(request.user)) {
+          return reply.code(403).send({ error: 'No tiene permiso para aplicar descuentos' })
+        }
+      }
+      if (ordenData.estadoEntrega === 'Entregada') {
+        const allItemsDelivered = current.items.length > 0 && current.items.every(item => Number(item.nEntregados || 0) >= Number(item.cantidad || 0))
+        if (!allItemsDelivered) {
+          const [despacho, guia] = await Promise.all([
+            fastify.prisma.despacho.findFirst({
+              where: { ordenId: id, eliminado: false, parcial: false, fechaEntrega: { not: null } },
+              select: { id: true },
+            }),
+            fastify.prisma.guiaDespacho.findFirst({
+              where: { ordenId: id, eliminado: false },
+              select: { id: true },
+            }),
+          ])
+          if (!despacho && !guia) {
+            return reply.code(409).send({ error: 'No se puede marcar Entregada sin guia, despacho entregado o items entregados' })
+          }
+        }
+      }
+      if (ordenData.estadoEntrega !== undefined && ordenData.estadoEntrega !== current.estadoEntrega) {
+        ordenData.fechaEstadoEntrega = new Date()
+      }
 
       if (ordenData.clienteSucursalId) {
         const sucursal = await fastify.prisma.clienteSucursal.findFirst({
@@ -57,6 +134,12 @@ export default async function updateVenta(fastify) {
       if (items) {
         if (current.items.some(item => item.nEntregados > 0)) {
           return reply.code(400).send({ error: 'No se pueden reemplazar items con entregas registradas' })
+        }
+        const activeCajaMovements = await fastify.prisma.movimientoCaja.count({
+          where: { ordenId: id, eliminado: false },
+        })
+        if (Number(current.abono || 0) > 0 || current.estadoPago !== 'No pagada' || activeCajaMovements > 0) {
+          return reply.code(409).send({ error: 'No se pueden reemplazar items con pagos o documentos de caja registrados' })
         }
         const productoIds = [...new Set(items.map(item => item.productoId))]
         const productos = await fastify.prisma.producto.findMany({
@@ -79,6 +162,95 @@ export default async function updateVenta(fastify) {
         }))
       }
       const orden = await fastify.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`
+          SELECT id
+          FROM ventas.ordenes
+          WHERE id = ${id}
+          FOR UPDATE
+        `
+        const lockedCurrent = await tx.orden.findUnique({
+          where: { id },
+          select: {
+            id: true,
+            nInterno: true,
+            tipo: true,
+            licitacion: true,
+            estadoPago: true,
+            abono: true,
+            descuentoPct: true,
+            eliminada: true,
+            items: { where: { eliminado: false }, select: { productoId: true, cantidad: true, nEntregados: true } },
+          },
+        })
+        if (!lockedCurrent || lockedCurrent.eliminada) {
+          const err = new Error('Venta no encontrada')
+          err.statusCode = 404
+          throw err
+        }
+        if (itemsData && lockedCurrent.items.some(item => item.nEntregados > 0)) {
+          const err = new Error('No se pueden reemplazar items con entregas registradas')
+          err.statusCode = 400
+          throw err
+        }
+        const nextTipo = ordenData.tipo ?? lockedCurrent.tipo
+        const convenioOc = await validateConvenioMarcoOcForWrite(tx, {
+          tipo: nextTipo,
+          licitacion: ordenData.licitacion ?? lockedCurrent.licitacion,
+          excludeId: id,
+        })
+        if (convenioOc.error) {
+          const err = new Error(convenioOc.error)
+          err.statusCode = convenioOc.statusCode || 400
+          throw err
+        }
+        if (convenioOc.applies) ordenData.licitacion = convenioOc.licitacion
+        const shouldReconcileStock = itemsData || (ordenData.tipo !== undefined && ordenData.tipo !== lockedCurrent.tipo)
+        const lockedDiscountChanged = Object.prototype.hasOwnProperty.call(ordenData, 'descuentoPct') &&
+          Number(ordenData.descuentoPct || 0) !== Number(lockedCurrent.descuentoPct || 0)
+        const traceSensitiveChange = shouldReconcileStock || lockedDiscountChanged
+        if (traceSensitiveChange) {
+          const activeCajaMovements = await tx.movimientoCaja.count({
+            where: { ordenId: id, eliminado: false },
+          })
+          if (Number(lockedCurrent.abono || 0) > 0 || lockedCurrent.estadoPago !== 'No pagada' || activeCajaMovements > 0) {
+            const err = new Error(shouldReconcileStock
+              ? 'No se pueden reemplazar items con pagos o documentos de caja registrados'
+              : 'No se puede modificar descuento con pagos o documentos de caja registrados')
+            err.statusCode = 409
+            throw err
+          }
+        }
+        const currentCatalogKind = getVentaDescuentoCatalogKind(lockedCurrent.tipo)
+        const nextCatalogKind = getVentaDescuentoCatalogKind(nextTipo)
+        if (nextCatalogKind && (lockedDiscountChanged || currentCatalogKind !== nextCatalogKind)) {
+          const descuentoCatalogo = await validateVentaDescuentoCatalogForWrite(tx, {
+            tipo: nextTipo,
+            descuentoPct: Object.prototype.hasOwnProperty.call(ordenData, 'descuentoPct')
+              ? ordenData.descuentoPct
+              : lockedCurrent.descuentoPct,
+          })
+          if (descuentoCatalogo.error) {
+            const err = new Error(descuentoCatalogo.error)
+            err.statusCode = descuentoCatalogo.statusCode || 400
+            throw err
+          }
+        }
+        if (shouldReconcileStock) {
+          const stock = await applyVentaStockDeltas(tx, {
+            deltas: buildReplacementStockDeltas(lockedCurrent.items, itemsData || lockedCurrent.items, lockedCurrent.tipo, nextTipo),
+            ordenId: lockedCurrent.id,
+            nInterno: lockedCurrent.nInterno,
+            tipo: nextTipo,
+            userId: request.user.id,
+            user: request.user,
+            motivo: `Ajuste venta directa ${lockedCurrent.nInterno || lockedCurrent.id}`,
+          })
+          if (stock.error) {
+            const err = new Error(stock.error)
+            err.statusCode = stock.status || 400
+            throw err
+          }
+        }
         if (Object.keys(ordenData).length > 0) {
           await tx.orden.update({
             where: { id },
@@ -91,12 +263,13 @@ export default async function updateVenta(fastify) {
             data: itemsData.map(item => ({ ...item, ordenId: id })),
           })
         }
-        return tx.orden.findUnique({ where: { id }, include: { items: true } })
+        return tx.orden.findUnique({ where: { id }, include: { items: true, cargos: true } })
       })
       orden.items = await attachProductos(fastify, orden.items)
       const withCliente = await attachCliente(fastify, orden)
-      return { ...withCliente, total: computeTotal(orden.items, orden.descuentoPct) }
+      return { ...withCliente, total: computeTotal(orden.items, orden.descuentoPct, orden.cargos) }
     } catch (e) {
+      if (e.statusCode) return reply.code(e.statusCode).send({ error: e.message })
       if (e.code === 'P2025') return reply.code(404).send({ error: 'Venta no encontrada' })
       throw e
     }

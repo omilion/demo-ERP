@@ -4,6 +4,20 @@ export function parsePage(value) {
   return page && page > 0 ? page : 1
 }
 
+export function parsePagination(query = {}, { defaultLimit, maxLimit = defaultLimit } = {}) {
+  const page = query.page == null || query.page === '' ? 1 : parseOptionalInt(query.page)
+  const requestedLimit = query.limit == null || query.limit === '' ? defaultLimit : parseOptionalInt(query.limit)
+
+  if (!page || page < 1 || !requestedLimit || requestedLimit < 1) return null
+
+  const limit = Math.min(requestedLimit, maxLimit)
+  return {
+    page,
+    limit,
+    skip: (page - 1) * limit,
+  }
+}
+
 export function parseOptionalInt(value) {
   if (value == null || value === '') return null
   const text = String(value).trim()

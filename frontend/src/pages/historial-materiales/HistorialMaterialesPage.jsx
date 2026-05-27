@@ -10,7 +10,7 @@ export default function HistorialMaterialesPage() {
   const [codigo, setCodigo] = useState('')
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
-  const [page, setPage] = useState(1)
+  const [page] = useState(1)
 
   const params = { page: String(page) }
   if (operario) params.operario = operario

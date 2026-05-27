@@ -1,25 +1,29 @@
 import { parsePage } from '../operational-utils.js'
+import { buildCobranzaHistoricoScopeWhere, mergeCobranzaWhere } from './scope.js'
 
 export default async function cobranzaHistoricoRoutes(fastify) {
   fastify.register(async function (f) {
     // GET /api/cobranza-historico?ejecutiva=...&estado=...&search=...&mes=...&page=1
     f.get('/', {
-      preHandler: [f.authenticate, f.rbac('ventas', 'read')],
+      preHandler: [f.authenticate, f.rbac('cobranza', 'read')],
     }, async (request) => {
       const { ejecutiva, estado, search, mes, page = '1' } = request.query
       const LIMIT = 100
       const offset = (parsePage(page) - 1) * LIMIT
 
-      const where = {}
-      if (ejecutiva) where.ejecutiva = { contains: ejecutiva, mode: 'insensitive' }
-      if (estado) where.estado = { equals: estado, mode: 'insensitive' }
-      if (mes) where.mesAnio = { contains: mes, mode: 'insensitive' }
+      const filters = {}
+      if (ejecutiva) filters.ejecutiva = { contains: ejecutiva, mode: 'insensitive' }
+      if (estado) filters.estado = { equals: estado, mode: 'insensitive' }
+      if (mes) filters.mesAnio = { contains: mes, mode: 'insensitive' }
       if (search) {
-        where.OR = [
+        filters.OR = [
           { cliente: { contains: search, mode: 'insensitive' } },
           { rut: { contains: search, mode: 'insensitive' } },
+          { ndoc: /^\d+$/.test(String(search).trim()) ? Number.parseInt(search, 10) : -1 },
+          { interno: /^\d+$/.test(String(search).trim()) ? Number.parseInt(search, 10) : -1 },
         ]
       }
+      const where = mergeCobranzaWhere(filters, await buildCobranzaHistoricoScopeWhere(f.prisma, request.user))
 
       const [items, total] = await Promise.all([
         f.prisma.cobranzaHistorico.findMany({
@@ -51,11 +55,12 @@ export default async function cobranzaHistoricoRoutes(fastify) {
 
     // GET /api/cobranza-historico/cliente/:rut — historial por cliente (G8)
     f.get('/cliente/:rut', {
-      preHandler: [f.authenticate, f.rbac('ventas', 'read')],
+      preHandler: [f.authenticate, f.rbac('cobranza', 'read')],
     }, async (request) => {
       const { rut } = request.params
+      const where = mergeCobranzaWhere({ rut }, await buildCobranzaHistoricoScopeWhere(f.prisma, request.user))
       const items = await f.prisma.cobranzaHistorico.findMany({
-        where: { rut },
+        where,
         orderBy: { fechaFactura: 'desc' },
       })
       const totales = items.reduce((acc, r) => {
@@ -71,29 +76,42 @@ export default async function cobranzaHistoricoRoutes(fastify) {
 
     // GET /api/cobranza-historico/ejecutivas
     f.get('/ejecutivas', {
-      preHandler: [f.authenticate, f.rbac('ventas', 'read')],
-    }, async () => {
-      const rows = await f.prisma.$queryRaw`
-        SELECT ejecutiva, COUNT(*)::int AS total
-        FROM ventas.cobranza_historico
-        WHERE ejecutiva IS NOT NULL AND ejecutiva != ''
-        GROUP BY ejecutiva ORDER BY total DESC
-      `
+      preHandler: [f.authenticate, f.rbac('cobranza', 'read')],
+    }, async (request) => {
+      const where = mergeCobranzaWhere(
+        { ejecutiva: { not: null } },
+        await buildCobranzaHistoricoScopeWhere(f.prisma, request.user),
+      )
+      const rows = await f.prisma.cobranzaHistorico.groupBy({
+        by: ['ejecutiva'],
+        where,
+        _count: { _all: true },
+      })
       return rows
+        .filter(r => r.ejecutiva)
+        .map(r => ({ ejecutiva: r.ejecutiva, total: r._count._all }))
+        .sort((a, b) => b.total - a.total)
     })
 
     // GET /api/cobranza-historico/meses
     f.get('/meses', {
-      preHandler: [f.authenticate, f.rbac('ventas', 'read')],
-    }, async () => {
-      const rows = await f.prisma.$queryRaw`
-        SELECT mes_anio, COUNT(*)::int AS total
-        FROM ventas.cobranza_historico
-        WHERE mes_anio IS NOT NULL AND mes_anio != ''
-        GROUP BY mes_anio ORDER BY MIN(fecha_factura) DESC
-        LIMIT 24
-      `
+      preHandler: [f.authenticate, f.rbac('cobranza', 'read')],
+    }, async (request) => {
+      const where = mergeCobranzaWhere(
+        { mesAnio: { not: null } },
+        await buildCobranzaHistoricoScopeWhere(f.prisma, request.user),
+      )
+      const rows = await f.prisma.cobranzaHistorico.groupBy({
+        by: ['mesAnio'],
+        where,
+        _count: { _all: true },
+        _min: { fechaFactura: true },
+      })
       return rows
+        .filter(r => r.mesAnio)
+        .map(r => ({ mes_anio: r.mesAnio, total: r._count._all, fecha: r._min.fechaFactura }))
+        .sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0))
+        .slice(0, 24)
     })
   })
 }

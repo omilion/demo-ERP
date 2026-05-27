@@ -1,10 +1,14 @@
-export const ODT_ESTADOS = ['Pendiente', 'Asignada', 'En proceso', 'Control calidad', 'Terminada', 'Entregada', 'Prioritaria']
+export const ODT_ESTADOS = ['Pendiente', 'Asignada', 'En proceso', 'Control calidad', 'Terminada', 'Entregada', 'Prioritaria', 'Anulada']
 
 export const ODT_ESTADOS_ACTUALES = ['Pendiente', 'Asignada', 'En proceso', 'Control calidad', 'Terminada', 'Entregada']
 export const ODT_ESTADOS_ABIERTOS = ['Pendiente', 'Asignada', 'En proceso', 'Control calidad', 'Prioritaria']
 
 export function isTerminalOdtEstado(estado) {
-  return ['Terminada', 'Entregada'].includes(estado)
+  return ['Terminada', 'Entregada', 'Anulada'].includes(estado)
+}
+
+export function isOpenOdtEstado(estado) {
+  return ODT_ESTADOS_ABIERTOS.includes(estado)
 }
 
 export function applyOdtStateSideEffects(data, current = {}, now = new Date()) {
@@ -14,6 +18,12 @@ export function applyOdtStateSideEffects(data, current = {}, now = new Date()) {
   }
   if (isTerminalOdtEstado(next.estado) && !current.fechaTermino && next.fechaTermino === undefined) {
     next.fechaTermino = now
+  }
+  if (isOpenOdtEstado(next.estado) && current.fechaTermino && next.fechaTermino === undefined) {
+    next.fechaTermino = null
+  }
+  if (next.estado === 'Anulada' && next.eliminado === undefined) {
+    next.eliminado = true
   }
   return next
 }
@@ -57,20 +67,26 @@ export function getAuditUsuario(user) {
 
 export function buildOdtUpdateBitacoraEntries({ current = {}, data = {}, operario = null, user = null }) {
   const usuario = getAuditUsuario(user)
+  const base = {
+    usuario,
+    usuarioReporta: usuario,
+    sucursalId: current.sucursalId ?? null,
+    fecha: new Date(),
+  }
   const entries = []
 
   if (data.estado !== undefined && data.estado !== current.estado) {
     entries.push({
+      ...base,
       odtId: current.id,
-      usuario,
       texto: `Estado ODT: ${current.estado || 'Sin estado'} -> ${data.estado}`,
     })
   }
 
   if (data.operarioId !== undefined && data.operarioId !== current.operarioId) {
     entries.push({
+      ...base,
       odtId: current.id,
-      usuario,
       texto: `Responsable ODT actualizado: ${formatOperarioNombre(operario)}`,
     })
   }

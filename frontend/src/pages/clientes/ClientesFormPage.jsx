@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
-import { FormField, FormDivider, Input, Select, useForm, useSave } from '../../components/forms/index'
+import { FormField, FormDivider, Input, Select, useForm } from '../../components/forms/index'
 import { useCliente, useCreateCliente, useUpdateCliente, useCreateClienteSucursal, useUpdateClienteSucursal } from '../../api/clientes'
 
 export default function ClientesFormPage() {
@@ -9,7 +9,7 @@ export default function ClientesFormPage() {
   const { id } = useParams()
   const isEdit = !!id
 
-  const { data: found, isLoading } = useCliente(isEdit ? Number(id) : null)
+  const { data: found, isLoading } = useCliente(isEdit ? Number(id) : null, isEdit ? { includeInactivos: 'true' } : {})
 
   const { data, set, errors, validate } = useForm({
     rut: '', nombre: '', razonSocial: '', giro: '', tipo: 'Empresa',
@@ -35,7 +35,7 @@ export default function ClientesFormPage() {
       set('limiteCredito', found.limiteCredito != null ? String(found.limiteCredito) : '')
       set('diasInactivoAlerta', found.diasInactivoAlerta != null ? String(found.diasInactivoAlerta) : '')
     }
-  }, [found])
+  }, [found, set])
 
   const createMutation = useCreateCliente()
   const updateMutation = useUpdateCliente()
@@ -63,9 +63,8 @@ export default function ClientesFormPage() {
     }
 
     if (isEdit) {
-      const { rut, ...updatePayload } = payload
       updateMutation.mutate(
-        { id: Number(id), data: updatePayload },
+        { id: Number(id), data: payload },
         {
           onSuccess: () => navigate('/clientes'),
           onError: (err) => alert(err?.response?.data?.error || 'Error al guardar'),
@@ -92,7 +91,7 @@ export default function ClientesFormPage() {
       <FormDivider label="Identificación" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <FormField label="RUT / Identificador" required error={errors.rut}>
-          <Input value={data.rut} onChange={v => set('rut', v)} placeholder="76123456-7" error={errors.rut} disabled={isEdit} />
+          <Input value={data.rut} onChange={v => set('rut', v)} placeholder="76123456-7" error={errors.rut} />
         </FormField>
         <FormField label="Tipo de Cliente">
           <Select value={data.tipo} onChange={v => set('tipo', v)} options={['Empresa', 'Institucional', 'Municipal', 'Gobierno', 'Distribuidor']} />
@@ -149,14 +148,19 @@ export default function ClientesFormPage() {
         </FormField>
       </div>
 
-      {isEdit && found && <SucursalesCliente cliente={found} />}
+      {isEdit && found?.activo === false && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px', marginBottom: 14, color: 'var(--text-2)', fontSize: 13, background: 'var(--bg)' }}>
+          Cliente inactivo: puedes corregir sus datos generales, pero las sucursales se administran despues de reactivarlo.
+        </div>
+      )}
+      {isEdit && found && found.activo !== false && <SucursalesCliente cliente={found} />}
       {isEdit && found && <HistorialCliente cliente={found} navigate={navigate} />}
     </FormPage>
   )
 }
 
 function SucursalesCliente({ cliente }) {
-  const [form, setForm] = useState({ nombre: '', direccion: '', comuna: '', ciudad: '', contacto: '', telefono: '', email: '', isPrincipal: false })
+  const [form, setForm] = useState({ nombre: '', direccion: '', region: '', comuna: '', ciudad: '', contacto: '', telefono: '', email: '', isPrincipal: false })
   const [editingId, setEditingId] = useState(null)
   const createSucursal = useCreateClienteSucursal()
   const updateSucursal = useUpdateClienteSucursal()
@@ -168,6 +172,7 @@ function SucursalesCliente({ cliente }) {
     setForm({
       nombre: s.nombre || '',
       direccion: s.direccion || '',
+      region: s.region || '',
       comuna: s.comuna || '',
       ciudad: s.ciudad || '',
       contacto: s.contacto || '',
@@ -179,7 +184,7 @@ function SucursalesCliente({ cliente }) {
 
   function reset() {
     setEditingId(null)
-    setForm({ nombre: '', direccion: '', comuna: '', ciudad: '', contacto: '', telefono: '', email: '', isPrincipal: false })
+    setForm({ nombre: '', direccion: '', region: '', comuna: '', ciudad: '', contacto: '', telefono: '', email: '', isPrincipal: false })
   }
 
   function save() {
@@ -203,7 +208,7 @@ function SucursalesCliente({ cliente }) {
           : sucursales.map(s => (
             <button key={s.id} type="button" onClick={() => edit(s)} style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr 1fr', gap: 12, width: '100%', padding: '10px 14px', borderBottom: '1px solid var(--border)', textAlign: 'left', background: '#fff', cursor: 'pointer' }}>
               <span style={{ fontWeight: 600, fontSize: 13 }}>{s.nombre} {s.isPrincipal ? <span style={{ color: 'var(--green-700)', fontSize: 11 }}>(Principal)</span> : null}</span>
-              <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{[s.direccion, s.comuna, s.ciudad].filter(Boolean).join(', ') || '-'}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{[s.direccion, s.comuna, s.ciudad, s.region].filter(Boolean).join(', ') || '-'}</span>
               <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{s.contacto || s.telefono || '-'}</span>
             </button>
           ))}
@@ -211,6 +216,7 @@ function SucursalesCliente({ cliente }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
         <FormField label="Nombre"><Input value={form.nombre} onChange={v => field('nombre', v)} placeholder="Casa matriz, sede norte..." /></FormField>
         <FormField label="Direccion"><Input value={form.direccion} onChange={v => field('direccion', v)} placeholder="Calle y numero" /></FormField>
+        <FormField label="Region"><Input value={form.region} onChange={v => field('region', v)} /></FormField>
         <FormField label="Comuna"><Input value={form.comuna} onChange={v => field('comuna', v)} /></FormField>
         <FormField label="Ciudad"><Input value={form.ciudad} onChange={v => field('ciudad', v)} /></FormField>
         <FormField label="Contacto"><Input value={form.contacto} onChange={v => field('contacto', v)} /></FormField>

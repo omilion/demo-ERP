@@ -80,6 +80,34 @@ Validacion nginx/HTTPS:
 - `https://vps.plastimar.cl/`: `200 OK`
 - `https://vps.plastimar.cl/api/health`: `{"status":"ok"}`
 
+## Ruta de uploads
+
+La plataforma nueva acepta fotos de producto con rutas `/uploads/fotos_chicas/...` y `/uploads/fotos_grandes/...`.
+
+Requisito de despliegue:
+
+- Backend: definir `UPLOADS_DIR` apuntando al directorio persistente que contiene las fotos migradas.
+- Frontend dev: Vite proxya `/uploads` hacia `http://localhost:3001`.
+- Produccion: nginx debe enrutar `/uploads/` al backend o servir el mismo `UPLOADS_DIR` como alias estatico.
+
+Ejemplo proxy nginx si los archivos los sirve Fastify:
+
+```nginx
+location /uploads/ {
+  proxy_pass http://127.0.0.1:3001/uploads/;
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Smoke minimo posterior a migracion de fotos:
+
+```bash
+curl -I https://vps.plastimar.cl/uploads/fotos_chicas/<archivo-existente>
+```
+
 ## Pendiente deliberado
 
 No se ejecuto limpieza de datos legacy en produccion durante este deploy.

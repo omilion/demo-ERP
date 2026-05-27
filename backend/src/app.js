@@ -42,6 +42,7 @@ import usuariosWebRoutes from './routes/usuarios-web/index.js'
 import rrhhRoutes from './routes/rrhh/index.js'
 import adminRoutes from './routes/admin/index.js'
 import historicoRoutes from './routes/historico/index.js'
+import uploadsRoutes from './routes/uploads/index.js'
 import { decorateRbac } from './middleware/rbac.js'
 import { isErpAccessToken } from './plugins/jwt.js'
 
@@ -104,6 +105,7 @@ export function buildApp(opts = {}) {
   app.register(rrhhRoutes, { prefix: '/api/rrhh' })
   app.register(adminRoutes, { prefix: '/api/admin' })
   app.register(historicoRoutes, { prefix: '/api/historico' })
+  app.register(uploadsRoutes, { prefix: '/uploads' })
 
   app.get('/api/health', async () => ({ status: 'ok' }))
 

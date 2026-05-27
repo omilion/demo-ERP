@@ -1,96 +1,296 @@
-import { useState, useMemo } from 'react'
-import { useProductos } from '../../api/productos'
+import { useEffect, useMemo, useState } from 'react'
+import { Badge, Btn, Icon, KpiCard, PageHeader, Pager, Table } from '../../components/shared'
+import { useCategorias } from '../../api/categorias'
+import { useProductos, useUpdateProducto } from '../../api/productos'
+import { useProveedores } from '../../api/proveedores'
+import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
+import { downloadFromBackend } from '../../utils/csv'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
+
+const SEARCH_MODES = [
+  { id: 'general', label: 'Todos' },
+  { id: 'codigoBarra', label: 'Codigo barra' },
+  { id: 'codigoInterno', label: 'Codigo interno' },
+  { id: 'idMarco', label: 'ID Marco' },
+  { id: 'nombre', label: 'Nombre producto' },
+  { id: 'proveedor', label: 'Proveedor' },
+  { id: 'categoria', label: 'Categoria' },
+]
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('es-CL')
+const pct = n => `${Number(n || 0).toLocaleString('es-CL')}%`
+
+function mono(value, fallback = '-') {
+  return <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--text-2)' }}>{value || fallback}</span>
+}
+
+function price(value) {
+  return mono(fmt(value))
+}
 
 export default function ConsultaPreciosPage() {
-  const [search, setSearch] = useState('')
+  const { user } = useAuthStore()
+  const [mode, setMode] = useState('general')
+  const [term, setTerm] = useState('')
+  const [debouncedTerm, setDebouncedTerm] = useState('')
   const [bodega, setBodega] = useState('')
-  const { data, isLoading } = useProductos({ search: search || undefined, bodega: bodega || undefined })
+  const [proveedorId, setProveedorId] = useState('')
+  const [categoriaId, setCategoriaId] = useState('')
+  const [subcategoriaId, setSubcategoriaId] = useState('')
+  const [page, setPage] = useState(1)
+  const [precioDrafts, setPrecioDrafts] = useState({})
+  const { data: categorias = [] } = useCategorias()
+  const { data: proveedores = { items: [] } } = useProveedores()
+  const updateProducto = useUpdateProducto()
+  const canReadCosto = can(user, 'bodega', 'read')
+  const canEditPrecio = can(user, 'catalogo', 'write') && can(user, 'bodega', 'write')
 
-  const items = useMemo(() => data?.items ?? [], [data])
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedTerm(term.trim()), 300)
+    return () => clearTimeout(id)
+  }, [term])
+
+  const selectedCategoria = categorias.find(c => String(c.id) === String(categoriaId))
+  const subcategorias = selectedCategoria?.subcategorias ?? []
+
+  const params = useMemo(() => {
+    const next = { sort: 'nombre', page }
+    if (bodega) next.bodega = bodega
+    if (mode === 'proveedor') {
+      if (proveedorId) next.proveedorId = proveedorId
+    } else if (mode === 'categoria') {
+      if (categoriaId) next.categoriaId = categoriaId
+      if (subcategoriaId) next.subcategoriaId = subcategoriaId
+    } else if (debouncedTerm) {
+      next[mode === 'general' ? 'search' : mode] = debouncedTerm
+    }
+    return next
+  }, [bodega, categoriaId, debouncedTerm, mode, page, proveedorId, subcategoriaId])
+
+  const { data = { items: [], total: 0, limit: 500 }, isLoading } = useProductos(params)
+  const exportParams = useMemo(() => {
+    const next = { ...params }
+    delete next.page
+    return next
+  }, [params])
+  const items = data.items ?? []
+  const total = data.total ?? 0
+  const totalStock = items.reduce((sum, p) => sum + Number(p.stock || 0), 0)
+  const conDescuento = items.filter(p => {
+    const c = p.consultaPrecios || {}
+    return Number(c.porcDescCategoria || 0) + Number(c.porcDescProducto || 0) > 0
+  }).length
+  const sinStock = items.filter(p => Number(p.stock || 0) <= 0).length
+
+  function changeMode(nextMode) {
+    setMode(nextMode)
+    setTerm('')
+    setProveedorId('')
+    setCategoriaId('')
+    setSubcategoriaId('')
+    setPage(1)
+  }
+
+  function clearFilters() {
+    setTerm('')
+    setDebouncedTerm('')
+    setBodega('')
+    setProveedorId('')
+    setCategoriaId('')
+    setSubcategoriaId('')
+    setPage(1)
+  }
+
+  function exportarPrecios() {
+    downloadFromBackend('/reportes/export/productos', `precios_${new Date().toISOString().slice(0, 10)}.csv`, exportParams)
+      .catch(err => alert(err?.response?.data?.error || 'No se pudo exportar precios'))
+  }
+
+  function setPrecioDraft(productoId, value) {
+    setPrecioDrafts(current => ({ ...current, [productoId]: value }))
+  }
+
+  function savePrecio(row) {
+    const raw = precioDrafts[row.id] ?? row.precioLista
+    const precioLista = Number(raw)
+    if (!Number.isFinite(precioLista) || precioLista < 0) {
+      alert('Precio costo invalido')
+      return
+    }
+    updateProducto.mutate(
+      { id: row.id, data: { precioLista } },
+      {
+        onSuccess: () => {
+          setPrecioDrafts(current => {
+            const next = { ...current }
+            delete next[row.id]
+            return next
+          })
+        },
+        onError: err => alert(err?.response?.data?.error || 'No se pudo actualizar el precio'),
+      },
+    )
+  }
+
+  const cols = [
+    { key: 'fotoUrl', label: 'Foto', render: v => v
+      ? <img src={v} alt="" loading="lazy" style={imgStyle} onError={useProductPlaceholderOnError} />
+      : <img src={PRODUCT_PLACEHOLDER_IMAGE} alt="" loading="lazy" style={imgStyle} onError={useProductPlaceholderOnError} /> },
+    { key: 'codigoInterno', label: 'Cod interno', render: v => mono(v) },
+    { key: 'idMarco', label: 'ID Marco', render: v => mono(v) },
+    { key: 'codigoBarra', label: 'Cod barra', render: v => mono(v) },
+    { key: 'nombre', label: 'Nombre', wrap: true },
+    { key: 'consultaPrecios', label: 'Categoria', render: v => v?.categoriaNombre ? <Badge tone="gray">{v.categoriaNombre}</Badge> : '-' },
+    { key: 'consultaPrecios', label: 'Subcategoria', render: v => v?.subcategoriaNombre || '-' },
+    { key: 'consultaPrecios', label: 'Proveedor', render: v => v?.proveedorNombre || '-' },
+    ...(canReadCosto ? [{ key: 'precioLista', label: 'Precio Costo', align: 'right', render: (v, row) => canEditPrecio
+      ? (
+        <div style={priceEditStyle} onClick={e => e.stopPropagation()}>
+          <input
+            type="number"
+            min="0"
+            value={precioDrafts[row.id] ?? v ?? 0}
+            onChange={e => setPrecioDraft(row.id, e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') savePrecio(row) }}
+            style={priceInputStyle}
+            aria-label={`Precio costo ${row.codigoInterno || row.nombre}`}
+          />
+          <button
+            type="button"
+            onClick={() => savePrecio(row)}
+            disabled={updateProducto.isPending}
+            title="Guardar precio costo"
+            style={savePriceButtonStyle}
+          >
+            <Icon name="check" size={13} />
+          </button>
+        </div>
+      )
+      : price(v) }] : []),
+    { key: 'consultaPrecios', label: 'Desc cat.', align: 'right', render: v => mono(pct(v?.porcDescCategoria)) },
+    { key: 'consultaPrecios', label: 'Desc prod.', align: 'right', render: v => mono(pct(v?.porcDescProducto)) },
+    { key: 'consultaPrecios', label: 'Normal sala + IVA', align: 'right', render: v => price(v?.precioNormalSalaVentaIva) },
+    { key: 'consultaPrecios', label: 'Con descuento', align: 'right', render: v => price(v?.precioConDescuento) },
+    { key: 'consultaPrecios', label: 'Conv. Marco', align: 'right', render: v => price(v?.precioConvMarco) },
+    { key: 'consultaPrecios', label: 'Licitacion', align: 'right', render: v => price(v?.precioLicitacion) },
+    { key: 'stock', label: 'Stock', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
+  ]
 
   return (
-    <main style={{ padding: '24px 32px', maxWidth: 1400, margin: '0 auto' }}>
-      <header style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Consulta de Precios</h1>
-        <p style={{ color: 'var(--text-3)', fontSize: 13, margin: '4px 0 0' }}>
-          Búsqueda por código interno, código de barra o nombre. Solo lectura.
-        </p>
-      </header>
+    <main style={{ maxWidth: 1680, margin: '0 auto', padding: '24px' }}>
+      <PageHeader
+        title="Consulta Precios"
+        subtitle="Vista operativa de precios y stock"
+        breadcrumb={['Inicio', 'Bodega', 'Consulta Precios']}
+        actions={<>
+          <Btn variant="secondary" icon="download" size="sm" onClick={exportarPrecios}>Exportar Excel</Btn>
+          <Btn variant="secondary" icon="printer" size="sm" onClick={() => window.print()}>PDF/Imprimir</Btn>
+        </>}
+      />
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-        <input
-          autoFocus
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar por código, código de barra o nombre…"
-          style={{
-            flex: 1,
-            padding: '10px 14px',
-            borderRadius: 8,
-            border: '1px solid var(--border)',
-            background: 'var(--bg-2)',
-            color: 'var(--text-1)',
-            fontSize: 14,
-          }}
-        />
-        <select
-          value={bodega}
-          onChange={e => setBodega(e.target.value)}
-          style={{
-            padding: '10px 14px',
-            borderRadius: 8,
-            border: '1px solid var(--border)',
-            background: 'var(--bg-2)',
-            color: 'var(--text-1)',
-            fontSize: 14,
-          }}
-        >
-          <option value="">Todas las bodegas</option>
-          <option value="Inventario">Inventario</option>
-          <option value="Taller">Taller</option>
-        </select>
+      <div className="kpi-strip">
+        <KpiCard label="Resultados" value={total} icon="tag" sublabel={`${items.length.toLocaleString('es-CL')} visibles`} />
+        <KpiCard label="Stock visible" value={totalStock} icon="package" sublabel={bodega || 'Todas las bodegas'} />
+        <KpiCard label="Con descuento" value={conDescuento} icon="dollarSign" tone="blue" sublabel="Categoria o producto" />
+        <KpiCard label="Sin stock" value={sinStock} icon="alertTriangle" tone={sinStock > 0 ? 'amber' : 'neutral'} sublabel="En resultados visibles" />
       </div>
 
-      <div style={{ borderRadius: 10, border: '1px solid var(--border)', overflow: 'hidden', background: 'var(--bg-2)' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr style={{ background: 'var(--bg)' }}>
-              {['', 'Código', 'Cód. Barra', 'Nombre', 'Categoría', 'Proveedor', 'Stock', 'Precio Lista', 'Precio Marco'].map(h => (
-                <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--text-3)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.3, borderBottom: '1px solid var(--border)' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr><td colSpan={9} style={{ padding: 30, textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</td></tr>
-            )}
-            {!isLoading && items.length === 0 && (
-              <tr><td colSpan={9} style={{ padding: 30, textAlign: 'center', color: 'var(--text-3)' }}>Sin resultados</td></tr>
-            )}
-            {items.map(p => (
-              <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={{ padding: '6px 10px' }}>{p.fotoUrl
-                  ? <img src={p.fotoUrl} alt="" loading="lazy" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} onError={e => { e.currentTarget.style.display = 'none' }} />
-                  : <div style={{ width: 36, height: 36, borderRadius: 4, background: 'var(--border)' }} />}</td>
-                <td style={{ padding: '9px 14px', fontFamily: "'DM Mono', monospace", color: 'var(--text-2)' }}>{p.codigoInterno}</td>
-                <td style={{ padding: '9px 14px', fontFamily: "'DM Mono', monospace", color: 'var(--text-3)' }}>{p.codigoBarra || '—'}</td>
-                <td style={{ padding: '9px 14px', color: 'var(--text-1)' }}>{p.nombre}</td>
-                <td style={{ padding: '9px 14px', color: 'var(--text-3)' }}>{p.categoria || '—'}</td>
-                <td style={{ padding: '9px 14px', color: 'var(--text-3)' }}>{p.proveedor || '—'}</td>
-                <td style={{ padding: '9px 14px', fontFamily: "'DM Mono', monospace", textAlign: 'right' }}>{p.stock}</td>
-                <td style={{ padding: '9px 14px', fontFamily: "'DM Mono', monospace", fontWeight: 600, textAlign: 'right' }}>{fmt(p.precioLista)}</td>
-                <td style={{ padding: '9px 14px', fontFamily: "'DM Mono', monospace", textAlign: 'right', color: 'var(--text-2)' }}>{fmt(p.precioMarco)}</td>
-              </tr>
+      <section style={panelStyle}>
+        <div style={toolbarStyle}>
+          <div style={modeBarStyle}>
+            {SEARCH_MODES.map(item => (
+              <button key={item.id} onClick={() => changeMode(item.id)} style={modeButtonStyle(mode === item.id)}>
+                {item.label}
+              </button>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
 
-      <p style={{ color: 'var(--text-3)', fontSize: 12, marginTop: 12 }}>
-        {items.length} resultados {data?.total ? `de ${data.total}` : ''} {data?.limit ? `(límite ${data.limit})` : ''}
-      </p>
+          <div style={filtersStyle}>
+            <select value={bodega} onChange={e => { setBodega(e.target.value); setPage(1) }} style={selectStyle}>
+              <option value="">Todas las bodegas</option>
+              <option value="Inventario">Inventario</option>
+              <option value="Taller">Taller</option>
+            </select>
+
+            {mode === 'proveedor' ? (
+              <select value={proveedorId} onChange={e => { setProveedorId(e.target.value); setPage(1) }} style={{ ...selectStyle, minWidth: 260 }}>
+                <option value="">Proveedor</option>
+                {(proveedores.items || []).map(p => (
+                  <option key={p.id} value={p.id}>{p.nombre}{p.rut ? ` (${p.rut})` : ''}</option>
+                ))}
+              </select>
+            ) : mode === 'categoria' ? (
+              <>
+                <select value={categoriaId} onChange={e => { setCategoriaId(e.target.value); setSubcategoriaId(''); setPage(1) }} style={{ ...selectStyle, minWidth: 220 }}>
+                  <option value="">Categoria</option>
+                  {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+                <select value={subcategoriaId} onChange={e => { setSubcategoriaId(e.target.value); setPage(1) }} style={{ ...selectStyle, minWidth: 220 }} disabled={!subcategorias.length}>
+                  <option value="">Subcategoria</option>
+                  {subcategorias.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                </select>
+              </>
+            ) : (
+              <input
+                autoFocus
+                value={term}
+                onChange={e => { setTerm(e.target.value); setPage(1) }}
+                placeholder={mode === 'general' ? 'Buscar producto...' : SEARCH_MODES.find(m => m.id === mode)?.label}
+                style={inputStyle}
+              />
+            )}
+
+            <Btn variant="ghost" icon="x" size="sm" onClick={clearFilters}>Limpiar</Btn>
+          </div>
+        </div>
+
+        {total > (data.limit ?? 500) && (
+          <div style={noticeStyle}>
+            Mostrando {items.length.toLocaleString('es-CL')} de {total.toLocaleString('es-CL')}. Ajuste los filtros para acotar.
+          </div>
+        )}
+
+        {isLoading
+          ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando productos...</div>
+          : <Table columns={cols} rows={items} emptyMessage="No hay productos con ese criterio" />
+        }
+        <Pager
+          page={data.page ?? page}
+          pages={data.pages ?? 1}
+          total={total}
+          limit={data.limit ?? 500}
+          shown={items.length}
+          onChange={setPage}
+          disabled={isLoading}
+        />
+      </section>
     </main>
   )
+}
+
+const imgStyle = { width: 42, height: 42, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }
+const panelStyle = { background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }
+const toolbarStyle = { padding: '14px 16px', borderBottom: '1px solid var(--border)' }
+const modeBarStyle = { display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 12 }
+const filtersStyle = { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }
+const inputStyle = { width: 320, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', fontFamily: 'inherit', fontSize: 13, color: 'var(--text-1)', outline: 'none' }
+const selectStyle = { padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', fontFamily: 'inherit', fontSize: 13, color: 'var(--text-1)', cursor: 'pointer' }
+const noticeStyle = { padding: '8px 16px', background: 'var(--amber-bg, #fffbeb)', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text-2)' }
+const priceEditStyle = { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, minWidth: 132 }
+const priceInputStyle = { width: 94, padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border)', fontFamily: "'DM Mono', monospace", fontSize: 12, textAlign: 'right' }
+const savePriceButtonStyle = { width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--green-700)', cursor: 'pointer' }
+
+function modeButtonStyle(active) {
+  return {
+    padding: '7px 11px',
+    borderRadius: 7,
+    border: active ? '1px solid var(--green-600)' : '1px solid var(--border)',
+    background: active ? 'var(--green-50)' : '#fff',
+    color: active ? 'var(--green-700)' : 'var(--text-2)',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+  }
 }

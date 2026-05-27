@@ -24,6 +24,13 @@ describe('RBAC permissions map', () => {
     expect(can('bodeguero', 'proveedores', 'write')).toBe(true)
   })
 
+  it('matches frontend read access for reportes module', () => {
+    for (const role of ['vendedor', 'bodeguero', 'cajero', 'taller', 'solo_lectura']) {
+      expect(can(role, 'reportes', 'read')).toBe(true)
+      expect(can(role, 'reportes', 'write')).toBe(false)
+    }
+  })
+
   it('allows bodeguero to manage dispatch without granting sales writes', () => {
     expect(can('bodeguero', 'despacho', 'read')).toBe(true)
     expect(can('bodeguero', 'despacho', 'write')).toBe(true)
@@ -35,12 +42,22 @@ describe('RBAC permissions map', () => {
     expect(can('vendedor', 'proveedores', 'write')).toBe(false)
   })
 
+  it('keeps cobranza history readable through ventas and payments through cobranza write', () => {
+    expect(can('vendedor', 'ventas', 'read')).toBe(true)
+    expect(can('vendedor', 'cobranza', 'write')).toBe(false)
+    expect(can('cajero', 'cobranza', 'write')).toBe(true)
+  })
+
   it('keeps sensitive deletes admin-only by default', () => {
     expect(can('vendedor', 'ventas', 'delete')).toBe(false)
+    expect(can('vendedor', 'clientes', 'delete')).toBe(false)
+    expect(can('taller', 'taller', 'delete')).toBe(false)
     expect(can('bodeguero', 'bodega', 'delete')).toBe(false)
     expect(can('bodeguero', 'catalogo', 'delete')).toBe(false)
     expect(can('cajero', 'caja', 'delete')).toBe(false)
     expect(can('admin', 'ventas', 'delete')).toBe(true)
+    expect(can('admin', 'clientes', 'delete')).toBe(true)
+    expect(can('admin', 'taller', 'delete')).toBe(true)
     expect(can('admin', 'bodega', 'delete')).toBe(true)
     expect(can('admin', 'caja', 'delete')).toBe(true)
   })

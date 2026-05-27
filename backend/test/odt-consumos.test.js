@@ -233,7 +233,7 @@ describe('ODT consumos helpers', () => {
   it('consumes material_taller stock and writes a negative bodega taller movement', async () => {
     const tx = {
       bodegaTaller: {
-        findUnique: vi.fn().mockResolvedValue({
+        findFirst: vi.fn().mockResolvedValue({
           id: 8,
           codigoInterno: 'M1',
           nombre: 'Broche',
@@ -258,6 +258,17 @@ describe('ODT consumos helpers', () => {
     })
 
     expect(result).toMatchObject({ tipo: 'material_taller', id: 8, stockFinal: 3.25 })
+    expect(tx.bodegaTaller.findFirst).toHaveBeenCalledWith({
+      where: { id: 8 },
+      select: {
+        id: true,
+        codigoInterno: true,
+        nombre: true,
+        unidadMedida: true,
+        stock: true,
+        sucursalId: true,
+      },
+    })
     expect(tx.bodegaTaller.updateMany).toHaveBeenCalledWith({
       where: { id: 8, stock: { gte: 1.25 } },
       data: { stock: { decrement: 1.25 } },
@@ -281,6 +292,52 @@ describe('ODT consumos helpers', () => {
         unidad: 'kg',
         sucursalId: 3,
       }),
+    })
+  })
+
+  it('scopes material_taller consumption by user or ODT sucursal', async () => {
+    const tx = {
+      bodegaTaller: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 8,
+          codigoInterno: 'M1',
+          nombre: 'Broche',
+          unidadMedida: 'kg',
+          stock: 4.5,
+          sucursalId: 9201,
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      bodegaTallerMovimiento: { create: vi.fn().mockResolvedValue({ id: 101 }) },
+      tallerHistorialMaterial: { create: vi.fn().mockResolvedValue({ id: 201 }) },
+    }
+
+    const result = await applyOdtConsumo({
+      tx,
+      odt: { id: 12, ordenId: 23, sucursalId: 9201 },
+      consumo: { tipo: 'material_taller', id: 8, cantidad: 1.25, motivo: 'Armado' },
+      userId: 9,
+      usuario: 'Taller',
+      sucursalId: 9201,
+      now: NOW,
+    })
+
+    expect(result).toMatchObject({ tipo: 'material_taller', id: 8 })
+    const scopedWhere = { id: 8, OR: [{ sucursalId: 9201 }, { sucursalId: null }] }
+    expect(tx.bodegaTaller.findFirst).toHaveBeenCalledWith({
+      where: scopedWhere,
+      select: {
+        id: true,
+        codigoInterno: true,
+        nombre: true,
+        unidadMedida: true,
+        stock: true,
+        sucursalId: true,
+      },
+    })
+    expect(tx.bodegaTaller.updateMany).toHaveBeenCalledWith({
+      where: { ...scopedWhere, stock: { gte: 1.25 } },
+      data: { stock: { decrement: 1.25 } },
     })
   })
 
@@ -362,7 +419,7 @@ describe('ODT consumos route', () => {
     }
     const prisma = {
       odt: {
-        findUnique: vi.fn().mockResolvedValue({ id: 11, ordenId: 22 }),
+        findUnique: vi.fn().mockResolvedValue({ id: 11, ordenId: 22, sucursalId: null, estado: 'Pendiente', eliminado: false }),
       },
       $transaction: vi.fn((callback) => callback(tx)),
     }
@@ -379,7 +436,7 @@ describe('ODT consumos route', () => {
     expect(response).toMatchObject({ tipo: 'producto', id: 5, stockFinal: 7 })
     expect(prisma.odt.findUnique).toHaveBeenCalledWith({
       where: { id: 11 },
-      select: { id: true, ordenId: true },
+      select: { id: true, ordenId: true, sucursalId: true, estado: true, eliminado: true },
     })
     expect(prisma.$transaction).toHaveBeenCalledOnce()
     expect(tx.movimientoBodega.create).toHaveBeenCalledWith({
@@ -410,7 +467,7 @@ describe('ODT consumos route', () => {
     }
     const prisma = {
       odt: {
-        findUnique: vi.fn().mockResolvedValue({ id: 11, ordenId: 22 }),
+        findUnique: vi.fn().mockResolvedValue({ id: 11, ordenId: 22, sucursalId: null, estado: 'Pendiente', eliminado: false }),
       },
       $transaction: vi.fn((callback) => callback(tx)),
     }
@@ -447,6 +504,27 @@ describe('ODT consumos route', () => {
 
     expect(reply.statusCode).toBe(404)
     expect(reply.body).toEqual({ error: 'ODT no encontrada' })
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+  })
+
+  it('rejects consumos against closed ODT before mutating stock', async () => {
+    const prisma = {
+      odt: {
+        findUnique: vi.fn().mockResolvedValue({ id: 11, ordenId: 22, sucursalId: null, estado: 'Terminada', eliminado: false }),
+      },
+      $transaction: vi.fn(),
+    }
+    const { handlers } = await buildHandlers(prisma)
+    const reply = replyStub()
+
+    await handlers[`POST ${ROUTE}`].handler({
+      params: { id: '11' },
+      body: { tipo: 'producto', id: '5', cantidad: '3', motivo: 'Uso en ODT' },
+      user: { id: 7, nombre: 'Ana' },
+    }, reply)
+
+    expect(reply.statusCode).toBe(409)
+    expect(reply.body).toEqual({ error: 'ODT cerrada o anulada' })
     expect(prisma.$transaction).not.toHaveBeenCalled()
   })
 })

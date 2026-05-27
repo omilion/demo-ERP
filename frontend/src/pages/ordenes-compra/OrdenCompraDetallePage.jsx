@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Badge, PageHeader, Btn, Table } from '../../components/shared'
 import { FormField, Input, Select, Textarea } from '../../components/forms'
@@ -9,6 +9,17 @@ const CANALES = ['', 'Web', 'Convenio Marco', 'Venta Sala', 'Telefónica']
 
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
+const ordenCompraForm = data => ({
+  estadoCompra: data.estadoCompra || '',
+  tipoDocumento: data.tipoDocumento || '',
+  codigoVendedor: data.codigoVendedor || '',
+  canal: data.canal || '',
+  obsCliente: data.obsCliente || '',
+  cargoServicio: data.cargoServicio || '',
+  total: data.total ?? 0,
+  costoEnvio: data.costoEnvio ?? 0,
+})
+
 export default function OrdenCompraDetallePage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -16,19 +27,6 @@ export default function OrdenCompraDetallePage() {
   const updateMut = useUpdateOrdenCompra()
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({})
-
-  useEffect(() => {
-    if (data) setForm({
-      estadoCompra: data.estadoCompra || '',
-      tipoDocumento: data.tipoDocumento || '',
-      codigoVendedor: data.codigoVendedor || '',
-      canal: data.canal || '',
-      obsCliente: data.obsCliente || '',
-      cargoServicio: data.cargoServicio || '',
-      total: data.total ?? 0,
-      costoEnvio: data.costoEnvio ?? 0,
-    })
-  }, [data])
 
   if (isLoading) return <main style={{ padding: 24 }}>Cargando…</main>
   if (!data) return <main style={{ padding: 24 }}>No encontrada</main>
@@ -63,7 +61,7 @@ export default function OrdenCompraDetallePage() {
         breadcrumb={['Inicio', 'Ventas', 'OC Online', data.nCompra]}
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
-            {!editing && <Btn variant="primary" size="sm" onClick={() => setEditing(true)}>Editar</Btn>}
+            {!editing && <Btn variant="primary" size="sm" onClick={() => { setForm(ordenCompraForm(data)); setEditing(true) }}>Editar</Btn>}
             {editing && <>
               <Btn variant="secondary" size="sm" onClick={() => setEditing(false)} disabled={updateMut.isPending}>Cancelar</Btn>
               <Btn variant="primary" size="sm" onClick={handleSave} disabled={updateMut.isPending}>

@@ -57,27 +57,32 @@ function StockRow({ label, icon, critico, sinStock, onClick }) {
   )
 }
 
-const ROLE_SECTIONS = {
-  admin:        { ventas: true, bodega: true, taller: true, cobranza: true, admin: true, clientes: true, crm: true },
-  vendedor:     { ventas: true, clientes: true, crm: true, cobranza: true },
-  bodeguero:    { bodega: true, cobranza: true },
-  cajero:       { cobranza: true, ventas: true },
-  taller:       { taller: true, bodega: true },
-  rrhh:         { clientes: true },
-  solo_lectura: { ventas: true, bodega: true, taller: true, cobranza: true, clientes: true, crm: true },
-}
-
 export default function DashboardPage() {
   const navigate = useNavigate()
   const { data: stats, isLoading } = useDashboardStats()
   const { user } = useAuthStore()
   const role = user?.role || 'admin'
-  const show = ROLE_SECTIONS[role] || ROLE_SECTIONS.admin
+  const canReadVentas = can(user, 'ventas')
+  const canReadCatalogo = can(user, 'catalogo')
+  const canReadTaller = can(user, 'taller')
+  const canReadDespacho = can(user, 'despacho')
+  const canReadClientes = can(user, 'clientes')
+  const canReadCaja = can(user, 'caja')
+  const canReadProveedores = can(user, 'proveedores')
   const canWriteVentas = can(user, 'ventas', 'write')
   const canWriteTaller = can(user, 'taller', 'write')
   const canWriteBodega = can(user, 'bodega', 'write')
   const canWriteClientes = can(user, 'clientes', 'write')
   const canWriteProveedores = can(user, 'proveedores', 'write')
+  const show = {
+    ventas: canReadVentas,
+    bodega: canReadCatalogo,
+    taller: canReadTaller,
+    cobranza: canReadVentas || canReadCaja || canReadProveedores,
+    admin: role === 'admin',
+    clientes: canReadClientes,
+    crm: canReadVentas,
+  }
 
   const inv = stats?.stock?.Inventario ?? {}
   const tal = stats?.stock?.Taller ?? {}
@@ -107,11 +112,11 @@ export default function DashboardPage() {
       />
 
       <div className="kpi-strip">
-        {(show.ventas || show.cobranza) && (
+        {canReadVentas && (
           <KpiCard label="Ventas No Pagadas" value={n(stats?.ventas?.noPagadas)} icon="dollarSign" tone="red"
             sublabel="Gestión cobranza requerida" onClick={() => navigate('/ventas?filtro=no_pagadas')} />
         )}
-        {(show.ventas || show.bodega) && (
+        {canReadVentas && (
           <KpiCard label="Pendientes Entrega" value={n(stats?.ventas?.pendienteEntrega)} icon="truck" tone="blue"
             sublabel="Órdenes por despachar" onClick={() => navigate('/ventas?filtro=pendiente_entrega')} />
         )}
@@ -136,8 +141,8 @@ export default function DashboardPage() {
           <KpiCard label="CRM — Pendientes" value={n(crm.pendientes)} icon="phone" tone={crm.altaPrioridad > 0 ? 'red' : 'blue'}
             sublabel={!isLoading ? `${crm.altaPrioridad} prioridad alta` : ''} onClick={() => navigate('/crm')} />
         )}
-        {show.cobranza && (
-          <KpiCard label="Cobranza Cobrado" value={isLoading ? '…' : fmtM(cobHist.cobrado)} icon="trendingUp" tone="neutral"
+        {canReadVentas && (
+          <KpiCard label="Cobranza Cobrado" value={isLoading ? '...' : fmtM(cobHist.cobrado)} icon="trendingUp" tone="neutral"
             sublabel={!isLoading ? `${cobHist.pendientes} pendientes` : ''} onClick={() => navigate('/cobranza')} />
         )}
       </div>
@@ -178,7 +183,7 @@ export default function DashboardPage() {
             <ActionRow icon="warehouse" label="Mantención productos" onClick={() => navigate('/bodega')} />
             {canWriteBodega && <ActionRow icon="plusCircle" label="Ingreso Mercadería" onClick={() => navigate('/stock-ingresos')} />}
             <ActionRow icon="tag" label="Consulta Precios" onClick={() => navigate('/consulta-precios')} />
-            <ActionRow icon="truck" label="Despachos" onClick={() => navigate('/despachos')} />
+            {canReadDespacho && <ActionRow icon="truck" label="Despachos" onClick={() => navigate('/despachos')} />}
             <ActionRow icon="users" label="Proveedores" badge={n(proveedores.total)} badgeTone="neutral" onClick={() => navigate('/proveedores')} />
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
             <ActionRow icon="alertTriangle" label="Sin Código Barra" badge={cal.sinCodigoBarra} badgeTone={cal.sinCodigoBarra > 0 ? 'amber' : 'neutral'} onClick={() => navigate('/bodega?filtro=sin_codigo_barra')} />
@@ -188,12 +193,12 @@ export default function DashboardPage() {
           </SectionCard>
         )}
 
-        {show.bodega && (
+        {show.taller && (
           <SectionCard title="Bodega Taller" icon="box">
             <StockRow label="Stock Crítico / 0" icon="alertTriangle"
               critico={tal.critico ?? 0} sinStock={tal.sinStock ?? 0} onClick={() => navigate('/bodega?tab=taller&filtro=critico')} />
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
-            <ActionRow icon="box" label="Mantención productos" onClick={() => navigate('/bodega?tab=taller')} />
+            {canReadCatalogo && <ActionRow icon="box" label="Mantención productos" onClick={() => navigate('/bodega?tab=taller')} />}
             <ActionRow icon="layers" label="Telas" onClick={() => navigate('/telas')} />
             <ActionRow icon="box" label="Bodega Taller" onClick={() => navigate('/bodega-taller')} />
           </SectionCard>
@@ -210,7 +215,7 @@ export default function DashboardPage() {
             <ActionRow icon="clipboard" label="Cotizar Licitación" onClick={() => navigate('/licitaciones')} />
             <ActionRow icon="briefcase" label="Convenio Marco" onClick={() => navigate('/licitaciones?tipo=convenio')} />
             <ActionRow icon="fileText" label="Reportes Licitaciones" onClick={() => navigate('/reportes/licitaciones')} />
-            <ActionRow icon="tag" label="Consulta Precios" onClick={() => navigate('/consulta-precios')} />
+            {canReadCatalogo && <ActionRow icon="tag" label="Consulta Precios" onClick={() => navigate('/consulta-precios')} />}
           </SectionCard>
         )}
 
@@ -234,20 +239,20 @@ export default function DashboardPage() {
               </div>
             )}
             {show.crm && <ActionRow icon="phone" label="Ver CRM" onClick={() => navigate('/crm')} />}
-            <ActionRow icon="users" label="Clientes" onClick={() => navigate('/clientes')} />
+            {canReadClientes && <ActionRow icon="users" label="Clientes" onClick={() => navigate('/clientes')} />}
             {canWriteClientes && <ActionRow icon="plusCircle" label="Nuevo Cliente" onClick={() => navigate('/clientes/nuevo')} />}
           </SectionCard>
         )}
 
         {show.cobranza && (
           <SectionCard title="Cobranza & Pagos Proveedores" icon="dollarSign">
-            <ActionRow icon="dollarSign" label="Menú Cobranza" onClick={() => navigate('/cobranza')} />
+            {canReadVentas && <ActionRow icon="dollarSign" label="Menú Cobranza" onClick={() => navigate('/cobranza')} />}
             {canWriteProveedores && <ActionRow icon="plusCircle" label="Nueva Boleta/Factura Prov." onClick={() => navigate('/pagos-proveedores')} />}
-            <ActionRow icon="alertTriangle" label="Facturas No Pagadas" badge={n(provPagos.facturasNoPagadas)} badgeTone={provPagos.facturasNoPagadas > 0 ? 'red' : 'neutral'} onClick={() => navigate('/pagos-proveedores?doc=Factura&estado=Pendiente')} />
-            <ActionRow icon="alertTriangle" label="Boletas No Pagadas" badge={n(provPagos.boletasNoPagadas)} badgeTone={provPagos.boletasNoPagadas > 0 ? 'red' : 'neutral'} onClick={() => navigate('/pagos-proveedores?doc=Boleta&estado=Pendiente')} />
+            {canReadProveedores && <ActionRow icon="alertTriangle" label="Facturas No Pagadas" badge={n(provPagos.facturasNoPagadas)} badgeTone={provPagos.facturasNoPagadas > 0 ? 'red' : 'neutral'} onClick={() => navigate('/pagos-proveedores?doc=Factura&estado=Pendiente')} />}
+            {canReadProveedores && <ActionRow icon="alertTriangle" label="Boletas No Pagadas" badge={n(provPagos.boletasNoPagadas)} badgeTone={provPagos.boletasNoPagadas > 0 ? 'red' : 'neutral'} onClick={() => navigate('/pagos-proveedores?doc=Boleta&estado=Pendiente')} />}
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
-            <ActionRow icon="creditCard" label="Caja Movimientos" onClick={() => navigate('/caja')} />
-            <ActionRow icon="fileText" label="Órdenes Compra" onClick={() => navigate('/ordenes-compra')} />
+            {canReadCaja && <ActionRow icon="creditCard" label="Caja Movimientos" onClick={() => navigate('/caja')} />}
+            {canReadVentas && <ActionRow icon="fileText" label="Órdenes Compra" onClick={() => navigate('/ordenes-compra')} />}
           </SectionCard>
         )}
 

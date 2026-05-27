@@ -1,4 +1,6 @@
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere } from '../historico/corte.js'
+import { getUserSucursalId } from '../caja/scope.js'
+import { buildCobranzaHistoricoScopeWhere } from '../cobranza/scope.js'
 
 export default async function dashboardStats(fastify) {
   fastify.get('/stats', {
@@ -7,6 +9,9 @@ export default async function dashboardStats(fastify) {
     const p = fastify.prisma
     const corte = await getPrimerRegistroInterno(p)
     const ordenOperacionalWhere = buildOrdenScopeWhere('operacional', corte)
+    const sucursalId = getUserSucursalId(request.user)
+    const pagoProveedorScope = { eliminado: false, ...(sucursalId ? { sucursalId } : {}) }
+    const cobranzaScopeWhere = await buildCobranzaHistoricoScopeWhere(p, request.user)
 
     const [
       ventasNoPagadas,
@@ -56,15 +61,15 @@ export default async function dashboardStats(fastify) {
       p.crmRegistro.count({ where: { estado: '1' } }),
       p.crmRegistro.count({ where: { prioridad: { equals: 'Alta', mode: 'insensitive' } } }),
       p.proveedor.count({ where: { activo: true } }),
-      p.$queryRaw`
-        SELECT
-          COALESCE(SUM(CASE WHEN UPPER(estado) = 'CANCELADA' THEN monto ELSE 0 END), 0)::numeric AS cobrado,
-          COUNT(CASE WHEN UPPER(estado) = 'PENDIENTE' THEN 1 END)::int AS n_pendientes
-        FROM ventas.cobranza_historico
-      `,
+      p.cobranzaHistorico.groupBy({
+        by: ['estado'],
+        where: cobranzaScopeWhere,
+        _sum: { monto: true },
+        _count: { _all: true },
+      }),
       p.ordenCompraOnline.count({ where: { estadoCompra: { in: ['Pendiente', 'Activa', 'Nueva'] } } }).catch(() => 0),
-      p.pagoProveedor.count({ where: { documento: 'Factura', estado: { in: ['Pendiente', 'No pagada'] } } }).catch(() => 0),
-      p.pagoProveedor.count({ where: { documento: 'Boleta', estado: { in: ['Pendiente', 'No pagada'] } } }).catch(() => 0),
+      p.pagoProveedor.count({ where: { ...pagoProveedorScope, documento: 'Factura', estado: { in: ['Pendiente', 'No pagada', 'No pagado'] } } }).catch(() => 0),
+      p.pagoProveedor.count({ where: { ...pagoProveedorScope, documento: 'Boleta', estado: { in: ['Pendiente', 'No pagada', 'No pagado'] } } }).catch(() => 0),
       p.$queryRaw`
         SELECT
           COUNT(*) FILTER (WHERE (codigo_barra IS NULL OR codigo_barra = '') AND activo = true)::int AS sin_codigo_barra,
@@ -84,7 +89,7 @@ export default async function dashboardStats(fastify) {
       }
     }
 
-    const cs = cobranzaStats[0]
+    const cobranzaByEstado = Object.fromEntries(cobranzaStats.map(g => [String(g.estado || '').toUpperCase(), g]))
     const cal = productosCalidadRows[0]
     return {
       ventas: {
@@ -123,8 +128,8 @@ export default async function dashboardStats(fastify) {
         total: proveedoresTotal,
       },
       cobranzaHistorico: {
-        cobrado: Number(cs.cobrado),
-        pendientes: cs.n_pendientes,
+        cobrado: Number(cobranzaByEstado.CANCELADA?._sum.monto || 0),
+        pendientes: cobranzaByEstado.PENDIENTE?._count._all || 0,
       },
     }
   })

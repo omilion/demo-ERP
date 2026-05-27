@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from './client'
 
-export const useTurnoActivo = () =>
+export const useTurnoActivo = (enabled = true) =>
   useQuery({
     queryKey: ['caja', 'turno-activo'],
     queryFn: () => api.get('/caja/turno').then(r => r.data),
     staleTime: 10_000,
+    enabled,
   })
 
 export const useAbrirTurno = () => {
@@ -19,7 +20,11 @@ export const useAbrirTurno = () => {
 export const useCerrarTurno = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id) => api.post(`/caja/turno/${id}/cerrar`).then(r => r.data),
+    mutationFn: (payload) => {
+      const id = typeof payload === 'object' ? payload.id : payload
+      const body = typeof payload === 'object' ? { obs: payload.obs, conteo: payload.conteo } : undefined
+      return api.post(`/caja/turno/${id}/cerrar`, body).then(r => r.data)
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['caja'] }),
   })
 }
@@ -60,10 +65,39 @@ export const useRegistrarPagoCobranza = () => {
   })
 }
 
+export const useCrearDocumentoVenta = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ordenId, data }) =>
+      api.post(`/caja/cobranza/orden/${ordenId}/documento`, data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['caja'] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+    },
+  })
+}
+
 export const useDeleteMovimiento = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id) => api.delete(`/caja/movimientos/${id}`),
+    mutationFn: (payload) => {
+      const id = typeof payload === 'object' ? payload.id : payload
+      const data = typeof payload === 'object' ? { motivo: payload.motivo } : undefined
+      return api.delete(`/caja/movimientos/${id}`, { data })
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['caja'] }),
+  })
+}
+
+export const useReactivateMovimiento = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload) => {
+      const id = typeof payload === 'object' ? payload.id : payload
+      const body = typeof payload === 'object' ? { motivo: payload.motivo } : undefined
+      return api.patch(`/caja/movimientos/${id}/reactivar`, body).then(r => r.data)
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['caja'] }),
   })
 }

@@ -8,11 +8,31 @@ import { useAuthStore } from '../../store/auth'
 import { useClientes, useClienteSucursales } from '../../api/clientes'
 import { useProductos } from '../../api/productos'
 import { useMultas, useCreateMulta, useDeleteMulta } from '../../api/multas'
-import { can } from '../../utils/permissions'
+import { useCrearDocumentoVenta } from '../../api/caja'
+import { useDescuentos } from '../../api/descuentos'
+import { can, canAny } from '../../utils/permissions'
+import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
+
+const DOCUMENTOS_VENTA = ['Factura Plast', 'Factura Laura', 'Boleta Electronica', 'NC Plast', 'NC Laura', 'NC Inter Plast', 'ND Plast', 'ND Laura']
 
 const TIPOS = ['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala']
 
-function ProductoSearch({ onAdd, disabled = false }) {
+function isConvenioMarco(tipo) {
+  return normalizeText(tipo) === 'convenio marco'
+}
+
+function isNormalDiscountTipo(tipo) {
+  const text = normalizeText(tipo)
+  return text === 'normal' || text === 'venta sala' || text === 'venta web' || text === 'venta directa'
+}
+
+function defaultPrecioUnitario(producto, tipoVenta) {
+  if (!isConvenioMarco(tipoVenta)) return Number(producto.consultaPrecios?.precioNormalSalaVentaIva ?? producto.precioLista ?? 0)
+  const precioMarco = Number(producto.consultaPrecios?.precioConvMarco ?? producto.precioMarco ?? producto.precioLista ?? 0)
+  return precioMarco > 0 ? Math.round(precioMarco * 1.19) : 0
+}
+
+function ProductoSearch({ onAdd, tipoVenta, disabled = false }) {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
   const ref = useRef()
@@ -47,7 +67,7 @@ function ProductoSearch({ onAdd, disabled = false }) {
           onChange={e => { setQ(e.target.value); setOpen(!disabled) }}
           onFocus={() => !disabled && q.length >= 2 && setOpen(true)}
           disabled={disabled}
-          placeholder="Buscar producto por código o nombre… (mínimo 2 caracteres)"
+          placeholder="Buscar producto por codigo, nombre o ID Marco... (minimo 2 caracteres)"
           style={{ width: '100%', padding: '8px 10px 8px 32px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: disabled ? 'var(--bg)' : '#fff', color: disabled ? 'var(--text-3)' : 'inherit', boxSizing: 'border-box', cursor: disabled ? 'not-allowed' : 'text' }}
           onKeyDown={e => e.key === 'Escape' && setOpen(false)}
         />
@@ -61,14 +81,16 @@ function ProductoSearch({ onAdd, disabled = false }) {
               onMouseLeave={e => e.currentTarget.style.background = 'none'}
             >
               {p.fotoUrl
-                ? <img src={p.fotoUrl} alt="" loading="lazy" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)', flexShrink: 0 }} onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
-                : <div style={{ width: 32, height: 32, borderRadius: 4, background: 'var(--border)', flexShrink: 0 }} />}
+                ? <img src={p.fotoUrl} alt="" loading="lazy" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)', flexShrink: 0 }} onError={useProductPlaceholderOnError} />
+                : <img src={PRODUCT_PLACEHOLDER_IMAGE} alt="" loading="lazy" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)', flexShrink: 0 }} onError={useProductPlaceholderOnError} />}
               <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: 'var(--text-3)', flexShrink: 0, paddingTop: 2, minWidth: 80 }}>{p.codigoInterno}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</div>
                 <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 1 }}>
                   Stock: <strong style={{ color: p.stock > 0 ? 'var(--green-600)' : 'var(--red)' }}>{p.stock}</strong>
+                  {!p.precioLista && defaultPrecioUnitario(p, tipoVenta) > 0 && <span> - Lista: <strong>${defaultPrecioUnitario(p, tipoVenta).toLocaleString('es-CL')}</strong></span>}
                   {p.precioLista > 0 && <span> · Lista: <strong>${p.precioLista.toLocaleString('es-CL')}</strong></span>}
+                  {isConvenioMarco(tipoVenta) && defaultPrecioUnitario(p, tipoVenta) > 0 && <span> · Marco + IVA: <strong>${defaultPrecioUnitario(p, tipoVenta).toLocaleString('es-CL')}</strong></span>}
                 </div>
               </div>
             </button>
@@ -136,7 +158,7 @@ function ItemsTable({ items, onChange, locked = false }) {
                   ${sub.toLocaleString('es-CL')}
                 </td>
                 <td style={{ padding: '4px 6px', textAlign: 'center' }}>
-                  <button onClick={() => remove(idx)} disabled={locked} title={locked ? 'Productos bloqueados por entregas registradas' : 'Quitar producto'} style={{ padding: '4px', borderRadius: 4, border: 'none', background: 'none', cursor: locked ? 'not-allowed' : 'pointer', color: 'var(--text-3)', opacity: locked ? 0.45 : 1 }}
+                  <button onClick={() => remove(idx)} disabled={locked} title={locked ? 'Productos bloqueados por entregas, pagos o documentos registrados' : 'Quitar producto'} style={{ padding: '4px', borderRadius: 4, border: 'none', background: 'none', cursor: locked ? 'not-allowed' : 'pointer', color: 'var(--text-3)', opacity: locked ? 0.45 : 1 }}
                     onMouseEnter={e => { if (!locked) e.currentTarget.style.color = 'var(--red)' }}
                     onMouseLeave={e => e.currentTarget.style.color = 'var(--text-3)'}
                   >
@@ -191,7 +213,18 @@ function hasDeliveredItems(venta) {
   return (venta?.items || []).some(item => Number(item.nEntregados) > 0)
 }
 
-function CargosSection({ ordenId }) {
+function hasFinancialTrace(venta) {
+  if (!venta) return false
+  if (Number(venta.abono || 0) > 0) return true
+  if (venta.estadoPago && venta.estadoPago !== 'No pagada') return true
+  return (venta.pagos || []).some(p => !p.eliminado)
+}
+
+function discountAmount(subtotal, pct) {
+  return Math.round(Number(subtotal || 0) * Number(pct || 0) / 100)
+}
+
+function CargosSection({ ordenId, locked = false }) {
   const { data: cargos = [], isLoading } = useVentaCargos(ordenId)
   const addCargo = useAddCargo()
   const delCargo = useDeleteCargo()
@@ -200,6 +233,7 @@ function CargosSection({ ordenId }) {
   const total = cargos.reduce((s, c) => s + (c.valor || 0), 0)
 
   function add() {
+    if (locked) { alert('No se pueden modificar cargos con pagos o documentos registrados'); return }
     if (!draft.nombre || !draft.valor) { alert('Nombre y valor requeridos'); return }
     addCargo.mutate({ ordenId, nombre: draft.nombre, valor: Number(draft.valor) }, {
       onSuccess: () => setDraft({ nombre: '', valor: '' }),
@@ -225,7 +259,14 @@ function CargosSection({ ordenId }) {
                     <td style={{ padding: '7px 12px' }}>{c.nombre}</td>
                     <td style={{ padding: '7px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>{fmt(c.valor)}</td>
                     <td style={{ padding: '4px 8px', textAlign: 'center', width: 36 }}>
-                      <button onClick={() => delCargo.mutate({ ordenId, cargoId: c.id })} style={{ padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-3)' }}>
+                      <button
+                        onClick={() => {
+                          if (locked) { alert('No se pueden modificar cargos con pagos o documentos registrados'); return }
+                          delCargo.mutate({ ordenId, cargoId: c.id })
+                        }}
+                        disabled={locked}
+                        style={{ padding: 4, border: 'none', background: 'none', cursor: locked ? 'not-allowed' : 'pointer', color: 'var(--text-3)', opacity: locked ? 0.45 : 1 }}
+                      >
                         <Icon name="trash" size={13} />
                       </button>
                     </td>
@@ -235,15 +276,100 @@ function CargosSection({ ordenId }) {
             </table>
           )}
       <div style={{ background: '#fafafa', borderTop: '1px solid var(--border)', padding: '10px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8 }}>
-        <input placeholder="Nombre cargo (ej. Despacho Santiago)" value={draft.nombre} onChange={e => setDraft({ ...draft, nombre: e.target.value })}
+        <input placeholder="Nombre cargo (ej. Despacho Santiago)" value={draft.nombre} onChange={e => setDraft({ ...draft, nombre: e.target.value })} disabled={locked}
           style={{ padding: '6px 8px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12 }} />
-        <input type="number" placeholder="Valor" value={draft.valor} onChange={e => setDraft({ ...draft, valor: e.target.value })}
+        <input type="number" placeholder="Valor" value={draft.valor} onChange={e => setDraft({ ...draft, valor: e.target.value })} disabled={locked}
           style={{ padding: '6px 8px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right' }} />
-        <button onClick={add} disabled={addCargo.isPending}
+        <button onClick={add} disabled={addCargo.isPending || locked}
           style={{ padding: '6px 12px', borderRadius: 5, border: '1px solid var(--green-700)', background: 'var(--green-700)', color: '#fff', fontSize: 12, cursor: 'pointer' }}>
           {addCargo.isPending ? '...' : 'Agregar'}
         </button>
       </div>
+    </div>
+  )
+}
+
+function normalizeText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function DocumentosVentaSection({ ordenId, pagos = [] }) {
+  const crearDocumento = useCrearDocumentoVenta()
+  const [draft, setDraft] = useState({ documento: 'Factura Plast', nDoc: '', monto: '', tipoDocumento: '', fecha: '' })
+  const referenciales = pagos.filter(p => normalizeText(p.medioPago) === 'referencial')
+  const pagosReales = pagos.filter(p => normalizeText(p.medioPago) !== 'referencial')
+  const fmt = n => '$' + Number(n || 0).toLocaleString('es-CL')
+
+  function update(field, value) {
+    setDraft(prev => ({ ...prev, [field]: value }))
+  }
+
+  function submit() {
+    const monto = Number(draft.monto)
+    if (!draft.documento || !draft.nDoc || !Number.isFinite(monto) || monto <= 0) {
+      alert('Documento, numero y monto son requeridos')
+      return
+    }
+    crearDocumento.mutate({
+      ordenId,
+      data: {
+        documento: draft.documento,
+        nDoc: draft.nDoc,
+        monto,
+        tipoDocumento: draft.tipoDocumento || undefined,
+        fecha: draft.fecha || undefined,
+      },
+    }, {
+      onSuccess: () => setDraft(prev => ({ ...prev, nDoc: '', monto: '', tipoDocumento: '', fecha: '' })),
+      onError: err => alert(err.response?.data?.error || 'No se pudo crear el documento'),
+    })
+  }
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, padding: 12, background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+        <Select value={draft.documento} onChange={v => update('documento', v)} options={DOCUMENTOS_VENTA} />
+        <Input value={draft.nDoc} onChange={v => update('nDoc', v)} placeholder="N doc" />
+        <Input value={draft.monto} onChange={v => update('monto', v)} type="number" prefix="$" placeholder="Monto" />
+        <Input value={draft.tipoDocumento} onChange={v => update('tipoDocumento', v)} placeholder="Tipo doc" />
+        <Input value={draft.fecha} onChange={v => update('fecha', v)} type="date" />
+        <button type="button" onClick={submit} disabled={crearDocumento.isPending} style={{ ...actionBtn('var(--green-700)'), justifyContent: 'center' }}>
+          <Icon name="plusCircle" size={13} /> {crearDocumento.isPending ? 'Creando' : 'Crear'}
+        </button>
+      </div>
+      {referenciales.length === 0 ? (
+        <div style={{ padding: 14, fontSize: 12, color: 'var(--text-3)' }}>Sin documentos referenciales</div>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ background: '#fafafa' }}>
+              {['Documento', 'N doc', 'Fecha', 'Monto', 'Estado', 'Pagos asociados'].map((h, i) => (
+                <th key={h} style={{ padding: '8px 10px', textAlign: i >= 3 ? 'right' : 'left', fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {referenciales.map(doc => {
+              const pagosDoc = pagosReales.filter(p => p.documento === doc.documento && p.nDoc === doc.nDoc)
+              const totalPagos = pagosDoc.reduce((sum, p) => sum + Number(p.monto || 0), 0)
+              return (
+                <tr key={doc.id} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '8px 10px' }}>{doc.documento}</td>
+                  <td style={{ padding: '8px 10px', fontFamily: "'DM Mono',monospace" }}>{doc.nDoc}</td>
+                  <td style={{ padding: '8px 10px', fontFamily: "'DM Mono',monospace" }}>{doc.fecha ? new Date(doc.fecha).toLocaleDateString('es-CL') : '—'}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>{fmt(doc.monto)}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right' }}>{doc.estadoPagoDoc || 'No pagada'}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: "'DM Mono',monospace" }}>{fmt(totalPagos)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }
@@ -389,7 +515,7 @@ export default function VentasFormPage() {
   const isEdit = !!id
   const user = useAuthStore(s => s.user)
   const canDeleteVentas = can(user, 'ventas', 'delete')
-  const canWriteTaller = can(user, 'taller', 'write')
+  const canPasarTaller = canAny(user, [['taller', 'write'], ['ventas', 'write']])
 
   const { data: found, isLoading } = useVenta(isEdit ? Number(id) : null)
   const { data: clientesResult } = useClientes()
@@ -398,6 +524,7 @@ export default function VentasFormPage() {
   const updateVenta = useUpdateVenta()
   const anularVenta = useAnularVenta()
   const activarVenta = useActivarVenta()
+  const { data: descuentosCatalogo } = useDescuentos()
 
   function handleAnular() {
     if (!confirm(`¿Anular venta #${id}? Quedará marcada como Nula y eliminada.`)) return
@@ -411,7 +538,7 @@ export default function VentasFormPage() {
     if (!w) alert('Habilita popups para imprimir')
   }
   function handlePasarTaller() {
-    navigate(`/taller/nueva?ordenId=${id}`)
+    navigate(`/pasar-taller?ordenId=${id}`)
   }
 
   const { data, set } = useForm({
@@ -459,15 +586,19 @@ export default function VentasFormPage() {
 
   const descuento = Number(data.descuentoPct) || 0
   const subtotal = items.reduce((s, i) => s + (Number(i.cantidad) || 0) * (Number(i.precioUnitario) || 0), 0)
-  const totalCalculado = subtotal * (1 - descuento / 100)
-  const itemsLocked = isEdit && hasDeliveredItems(found)
+  const cargosTotal = (found?.cargos || []).reduce((s, c) => s + Number(c.valor || 0), 0)
+  const totalBase = subtotal + cargosTotal
+  const descuentoMonto = discountAmount(totalBase, descuento)
+  const totalCalculado = totalBase - descuentoMonto
+  const itemsLocked = isEdit && (hasDeliveredItems(found) || hasFinancialTrace(found))
+  const financialLocked = isEdit && hasFinancialTrace(found)
 
   function addProducto(p) {
     if (itemsLocked) return
     setItems(prev => {
       const existing = prev.findIndex(i => i.productoId === p.id)
       if (existing >= 0) return prev.map((item, idx) => idx === existing ? { ...item, cantidad: Number(item.cantidad) + 1 } : item)
-      return [...prev, { productoId: p.id, nombre: p.nombre, codigoInterno: p.codigoInterno || '', cantidad: 1, precioUnitario: p.precioLista || 0 }]
+      return [...prev, { productoId: p.id, nombre: p.nombre, codigoInterno: p.codigoInterno || '', cantidad: 1, precioUnitario: defaultPrecioUnitario(p, data.tipo) }]
     })
   }
 
@@ -477,11 +608,15 @@ export default function VentasFormPage() {
     const shouldSendItems = !isEdit || !itemsLocked
     const itemError = shouldSendItems ? validateItems(items) : null
     if (itemError) { alert(itemError); return }
+    if (isConvenioMarco(data.tipo) && !String(data.licitacion || '').replace(/\s+/g, '').trim()) {
+      alert('Ingresa la OC de Convenio Marco')
+      return
+    }
 
     const normalizedItems = shouldSendItems ? normalizeItems(items) : null
     const payload = {
       tipo: data.tipo, estado: data.estado,
-      estadoPago: data.estadoPago, estadoEntrega: data.estadoEntrega,
+      estadoEntrega: data.estadoEntrega,
       licitacion: data.licitacion || undefined,
       observaciones: data.observaciones || undefined,
     }
@@ -490,9 +625,7 @@ export default function VentasFormPage() {
     if (data.descuentoPct !== '') payload.descuentoPct = Number(data.descuentoPct)
 
     if (isEdit) {
-      if (data.abono !== '') payload.abono = Number(data.abono)
       if (data.guias !== '') payload.guias = parseInt(data.guias, 10)
-      if (data.facturado !== '') payload.facturado = Number(data.facturado)
       if (shouldSendItems) payload.items = normalizedItems
       updateVenta.mutate({ id: Number(id), data: payload }, {
         onSuccess: () => navigate('/ventas'),
@@ -519,6 +652,22 @@ export default function VentasFormPage() {
     ...sucursalesCliente.map(s => ({ value: String(s.id), label: `${s.nombre}${s.comuna ? ` - ${s.comuna}` : ''}` })),
   ]
   const selectedSucursal = sucursalesCliente.find(s => String(s.id) === data.clienteSucursalId)
+  const normalDiscountValues = (descuentosCatalogo?.normales || []).map(d => String(d.valor))
+  const marcoDiscountValues = (descuentosCatalogo?.marco || []).map(d => String(d.valor))
+  const normalDiscountOptions = [
+    { value: '', label: 'Sin descuento' },
+    ...normalDiscountValues.map(v => ({ value: v, label: `${v}%` })),
+    ...(data.descuentoPct !== '' && isNormalDiscountTipo(data.tipo) && !normalDiscountValues.includes(String(data.descuentoPct))
+      ? [{ value: String(data.descuentoPct), label: `${data.descuentoPct}% (valor actual)` }]
+      : []),
+  ]
+  const marcoDiscountOptions = [
+    { value: '', label: 'Sin descuento' },
+    ...marcoDiscountValues.map(v => ({ value: v, label: `${v}%` })),
+    ...(data.descuentoPct !== '' && isConvenioMarco(data.tipo) && !marcoDiscountValues.includes(String(data.descuentoPct))
+      ? [{ value: String(data.descuentoPct), label: `${data.descuentoPct}% (valor actual)` }]
+      : []),
+  ]
 
   if (isEdit && isLoading) return <main style={{ padding: 24 }}><p>Cargando...</p></main>
 
@@ -565,7 +714,7 @@ export default function VentasFormPage() {
           <Select value={data.tipo} onChange={v => set('tipo', v)} options={TIPOS} />
         </FormField>
         <FormField label="Estado Pago">
-          <Select value={data.estadoPago} onChange={v => set('estadoPago', v)} options={['No pagada', 'Pagada', 'Parcial']} />
+          <Input value={data.estadoPago} onChange={() => null} disabled />
         </FormField>
         <FormField label="Estado Entrega">
           <Select value={data.estadoEntrega} onChange={v => set('estadoEntrega', v)} options={['Pendiente entrega', 'Entregada', 'En despacho', 'Parcial']} />
@@ -575,8 +724,8 @@ export default function VentasFormPage() {
         <FormField label="Estado de la orden">
           <Select value={data.estado} onChange={v => set('estado', v)} options={['Activa', 'Cerrada', 'Nula', 'Completada', 'En proceso']} />
         </FormField>
-        <FormField label="ID Licitación / N° OC" hint="Ej: 61602954-LE15-1">
-          <Input value={data.licitacion || ''} onChange={v => set('licitacion', v)} placeholder="Código de seguimiento" />
+        <FormField label={isConvenioMarco(data.tipo) ? 'N OC Convenio Marco' : 'ID Licitacion / N OC'} hint={isConvenioMarco(data.tipo) ? 'Obligatorio y no duplicable' : 'Ej: 61602954-LE15-1'}>
+          <Input value={data.licitacion || ''} onChange={v => set('licitacion', v)} placeholder={isConvenioMarco(data.tipo) ? 'Numero OC' : 'Codigo de seguimiento'} />
         </FormField>
       </div>
 
@@ -584,10 +733,10 @@ export default function VentasFormPage() {
       {itemsLocked && (
         <div style={{ marginBottom: 12, padding: '10px 12px', border: '1px solid var(--amber)', borderRadius: 8, background: '#fff8e6', color: 'var(--text-2)', fontSize: 13, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
           <Icon name="lock" size={15} color="var(--amber)" />
-          <span>Los productos de esta venta no se pueden modificar porque ya registran entregas. Para mantener la trazabilidad, solo puedes actualizar campos administrativos.</span>
+          <span>Los productos de esta venta no se pueden modificar porque ya registran entregas, pagos o documentos. Para mantener la trazabilidad, solo puedes actualizar campos administrativos.</span>
         </div>
       )}
-      <ProductoSearch onAdd={addProducto} disabled={itemsLocked} />
+      <ProductoSearch onAdd={addProducto} tipoVenta={data.tipo} disabled={itemsLocked} />
       <div style={{ marginTop: 12 }}>
         <ItemsTable items={items} onChange={setItems} locked={itemsLocked} />
       </div>
@@ -595,7 +744,8 @@ export default function VentasFormPage() {
         <div style={{ marginTop: 10, background: 'var(--bg)', borderRadius: 8, padding: '12px 16px', display: 'flex', justifyContent: 'flex-end', gap: 24, alignItems: 'center' }}>
           {descuento > 0 && <>
             <span style={{ fontSize: 12, color: 'var(--text-2)' }}>Subtotal: <strong style={{ fontFamily: "'DM Mono',monospace" }}>${subtotal.toLocaleString('es-CL')}</strong></span>
-            <span style={{ fontSize: 12, color: 'var(--green-600)' }}>Dto. ({descuento}%): <strong style={{ fontFamily: "'DM Mono',monospace" }}>−${(subtotal * descuento / 100).toLocaleString('es-CL')}</strong></span>
+            {cargosTotal > 0 && <span style={{ fontSize: 12, color: 'var(--text-2)' }}>Cargos: <strong style={{ fontFamily: "'DM Mono',monospace" }}>${cargosTotal.toLocaleString('es-CL')}</strong></span>}
+            <span style={{ fontSize: 12, color: 'var(--green-600)' }}>Dto. ({descuento}%): <strong style={{ fontFamily: "'DM Mono',monospace" }}>-${descuentoMonto.toLocaleString('es-CL')}</strong></span>
           </>}
           <span style={{ fontSize: 15, fontWeight: 700 }}>Total: <span style={{ fontFamily: "'DM Mono',monospace", color: 'var(--green-700)' }}>${totalCalculado.toLocaleString('es-CL')}</span></span>
         </div>
@@ -603,15 +753,22 @@ export default function VentasFormPage() {
 
       <FormDivider label="Seguimiento financiero" />
       <div style={{ display: 'grid', gridTemplateColumns: isEdit ? '1fr 1fr 1fr 1fr' : '1fr', gap: 14 }}>
-        <FormField label="Descuento %" hint="Porcentaje global sobre subtotal">
-          <Input value={data.descuentoPct} onChange={v => set('descuentoPct', v)} type="number" placeholder="0" />
+        <FormField
+          label={isConvenioMarco(data.tipo) ? 'Descuento Convenio Marco' : isNormalDiscountTipo(data.tipo) ? 'Descuento normal' : 'Descuento %'}
+          hint={isConvenioMarco(data.tipo) || isNormalDiscountTipo(data.tipo) ? 'Catalogo de porcentajes autorizados' : 'Porcentaje global sobre subtotal'}
+        >
+          {isConvenioMarco(data.tipo)
+            ? <Select value={data.descuentoPct} onChange={v => set('descuentoPct', v)} options={marcoDiscountOptions} disabled={financialLocked} />
+            : isNormalDiscountTipo(data.tipo)
+              ? <Select value={data.descuentoPct} onChange={v => set('descuentoPct', v)} options={normalDiscountOptions} disabled={financialLocked} />
+              : <Input value={data.descuentoPct} onChange={v => set('descuentoPct', v)} type="number" placeholder="0" disabled={financialLocked} />}
         </FormField>
         {isEdit && <>
           <FormField label="Abono recibido">
-            <Input value={data.abono} onChange={v => set('abono', v)} type="number" prefix="$" placeholder="0" />
+            <Input value={data.abono} onChange={() => null} type="number" prefix="$" placeholder="0" disabled />
           </FormField>
           <FormField label="Monto facturado">
-            <Input value={data.facturado} onChange={v => set('facturado', v)} type="number" prefix="$" placeholder="0" />
+            <Input value={data.facturado} onChange={() => null} type="number" prefix="$" placeholder="0" disabled />
           </FormField>
           <FormField label="N° Guía despacho">
             <Input value={data.guias} onChange={v => set('guias', v)} type="number" placeholder="—" />
@@ -621,12 +778,19 @@ export default function VentasFormPage() {
 
       {isEdit && (
         <>
+          <FormDivider label="Documentos de venta" />
+          <DocumentosVentaSection ordenId={Number(id)} pagos={found?.pagos || []} />
+        </>
+      )}
+
+      {isEdit && (
+        <>
           <FormDivider label="Acciones" />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <button onClick={handleImprimir} style={actionBtn('var(--green-700)')}>
               <Icon name="printer" size={13} /> Imprimir nota
             </button>
-            {canWriteTaller && (
+            {canPasarTaller && (
               <button onClick={handlePasarTaller} style={actionBtn('var(--blue)')}>
                 <Icon name="tool" size={13} /> Pasar a taller
               </button>
@@ -655,7 +819,7 @@ export default function VentasFormPage() {
       {isEdit && (
         <>
           <FormDivider label="Cargos transporte" />
-          <CargosSection ordenId={Number(id)} />
+          <CargosSection ordenId={Number(id)} locked={financialLocked} />
         </>
       )}
 

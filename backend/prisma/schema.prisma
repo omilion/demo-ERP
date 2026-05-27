@@ -314,6 +314,11 @@ model PagoProveedor {
   ncMonto          Float?    @map("nc_monto")
   obs              String?
   stockAplicadoAt  DateTime? @map("stock_aplicado_at")
+  stockReversadoAt DateTime? @map("stock_reversado_at")
+  eliminado        Boolean   @default(false)
+  userMod          String?   @map("user_mod")
+  fecham           DateTime?
+  motivoEliminacion String?  @map("motivo_eliminacion")
   createdAt        DateTime  @default(now()) @map("created_at")
   movimientosBodega MovimientoBodega[]
   detallesFactura  DetalleFacturaProveedor[]
@@ -323,6 +328,7 @@ model PagoProveedor {
   @@index([proveedorId])
   @@index([codigoProveedor])
   @@index([nDoc])
+  @@index([eliminado])
   @@map("pagos_proveedores")
   @@schema("catalogo")
 }
@@ -376,13 +382,17 @@ model CargoTransporte {
 }
 
 model DetalleFacturaProveedor {
-  id            Int    @id @default(autoincrement())
-  pagoId        Int    @map("pago_id")
-  codigoInterno String @map("codigo_interno")
-  destino       String @default("producto")
-  cantidad      Float
-  precio        Float
-  pago          PagoProveedor @relation(fields: [pagoId], references: [id], onDelete: Cascade)
+  id             Int    @id @default(autoincrement())
+  pagoId         Int    @map("pago_id")
+  codigoInterno  String @map("codigo_interno")
+  destino        String @default("producto")
+  cantidad       Float
+  precio         Float
+  nombre         String?
+  unidadMedida   String? @map("unidad_medida")
+  categoriaId    Int?    @map("categoria_id")
+  subcategoriaId Int?    @map("subcategoria_id")
+  pago           PagoProveedor @relation(fields: [pagoId], references: [id], onDelete: Cascade)
 
   @@index([pagoId])
   @@map("detalle_facturas_proveedor")
@@ -709,6 +719,7 @@ model Turno {
   id             Int              @id @default(autoincrement())
   cajaId         Int              @map("caja_id")
   userId         Int              @map("user_id")
+  cerradoPorId   Int?             @map("cerrado_por_id")
   estado         String           @default("abierto")
   apertura       DateTime         @default(now())
   cierre         DateTime?
@@ -729,6 +740,7 @@ model MovimientoCaja {
   cuotas          Int?
   referencia      String?
   ordenId         Int?      @map("orden_id")
+  sucursalId      Int?      @map("sucursal_id")
   documento       String?
   nDoc            String?   @map("n_doc")
   tipoDocumento   String?   @map("tipo_documento")
@@ -753,6 +765,7 @@ model MovimientoCaja {
 
   @@index([turnoId])
   @@index([ordenId])
+  @@index([sucursalId])
   @@index([gastoTipoId])
   @@index([origenTipo, origenId])
   @@map("movimientos_caja")
@@ -762,6 +775,8 @@ model MovimientoCaja {
 model CierreCaja {
   id            Int      @id @default(autoincrement())
   turnoId       Int      @unique @map("turno_id")
+  cerradoPorId  Int?     @map("cerrado_por_id")
+  cerradoPorNombre String? @map("cerrado_por_nombre")
   efectivo      Float    @default(0)
   debito        Float    @default(0)
   credito       Float    @default(0)
@@ -773,6 +788,17 @@ model CierreCaja {
   comision      Float    @default(0)
   otros         Float    @default(0)
   total         Float    @default(0)
+  efectivoContado      Float @default(0) @map("efectivo_contado")
+  debitoContado        Float @default(0) @map("debito_contado")
+  creditoContado       Float @default(0) @map("credito_contado")
+  chequeDiaContado     Float @default(0) @map("cheque_dia_contado")
+  chequeFechaContado   Float @default(0) @map("cheque_fecha_contado")
+  transferenciaContado Float @default(0) @map("transferencia_contado")
+  webpayContado        Float @default(0) @map("webpay_contado")
+  transbankContado     Float @default(0) @map("transbank_contado")
+  otrosContado         Float @default(0) @map("otros_contado")
+  totalContado         Float @default(0) @map("total_contado")
+  diferencia           Float @default(0)
   obs           String?
   createdAt     DateTime @default(now()) @map("created_at")
   turno         Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
@@ -1096,6 +1122,10 @@ model GuiaDespacho {
   origen     String?
   origenTipo String?  @map("origen_tipo")
   origenId   Int?     @map("origen_id")
+  eliminado  Boolean  @default(false)
+  userMod    String?  @map("user_mod")
+  fecham     DateTime?
+  motivoEliminacion String? @map("motivo_eliminacion")
   createdAt  DateTime @default(now()) @map("created_at")
   orden      Orden?   @relation(fields: [ordenId], references: [id], onDelete: SetNull)
   odt        Odt?     @relation(fields: [odtId], references: [id], onDelete: SetNull)
@@ -1128,6 +1158,10 @@ model Despacho {
   origenTipo   String?   @map("origen_tipo")
   origenId     Int?      @map("origen_id")
   usuario      String?
+  eliminado    Boolean   @default(false)
+  userMod      String?   @map("user_mod")
+  fecham       DateTime?
+  motivoEliminacion String? @map("motivo_eliminacion")
   createdAt    DateTime  @default(now()) @map("created_at")
   orden        Orden?    @relation(fields: [ordenId], references: [id], onDelete: SetNull)
   odt          Odt?      @relation(fields: [odtId], references: [id], onDelete: SetNull)

@@ -5,6 +5,13 @@ import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 
+const SEARCH_MODES = [
+  { id: 'general', label: 'Todos', placeholder: 'Nombre, RUT, razon social o codigo...' },
+  { id: 'nombre', label: 'Nombre', placeholder: 'Nombre proveedor' },
+  { id: 'rut', label: 'RUT', placeholder: 'RUT proveedor' },
+  { id: 'codigoProveedor', label: 'Codigo', placeholder: 'Codigo proveedor' },
+]
+
 const fmt = n => n ? `${n}%` : '—'
 const fmtPeso = n => '$' + (n || 0).toLocaleString('es-CL')
 const fmtDate = d => d ? new Date(d).toLocaleDateString('es-CL') : '—'
@@ -19,7 +26,10 @@ function PagoForm({ proveedorId, onClose, canWrite }) {
 
   const handleSave = () => {
     if (!canWrite) return
-    if (!form.total) return
+    if (!form.documento.trim()) return alert('Documento requerido')
+    if (!form.nDoc.trim()) return alert('N Doc requerido')
+    if (!form.fechaDoc) return alert('Fecha Doc requerida')
+    if (!form.total) return alert('Total requerido')
     create.mutate({ proveedorId, ...form }, { onSuccess: onClose })
   }
 
@@ -118,9 +128,14 @@ function TabDatos({ p }) {
 }
 
 // ── TabPagos ────────────────────────────────────────────────────────────────────
-function TabPagos({ proveedorId, pagos = [], canWrite }) {
+function TabPagos({ proveedorId, pagos = [], canWrite, canDelete }) {
   const [showForm, setShowForm] = useState(false)
   const deletePago = useDeletePagoProveedor()
+  const confirmDeletePago = (p) => {
+    const doc = `${p.documento || 'Documento'} ${p.nDoc ? `#${p.nDoc}` : ''}`.trim()
+    if (!confirm(`Eliminar/anular pago ${doc} por ${fmtPeso(p.total)}?`)) return
+    deletePago.mutate({ proveedorId, pagoId: p.id })
+  }
 
   const total = pagos.reduce((s, p) => s + (p.total || 0), 0)
   const pendientes = pagos.filter(p => p.estado === 'Pendiente').length
@@ -178,7 +193,7 @@ function TabPagos({ proveedorId, pagos = [], canWrite }) {
             {p.obs && <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 3 }}>{p.obs}</div>}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5, fontSize: 11, color: 'var(--text-3)' }}>
               <span>{p.usuario || '—'}</span>
-              {canWrite && <button onClick={() => deletePago.mutate({ proveedorId, pagoId: p.id })} style={{ fontSize: 11, color: 'var(--red)', cursor: 'pointer', background: 'none', border: 'none', padding: '0 2px' }}>Eliminar</button>}
+              {canDelete && <button onClick={() => confirmDeletePago(p)} style={{ fontSize: 11, color: 'var(--red)', cursor: 'pointer', background: 'none', border: 'none', padding: '0 2px' }}>Eliminar</button>}
             </div>
           </div>
         ))
@@ -204,14 +219,14 @@ function TabBtn({ active, onClick, children, badge }) {
   )
 }
 
-function ViewProveedorPanel({ proveedor, onClose, onEdit, canWrite }) {
+function ViewProveedorPanel({ proveedor, onClose, onEdit, canWrite, canDelete, canWritePagos, canDeletePagos }) {
   const [tab, setTab] = useState('datos')
   const { data: full, isLoading } = useProveedor(proveedor.id)
   const p = full || proveedor
   const pagos = full?.pagos ?? []
   const deleteProv = useDeleteProveedor()
   const handleDelete = () => {
-    if (!canWrite) return
+    if (!canDelete) return
     if (!confirm(`¿Eliminar proveedor "${p.nombre}"? (soft delete)`)) return
     deleteProv.mutate(p.id, { onSuccess: onClose })
   }
@@ -230,7 +245,7 @@ function ViewProveedorPanel({ proveedor, onClose, onEdit, canWrite }) {
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             {canWrite && <button onClick={() => onEdit(p)} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Editar</button>}
-            {canWrite && <button onClick={handleDelete} disabled={deleteProv.isPending} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--red, #fca5a5)', background: '#fff', cursor: 'pointer', color: 'var(--red, #991b1b)' }}>Eliminar</button>}
+            {canDelete && <button onClick={handleDelete} disabled={deleteProv.isPending} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--red, #fca5a5)', background: '#fff', cursor: 'pointer', color: 'var(--red, #991b1b)' }}>Eliminar</button>}
             <button onClick={onClose} style={{ color: 'var(--text-3)', padding: 4 }}><Icon name="x" size={18} /></button>
           </div>
         </div>
@@ -246,7 +261,7 @@ function ViewProveedorPanel({ proveedor, onClose, onEdit, canWrite }) {
             <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Cargando…</div>
           )}
           {tab === 'datos' && <TabDatos p={p} />}
-          {tab === 'pagos' && <TabPagos proveedorId={p.id} pagos={pagos} canWrite={canWrite} />}
+          {tab === 'pagos' && <TabPagos proveedorId={p.id} pagos={pagos} canWrite={canWritePagos} canDelete={canDeletePagos} />}
         </div>
       </div>
     </div>
@@ -274,11 +289,16 @@ function ProveedorFormModal({ proveedor, onClose }) {
   const create = useCreateProveedor()
   const update = useUpdateProveedor()
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const requiredFields = ['nombre', 'razonSocial', 'rut', 'giro', 'email', 'telefono', 'direccion', 'region', 'comuna']
   const handleSave = () => {
-    if (!form.nombre.trim()) return alert('Nombre requerido')
+    for (const field of requiredFields) {
+      if (!String(form[field] || '').trim()) return alert(`${field} requerido`)
+    }
+    if (form.nombre.trim().length < 4) return alert('Nombre debe tener al menos 4 caracteres')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return alert('Email invalido')
     const payload = { ...form }
-    if (isEdit) update.mutate({ id: proveedor.id, ...payload }, { onSuccess: onClose })
-    else create.mutate(payload, { onSuccess: onClose })
+    if (isEdit) update.mutate({ id: proveedor.id, ...payload }, { onSuccess: onClose, onError: err => alert(err?.response?.data?.error || 'No se pudo guardar') })
+    else create.mutate(payload, { onSuccess: onClose, onError: err => alert(err?.response?.data?.error || 'No se pudo crear') })
   }
   const pending = create.isPending || update.isPending
   const inp = { width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box' }
@@ -288,17 +308,24 @@ function ProveedorFormModal({ proveedor, onClose }) {
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>{isEdit ? 'Editar proveedor' : 'Nuevo proveedor'}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
           {[
-            ['Nombre *', 'nombre'], ['Razón social', 'razonSocial'],
-            ['RUT', 'rut'], ['Código', 'codigoProveedor'],
-            ['Giro', 'giro'], ['Email', 'email'],
-            ['Teléfono', 'telefono'], ['Dirección', 'direccion'],
-            ['Región', 'region'], ['Comuna', 'comuna'],
+            ['Nombre *', 'nombre'], ['Razon social *', 'razonSocial'],
+            ['RUT *', 'rut'], ['Codigo', 'codigoProveedor'],
+            ['Giro *', 'giro'], ['Email *', 'email'],
+            ['Telefono *', 'telefono'], ['Direccion *', 'direccion'],
+            ['Region *', 'region'], ['Comuna *', 'comuna'],
             ['Mg. Sala %', 'porcVentaSala'], ['Mg. Marco %', 'porcMarco'],
             ['Mg. Lic. %', 'porcLicitacion'],
           ].map(([label, key]) => (
             <div key={key}>
               <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>{label}</div>
-              <input value={form[key]} onChange={e => set(key, e.target.value)} style={inp} />
+              <input
+                value={form[key]}
+                onChange={e => set(key, e.target.value)}
+                type={['codigoProveedor', 'porcVentaSala', 'porcMarco', 'porcLicitacion'].includes(key) ? 'number' : key === 'email' ? 'email' : 'text'}
+                min={key === 'codigoProveedor' ? 1 : undefined}
+                step="1"
+                style={inp}
+              />
             </div>
           ))}
         </div>
@@ -314,8 +341,12 @@ function ProveedorFormModal({ proveedor, onClose }) {
 // ── Main Page ───────────────────────────────────────────────────────────────────
 export default function ProveedoresPage() {
   const user = useAuthStore(s => s.user)
-  const canWriteCatalogo = can(user, 'catalogo', 'write')
+  const canWriteProveedores = can(user, 'proveedores', 'write')
+  const canDeleteProveedores = can(user, 'proveedores', 'delete')
+  const canWritePagos = can(user, 'proveedores', 'write')
+  const canDeletePagos = can(user, 'proveedores', 'delete')
   const [search, setSearch] = useState('')
+  const [searchMode, setSearchMode] = useState('general')
   const [debounced, setDebounced] = useState('')
   const [selected, setSelected] = useState(null)
   const [editing, setEditing] = useState(null)
@@ -329,7 +360,11 @@ export default function ProveedoresPage() {
   }, [search])
 
   const params = {}
-  if (debounced) params.search = debounced
+  if (debounced) {
+    if (searchMode === 'general') params.search = debounced
+    else params[searchMode] = debounced
+  }
+  const selectedSearchMode = SEARCH_MODES.find(m => m.id === searchMode) ?? SEARCH_MODES[0]
 
   const { data: result = { items: [], total: 0 }, isLoading } = useProveedores(params)
   const proveedores = result.items ?? []
@@ -382,9 +417,10 @@ export default function ProveedoresPage() {
         breadcrumb={['Inicio', 'Catálogo', 'Proveedores']}
         actions={<div style={{ display: 'flex', gap: 8 }}>
           <Btn variant="secondary" icon="download" size="sm"
-            onClick={() => downloadFromBackend('/reportes/export/proveedores', `proveedores_${new Date().toISOString().slice(0, 10)}.csv`)}
+            onClick={() => downloadFromBackend('/reportes/export/proveedores', `proveedores_${new Date().toISOString().slice(0, 10)}.csv`, params)}
           >Exportar CSV</Btn>
-          {canWriteCatalogo && <Btn variant="primary" icon="plus" size="sm" onClick={() => setCreating(true)}>Nuevo proveedor</Btn>}
+          <Btn variant="secondary" icon="printer" size="sm" onClick={() => window.print()}>PDF/Imprimir</Btn>
+          {canWriteProveedores && <Btn variant="primary" icon="plus" size="sm" onClick={() => setCreating(true)}>Nuevo proveedor</Btn>}
         </div>}
       />
 
@@ -396,11 +432,24 @@ export default function ProveedoresPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>
             {total.toLocaleString('es-CL')} proveedores
           </span>
-          <SearchBar placeholder="Nombre, RUT, razón social..." value={search} onChange={setSearch} style={{ width: 280 }} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {SEARCH_MODES.map(mode => (
+                <button
+                  key={mode.id}
+                  onClick={() => { setSearchMode(mode.id); setSearch('') }}
+                  style={searchModeButtonStyle(searchMode === mode.id)}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+            <SearchBar placeholder={selectedSearchMode.placeholder} value={search} onChange={setSearch} style={{ width: 300 }} />
+          </div>
         </div>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
@@ -413,9 +462,23 @@ export default function ProveedoresPage() {
         )}
       </div>
 
-      {selected && <ViewProveedorPanel proveedor={selected} canWrite={canWriteCatalogo} onClose={() => setSelected(null)} onEdit={p => { setSelected(null); setEditing(p) }} />}
+      {selected && <ViewProveedorPanel proveedor={selected} canWrite={canWriteProveedores} canDelete={canDeleteProveedores} canWritePagos={canWritePagos} canDeletePagos={canDeletePagos} onClose={() => setSelected(null)} onEdit={p => { setSelected(null); setEditing(p) }} />}
       {creating && <ProveedorFormModal onClose={() => setCreating(false)} />}
       {editing && <ProveedorFormModal proveedor={editing} onClose={() => setEditing(null)} />}
     </main>
   )
+}
+
+function searchModeButtonStyle(active) {
+  return {
+    padding: '6px 10px',
+    borderRadius: 7,
+    border: active ? '1px solid var(--green-600)' : '1px solid var(--border)',
+    background: active ? 'var(--green-50)' : '#fff',
+    color: active ? 'var(--green-700)' : 'var(--text-2)',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+  }
 }

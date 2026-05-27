@@ -11,6 +11,8 @@
     "dev": "node --watch src/app.js",
     "start": "node src/app.js",
     "test": "vitest run",
+    "test:full": "vitest run",
+    "test:ci": "vitest run staging-smoke.test.js app.test.js rrhh-helpers.test.js despachos-traceability.test.js bitacora-taller.test.js cobranza-pagos-proveedores.test.js odts.test.js lifecycle-route-permissions.test.js odt-consumos.test.js odt-item-workflow.test.js odt-operations.test.js pasar-taller.test.js stock-critico-job.test.js descuentos.test.js gastos.test.js uploads.test.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "node prisma/seed.js",

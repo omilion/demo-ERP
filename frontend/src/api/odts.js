@@ -67,6 +67,30 @@ export const useOdtEstado = () => {
   })
 }
 
+export const useCerrarOdt = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, estado = 'Terminada', razon }) => api.post(`/odts/${id}/cerrar`, { estado, razon }).then(r => r.data),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['odts'] })
+      qc.invalidateQueries({ queryKey: ['odts', Number(id)] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+}
+
+export const useAnularOdt = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, razon }) => api.post(`/odts/${id}/anular`, { razon }).then(r => r.data),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['odts'] })
+      qc.invalidateQueries({ queryKey: ['odts', Number(id)] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+}
+
 export const useOdtItemTallerEstado = () => {
   const qc = useQueryClient()
   return useMutation({

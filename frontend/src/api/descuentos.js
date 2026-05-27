@@ -16,6 +16,14 @@ export const useCreateDescuento = () => {
   })
 }
 
+export const useUpdateDescuento = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ tipo, id, valor }) => api.put(`/descuentos/${tipo}/${id}`, { valor }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['descuentos'] }),
+  })
+}
+
 export const useDeleteDescuento = () => {
   const qc = useQueryClient()
   return useMutation({

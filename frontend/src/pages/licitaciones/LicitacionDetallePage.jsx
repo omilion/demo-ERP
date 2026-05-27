@@ -1,24 +1,92 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Badge, PageHeader, Btn, Table } from '../../components/shared'
 import { FormField, Input, Select, Textarea } from '../../components/forms'
 import {
   useCotizacion, useUpdateCotizacion, useDeleteCotizacion,
   useAddCotizacionItem, useUpdateCotizacionItem, useDeleteCotizacionItem,
-  useCrearVentaDesdeLicitacion,
+  useCrearVentaDesdeLicitacion, useActualizarVentaDesdeLicitacion,
 } from '../../api/cotizaciones'
+import { useProductos } from '../../api/productos'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 const ESTADO_TONE = {
   'Pendiente':  'amber', 'Adjudicada': 'green', 'Cerrada': 'neutral',
-  'Rechazada':  'red',   'En proceso': 'blue',
+  'No Adjudicada': 'red', 'Rechazada':  'red',   'En proceso': 'blue',
 }
-const ESTADOS = ['Pendiente', 'En proceso', 'Adjudicada', 'Rechazada', 'Cerrada']
+const ESTADOS = ['Pendiente', 'En proceso', 'Adjudicada', 'No Adjudicada', 'Rechazada', 'Cerrada']
 
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
+
+const licitacionForm = data => ({
+  estado: data.estado || 'Pendiente',
+  rutCliente: data.rutCliente || '',
+  obs: data.obs || '',
+  plazo: data.plazo || '',
+  ordenCompra: data.ordenCompra || '',
+  referencia: data.referencia || '',
+  fecha: data.fecha ? data.fecha.slice(0, 10) : '',
+})
+
+function precioLicitacion(producto) {
+  return Number(producto.consultaPrecios?.precioLicitacion ?? producto.precioLicitacion ?? producto.precioLista ?? 0)
+}
+
+function ProductoLookup({ onSelect }) {
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const { data: result } = useProductos(q.length >= 2 ? { search: q, limit: 15 } : {})
+  const productos = result?.items ?? []
+
+  useEffect(() => {
+    const handler = event => { if (ref.current && !ref.current.contains(event.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={ref} style={{ position: 'relative', marginBottom: 8 }}>
+      <input
+        value={q}
+        onChange={e => { setQ(e.target.value); setOpen(true) }}
+        onFocus={() => q.length >= 2 && setOpen(true)}
+        placeholder="Buscar en catalogo por codigo o nombre"
+        style={{ ...inputSm, width: '100%' }}
+      />
+      {open && q.length >= 2 && productos.length > 0 && (
+        <div style={{ position: 'absolute', zIndex: 20, top: 'calc(100% + 4px)', left: 0, right: 0, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', maxHeight: 260, overflowY: 'auto' }}>
+          {productos.slice(0, 15).map(producto => (
+            <button
+              key={producto.id}
+              type="button"
+              onClick={() => {
+                onSelect(producto)
+                setQ('')
+                setOpen(false)
+              }}
+              style={{ display: 'grid', gridTemplateColumns: '120px 1fr 120px', gap: 8, width: '100%', padding: '8px 10px', border: 0, borderBottom: '1px solid var(--border)', background: '#fff', textAlign: 'left', cursor: 'pointer', fontSize: 12 }}
+            >
+              <span style={{ fontFamily: "'DM Mono', monospace", color: 'var(--text-3)' }}>{producto.codigoInterno || '-'}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{producto.nombre}</span>
+              <span style={{ fontFamily: "'DM Mono', monospace", textAlign: 'right' }}>{fmt(precioLicitacion(producto))}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function LicitacionDetallePage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const canReadVentas = can(user, 'ventas', 'read')
+  const canWriteVentas = can(user, 'ventas', 'write')
+  const canWriteLicitaciones = can(user, 'licitaciones', 'write')
+  const canDeleteLicitaciones = can(user, 'licitaciones', 'delete')
   const { data, isLoading } = useCotizacion(id)
   const updateMut = useUpdateCotizacion()
   const deleteMut = useDeleteCotizacion()
@@ -26,23 +94,13 @@ export default function LicitacionDetallePage() {
   const updateItemMut = useUpdateCotizacionItem()
   const deleteItemMut = useDeleteCotizacionItem()
   const crearVentaMut = useCrearVentaDesdeLicitacion()
+  const actualizarVentaMut = useActualizarVentaDesdeLicitacion()
 
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({})
   const [editItemId, setEditItemId] = useState(null)
   const [itemForm, setItemForm] = useState({})
   const [newItem, setNewItem] = useState({ codigoInterno: '', nombre: '', descripcion: '', cantidad: '', cantAdjudicados: '', precio: '' })
-
-  useEffect(() => {
-    if (data) setForm({
-      estado: data.estado || 'Pendiente',
-      obs: data.obs || '',
-      plazo: data.plazo || '',
-      ordenCompra: data.ordenCompra || '',
-      referencia: data.referencia || '',
-      fecha: data.fecha ? data.fecha.slice(0, 10) : '',
-    })
-  }, [data])
 
   if (isLoading) return <main style={{ padding: 24 }}>Cargando…</main>
   if (!data) return <main style={{ padding: 24 }}>No encontrada</main>
@@ -103,9 +161,38 @@ export default function LicitacionDetallePage() {
       onError: (err) => alert(err?.response?.data?.error || 'Error al crear venta'),
     })
   }
+  const actualizarVenta = () => {
+    if (!data.orden?.id && !data.ordenId) return
+    if (!confirm('Actualizar la venta vinculada con los items adjudicados actuales?')) return
+    actualizarVentaMut.mutate(data.id, {
+      onSuccess: (res) => {
+        alert(res.faltantes?.length ? `Venta actualizada. Faltantes: ${res.faltantes.join(', ')}` : 'Venta actualizada')
+        navigate('/ventas/' + res.orden.id + '/editar')
+      },
+      onError: (err) => alert(err?.response?.data?.error || 'Error al actualizar venta'),
+    })
+  }
+  const adjudicarTodo = () => {
+    if (!canWriteLicitaciones || !items.length) return
+    if (!confirm('Adjudicar todos los items por su cantidad cotizada?')) return
+    items.forEach(item => {
+      updateItemMut.mutate({
+        id: data.id,
+        itemId: item.id,
+        data: { cantAdjudicados: item.cantidad },
+      })
+    })
+  }
   const imprimir = () => window.print()
 
   const hasAdjudicados = items.some(i => (i.cantAdjudicados || 0) > 0)
+  const faltantesVenta = [
+    !data.rutCliente && 'cliente asociado',
+    data.estado !== 'Adjudicada' && 'estado Adjudicada',
+    !String(data.plazo || '').trim() && 'plazo',
+    !String(data.ordenCompra || '').trim() && 'orden de compra',
+    !hasAdjudicados && 'items adjudicados',
+  ].filter(Boolean)
 
   const cols = [
     { key: 'codigoInterno', label: 'Código', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{v || '—'}</span> },
@@ -119,12 +206,12 @@ export default function LicitacionDetallePage() {
     { key: '_total', label: 'Total', align: 'right',
       render: (_, row) => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600, fontSize: 12 }}>{fmt((row.cantidad||0) * (row.precio||0))}</span> },
     { key: '_acc', label: '', align: 'right',
-      render: (_, row) => (
+      render: (_, row) => canWriteLicitaciones || canDeleteLicitaciones ? (
         <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-          <button onClick={() => startEditItem(row)} style={btnTiny}>Editar</button>
-          <button onClick={() => deleteItem(row.id)} style={{ ...btnTiny, color: 'var(--red)' }}>×</button>
+          {canWriteLicitaciones && <button onClick={() => startEditItem(row)} style={btnTiny}>Editar</button>}
+          {canDeleteLicitaciones && <button onClick={() => deleteItem(row.id)} style={{ ...btnTiny, color: 'var(--red)' }}>×</button>}
         </div>
-      ) },
+      ) : null },
   ]
 
   return (
@@ -136,14 +223,20 @@ export default function LicitacionDetallePage() {
         actions={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {!editing && <>
-              <Btn variant="primary" size="sm" onClick={() => setEditing(true)}>Editar</Btn>
-              {hasAdjudicados && (
-                <Btn variant="secondary" size="sm" onClick={crearVenta} disabled={crearVentaMut.isPending}>
+              {canWriteLicitaciones && <Btn variant="primary" size="sm" onClick={() => { setForm(licitacionForm(data)); setEditing(true) }}>Editar</Btn>}
+              {canWriteLicitaciones && canWriteVentas && hasAdjudicados && !data.orden && (
+                <Btn variant="secondary" size="sm" onClick={crearVenta} disabled={crearVentaMut.isPending || faltantesVenta.length > 0}>
                   {crearVentaMut.isPending ? 'Creando…' : '→ Crear Venta'}
                 </Btn>
               )}
+              {canWriteLicitaciones && canWriteVentas && data.orden && (
+                <Btn variant="secondary" size="sm" onClick={actualizarVenta} disabled={actualizarVentaMut.isPending || faltantesVenta.length > 0}>
+                  {actualizarVentaMut.isPending ? 'Actualizando…' : 'Actualizar venta'}
+                </Btn>
+              )}
+              <Btn variant="secondary" size="sm" onClick={() => navigate(`/licitaciones/${data.id}/ficha`)}>Ficha Tec. y Eco.</Btn>
               <Btn variant="secondary" size="sm" onClick={imprimir}>Imprimir</Btn>
-              <Btn variant="secondary" size="sm" onClick={handleDelete} disabled={deleteMut.isPending}>Eliminar</Btn>
+              {canDeleteLicitaciones && <Btn variant="secondary" size="sm" onClick={handleDelete} disabled={deleteMut.isPending}>Eliminar</Btn>}
             </>}
             {editing && <>
               <Btn variant="secondary" size="sm" onClick={() => setEditing(false)} disabled={updateMut.isPending}>Cancelar</Btn>
@@ -170,6 +263,9 @@ export default function LicitacionDetallePage() {
             </FormField>
             <FormField label="OC">
               <Input value={form.ordenCompra} onChange={v => setForm(f => ({ ...f, ordenCompra: v }))} />
+            </FormField>
+            <FormField label="RUT organismo">
+              <Input value={form.rutCliente} onChange={v => setForm(f => ({ ...f, rutCliente: v }))} />
             </FormField>
             <FormField label="Referencia">
               <Input value={form.referencia} onChange={v => setForm(f => ({ ...f, referencia: v }))} />
@@ -222,7 +318,7 @@ export default function LicitacionDetallePage() {
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={{ fontSize: 12, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Cadena vinculada</div>
-            <button onClick={() => navigate('/ventas/' + data.orden.id + '/editar')} style={btnSm}>Ver orden →</button>
+            {canReadVentas && <button onClick={() => navigate('/ventas/' + data.orden.id)} style={btnSm}>Ver orden →</button>}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, fontSize: 13 }}>
             <div><span style={{ color: 'var(--text-3)' }}>Orden:</span> <strong>#{data.orden.nInterno || data.orden.id}</strong></div>
@@ -275,12 +371,19 @@ export default function LicitacionDetallePage() {
         </div>
       )}
 
+      {!data.orden && faltantesVenta.length > 0 && (
+        <div style={{ background: '#fff8e6', border: '1px solid var(--amber)', borderRadius: 12, padding: 12, marginBottom: 16, fontSize: 13, color: 'var(--text-2)' }}>
+          Para pasar a venta falta: <strong>{faltantesVenta.join(', ')}</strong>.
+        </div>
+      )}
+
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontWeight: 600, fontSize: 14 }}>Productos cotizados <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>({items.length})</span></div>
-          <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
+          <div style={{ display: 'flex', gap: 8, fontSize: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <span><span style={{ color: 'var(--text-3)' }}>Subtotal cotizado:</span> <strong style={{ fontFamily: "'DM Mono', monospace" }}>{fmt(subtotal)}</strong></span>
             <span><span style={{ color: 'var(--text-3)' }}>Adjudicado:</span> <strong style={{ fontFamily: "'DM Mono', monospace", color: 'var(--green-700)' }}>{fmt(totalAdjudicado)}</strong></span>
+            {canWriteLicitaciones && <button type="button" onClick={adjudicarTodo} disabled={!items.length || updateItemMut.isPending} style={btnSm}>Adjudicar todo</button>}
           </div>
         </div>
         <Table columns={cols} rows={items} emptyMessage="Sin productos cotizados" />
@@ -303,8 +406,19 @@ export default function LicitacionDetallePage() {
           </div>
         )}
 
-        <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
+        {canWriteLicitaciones && <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Agregar item</div>
+          <ProductoLookup onSelect={producto => setNewItem(f => ({
+            ...f,
+            codigoInterno: producto.codigoInterno || '',
+            nombre: producto.nombre || '',
+            descripcion: producto.descripcion || producto.texto2 || '',
+            cantidad: f.cantidad || '1',
+            precio: precioLicitacion(producto) || '',
+          }))} />
+          <button type="button" onClick={() => navigate('/bodega/nuevo')} style={{ ...btnSm, marginBottom: 8 }}>
+            Crear producto externo en catalogo
+          </button>
           <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 80px 80px 100px auto', gap: 6 }}>
             <input value={newItem.codigoInterno} onChange={e => setNewItem(f => ({ ...f, codigoInterno: e.target.value }))} placeholder="Código" style={inputSm} />
             <input value={newItem.nombre} onChange={e => setNewItem(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre producto" style={inputSm} />
@@ -314,7 +428,7 @@ export default function LicitacionDetallePage() {
             <button onClick={addItem} disabled={addItemMut.isPending} style={btnSmPrim}>+ Agregar</button>
           </div>
           <input value={newItem.descripcion} onChange={e => setNewItem(f => ({ ...f, descripcion: e.target.value }))} placeholder="Descripción (opcional)" style={{ ...inputSm, marginTop: 6, width: '100%' }} />
-        </div>
+        </div>}
       </div>
     </main>
   )

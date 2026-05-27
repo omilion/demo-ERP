@@ -1,5 +1,7 @@
 import { parsePositiveInt } from '../operational-utils.js'
 import { resolveOdtForWrite } from '../relation-guards.js'
+import { getUserSucursalId } from '../caja/scope.js'
+import { isOpenOdtEstado } from './operations.js'
 
 export const ODT_CONSUMO_TIPOS = Object.freeze(['producto', 'material_taller', 'tela'])
 
@@ -106,9 +108,17 @@ export async function consumirProducto({ tx, odt, itemId, cantidad, motivo, user
   }
 }
 
-export async function consumirMaterialTaller({ tx, odt, itemId, cantidad, motivo, userId, usuario, taller, now = new Date() }) {
-  const material = await tx.bodegaTaller.findUnique({
-    where: { id: itemId },
+function scopedResourceWhere(id, sucursalId) {
+  return {
+    id,
+    ...(sucursalId ? { OR: [{ sucursalId }, { sucursalId: null }] } : {}),
+  }
+}
+
+export async function consumirMaterialTaller({ tx, odt, itemId, cantidad, motivo, userId, usuario, taller, sucursalId, now = new Date() }) {
+  const scopeSucursalId = sucursalId ?? odt.sucursalId ?? null
+  const material = await tx.bodegaTaller.findFirst({
+    where: scopedResourceWhere(itemId, scopeSucursalId),
     select: {
       id: true,
       codigoInterno: true,
@@ -123,7 +133,7 @@ export async function consumirMaterialTaller({ tx, odt, itemId, cantidad, motivo
   if (insufficient) return insufficient
 
   const decrement = await tx.bodegaTaller.updateMany({
-    where: { id: material.id, stock: { gte: cantidad } },
+    where: { ...scopedResourceWhere(material.id, scopeSucursalId), stock: { gte: cantidad } },
     data: { stock: { decrement: cantidad } },
   })
   if (decrement.count !== 1) return { status: 409, error: 'Stock insuficiente', stockDisponible: Number(material.stock ?? 0) }
@@ -194,7 +204,7 @@ export function buildConsumoErrorResponse(result) {
   return { error, ...details }
 }
 
-export async function applyOdtConsumo({ tx, odt, consumo, userId, usuario, now = new Date() }) {
+export async function applyOdtConsumo({ tx, odt, consumo, userId, usuario, sucursalId = null, now = new Date() }) {
   const common = {
     tx,
     odt,
@@ -204,6 +214,7 @@ export async function applyOdtConsumo({ tx, odt, consumo, userId, usuario, now =
     taller: consumo.taller,
     userId,
     usuario,
+    sucursalId,
     now,
   }
 
@@ -220,8 +231,15 @@ export default async function odtConsumosRoutes(fastify) {
     const consumo = parseConsumoRequest(request.body || {})
     if (consumo.error) return reply.code(400).send({ error: consumo.error })
 
-    const resolved = await resolveOdtForWrite(fastify.prisma, request.params.id)
+    const resolved = await resolveOdtForWrite(fastify.prisma, request.params.id, {
+      user: request.user,
+      requireActive: true,
+      includeSucursal: true,
+    })
     if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
+    if (!isOpenOdtEstado(resolved.odt.estado)) {
+      return reply.code(409).send({ error: 'ODT cerrada o anulada' })
+    }
 
     const result = await fastify.prisma.$transaction((tx) => applyOdtConsumo({
       tx,
@@ -229,6 +247,7 @@ export default async function odtConsumosRoutes(fastify) {
       consumo,
       userId: getConsumoUserId(request.user),
       usuario: getConsumoUsuario(request.user),
+      sucursalId: getUserSucursalId(request.user),
     }))
     if (result.error) {
       return reply.code(result.status || 400).send(buildConsumoErrorResponse(result))

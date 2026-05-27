@@ -101,25 +101,65 @@ async function extractCajaRows(dumpPath) {
                   //         estado_doc, estado_pago_doc, paga_con, usuario, operacion,
                   //         tipo, origen_medio_pago, n_medio_pago, fecha_pago_fac,
                   //         numero_nota_credito_interna, eliminado, fecham, user
-                  const [id, nInterno, , ingreso, egreso, medioPago, , fechaHora, , documento, nDoc, tipoDoc, , , , usuario, operacion, tipo] = v
+                  const [
+                    id,
+                    nInterno,
+                    sucursal,
+                    ingreso,
+                    egreso,
+                    medioPago,
+                    cuotas,
+                    fechaHora,
+                    ,
+                    documento,
+                    nDoc,
+                    tipoDoc,
+                    estadoDoc,
+                    estadoPagoDoc,
+                    pagaCon,
+                    usuario,
+                    operacion,
+                    tipo,
+                    origenMedioPago,
+                    nMedioPago,
+                    ,
+                    numeroNCInterna,
+                    eliminado,
+                    fecham,
+                    userMod,
+                  ] = v
                   const ing = parseInt(ingreso) || 0
                   const egr = parseInt(egreso) || 0
                   if (ing === 0 && egr === 0) { start = i + 2; continue }
-                  const eliminado = v[22] === '1'
-                  if (eliminado) { start = i + 2; continue }
 
                   const monto = ing > 0 ? ing : -egr
-                  const tipoMov = egr > 0 ? 'egreso' : 'ingreso'
+                  const tipoMov = egr > 0 ? 'Egreso' : 'Ingreso'
                   const ref = tipoDoc && nDoc && nDoc !== '0' ? `${tipoDoc} ${nDoc}` : (documento || null)
 
                   rows.push({
+                    legacyId: parseInt(id) || null,
+                    nInterno: parseInt(nInterno) > 0 ? parseInt(nInterno) : null,
                     tipo: tipoMov,
                     monto,
                     medioPago: medioPago || 'Efectivo',
                     referencia: ref,
-                    ordenId: parseInt(nInterno) > 0 ? parseInt(nInterno) : null,
+                    ordenId: null,
+                    sucursalId: parseInt(sucursal) > 0 ? parseInt(sucursal) : null,
+                    documento: documento || null,
+                    nDoc: nDoc && nDoc !== '0' ? nDoc : null,
+                    tipoDocumento: tipoDoc || null,
+                    estadoDoc: estadoDoc || (eliminado === '1' ? 'Nula' : 'Activa'),
+                    estadoPagoDoc: estadoPagoDoc || null,
+                    cuotas: parseInt(cuotas) > 0 ? parseInt(cuotas) : null,
+                    pagaCon: parseInt(pagaCon) > 0 ? parseInt(pagaCon) : null,
+                    origenMedioPago: origenMedioPago || null,
+                    nMedioPago: nMedioPago || null,
+                    numeroNCInterna: numeroNCInterna || null,
+                    eliminado: eliminado === '1',
                     usuario: usuario || null,
                     fecha: parseDate(fechaHora),
+                    fecham: parseDate(fecham),
+                    userMod: userMod || null,
                   })
                 } catch { /* skip malformed */ }
                 start = i + 2
@@ -144,6 +184,16 @@ async function main() {
   const client = new pg.Client({ connectionString: DB_URL })
   await client.connect()
 
+  const nInternos = [...new Set(rows.map(r => r.nInterno).filter(Boolean))]
+  if (nInternos.length) {
+    const resolved = await client.query(
+      'SELECT id, n_interno FROM ventas.ordenes WHERE n_interno = ANY($1::int[])',
+      [nInternos],
+    )
+    const ordenByInterno = new Map(resolved.rows.map(r => [Number(r.n_interno), Number(r.id)]))
+    for (const row of rows) row.ordenId = row.nInterno ? (ordenByInterno.get(row.nInterno) || null) : null
+  }
+
   const existing = await client.query(
     "SELECT COUNT(*) FROM caja.movimientos_caja WHERE turno_id IS NULL"
   )
@@ -159,12 +209,41 @@ async function main() {
   for (let i = 0; i < rows.length; i += BATCH) {
     const batch = rows.slice(i, i + BATCH)
     const placeholders = batch.map((_, j) => {
-      const b = j * 7
-      return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7})`
+      const b = j * 23
+      return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11},$${b+12},$${b+13},$${b+14},$${b+15},$${b+16},$${b+17},$${b+18},$${b+19},$${b+20},$${b+21},$${b+22},$${b+23})`
     }).join(',')
-    const params = batch.flatMap(r => [r.tipo, r.monto, r.medioPago, r.referencia, r.ordenId, r.usuario, r.fecha])
+    const params = batch.flatMap(r => [
+      r.tipo,
+      r.monto,
+      r.medioPago,
+      r.referencia,
+      r.ordenId,
+      r.sucursalId,
+      r.documento,
+      r.nDoc,
+      r.tipoDocumento,
+      r.estadoDoc,
+      r.estadoPagoDoc,
+      r.cuotas,
+      r.pagaCon,
+      r.origenMedioPago,
+      r.nMedioPago,
+      r.numeroNCInterna,
+      r.eliminado,
+      r.usuario,
+      r.fecha,
+      r.fecham,
+      r.userMod,
+      r.ordenId ? 'orden' : 'legacy-caja',
+      r.ordenId,
+    ])
     await client.query(
-      `INSERT INTO caja.movimientos_caja (tipo, monto, medio_pago, referencia, orden_id, usuario, fecha) VALUES ${placeholders}`,
+      `INSERT INTO caja.movimientos_caja (
+        tipo, monto, medio_pago, referencia, orden_id, sucursal_id,
+        documento, n_doc, tipo_documento, estado_doc, estado_pago_doc,
+        cuotas, paga_con, origen_medio_pago, n_medio_pago, numero_nc_interna,
+        eliminado, usuario, fecha, fecham, user_mod, origen_tipo, origen_id
+      ) VALUES ${placeholders}`,
       params
     )
     inserted += batch.length

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Btn, PageHeader } from '../../components/shared'
 import { useCreateCotizacion } from '../../api/cotizaciones'
 
-const ESTADOS = ['Pendiente', 'En proceso', 'Adjudicada', 'Rechazada', 'Cerrada']
+const ESTADOS = ['Pendiente', 'En proceso', 'Adjudicada', 'No Adjudicada', 'Rechazada', 'Cerrada']
 
 export default function LicitacionFormPage() {
   const navigate = useNavigate()
@@ -42,8 +42,8 @@ export default function LicitacionFormPage() {
           <Field label="ID licitacion" required>
             <input value={form.idLicitacion} onChange={e => setField('idLicitacion', e.target.value)} required style={inputStyle} />
           </Field>
-          <Field label="Fecha">
-            <input type="date" value={form.fecha} onChange={e => setField('fecha', e.target.value)} style={inputStyle} />
+          <Field label="Fecha licitacion" required>
+            <input type="date" value={form.fecha} onChange={e => setField('fecha', e.target.value)} required style={inputStyle} />
           </Field>
           <Field label="RUT organismo">
             <input value={form.rutCliente} onChange={e => setField('rutCliente', e.target.value)} style={inputStyle} />

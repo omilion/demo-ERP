@@ -6,6 +6,24 @@ import { useVenta, useDeleteVenta } from '../../api/ventas'
 
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
+const discountAmount = (subtotal, pct) => Math.round(Number(subtotal || 0) * Number(pct || 0) / 100)
+
+function normalizeText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function isReferencialPago(pago) {
+  return normalizeText(pago?.medioPago) === 'referencial'
+}
+
+function sameDocumento(a, b) {
+  return a?.documento && a?.nDoc && a.documento === b?.documento && a.nDoc === b?.nDoc
+}
+
 const ESTADO_TONE = {
   Pagada: 'green', Entregada: 'green', Completada: 'green',
   Parcial: 'amber', 'En despacho': 'amber',
@@ -45,6 +63,9 @@ function TabDetalle({ v }) {
   const saldo = total - abono
   const descuento = v.descuentoPct || 0
   const subtotal = items.reduce((s, i) => s + (i.precioUnitario * i.cantidad), 0)
+  const cargosTotal = (v.cargos || []).reduce((s, c) => s + Number(c.valor || 0), 0)
+  const totalBase = subtotal + cargosTotal
+  const descuentoMonto = discountAmount(totalBase, descuento)
 
   return (
     <>
@@ -127,10 +148,16 @@ function TabDetalle({ v }) {
             <span style={{ fontFamily: "'DM Mono',monospace" }}>{fmt(subtotal)}</span>
           </div>
         )}
+        {cargosTotal > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 16px', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
+            <span style={{ color: 'var(--text-2)' }}>Cargos transporte</span>
+            <span style={{ fontFamily: "'DM Mono',monospace" }}>{fmt(cargosTotal)}</span>
+          </div>
+        )}
         {descuento > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 16px', fontSize: 13, borderBottom: '1px solid var(--border)', color: 'var(--green-600)' }}>
             <span>Descuento ({descuento}%)</span>
-            <span style={{ fontFamily: "'DM Mono',monospace" }}>−{fmt(subtotal * descuento / 100)}</span>
+            <span style={{ fontFamily: "'DM Mono',monospace" }}>-{fmt(descuentoMonto)}</span>
           </div>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '11px 16px', fontSize: 14, fontWeight: 700, borderBottom: abono > 0 ? '1px solid var(--border)' : 'none' }}>
@@ -205,7 +232,9 @@ function TabPagos({ pagos }) {
       </div>
     )
   }
-  const totalPagado = pagos.filter(p => p.tipo === 'Ingreso').reduce((s, p) => s + Math.abs(p.monto), 0)
+  const totalPagado = pagos
+    .filter(p => p.tipo === 'Ingreso' && !isReferencialPago(p))
+    .reduce((s, p) => s + Math.abs(p.monto), 0)
   return (
     <div>
       <div style={{ background: 'var(--green-50)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -219,6 +248,8 @@ function TabPagos({ pagos }) {
             <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
               {p.fecha ? new Date(p.fecha).toLocaleDateString('es-CL') : new Date(p.createdAt).toLocaleDateString('es-CL')}
               {p.referencia && <span> · {p.referencia}</span>}
+              {(p.documento || p.nDoc) && <span> · {p.documento || 'Doc'}{p.nDoc ? ` #${p.nDoc}` : ''}</span>}
+              {isReferencialPago(p) && <span> · {p.estadoPagoDoc || 'No pagada'}</span>}
               {p.usuario && <span> · {p.usuario}</span>}
             </div>
           </div>
@@ -234,16 +265,20 @@ function TabPagos({ pagos }) {
   )
 }
 
-// ── Tab: Documentos ────────────────────────────────────────────────────────────
-function TabDocumentos({ v }) {
-  const Row = ({ label, value, mono }) => value ? (
+function DocumentoRow({ label, value, mono }) {
+  return value ? (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
       <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>{label}</span>
       <span style={{ fontSize: 13, fontFamily: mono ? "'DM Mono',monospace" : 'inherit', color: 'var(--text-1)', fontWeight: mono ? 600 : 400 }}>{value}</span>
     </div>
   ) : null
+}
 
-  const hasContent = v.licitacion || v.guias || v.facturado > 0 || v.observaciones
+// ── Tab: Documentos ────────────────────────────────────────────────────────────
+function TabDocumentos({ v, pagos }) {
+  const referenciales = (pagos || []).filter(isReferencialPago)
+  const pagosReales = (pagos || []).filter(p => !isReferencialPago(p))
+  const hasContent = v.licitacion || v.guias || v.facturado > 0 || v.observaciones || referenciales.length > 0
 
   return (
     <div>
@@ -267,9 +302,38 @@ function TabDocumentos({ v }) {
 
       <FormDivider label="Referencias y documentos" />
       <div style={{ marginBottom: 14 }}>
-        <Row label="ID Licitación / OC" value={v.licitacion} mono />
-        <Row label="N° Guía de despacho" value={v.guias ? `#${v.guias}` : null} mono />
-        <Row label="Monto facturado" value={v.facturado > 0 ? fmt(v.facturado) : null} mono />
+        <DocumentoRow label="ID Licitación / OC" value={v.licitacion} mono />
+        <DocumentoRow label="N° Guía de despacho" value={v.guias ? `#${v.guias}` : null} mono />
+        <DocumentoRow label="Monto facturado" value={v.facturado > 0 ? fmt(v.facturado) : null} mono />
+        {referenciales.length > 0 && (
+          <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginTop: 10 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: 'var(--bg)' }}>
+                  {['Documento', 'N doc', 'Monto', 'Pagado', 'Estado'].map((h, i) => (
+                    <th key={h} style={{ padding: '7px 10px', textAlign: i >= 2 ? 'right' : 'left', fontWeight: 600, color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {referenciales.map(doc => {
+                  const pagado = pagosReales
+                    .filter(p => sameDocumento(p, doc) && p.tipo === 'Ingreso')
+                    .reduce((s, p) => s + Math.abs(Number(p.monto || 0)), 0)
+                  return (
+                    <tr key={doc.id} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: '8px 10px' }}>{doc.documento || 'Documento'}</td>
+                      <td style={{ padding: '8px 10px', fontFamily: "'DM Mono',monospace" }}>{doc.nDoc || '---'}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>{fmt(Math.abs(Number(doc.monto || 0)))}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: "'DM Mono',monospace" }}>{fmt(pagado)}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right' }}><EstadoBadge v={doc.estadoPagoDoc || 'No pagada'} /></td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
         {!hasContent && (
           <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
             Sin documentos adicionales registrados
@@ -301,6 +365,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const v = full || venta
   const odts  = full?.odts  ?? []
   const pagos = full?.pagos ?? []
+  const documentosCount = pagos.filter(isReferencialPago).length
   const fecha = v.createdAt
     ? new Date(v.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—'
@@ -324,7 +389,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
         <TabBtn active={tab === 'detalle'}    onClick={() => setTab('detalle')}>Detalle</TabBtn>
         <TabBtn active={tab === 'taller'}     onClick={() => setTab('taller')}  badge={odts.length}>Taller</TabBtn>
         <TabBtn active={tab === 'pagos'}      onClick={() => setTab('pagos')}   badge={pagos.length}>Pagos</TabBtn>
-        <TabBtn active={tab === 'documentos'} onClick={() => setTab('documentos')}>Documentos</TabBtn>
+        <TabBtn active={tab === 'documentos'} onClick={() => setTab('documentos')} badge={documentosCount}>Documentos</TabBtn>
       </div>
 
       {isLoading && !full && (
@@ -334,7 +399,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
       {tab === 'detalle'    && <TabDetalle v={v} />}
       {tab === 'taller'     && <TabTaller odts={odts} onGoTaller={() => navigate('/taller')} />}
       {tab === 'pagos'      && <TabPagos pagos={pagos} />}
-      {tab === 'documentos' && <TabDocumentos v={v} />}
+      {tab === 'documentos' && <TabDocumentos v={v} pagos={pagos} />}
 
       {/* Delete confirmation */}
       {confirmDelete && canDelete && (

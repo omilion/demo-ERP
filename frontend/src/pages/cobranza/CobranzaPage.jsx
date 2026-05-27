@@ -8,7 +8,7 @@ import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can, ventaPath } from '../../utils/permissions'
 
-const MEDIOS_PAGO = ['Efectivo', 'Debito', 'Credito', 'Transferencia', 'Cheque', 'Webpay', 'Transbank', 'Referencial']
+const MEDIOS_PAGO = ['Efectivo', 'Debito', 'Credito', 'Transferencia', 'Cheque dia', 'Cheque fecha', 'Webpay', 'Transbank']
 
 const ESTADO_TABS = [
   { id: 'No pagada', label: 'No Pagadas' },
@@ -39,10 +39,37 @@ function estadoCobTone(estado) {
   return 'gray'
 }
 
+function normalizeText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function isReferencialPago(pago) {
+  return normalizeText(pago?.medioPago) === 'referencial'
+}
+
+function activeReferentialDocs(venta) {
+  return (venta?.pagos || []).filter(p => isReferencialPago(p) && p.documento && p.nDoc && p.estadoDoc !== 'Nula')
+}
+
+function docPaidAmount(venta, doc) {
+  return (venta?.pagos || [])
+    .filter(p => !isReferencialPago(p) && p.tipo === 'Ingreso' && p.documento === doc.documento && p.nDoc === doc.nDoc)
+    .reduce((sum, p) => sum + Math.abs(Number(p.monto || 0)), 0)
+}
+
+function docSaldo(venta, doc) {
+  return Math.max(0, Math.abs(Number(doc?.monto || 0)) - docPaidAmount(venta, doc))
+}
+
 export default function CobranzaPage() {
   const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
   const canWriteCobranza = can(user, 'cobranza', 'write')
+  const canRegisterPayment = canWriteCobranza && can(user, 'caja', 'read') && can(user, 'caja', 'write')
   const [mainTab, setMainTab] = useState('activo')
   const [estadoTab, setEstadoTab] = useState('No pagada')
   const [search, setSearch] = useState('')
@@ -56,6 +83,19 @@ export default function CobranzaPage() {
   const [histSearch, setHistSearch] = useState('')
   const [histDebounced, setHistDebounced] = useState('')
   const histDebRef = useRef(null)
+  const [paymentRow, setPaymentRow] = useState(null)
+  const [paymentForm, setPaymentForm] = useState({
+    monto: '',
+    medioPago: 'Efectivo',
+    documento: '',
+    nDoc: '',
+    tipoDocumento: '',
+    cuotas: '',
+    pagaCon: '',
+    nMedioPago: '',
+    origenMedioPago: '',
+    referencia: '',
+  })
 
   useEffect(() => {
     clearTimeout(debounceRef.current)
@@ -70,10 +110,10 @@ export default function CobranzaPage() {
   }, [histSearch])
 
   // Active cobranza
-  const activeParams = { orderBy: 'asc', estadoPago: estadoTab }
+  const activeParams = { orderBy: 'asc', estadoPago: estadoTab, limit: '500' }
   if (debounced) activeParams.search = debounced
-  const { data: activeResult = { items: [], total: 0 }, isLoading } = useVentas(activeParams)
-  const { data: turno } = useTurnoActivo()
+  const { data: activeResult = { items: [], total: 0 }, isLoading, isError: activeError, error: activeQueryError } = useVentas(activeParams)
+  const { data: turno } = useTurnoActivo(canRegisterPayment)
   const registrarPagoMut = useRegistrarPagoCobranza()
   const ventas = activeResult.items ?? []
   const total = activeResult.total ?? 0
@@ -84,17 +124,69 @@ export default function CobranzaPage() {
   if (histEstado) histParams.estado = histEstado
   if (histMes) histParams.mes = histMes
   if (histDebounced) histParams.search = histDebounced
-  const { data: histResult = { items: [], total: 0, stats: { cobrado: 0, pendiente: 0, n_canceladas: 0, n_pendientes: 0 } }, isLoading: histLoading } = useCobranzaHistorico(histParams)
+  const { data: histResult = { items: [], total: 0, stats: { cobrado: 0, pendiente: 0, n_canceladas: 0, n_pendientes: 0 } }, isLoading: histLoading, isError: histError, error: histQueryError } = useCobranzaHistorico(histParams)
   const { data: ejecutivas = [] } = useCobranzaEjecutivas()
   const { data: meses = [] } = useCobranzaMeses()
 
   const fmt = n => '$' + Math.abs(n || 0).toLocaleString('es-CL')
   const fmtM = n => '$' + (Math.abs(n || 0) / 1_000_000).toFixed(1) + 'M'
+  const paymentSaldo = paymentRow ? Math.max(0, (paymentRow.total || 0) - (paymentRow.abono || 0)) : 0
+  const paymentDocs = paymentRow ? activeReferentialDocs(paymentRow).filter(doc => docSaldo(paymentRow, doc) > 0) : []
+  const selectedPaymentDocKey = paymentForm.documento && paymentForm.nDoc ? `${paymentForm.documento}|||${paymentForm.nDoc}` : ''
+
+  const openPayment = (row) => {
+    const saldo = Math.max(0, (row.total || 0) - (row.abono || 0))
+    const doc = activeReferentialDocs(row).find(d => docSaldo(row, d) > 0) || activeReferentialDocs(row)[0]
+    const saldoDoc = doc ? docSaldo(row, doc) : saldo
+    setPaymentRow(row)
+    setPaymentForm({
+      monto: String(Math.min(saldo, saldoDoc || saldo)),
+      medioPago: 'Efectivo',
+      documento: doc?.documento || '',
+      nDoc: doc?.nDoc || '',
+      tipoDocumento: doc?.tipoDocumento || doc?.documento || '',
+      cuotas: '',
+      pagaCon: '',
+      nMedioPago: '',
+      origenMedioPago: '',
+      referencia: row.nInterno ? `Pago venta N interno ${row.nInterno}` : `Pago venta #${row.id}`,
+    })
+  }
+
+  const submitPayment = () => {
+    if (!paymentRow) return
+    const monto = Number(paymentForm.monto)
+    if (!monto || monto <= 0) return alert('Monto invalido')
+    if (monto > paymentSaldo) return alert('El monto excede el saldo pendiente')
+    if (!paymentForm.documento || !paymentForm.nDoc) return alert('Selecciona un documento referencial activo antes de registrar el pago')
+    if (!turno) return alert('No hay turno activo. Abre un turno en caja antes de registrar pagos.')
+    registrarPagoMut.mutate({
+      ordenId: paymentRow.id,
+      data: {
+        monto,
+        medioPago: paymentForm.medioPago,
+        referencia: paymentForm.referencia || undefined,
+        documento: paymentForm.documento || undefined,
+        nDoc: paymentForm.nDoc || undefined,
+        tipoDocumento: paymentForm.tipoDocumento || undefined,
+        cuotas: paymentForm.cuotas ? Number(paymentForm.cuotas) : undefined,
+        pagaCon: paymentForm.pagaCon ? Number(paymentForm.pagaCon) : undefined,
+        nMedioPago: paymentForm.nMedioPago || undefined,
+        origenMedioPago: paymentForm.origenMedioPago || undefined,
+      },
+    }, {
+      onSuccess: () => {
+        setPaymentRow(null)
+        alert('Pago registrado en caja y saldo de venta actualizado')
+      },
+      onError: err => alert(err.response?.data?.error || 'Error al registrar abono'),
+    })
+  }
 
   // Active cobranza KPIs
-  const montoPendiente = ventas.reduce((s, v) => s + Math.max(0, (v.total || 0) - (v.abono || 0)), 0)
-  const masde30 = ventas.filter(v => diasDesde(v.createdAt) > 30).length
-  const conAbono = ventas.filter(v => (v.abono || 0) > 0).length
+  const montoPendiente = activeResult.stats?.montoPendiente ?? ventas.reduce((s, v) => s + Math.max(0, (v.total || 0) - (v.abono || 0)), 0)
+  const masde30 = activeResult.stats?.masDe30 ?? ventas.filter(v => diasDesde(v.createdAt) > 30).length
+  const conAbono = activeResult.stats?.conAbono ?? ventas.filter(v => (v.abono || 0) > 0).length
 
   const colsActivo = [
     {
@@ -155,23 +247,12 @@ export default function CobranzaPage() {
         const saldo = (row.total || 0) - (row.abono || 0)
         return (
           <div style={{ display: 'flex', gap: 4 }}>
-            {canWriteCobranza && (
+            {canRegisterPayment && (
             <button
               onClick={e => {
                 e.stopPropagation()
-                const monto = prompt(`Abono para venta #${row.id} (saldo: $${saldo.toLocaleString('es-CL')})`, String(saldo))
-                if (!monto) return
-                const n = parseInt(monto, 10)
-                if (!n || n <= 0) return alert('Monto inválido')
-                if (n > saldo) return alert('El monto excede el saldo pendiente')
-                if (!turno) return alert('No hay turno activo. Abre un turno en caja antes de registrar pagos.')
-
-                const medioPago = prompt(`Medio de pago (${MEDIOS_PAGO.join(', ')})`, 'Efectivo') || 'Efectivo'
-                if (!MEDIOS_PAGO.includes(medioPago)) return alert('Medio de pago invalido')
-
-                registrarPagoMut.mutate({ ordenId: row.id, data: { monto: n, medioPago } }, {
-                  onError: err => alert(err.response?.data?.error || 'Error al registrar abono'),
-                })
+                if (saldo <= 0) return alert('La venta no tiene saldo pendiente')
+                openPayment(row)
               }}
               disabled={registrarPagoMut.isPending || !turno}
               style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--green-700)', background: 'var(--green-700)', cursor: 'pointer', color: '#fff', fontWeight: 500, whiteSpace: 'nowrap' }}
@@ -215,6 +296,10 @@ export default function CobranzaPage() {
       render: v => v ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: 'var(--green-600)', fontWeight: 700 }}>{fmt(v)}</span> : '—'
     },
     {
+      key: 'nc', label: 'NC', align: 'right',
+      render: v => v ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--amber)' }}>{fmt(v)}</span> : '-'
+    },
+    {
       key: 'estado', label: 'Estado',
       render: v => v ? <Badge tone={estadoCobTone(v)}>{v}</Badge> : '—'
     },
@@ -246,7 +331,10 @@ export default function CobranzaPage() {
           <Btn variant="secondary" icon="download" size="sm"
             onClick={() => {
               if (mainTab === 'activo') {
-                downloadFromBackend('/reportes/export/ventas', `cobranza_${new Date().toISOString().slice(0,10)}.csv`, { estadoPago: estadoTab })
+                const params = { estadoPago: estadoTab }
+                if (debounced) params.search = debounced
+                downloadFromBackend('/reportes/export/cobranza-activa', `cobranza_${new Date().toISOString().slice(0,10)}.csv`, params)
+                  .catch(err => alert(err?.response?.data?.error || 'No se pudo exportar cobranza activa'))
               } else {
                 const params = {}
                 if (histEjecutiva) params.ejecutiva = histEjecutiva
@@ -254,6 +342,7 @@ export default function CobranzaPage() {
                 if (histMes) params.mes = histMes
                 if (histDebounced) params.search = histDebounced
                 downloadFromBackend('/reportes/export/cobranza', `cobranza_historico_${new Date().toISOString().slice(0,10)}.csv`, params)
+                  .catch(err => alert(err?.response?.data?.error || 'No se pudo exportar historico de cobranza'))
               }
             }}
           >Exportar</Btn>
@@ -311,11 +400,15 @@ export default function CobranzaPage() {
         </div>
 
         {mainTab === 'activo' ? (
-          isLoading
+          activeError
+            ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--red)' }}>{activeQueryError?.response?.data?.error || 'No se pudo cargar cobranza activa'}</div>
+            : isLoading
             ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
             : <Table columns={colsActivo} rows={ventas} onRowClick={row => navigate(ventaPath(row.id, user))} emptyMessage="Sin documentos pendientes de cobro" />
         ) : (
-          histLoading
+          histError
+            ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--red)' }}>{histQueryError?.response?.data?.error || 'No se pudo cargar historico de cobranza'}</div>
+            : histLoading
             ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
             : <Table columns={colsHist} rows={histResult.items} emptyMessage="Sin registros históricos para este filtro" />
         )}
@@ -326,6 +419,84 @@ export default function CobranzaPage() {
           </div>
         )}
       </div>
+      {paymentRow && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.35)', display: 'grid', placeItems: 'center', zIndex: 50, padding: 16 }}>
+          <section style={{ width: 'min(760px, 100%)', background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+              <h2 style={{ margin: 0, fontSize: 18 }}>Registrar pago venta #{paymentRow.id}</h2>
+              <p style={{ margin: '4px 0 0', color: 'var(--text-3)', fontSize: 13 }}>Saldo pendiente: {fmt(paymentSaldo)}</p>
+            </div>
+            <div style={{ padding: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
+              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
+                <span>Monto</span>
+                <input type="number" min="1" max={paymentSaldo} value={paymentForm.monto} onChange={e => setPaymentForm(f => ({ ...f, monto: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6 }} />
+              </label>
+              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
+                <span>Medio de pago</span>
+                <select value={paymentForm.medioPago} onChange={e => setPaymentForm(f => ({ ...f, medioPago: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, background: '#fff' }}>
+                  {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </label>
+              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
+                <span>Documento</span>
+                <select
+                  value={selectedPaymentDocKey}
+                  onChange={e => {
+                    const doc = paymentDocs.find(d => `${d.documento}|||${d.nDoc}` === e.target.value)
+                    setPaymentForm(f => ({
+                      ...f,
+                      documento: doc?.documento || '',
+                      nDoc: doc?.nDoc || '',
+                      tipoDocumento: doc?.tipoDocumento || doc?.documento || '',
+                      monto: doc ? String(Math.min(paymentSaldo, docSaldo(paymentRow, doc))) : f.monto,
+                    }))
+                  }}
+                  style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, background: '#fff' }}
+                >
+                  <option value="">Sin documento activo</option>
+                  {paymentDocs.map(doc => (
+                    <option key={doc.id} value={`${doc.documento}|||${doc.nDoc}`}>
+                      {doc.documento} #{doc.nDoc} - saldo {fmt(docSaldo(paymentRow, doc))}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
+                <span>N doc / voucher</span>
+                <input value={paymentForm.nDoc} disabled style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)' }} />
+              </label>
+              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
+                <span>Tipo documento</span>
+                <input value={paymentForm.tipoDocumento} onChange={e => setPaymentForm(f => ({ ...f, tipoDocumento: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6 }} />
+              </label>
+              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
+                <span>Cuotas</span>
+                <input type="number" min="1" value={paymentForm.cuotas} onChange={e => setPaymentForm(f => ({ ...f, cuotas: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6 }} />
+              </label>
+              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
+                <span>Paga con</span>
+                <input type="number" min="0" value={paymentForm.pagaCon} onChange={e => setPaymentForm(f => ({ ...f, pagaCon: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6 }} />
+              </label>
+              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
+                <span>N medio pago</span>
+                <input value={paymentForm.nMedioPago} onChange={e => setPaymentForm(f => ({ ...f, nMedioPago: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6 }} />
+              </label>
+              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
+                <span>Origen medio pago</span>
+                <input value={paymentForm.origenMedioPago} onChange={e => setPaymentForm(f => ({ ...f, origenMedioPago: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6 }} />
+              </label>
+              <label style={{ gridColumn: '1 / -1', display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
+                <span>Referencia</span>
+                <input value={paymentForm.referencia} onChange={e => setPaymentForm(f => ({ ...f, referencia: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6 }} />
+              </label>
+            </div>
+            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <Btn variant="secondary" size="sm" onClick={() => setPaymentRow(null)}>Cancelar</Btn>
+              <Btn variant="primary" size="sm" onClick={submitPayment} disabled={registrarPagoMut.isPending || !turno}>Registrar pago</Btn>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   )
 }

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Icon, Badge, KpiCard, PageHeader, Btn, SearchBar, Tabs } from '../../components/shared'
-import { useOdts, useOdt, useOdtEstado, useAddBitacora, useDeleteBitacora, useDeleteOdt, useOdtOperarios, useOdtCargaOperarios } from '../../api/odts'
+import { Icon, Badge, KpiCard, PageHeader, Btn, SearchBar, Tabs, Pager } from '../../components/shared'
+import { useOdts, useOdt, useOdtEstado, useAddBitacora, useDeleteBitacora, useAnularOdt, useCerrarOdt, useOdtOperarios, useOdtCargaOperarios } from '../../api/odts'
+import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can, ventaPath } from '../../utils/permissions'
 
@@ -29,6 +30,8 @@ const TAB_PARAMS = {
   Madera:       { tipo: 'Madera' },
   Externo:      { tipo: 'Externo' },
 }
+
+const getErrorMessage = err => err?.response?.data?.error || err?.message || 'No se pudo completar la accion'
 
 const OdtCard = ({ odt, onSelect }) => {
   const [hov, setHov] = useState(false)
@@ -61,7 +64,7 @@ const OdtCard = ({ odt, onSelect }) => {
         </div>
       </div>
       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', marginBottom: 5, lineHeight: 1.3 }}>
-        {odt.clienteNombre || '—'}
+        {odt.clienteNombre || '-'}
       </div>
       <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 10, lineHeight: 1.4 }}>
         {odt.descripcion}
@@ -84,27 +87,41 @@ const OdtCard = ({ odt, onSelect }) => {
           display: 'flex', alignItems: 'center', gap: 4,
           color: odt.plazo && new Date(odt.plazo) < new Date() && odt.estado !== 'Terminada' ? 'var(--red)' : 'var(--text-3)',
         }}>
-          <Icon name="clock" size={12} /> {odt.plazo ? new Date(odt.plazo).toLocaleDateString('es-CL') : '—'}
+          <Icon name="clock" size={12} /> {odt.plazo ? new Date(odt.plazo).toLocaleDateString('es-CL') : '-'}
         </span>
       </div>
     </div>
   )
 }
 
-function BitacoraSection({ odtId, entries = [], canWrite }) {
+function BitacoraSection({ odtId, entries = [], canWrite, canDelete }) {
   const [texto, setTexto] = useState('')
   const addBitacora = useAddBitacora()
   const delBitacora = useDeleteBitacora()
 
   const handleAdd = () => {
     if (!texto.trim()) return
-    addBitacora.mutate({ odtId, texto }, { onSuccess: () => setTexto('') })
+    addBitacora.mutate(
+      { odtId, texto },
+      {
+        onSuccess: () => setTexto(''),
+        onError: err => alert(getErrorMessage(err)),
+      }
+    )
+  }
+
+  const handleDelete = entryId => {
+    if (!confirm('¿Eliminar esta entrada de bitacora? Esta accion no se puede deshacer.')) return
+    delBitacora.mutate(
+      { odtId, entryId },
+      { onError: err => alert(getErrorMessage(err)) }
+    )
   }
 
   return (
     <div style={{ marginTop: 20 }}>
       <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>
-        Bitácora ({entries.length})
+        Bitacora ({entries.length})
       </div>
 
       {entries.length > 0 ? (
@@ -120,8 +137,8 @@ function BitacoraSection({ odtId, entries = [], canWrite }) {
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.5 }}>{e.texto}</div>
               </div>
-              {canWrite && <button
-                onClick={() => delBitacora.mutate({ odtId, entryId: e.id })}
+              {canDelete && <button
+                onClick={() => handleDelete(e.id)}
                 style={{ color: 'var(--text-3)', padding: '2px 4px', marginLeft: 8, flexShrink: 0 }}
                 title="Eliminar entrada"
               >
@@ -131,7 +148,7 @@ function BitacoraSection({ odtId, entries = [], canWrite }) {
           ))}
         </div>
       ) : (
-        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12, padding: '8px 0' }}>Sin entradas de bitácora</div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12, padding: '8px 0' }}>Sin entradas de bitacora</div>
       )}
 
       {canWrite && <div style={{ display: 'flex', gap: 8 }}>
@@ -139,7 +156,7 @@ function BitacoraSection({ odtId, entries = [], canWrite }) {
           value={texto}
           onChange={e => setTexto(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleAdd()}
-          placeholder="Agregar nota…"
+          placeholder="Agregar nota..."
           style={{ flex: 1, padding: '8px 12px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
         />
         <button
@@ -147,14 +164,14 @@ function BitacoraSection({ odtId, entries = [], canWrite }) {
           disabled={!texto.trim() || addBitacora.isPending}
           style={{ padding: '8px 14px', borderRadius: 7, background: 'var(--green-600)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: !texto.trim() ? 0.5 : 1 }}
         >
-          {addBitacora.isPending ? '…' : 'Agregar'}
+          {addBitacora.isPending ? '...' : 'Agregar'}
         </button>
       </div>}
     </div>
   )
 }
 
-function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete, canWrite }) {
+function OdtModal({ odt, onClose, onEdit, onEstadoChange, onCloseOdt, onAnularOdt, canWrite, canDelete, lifecyclePending }) {
   const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
   const { data: full } = useOdt(odt.id)
@@ -179,8 +196,11 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete, canWrite }) 
     { from: ['Entregada'], to: 'Terminada', label: 'Reabrir entrega', tone: 'amber' },
   ]
   const available = estadoActions.filter(a => a.from.includes(o.estado))
+  const canCloseOdt = !['Terminada', 'Entregada'].includes(o.estado)
+  const canReopenOdt = ['Terminada', 'Entregada'].includes(o.estado)
+  const canAnularOdt = !['Anulada'].includes(o.estado)
 
-  const fmtDate = d => d ? new Date(d).toLocaleDateString('es-CL') : '—'
+  const fmtDate = d => d ? new Date(d).toLocaleDateString('es-CL') : '-'
 
   return (
     <div
@@ -209,33 +229,33 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete, canWrite }) 
               <div>
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--green-700)', marginBottom: 3 }}>Venta origen</div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>
-                  #{orden.id} · {orden.cliente?.nombre || 'Sin cliente'}
+                  #{orden.id} - {orden.cliente?.nombre || 'Sin cliente'}
                 </div>
                 {orden.cliente?.rut && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>{orden.cliente.rut}</div>}
               </div>
               <button onClick={() => { navigate(ventaPath(orden.id, user)); onClose() }} style={{ fontSize: 11, color: 'var(--green-700)', background: '#fff', border: '1px solid var(--green-600)', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                Ver Venta →
+                Ver Venta
               </button>
             </div>
           )}
 
           <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Cliente</div>
-          <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 14 }}>{o.clienteNombre || '—'}</div>
+          <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 14 }}>{o.clienteNombre || '-'}</div>
 
-          <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Descripción</div>
+          <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Descripcion</div>
           <div style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.6, marginBottom: 18, background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
-            {o.descripcion || '—'}
+            {o.descripcion || '-'}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
             {[
-              ['Tipo',         o.tipo || '—'],
-              ['Responsable',  responsable || '—'],
+              ['Tipo',         o.tipo || '-'],
+              ['Responsable',  responsable || '-'],
               ['Prioridad',    o.prioridad || 'normal'],
               ['Creada',       fmtDate(o.createdAt)],
               ['Plazo',        fmtDate(o.plazo)],
               ['Inicio',       fmtDate(o.fechaInicio)],
-              ['Término',      fmtDate(o.fechaTermino)],
+              ['Termino',      fmtDate(o.fechaTermino)],
             ].map(([l, v], i) => (
               <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>{l}</div>
@@ -268,9 +288,9 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete, canWrite }) 
             </div>
           )}
 
-          {/* Bitácora */}
+          {/* Bitacora */}
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16 }}>
-            <BitacoraSection odtId={o.id} entries={bitacora} canWrite={canWrite} />
+            <BitacoraSection odtId={o.id} entries={bitacora} canWrite={canWrite} canDelete={canDelete} />
           </div>
         </div>
 
@@ -279,7 +299,9 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onDelete, canWrite }) 
             {canWrite && <Btn variant="primary" icon="edit" onClick={onEdit}>Editar ODT</Btn>}
             <Btn variant="ghost" icon="printer" onClick={handleImprimir}>Imprimir</Btn>
           </div>
-          {canWrite && <Btn variant="ghost" icon="trash2" onClick={() => onDelete(o.id)} style={{ color: 'var(--red)' }}>Eliminar</Btn>}
+          {canWrite && canCloseOdt && <Btn variant="ghost" icon="checkCircle" onClick={() => onCloseOdt(o, 'Terminada')} disabled={lifecyclePending} style={{ color: 'var(--green-700)' }}>Cerrar ODT</Btn>}
+          {canWrite && canReopenOdt && <Btn variant="ghost" icon="refreshCw" onClick={() => onCloseOdt(o, 'Pendiente')} disabled={lifecyclePending} style={{ color: 'var(--amber)' }}>Reabrir ODT</Btn>}
+          {canDelete && canAnularOdt && <Btn variant="ghost" icon="xCircle" onClick={() => onAnularOdt(o)} disabled={lifecyclePending} style={{ color: 'var(--red)' }}>Anular ODT</Btn>}
         </div>
       </div>
     </div>
@@ -294,15 +316,18 @@ export default function TallerPage() {
   const initialPrioridad = searchParams.get('prioridad')
   const { user } = useAuthStore()
   const canWriteTaller = can(user, 'taller', 'write')
+  const canDeleteTaller = can(user, 'taller', 'delete')
   const [tab, setTab]               = useState(initialTipo && TALLER_TABS.some(t => t.id === initialTipo) ? initialTipo : 'all')
   const [search, setSearch]         = useState(initialSearch)
   const [debouncedSearch, setDeb]   = useState(initialSearch)
+  const [pageState, setPageState]   = useState({ key: '', page: 1 })
   const [estadoFilter, setEst]      = useState(initialPrioridad === 'urgente' ? 'Prioritaria' : 'all')
   const [operarioFilter, setOperarioFilter] = useState('all')
   const [selected, setSelected]     = useState(null)
   const debRef = useRef(null)
   const cambiarEstado = useOdtEstado()
-  const deleteOdt = useDeleteOdt()
+  const cerrarOdt = useCerrarOdt()
+  const anularOdt = useAnularOdt()
   const { data: operariosMeta = { items: [] } } = useOdtOperarios()
   const { data: cargaOperarios = { items: [] } } = useOdtCargaOperarios()
 
@@ -312,15 +337,21 @@ export default function TallerPage() {
     return () => clearTimeout(debRef.current)
   }, [search])
 
-  const apiParams = { ...TAB_PARAMS[tab] }
-  if (estadoFilter !== 'all') apiParams.estado = estadoFilter
-  if (operarioFilter !== 'all') apiParams.operarioId = operarioFilter
-  if (debouncedSearch) apiParams.search = debouncedSearch
+  const filterParams = { ...TAB_PARAMS[tab] }
+  if (estadoFilter !== 'all') filterParams.estado = estadoFilter
+  if (estadoFilter === 'Anulada') filterParams.includeEliminados = 'true'
+  if (operarioFilter !== 'all') filterParams.operarioId = operarioFilter
+  if (debouncedSearch) filterParams.search = debouncedSearch
+  const filterKey = JSON.stringify(filterParams)
+  const page = pageState.key === filterKey ? pageState.page : 1
+  const setPagerPage = nextPage => setPageState({ key: filterKey, page: nextPage })
+  const apiParams = { ...filterParams, page: String(page) }
 
   const { data: odtResult = { items: [], total: 0, limit: 100, stats: {} }, isLoading } = useOdts(apiParams)
   const odts  = odtResult.items ?? []
   const total = odtResult.total ?? 0
   const LIMIT = odtResult.limit ?? 100
+  const pages = odtResult.pages ?? Math.max(1, Math.ceil(total / LIMIT))
   const stats = odtResult.stats ?? {}
 
   const prioritarias = stats['Prioritaria'] ?? 0
@@ -335,45 +366,58 @@ export default function TallerPage() {
       onSuccess: updated => {
         if (selected?.id === id) setSelected(updated)
       },
+      onError: err => alert(getErrorMessage(err)),
     })
   }
 
-  function handleDelete(id) {
-    if (!confirm('¿Eliminar ODT #' + id + '? Acción irreversible.')) return
-    deleteOdt.mutate(id, {
-      onSuccess: () => setSelected(null),
-      onError: () => alert('Error al eliminar (puede tener items asociados)'),
-    })
+  function handleCloseOdt(odt, estado) {
+    const isReopen = estado === 'Pendiente'
+    const action = isReopen ? 'reabrir' : 'cerrar'
+    const detail = isReopen
+      ? 'La ODT volvera a Pendiente y quedara disponible para trabajo operativo.'
+      : 'La ODT pasara a Terminada y se registrara fecha de termino si aun no existe.'
+    if (!confirm(`¿Confirmas ${action} la ODT #${odt.id}?\n\n${detail}`)) return
+    if (isReopen) {
+      cambiarEstado.mutate(
+        { id: odt.id, estado },
+        {
+          onSuccess: updated => setSelected(updated),
+          onError: err => alert(getErrorMessage(err)),
+        }
+      )
+      return
+    }
+    cerrarOdt.mutate(
+      { id: odt.id, estado },
+      {
+        onSuccess: updated => setSelected(updated),
+        onError: err => alert(getErrorMessage(err)),
+      }
+    )
+  }
+
+  function handleAnularOdt(odt) {
+    const razon = prompt(`Motivo para anular la ODT #${odt.id}`)
+    if (razon == null) return
+    if (!razon.trim()) { alert('Debes indicar un motivo para anular la ODT.'); return }
+    if (!confirm(`¿Confirmas anular la ODT #${odt.id}?\n\nEsta accion la sacara del flujo operativo y conservara trazabilidad en bitacora.`)) return
+    anularOdt.mutate(
+      { id: odt.id, razon: razon.trim() },
+      {
+        onSuccess: () => setSelected(null),
+        onError: err => alert(getErrorMessage(err)),
+      }
+    )
   }
 
   function handleExport() {
-    if (!odts.length) { alert('Nada para exportar'); return }
-    const headers = ['ID', 'Tipo', 'Cliente', 'Descripción', 'Estado', 'Prioridad', 'Creada', 'Plazo']
-    const esc = v => {
-      const s = (v ?? '').toString().replace(/"/g, '""')
-      return /[",\n;]/.test(s) ? `"${s}"` : s
-    }
-    const lines = [headers.join(';')]
-    for (const o of odts) {
-      lines.push([
-        o.id, o.tipo, o.clienteNombre, o.descripcion, o.estado, o.prioridad,
-        o.createdAt ? new Date(o.createdAt).toLocaleDateString('es-CL') : '',
-        o.plazo ? new Date(o.plazo).toLocaleDateString('es-CL') : '',
-      ].map(esc).join(';'))
-    }
-    const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `odts-${new Date().toISOString().slice(0,10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadFromBackend('/reportes/export/odts', `odts-${new Date().toISOString().slice(0,10)}.csv`, filterParams)
   }
 
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px' }}>
       <PageHeader
-        title="Taller — Órdenes de Trabajo"
+        title="Taller - Ordenes de Trabajo"
         subtitle={`${total.toLocaleString('es-CL')} ODTs en total`}
         breadcrumb={['Inicio', 'Taller', 'ODTs']}
         actions={<>
@@ -383,12 +427,12 @@ export default function TallerPage() {
       />
 
       <div className="kpi-strip">
-        <KpiCard label="Prioritarias" value={isLoading ? '…' : prioritarias.toLocaleString('es-CL')} icon="zap" tone={prioritarias > 0 ? 'red' : 'neutral'} sublabel="Urgencia máxima" onClick={() => setEst('Prioritaria')} />
-        <KpiCard label="En Proceso"   value={isLoading ? '…' : enProceso.toLocaleString('es-CL')}    icon="tool"  tone="blue"   sublabel="Trabajos activos"   onClick={() => setEst('En proceso')} />
-        <KpiCard label="Asignadas"    value={isLoading ? '…' : asignadas.toLocaleString('es-CL')}    icon="user"  tone="blue"   sublabel="Con responsable"    onClick={() => setEst('Asignada')} />
-        <KpiCard label="Pendientes"   value={isLoading ? '…' : pendientes.toLocaleString('es-CL')}   icon="clock" tone="amber"  sublabel="Por iniciar"       onClick={() => setEst('Pendiente')} />
-        <KpiCard label="Control"      value={isLoading ? '…' : enControl.toLocaleString('es-CL')}    icon="search" tone="amber" sublabel="Revision calidad"   onClick={() => setEst('Control calidad')} />
-        <KpiCard label="Cerradas"     value={isLoading ? '…' : terminadas.toLocaleString('es-CL')}   icon="checkCircle" tone="neutral" sublabel="Terminadas/entregadas" onClick={() => setEst('Terminada')} />
+        <KpiCard label="Prioritarias" value={isLoading ? '...' : prioritarias.toLocaleString('es-CL')} icon="zap" tone={prioritarias > 0 ? 'red' : 'neutral'} sublabel="Urgencia maxima" onClick={() => setEst('Prioritaria')} />
+        <KpiCard label="En Proceso"   value={isLoading ? '...' : enProceso.toLocaleString('es-CL')}    icon="tool"  tone="blue"   sublabel="Trabajos activos"   onClick={() => setEst('En proceso')} />
+        <KpiCard label="Asignadas"    value={isLoading ? '...' : asignadas.toLocaleString('es-CL')}    icon="user"  tone="blue"   sublabel="Con responsable"    onClick={() => setEst('Asignada')} />
+        <KpiCard label="Pendientes"   value={isLoading ? '...' : pendientes.toLocaleString('es-CL')}   icon="clock" tone="amber"  sublabel="Por iniciar"       onClick={() => setEst('Pendiente')} />
+        <KpiCard label="Control"      value={isLoading ? '...' : enControl.toLocaleString('es-CL')}    icon="search" tone="amber" sublabel="Revision calidad"   onClick={() => setEst('Control calidad')} />
+        <KpiCard label="Cerradas"     value={isLoading ? '...' : terminadas.toLocaleString('es-CL')}   icon="checkCircle" tone="neutral" sublabel="Terminadas/entregadas" onClick={() => setEst('Terminada')} />
       </div>
 
       {(cargaOperarios.items || []).length > 0 && (
@@ -453,13 +497,14 @@ export default function TallerPage() {
                 style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff', cursor: 'pointer' }}
               >
                 <option value="all">Todos los estados</option>
-                <option value="Prioritaria">🔴 Prioritarias</option>
-                <option value="En proceso">🔵 En proceso</option>
+                <option value="Prioritaria">Prioritarias</option>
+                <option value="En proceso">En proceso</option>
                 <option value="Asignada">Asignadas</option>
-                <option value="Pendiente">🟡 Pendientes</option>
+                <option value="Pendiente">Pendientes</option>
                 <option value="Control calidad">Control calidad</option>
-                <option value="Terminada">🟢 Terminadas</option>
+                <option value="Terminada">Terminadas</option>
                 <option value="Entregada">Entregadas</option>
+                <option value="Anulada">Anuladas</option>
               </select>
               <select
                 value={operarioFilter}
@@ -473,21 +518,16 @@ export default function TallerPage() {
                   </option>
                 ))}
               </select>
-              <SearchBar placeholder="Buscar N°, cliente, descripción…" value={search} onChange={setSearch} style={{ width: 260 }} />
+              <SearchBar placeholder="Buscar Nro, cliente, descripcion..." value={search} onChange={setSearch} style={{ width: 260 }} />
             </div>
           </div>
         </div>
 
-        {total > LIMIT && (
-          <div style={{ padding: '7px 16px', background: '#fffbeb', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text-2)' }}>
-            Mostrando las {LIMIT} primeras de {total.toLocaleString('es-CL')}. Usa el buscador o filtros para encontrar ODTs específicas.
-          </div>
-        )}
 
         <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
           {isLoading ? (
             <div style={{ gridColumn: '1/-1', padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>
-              Cargando ODTs…
+              Cargando ODTs...
             </div>
           ) : odts.length === 0 ? (
             <div style={{ gridColumn: '1/-1', padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>
@@ -498,6 +538,7 @@ export default function TallerPage() {
             odts.map(o => <OdtCard key={o.id} odt={o} onSelect={setSelected} />)
           )}
         </div>
+        <Pager page={page} pages={pages} total={total} limit={LIMIT} shown={odts.length} onChange={setPagerPage} disabled={isLoading} />
       </div>
 
       {selected && (
@@ -506,8 +547,11 @@ export default function TallerPage() {
           onClose={() => setSelected(null)}
           onEdit={() => { navigate('/taller/' + selected.id + '/editar'); setSelected(null) }}
           onEstadoChange={handleEstadoChange}
-          onDelete={handleDelete}
+          onCloseOdt={handleCloseOdt}
+          onAnularOdt={handleAnularOdt}
           canWrite={canWriteTaller}
+          canDelete={canDeleteTaller}
+          lifecyclePending={cerrarOdt.isPending || anularOdt.isPending || cambiarEstado.isPending}
         />
       )}
     </main>

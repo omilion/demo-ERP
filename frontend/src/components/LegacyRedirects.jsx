@@ -2,7 +2,8 @@ import { Navigate, useLocation, useParams } from 'react-router-dom'
 
 export function VentaLegacyRedirect() {
   const { id } = useParams()
-  return <Navigate to={`/ventas?search=${encodeURIComponent(id || '')}`} replace />
+  const value = encodeURIComponent(id || '')
+  return <Navigate to={`/ventas?search=${value}&open=${value}`} replace />
 }
 
 export function OdtLegacyRedirect() {

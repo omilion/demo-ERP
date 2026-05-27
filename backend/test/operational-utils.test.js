@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeTipoMovimiento, parseDate, parseOptionalInt, parsePage, parsePositiveInt } from '../src/routes/operational-utils.js'
+import { normalizeTipoMovimiento, parseDate, parseOptionalInt, parsePage, parsePagination, parsePositiveInt } from '../src/routes/operational-utils.js'
 
 describe('operational route utilities', () => {
   it('normalizes unsafe page and integer inputs', () => {
@@ -10,6 +10,14 @@ describe('operational route utilities', () => {
     expect(parseOptionalInt('1e3')).toBeNull()
     expect(parsePositiveInt('0')).toBeNull()
     expect(parsePositiveInt('42')).toBe(42)
+  })
+
+  it('parses conservative list pagination options', () => {
+    expect(parsePagination({}, { defaultLimit: 100, maxLimit: 500 })).toEqual({ page: 1, limit: 100, skip: 0 })
+    expect(parsePagination({ page: '3', limit: '50' }, { defaultLimit: 100, maxLimit: 500 })).toEqual({ page: 3, limit: 50, skip: 100 })
+    expect(parsePagination({ page: '2', limit: '999' }, { defaultLimit: 100, maxLimit: 500 })).toEqual({ page: 2, limit: 500, skip: 500 })
+    expect(parsePagination({ page: 'abc' }, { defaultLimit: 100, maxLimit: 500 })).toBeNull()
+    expect(parsePagination({ limit: '0' }, { defaultLimit: 100, maxLimit: 500 })).toBeNull()
   })
 
   it('parses date-only filters without timezone rollover and rejects impossible dates', () => {
