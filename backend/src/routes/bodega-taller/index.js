@@ -1,3 +1,11 @@
+import { getUserSucursalId } from '../caja/scope.js'
+import {
+  buildBodegaTallerWhere,
+  enrichBodegaTallerItems,
+  filterStockCriticoItems,
+  parsePositiveIntValue,
+} from './helpers.js'
+
 function parseOptionalPositiveInt(value) {
   if (value === undefined) return { provided: false, value: undefined }
   if (value === null || value === '') return { provided: true, value: null }
@@ -6,12 +14,20 @@ function parseOptionalPositiveInt(value) {
   return { provided: true, value: parsed }
 }
 
-function parseOptionalNumber(value, field) {
+function parseOptionalNumber(value, field, { min = null } = {}) {
   if (value === undefined) return { provided: false, value: undefined }
   if (value === null || value === '') return { provided: true, value: 0 }
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return { provided: true, error: `${field} invalido` }
+  if (min !== null && parsed < min) return { provided: true, error: `${field} debe ser mayor o igual a ${min}` }
   return { provided: true, value: parsed }
+}
+
+function cleanText(value) {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  const text = String(value).trim()
+  return text || null
 }
 
 async function validateClasificacionTaller(prisma, { categoriaId, subcategoriaId }) {
@@ -33,127 +49,240 @@ async function validateClasificacionTaller(prisma, { categoriaId, subcategoriaId
   return null
 }
 
+async function validateProveedor(prisma, proveedorId) {
+  if (!proveedorId) return null
+  const proveedor = await prisma.proveedor.findFirst({ where: { id: proveedorId, activo: true }, select: { id: true } })
+  return proveedor ? null : { status: 404, error: 'Proveedor no encontrado' }
+}
+
+async function validateSucursal(prisma, sucursalId) {
+  if (!sucursalId) return null
+  const sucursal = await prisma.sucursal.findFirst({ where: { id: sucursalId, activo: true }, select: { id: true } })
+  return sucursal ? null : { status: 404, error: 'Sucursal no encontrada' }
+}
+
+async function validateUniqueCodes(prisma, { id = null, codigoInterno, codigoBarra }) {
+  const OR = []
+  if (codigoInterno) OR.push({ codigoInterno: { equals: codigoInterno, mode: 'insensitive' } })
+  if (codigoBarra) OR.push({ codigoBarra: { equals: codigoBarra, mode: 'insensitive' } })
+  if (!OR.length) return null
+  const duplicate = await prisma.bodegaTaller.findFirst({
+    where: { activo: true, OR, ...(id ? { id: { not: id } } : {}) },
+    select: { codigoInterno: true, codigoBarra: true },
+  })
+  if (!duplicate) return null
+  if (codigoInterno && duplicate.codigoInterno?.toLowerCase() === codigoInterno.toLowerCase()) {
+    return { status: 409, error: 'codigoInterno ya existe' }
+  }
+  return { status: 409, error: 'codigoBarra ya existe' }
+}
+
+function resolveSucursalForWrite(user, parsedSucursal) {
+  const userSucursalId = getUserSucursalId(user)
+  if (userSucursalId) return userSucursalId
+  return parsedSucursal.provided ? parsedSucursal.value : null
+}
+
+async function enrichOne(prisma, item) {
+  const enriched = await enrichBodegaTallerItems(prisma, [item])
+  return enriched[0]
+}
+
 export default async function bodegaTallerRoutes(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
-  }, async (request) => {
-    const { search, stockCritico, categoriaId, subcategoriaId, page = '1' } = request.query
+  }, async (request, reply) => {
+    const filter = await buildBodegaTallerWhere(fastify.prisma, request.query, request.user)
+    if (filter.error) return reply.code(400).send({ error: filter.error })
     const LIMIT = 200
-    const offset = (parseInt(page) - 1) * LIMIT
+    const offset = (filter.page - 1) * LIMIT
+    const fetchAll = filter.stockCritico
 
-    const where = { activo: true }
-    if (search) {
-      where.OR = [
-        { codigoInterno: { contains: search, mode: 'insensitive' } },
-        { nombre: { contains: search, mode: 'insensitive' } },
-        { codigoBarra: { contains: search, mode: 'insensitive' } },
-      ]
-    }
-    if (categoriaId) where.categoriaId = parseInt(categoriaId, 10)
-    if (subcategoriaId) where.subcategoriaId = parseInt(subcategoriaId, 10)
-
-    const [items, total] = await Promise.all([
-      fastify.prisma.bodegaTaller.findMany({ where, orderBy: { nombre: 'asc' }, take: LIMIT, skip: offset }),
-      fastify.prisma.bodegaTaller.count({ where }),
+    const [rawItems, total] = await Promise.all([
+      fastify.prisma.bodegaTaller.findMany({
+        where: filter.where,
+        orderBy: { nombre: 'asc' },
+        take: fetchAll ? 5000 : LIMIT,
+        skip: fetchAll ? 0 : offset,
+      }),
+      fastify.prisma.bodegaTaller.count({ where: filter.where }),
     ])
-    let filtered = items
-    if (stockCritico === 'true') filtered = items.filter(i => i.stock <= i.stockCritico)
-    return { items: filtered, total, limit: LIMIT }
+
+    let items = fetchAll ? filterStockCriticoItems(rawItems) : rawItems
+    const responseTotal = fetchAll ? items.length : total
+    if (fetchAll) items = items.slice(offset, offset + LIMIT)
+
+    return {
+      items: await enrichBodegaTallerItems(fastify.prisma, items),
+      total: responseTotal,
+      limit: LIMIT,
+      page: filter.page,
+      pages: Math.max(1, Math.ceil(responseTotal / LIMIT)),
+    }
   })
 
-  // Autocomplete para búsqueda rápida (G7)
   fastify.get('/autocomplete', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
-  }, async (request) => {
-    const q = (request.query.q || '').trim()
+  }, async (request, reply) => {
+    const q = String(request.query.q || '').trim()
     if (q.length < 2) return []
+    const filter = await buildBodegaTallerWhere(fastify.prisma, { search: q, page: '1' }, request.user)
+    if (filter.error) return reply.code(400).send({ error: filter.error })
     const items = await fastify.prisma.bodegaTaller.findMany({
-      where: {
-        activo: true,
-        OR: [
-          { codigoInterno: { contains: q, mode: 'insensitive' } },
-          { nombre: { contains: q, mode: 'insensitive' } },
-          { codigoBarra: { contains: q, mode: 'insensitive' } },
-        ],
+      where: filter.where,
+      select: {
+        id: true,
+        codigoInterno: true,
+        codigoBarra: true,
+        nombre: true,
+        unidadMedida: true,
+        stock: true,
+        stockCritico: true,
+        precio: true,
+        categoriaId: true,
+        subcategoriaId: true,
+        proveedorId: true,
+        sucursalId: true,
       },
-      select: { id: true, codigoInterno: true, nombre: true, unidadMedida: true, stock: true, precio: true },
       orderBy: { nombre: 'asc' },
       take: 20,
     })
-    return items
+    return enrichBodegaTallerItems(fastify.prisma, items)
   })
 
   fastify.get('/:id', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
-    if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
-    const item = await fastify.prisma.bodegaTaller.findUnique({ where: { id } })
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
+    const filter = await buildBodegaTallerWhere(fastify.prisma, { page: '1' }, request.user)
+    if (filter.error) return reply.code(400).send({ error: filter.error })
+    const item = await fastify.prisma.bodegaTaller.findFirst({ where: { ...filter.where, id } })
     if (!item) return reply.code(404).send({ error: 'Material no encontrado' })
-    return item
+    return enrichOne(fastify.prisma, item)
   })
 
   fastify.post('/', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
   }, async (request, reply) => {
-    const { codigoInterno, codigoBarra, nombre, unidadMedida, stock, stockCritico, precio, categoriaId, subcategoriaId } = request.body || {}
-    if (!codigoInterno || !nombre) return reply.code(400).send({ error: 'codigoInterno y nombre requeridos' })
+    const {
+      codigoInterno,
+      codigoBarra,
+      nombre,
+      unidadMedida,
+      stock,
+      stockCritico,
+      precio,
+      categoriaId,
+      subcategoriaId,
+      proveedorId,
+      sucursalId,
+    } = request.body || {}
+    const codigoFinal = cleanText(codigoInterno)
+    const nombreFinal = cleanText(nombre)
+    if (!codigoFinal || !nombreFinal) return reply.code(400).send({ error: 'codigoInterno y nombre requeridos' })
+
     const parsedCategoria = parseOptionalPositiveInt(categoriaId)
     const parsedSubcategoria = parseOptionalPositiveInt(subcategoriaId)
+    const parsedProveedor = parseOptionalPositiveInt(proveedorId)
+    const parsedSucursal = parsePositiveIntValue(sucursalId, 'sucursalId')
     if (parsedCategoria.error) return reply.code(400).send({ error: 'categoriaId invalido' })
     if (parsedSubcategoria.error) return reply.code(400).send({ error: 'subcategoriaId invalido' })
-    const parsedStock = parseOptionalNumber(stock, 'stock')
-    const parsedStockCritico = parseOptionalNumber(stockCritico, 'stockCritico')
-    const parsedPrecio = parseOptionalNumber(precio, 'precio')
+    if (parsedProveedor.error) return reply.code(400).send({ error: 'proveedorId invalido' })
+    if (parsedSucursal.error) return reply.code(400).send({ error: parsedSucursal.error })
+
+    const parsedStock = parseOptionalNumber(stock, 'stock', { min: 0 })
+    const parsedStockCritico = parseOptionalNumber(stockCritico, 'stockCritico', { min: 0 })
+    const parsedPrecio = parseOptionalNumber(precio, 'precio', { min: 0 })
     if (parsedStock.error) return reply.code(400).send({ error: parsedStock.error })
     if (parsedStockCritico.error) return reply.code(400).send({ error: parsedStockCritico.error })
     if (parsedPrecio.error) return reply.code(400).send({ error: parsedPrecio.error })
+
     const categoriaFinal = parsedCategoria.value ?? null
     const subcategoriaFinal = parsedSubcategoria.value ?? null
+    const proveedorFinal = parsedProveedor.value ?? null
+    const sucursalFinal = resolveSucursalForWrite(request.user, parsedSucursal)
+
     const clasificacionError = await validateClasificacionTaller(fastify.prisma, {
       categoriaId: categoriaFinal,
       subcategoriaId: subcategoriaFinal,
     })
     if (clasificacionError) return reply.code(clasificacionError.status).send({ error: clasificacionError.error })
-    const item = await fastify.prisma.bodegaTaller.create({
-      data: {
-        codigoInterno, codigoBarra, nombre, unidadMedida,
-        categoriaId: categoriaFinal,
-        subcategoriaId: subcategoriaFinal,
-        stock: parsedStock.value ?? 0,
-        stockCritico: parsedStockCritico.value ?? 0,
-        precio: parsedPrecio.value ?? 0,
-      },
+    const proveedorError = await validateProveedor(fastify.prisma, proveedorFinal)
+    if (proveedorError) return reply.code(proveedorError.status).send({ error: proveedorError.error })
+    const sucursalError = await validateSucursal(fastify.prisma, sucursalFinal)
+    if (sucursalError) return reply.code(sucursalError.status).send({ error: sucursalError.error })
+    const uniqueError = await validateUniqueCodes(fastify.prisma, {
+      codigoInterno: codigoFinal,
+      codigoBarra: cleanText(codigoBarra),
     })
-    return reply.code(201).send(item)
+    if (uniqueError) return reply.code(uniqueError.status).send({ error: uniqueError.error })
+
+    try {
+      const item = await fastify.prisma.bodegaTaller.create({
+        data: {
+          codigoInterno: codigoFinal,
+          codigoBarra: cleanText(codigoBarra),
+          nombre: nombreFinal,
+          unidadMedida: cleanText(unidadMedida),
+          categoriaId: categoriaFinal,
+          subcategoriaId: subcategoriaFinal,
+          proveedorId: proveedorFinal,
+          sucursalId: sucursalFinal,
+          stock: parsedStock.value ?? 0,
+          stockCritico: parsedStockCritico.value ?? 0,
+          precio: parsedPrecio.value ?? 0,
+        },
+      })
+      return reply.code(201).send(await enrichOne(fastify.prisma, item))
+    } catch (e) {
+      if (e.code === 'P2002') return reply.code(409).send({ error: 'codigoInterno ya existe' })
+      throw e
+    }
   })
 
   fastify.put('/:id', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
-    if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
     const body = request.body || {}
-    const current = await fastify.prisma.bodegaTaller.findUnique({
-      where: { id },
-      select: { id: true, categoriaId: true, subcategoriaId: true },
+    const filter = await buildBodegaTallerWhere(fastify.prisma, { page: '1' }, request.user)
+    if (filter.error) return reply.code(400).send({ error: filter.error })
+    const current = await fastify.prisma.bodegaTaller.findFirst({
+      where: { ...filter.where, id },
+      select: { id: true, categoriaId: true, subcategoriaId: true, sucursalId: true, stock: true, codigoInterno: true, codigoBarra: true },
     })
     if (!current) return reply.code(404).send({ error: 'No encontrado' })
+
     const data = {}
-    for (const f of ['codigoBarra', 'nombre', 'unidadMedida', 'activo']) {
-      if (body[f] !== undefined) data[f] = body[f]
+    if (body.codigoInterno !== undefined) {
+      const codigo = cleanText(body.codigoInterno)
+      if (!codigo) return reply.code(400).send({ error: 'codigoInterno requerido' })
+      data.codigoInterno = codigo
     }
-    for (const f of ['stockCritico', 'stock', 'precio']) {
-      if (body[f] !== undefined) {
-        const parsed = parseOptionalNumber(body[f], f)
+    for (const field of ['codigoBarra', 'nombre', 'unidadMedida']) {
+      if (body[field] !== undefined) data[field] = cleanText(body[field])
+    }
+    if (body.nombre !== undefined && !data.nombre) return reply.code(400).send({ error: 'nombre requerido' })
+    if (body.activo !== undefined) data.activo = Boolean(body.activo)
+    for (const field of ['stockCritico', 'stock', 'precio']) {
+      if (body[field] !== undefined) {
+        const parsed = parseOptionalNumber(body[field], field, { min: 0 })
         if (parsed.error) return reply.code(400).send({ error: parsed.error })
-        data[f] = parsed.value
+        data[field] = parsed.value
       }
     }
+
     const parsedCategoria = parseOptionalPositiveInt(body.categoriaId)
     const parsedSubcategoria = parseOptionalPositiveInt(body.subcategoriaId)
+    const parsedProveedor = parseOptionalPositiveInt(body.proveedorId)
+    const parsedSucursal = parsePositiveIntValue(body.sucursalId, 'sucursalId')
     if (parsedCategoria.error) return reply.code(400).send({ error: 'categoriaId invalido' })
     if (parsedSubcategoria.error) return reply.code(400).send({ error: 'subcategoriaId invalido' })
+    if (parsedProveedor.error) return reply.code(400).send({ error: 'proveedorId invalido' })
+    if (parsedSucursal.error) return reply.code(400).send({ error: parsedSucursal.error })
+
     const nextCategoriaId = parsedCategoria.provided ? parsedCategoria.value : current.categoriaId
     const nextSubcategoriaId = parsedSubcategoria.provided ? parsedSubcategoria.value : current.subcategoriaId
     const clasificacionError = await validateClasificacionTaller(fastify.prisma, {
@@ -163,12 +292,60 @@ export default async function bodegaTallerRoutes(fastify) {
     if (clasificacionError) return reply.code(clasificacionError.status).send({ error: clasificacionError.error })
     if (parsedCategoria.provided) data.categoriaId = parsedCategoria.value
     if (parsedSubcategoria.provided) data.subcategoriaId = parsedSubcategoria.value
+    if (parsedProveedor.provided) {
+      const proveedorError = await validateProveedor(fastify.prisma, parsedProveedor.value)
+      if (proveedorError) return reply.code(proveedorError.status).send({ error: proveedorError.error })
+      data.proveedorId = parsedProveedor.value
+    }
+    if (parsedSucursal.provided || getUserSucursalId(request.user)) {
+      const sucursalFinal = resolveSucursalForWrite(request.user, parsedSucursal)
+      const sucursalError = await validateSucursal(fastify.prisma, sucursalFinal)
+      if (sucursalError) return reply.code(sucursalError.status).send({ error: sucursalError.error })
+      data.sucursalId = sucursalFinal
+    }
+    const uniqueError = await validateUniqueCodes(fastify.prisma, {
+      id,
+      codigoInterno: data.codigoInterno,
+      codigoBarra: data.codigoBarra,
+    })
+    if (uniqueError) return reply.code(uniqueError.status).send({ error: uniqueError.error })
+
     try {
-      const item = await fastify.prisma.bodegaTaller.update({ where: { id }, data })
-      return item
+      const item = await fastify.prisma.$transaction(async tx => {
+        const updated = await tx.bodegaTaller.update({ where: { id }, data })
+        if (data.stock !== undefined && Number(data.stock) !== Number(current.stock)) {
+          await tx.bodegaTallerMovimiento.create({
+            data: {
+              bodegaTallerId: id,
+              tipo: 'ajuste',
+              cantidad: Number(data.stock) - Number(current.stock || 0),
+              motivo: 'Ajuste manual bodega taller',
+              userId: request.user?.id ?? null,
+              origenTipo: 'ajuste_manual',
+              origenId: id,
+            },
+          })
+        }
+        return updated
+      })
+      return enrichOne(fastify.prisma, item)
     } catch (e) {
       if (e.code === 'P2025') return reply.code(404).send({ error: 'No encontrado' })
+      if (e.code === 'P2002') return reply.code(409).send({ error: 'codigoInterno ya existe' })
       throw e
     }
+  })
+
+  fastify.delete('/:id', {
+    preHandler: [fastify.authenticate, fastify.rbac('taller', 'delete')],
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
+    const filter = await buildBodegaTallerWhere(fastify.prisma, { page: '1' }, request.user)
+    if (filter.error) return reply.code(400).send({ error: filter.error })
+    const current = await fastify.prisma.bodegaTaller.findFirst({ where: { ...filter.where, id }, select: { id: true } })
+    if (!current) return reply.code(404).send({ error: 'No encontrado' })
+    await fastify.prisma.bodegaTaller.update({ where: { id }, data: { activo: false } })
+    return reply.code(204).send()
   })
 }

@@ -9,6 +9,7 @@ import { attachClientes, computeDiscountAmount, computeTotal } from '../ventas/h
 import { buildCobranzaHistoricoScopeWhere, mergeCobranzaWhere } from '../cobranza/scope.js'
 import { attachConsultaPreciosData } from '../productos/pricing.js'
 import { buildProveedorWhere, proveedorOrderBy } from '../proveedores/helpers.js'
+import { buildBodegaTallerWhere, enrichBodegaTallerItems, filterStockCriticoItems } from '../bodega-taller/helpers.js'
 
 const VENTA_DIRECTA_TIPOS = ['Venta sala', 'Venta directa', 'Venta Sala', 'Venta Directa', 'Normal']
 
@@ -1079,15 +1080,28 @@ export default async function reportesRoutes(fastify) {
   fastify.get('/export/bodega-taller', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
   }, async (request, reply) => {
-    const items = await fastify.prisma.bodegaTaller.findMany({
-      where: { activo: true }, orderBy: { nombre: 'asc' },
+    const filter = await buildBodegaTallerWhere(fastify.prisma, request.query, request.user)
+    if (filter.error) return reply.code(400).send({ error: filter.error })
+    const rawItems = await fastify.prisma.bodegaTaller.findMany({
+      where: filter.where,
+      orderBy: { nombre: 'asc' },
+      take: 10000,
     })
+    const items = await enrichBodegaTallerItems(
+      fastify.prisma,
+      filter.stockCritico ? filterStockCriticoItems(rawItems) : rawItems,
+    )
     const csv = rowsToCsv(items, [
-      { key: 'codigoInterno', label: 'Código' },
+      { key: 'categoriaNombre', label: 'Categoria' },
+      { key: 'codigoBarra', label: 'Cod Barra' },
+      { key: 'codigoInterno', label: 'Cod Interno' },
       { key: 'nombre', label: 'Nombre' },
-      { key: 'unidadMedida', label: 'Unidad' },
+      { key: 'proveedorNombre', label: 'Proveedor' },
       { key: 'stock', label: 'Stock' },
-      { key: 'stockCritico', label: 'Crítico' },
+      { key: 'stockCritico', label: 'Stock Critico' },
+      { key: 'subcategoriaNombre', label: 'Subcategoria' },
+      { key: 'unidadMedida', label: 'Unid. Medida' },
+      { key: 'sucursalNombre', label: 'Sucursal' },
       { key: 'precio', label: 'Precio' },
     ])
     return sendCsv(reply, `bodega_taller_${new Date().toISOString().slice(0, 10)}.csv`, csv)

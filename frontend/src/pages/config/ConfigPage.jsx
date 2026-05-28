@@ -504,6 +504,8 @@ function CategoriasBodegaSection() {
   const updateSub = useUpdateSubcategoria()
   const deleteSub = useDeleteSubcategoria()
   const [nuevaCat, setNuevaCat] = useState('')
+  const [nuevaDesc, setNuevaDesc] = useState(0)
+  const [nuevaMostrar, setNuevaMostrar] = useState('true')
   const [subNombres, setSubNombres] = useState({})
 
   if (isLoading) return <div>Cargando...</div>
@@ -511,9 +513,21 @@ function CategoriasBodegaSection() {
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16 }}>
       <div style={{ fontWeight: 600, marginBottom: 12 }}>Categorias Bodega</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end', marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 120px auto', gap: 8, alignItems: 'end', marginBottom: 16 }}>
         <FormField label="Nueva categoria"><Input value={nuevaCat} onChange={setNuevaCat} /></FormField>
-        <Btn variant="primary" onClick={() => { if (nuevaCat.trim()) createCat.mutate({ nombre: nuevaCat.trim() }, { onSuccess: () => setNuevaCat('') }) }}>+ Agregar</Btn>
+        <FormField label="% descuento"><Input type="number" value={nuevaDesc} onChange={setNuevaDesc} /></FormField>
+        <FormField label="Mostrar web">
+          <Select value={nuevaMostrar} onChange={setNuevaMostrar} options={[{ value: 'true', label: 'Mostrar' }, { value: 'false', label: 'Ocultar' }]} />
+        </FormField>
+        <Btn variant="primary" onClick={() => {
+          if (nuevaCat.trim()) createCat.mutate(
+            { nombre: nuevaCat.trim(), porcDesc: nuevaDesc, mostrar: nuevaMostrar === 'true' },
+            { onSuccess: () => { setNuevaCat(''); setNuevaDesc(0); setNuevaMostrar('true') } },
+          )
+        }}>+ Agregar</Btn>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px auto', gap: 8, padding: '0 0 6px', fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase' }}>
+        <span>Nombre</span><span>% descuento</span><span>Web</span><span>Accion</span>
       </div>
       {categorias.map(c => (
         <div key={c.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 12 }}>

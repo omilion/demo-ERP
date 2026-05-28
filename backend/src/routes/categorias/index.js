@@ -8,9 +8,11 @@ function cleanName(value) {
 }
 
 function parsePorcDesc(value) {
-  if (value === undefined || value === null || value === '') return 0
+  if (value === undefined || value === null || value === '') return { value: 0 }
   const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : 0
+  if (!Number.isFinite(parsed)) return { error: 'porcDesc invalido' }
+  if (parsed < 0 || parsed > 100) return { error: 'porcDesc debe estar entre 0 y 100' }
+  return { value: parsed }
 }
 
 async function ensureActiveCategoria(prisma, id) {
@@ -57,12 +59,14 @@ export default async function categoriasRoutes(fastify) {
   }, async (request, reply) => {
     const nombre = cleanName(request.body?.nombre)
     if (!nombre) return reply.code(400).send({ error: 'nombre requerido' })
+    const parsedDesc = parsePorcDesc(request.body?.porcDesc)
+    if (parsedDesc.error) return reply.code(400).send({ error: parsedDesc.error })
     const duplicate = await findDuplicateCategoria(fastify.prisma, { nombre })
     if (duplicate) return reply.code(409).send({ error: 'Categoria ya existe' })
     const categoria = await fastify.prisma.categoria.create({
       data: {
         nombre,
-        porcDesc: parsePorcDesc(request.body?.porcDesc),
+        porcDesc: parsedDesc.value,
         mostrar: request.body?.mostrar !== false,
       },
     })
@@ -82,7 +86,11 @@ export default async function categoriasRoutes(fastify) {
       if (duplicate) return reply.code(409).send({ error: 'Categoria ya existe' })
       data.nombre = nombre
     }
-    if (request.body?.porcDesc !== undefined) data.porcDesc = parsePorcDesc(request.body.porcDesc)
+    if (request.body?.porcDesc !== undefined) {
+      const parsedDesc = parsePorcDesc(request.body.porcDesc)
+      if (parsedDesc.error) return reply.code(400).send({ error: parsedDesc.error })
+      data.porcDesc = parsedDesc.value
+    }
     if (request.body?.mostrar !== undefined) data.mostrar = Boolean(request.body.mostrar)
 
     try {
@@ -111,7 +119,10 @@ export default async function categoriasRoutes(fastify) {
     })
     if (usados > 0) return reply.code(409).send({ error: 'Categoria en uso por productos' })
     try {
-      await fastify.prisma.categoria.update({ where: { id }, data: { activo: false } })
+      await fastify.prisma.$transaction([
+        fastify.prisma.subcategoria.updateMany({ where: { categoriaId: id, activo: true }, data: { activo: false } }),
+        fastify.prisma.categoria.update({ where: { id }, data: { activo: false } }),
+      ])
       return reply.code(204).send()
     } catch (error) {
       if (error.code === 'P2025') return reply.code(404).send({ error: 'Categoria no encontrada' })

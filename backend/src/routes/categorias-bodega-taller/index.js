@@ -93,7 +93,10 @@ export default async function categoriasBodegaTallerRoutes(fastify) {
     const usados = await fastify.prisma.bodegaTaller.count({ where: { activo: true, categoriaId: id } })
     if (usados > 0) return reply.code(409).send({ error: 'Categoria en uso por materiales de taller' })
     try {
-      await fastify.prisma.categoriaBodegaTaller.update({ where: { id }, data: { activo: false } })
+      await fastify.prisma.$transaction([
+        fastify.prisma.subcategoriaBodegaTaller.updateMany({ where: { categoriaId: id, activo: true }, data: { activo: false } }),
+        fastify.prisma.categoriaBodegaTaller.update({ where: { id }, data: { activo: false } }),
+      ])
       return reply.code(204).send()
     } catch (error) {
       if (error.code === 'P2025') return reply.code(404).send({ error: 'No encontrada' })

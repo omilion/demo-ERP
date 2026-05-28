@@ -1,32 +1,130 @@
 import bcrypt from 'bcrypt'
 
+const ROLES = new Set(['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura'])
+const PERMISSIONS = new Set(['read', 'write', 'delete'])
+const MODULES = new Set([
+  'ventas', 'cotizaciones', 'licitaciones', 'clientes',
+  'bodega', 'catalogo', 'despacho', 'taller',
+  'caja', 'cobranza', 'rrhh', 'reportes',
+  'proveedores', 'descuentos', 'ordenes-compra', 'pagos-proveedores', 'telas', 'bodega-taller', 'crm',
+])
+
+const userSelect = {
+  id: true,
+  email: true,
+  role: true,
+  nombre: true,
+  rut: true,
+  codigoVendedor: true,
+  permisoDescuentos: true,
+  permisosExtra: true,
+  sucursalId: true,
+  activo: true,
+  createdAt: true,
+}
+
+function cleanText(value) {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  const text = String(value).trim()
+  return text || null
+}
+
+function cleanEmail(value) {
+  const text = cleanText(value)
+  return text ? text.toLowerCase() : null
+}
+
+function parseOptionalId(value, field) {
+  if (value === undefined || value === null || value === '') return { provided: value !== undefined, value: null }
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isInteger(parsed) || parsed <= 0) return { provided: true, error: `${field} invalido` }
+  return { provided: true, value: parsed }
+}
+
+function sanitizePermisosExtra(value) {
+  if (value === undefined || value === null || value === '') return { value: null }
+  if (typeof value !== 'object' || Array.isArray(value)) return { error: 'permisosExtra debe ser un objeto' }
+  const sanitized = {}
+  for (const [module, permissions] of Object.entries(value)) {
+    if (!MODULES.has(module)) return { error: `modulo de permiso invalido: ${module}` }
+    if (!Array.isArray(permissions)) return { error: `permisos de ${module} deben ser una lista` }
+    const unique = [...new Set(permissions)]
+    if (unique.some(permission => !PERMISSIONS.has(permission))) {
+      return { error: `permiso invalido en ${module}` }
+    }
+    if (unique.length) sanitized[module] = unique
+  }
+  return { value: Object.keys(sanitized).length ? sanitized : null }
+}
+
+async function validateSucursal(prisma, sucursalId) {
+  if (!sucursalId) return null
+  const sucursal = await prisma.sucursal.findFirst({ where: { id: sucursalId, activo: true }, select: { id: true } })
+  return sucursal ? null : 'Sucursal no encontrada'
+}
+
+async function validateDuplicates(prisma, { id = null, email, rut, codigoVendedor }) {
+  const OR = []
+  if (email) OR.push({ email: { equals: email, mode: 'insensitive' } })
+  if (rut) OR.push({ rut: { equals: rut, mode: 'insensitive' } })
+  if (codigoVendedor) OR.push({ codigoVendedor: { equals: codigoVendedor, mode: 'insensitive' } })
+  if (!OR.length) return null
+  const duplicate = await prisma.user.findFirst({
+    where: { OR, ...(id ? { id: { not: id } } : {}) },
+    select: { email: true, rut: true, codigoVendedor: true },
+  })
+  if (!duplicate) return null
+  if (email && duplicate.email?.toLowerCase() === email.toLowerCase()) return 'email ya existe'
+  if (rut && duplicate.rut?.toLowerCase() === rut.toLowerCase()) return 'rut ya existe'
+  return 'codigoVendedor ya existe'
+}
+
+function uniqueErrorMessage(error) {
+  const target = Array.isArray(error?.meta?.target) ? error.meta.target.join(',') : String(error?.meta?.target || '')
+  if (target.includes('codigo_vendedor') || target.includes('codigoVendedor')) return 'codigoVendedor ya existe'
+  if (target.includes('email')) return 'email ya existe'
+  return 'dato unico ya existe'
+}
+
+async function ensureAdminSafety(prisma, requestUser, current, nextData) {
+  const nextRole = nextData.role ?? current.role
+  const nextActivo = nextData.activo ?? current.activo
+  const isSelf = Number(requestUser?.id) === Number(current.id)
+  if (isSelf && current.activo && nextActivo === false) return 'No puede desactivar su propio usuario'
+  if (isSelf && current.role === 'admin' && nextRole !== 'admin') return 'No puede degradar su propio usuario admin'
+  if (current.role === 'admin' && current.activo && (nextRole !== 'admin' || nextActivo === false)) {
+    const otherAdmins = await prisma.user.count({ where: { id: { not: current.id }, role: 'admin', activo: true } })
+    if (otherAdmins === 0) return 'Debe existir al menos un admin activo'
+  }
+  return null
+}
+
 export default async function usuariosRoutes(fastify) {
-  // GET /api/usuarios
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('usuarios', 'read', { allowExtra: false })],
   }, async () => {
-    return fastify.prisma.user.findMany({
+    const users = await fastify.prisma.user.findMany({
       orderBy: { nombre: 'asc' },
-      select: {
-        id: true, email: true, role: true, nombre: true, rut: true,
-        codigoVendedor: true, permisoDescuentos: true, permisosExtra: true,
-        sucursalId: true, activo: true, createdAt: true,
-      },
+      select: userSelect,
     })
+    const sucursalIds = [...new Set(users.map(u => u.sucursalId).filter(Boolean))]
+    const sucursales = sucursalIds.length
+      ? await fastify.prisma.sucursal.findMany({ where: { id: { in: sucursalIds } }, select: { id: true, nombre: true } })
+      : []
+    const sucursalMap = new Map(sucursales.map(s => [s.id, s.nombre]))
+    return users.map(u => ({
+      ...u,
+      sucursalNombre: u.sucursalId ? (sucursalMap.get(u.sucursalId) || `Sucursal #${u.sucursalId}`) : null,
+    }))
   })
 
   fastify.get('/:id', {
     preHandler: [fastify.authenticate, fastify.rbac('usuarios', 'read', { allowExtra: false })],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
-    const u = await fastify.prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true, email: true, role: true, nombre: true, rut: true,
-        codigoVendedor: true, permisoDescuentos: true, permisosExtra: true,
-        sucursalId: true, activo: true, createdAt: true,
-      },
-    })
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
+    const u = await fastify.prisma.user.findUnique({ where: { id }, select: userSelect })
     if (!u) return reply.code(404).send({ error: 'no encontrado' })
     return u
   })
@@ -35,27 +133,45 @@ export default async function usuariosRoutes(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('usuarios', 'write', { allowExtra: false })],
   }, async (request, reply) => {
     const b = request.body || {}
-    if (!b.email || !b.password || !b.role || !b.nombre)
+    const email = cleanEmail(b.email)
+    const nombre = cleanText(b.nombre)
+    const password = cleanText(b.password)
+    const role = cleanText(b.role)
+    if (!email || !password || !role || !nombre) {
       return reply.code(400).send({ error: 'email, password, role, nombre requeridos' })
-    const passwordHash = await bcrypt.hash(b.password, 10)
+    }
+    if (!ROLES.has(role)) return reply.code(400).send({ error: 'role invalido' })
+    const rut = cleanText(b.rut)
+    const codigoVendedor = cleanText(b.codigoVendedor)
+    const parsedSucursal = parseOptionalId(b.sucursalId, 'sucursalId')
+    if (parsedSucursal.error) return reply.code(400).send({ error: parsedSucursal.error })
+    const sucursalError = await validateSucursal(fastify.prisma, parsedSucursal.value)
+    if (sucursalError) return reply.code(404).send({ error: sucursalError })
+    const permisos = sanitizePermisosExtra(b.permisosExtra)
+    if (permisos.error) return reply.code(400).send({ error: permisos.error })
+    const duplicate = await validateDuplicates(fastify.prisma, { email, rut, codigoVendedor })
+    if (duplicate) return reply.code(409).send({ error: duplicate })
+
+    const passwordHash = await bcrypt.hash(password, 10)
     try {
       const u = await fastify.prisma.user.create({
         data: {
-          email: b.email,
+          email,
           passwordHash,
-          role: b.role,
-          nombre: b.nombre,
-          rut: b.rut || null,
-          codigoVendedor: b.codigoVendedor || null,
-          permisoDescuentos: !!b.permisoDescuentos,
-          permisosExtra: b.permisosExtra || null,
-          sucursalId: b.sucursalId ? parseInt(b.sucursalId, 10) : null,
+          role,
+          nombre,
+          rut,
+          codigoVendedor,
+          permisoDescuentos: Boolean(b.permisoDescuentos),
+          permisosExtra: permisos.value,
+          sucursalId: parsedSucursal.value,
           activo: b.activo !== false,
         },
+        select: userSelect,
       })
-      return reply.code(201).send({ id: u.id, email: u.email, role: u.role, nombre: u.nombre })
+      return reply.code(201).send(u)
     } catch (e) {
-      if (e.code === 'P2002') return reply.code(409).send({ error: 'email ya existe' })
+      if (e.code === 'P2002') return reply.code(409).send({ error: uniqueErrorMessage(e) })
       throw e
     }
   })
@@ -64,34 +180,96 @@ export default async function usuariosRoutes(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('usuarios', 'write', { allowExtra: false })],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
     const b = request.body || {}
+    const current = await fastify.prisma.user.findUnique({ where: { id }, select: { ...userSelect, passwordHash: true } })
+    if (!current) return reply.code(404).send({ error: 'no encontrado' })
     const data = {}
-    for (const f of ['nombre', 'role', 'rut', 'codigoVendedor', 'permisoDescuentos', 'permisosExtra', 'activo']) {
-      if (b[f] !== undefined) data[f] = b[f]
+
+    if (b.nombre !== undefined) {
+      const nombre = cleanText(b.nombre)
+      if (!nombre) return reply.code(400).send({ error: 'nombre requerido' })
+      data.nombre = nombre
     }
-    if (b.sucursalId !== undefined) data.sucursalId = b.sucursalId ? parseInt(b.sucursalId, 10) : null
-    if (b.password) data.passwordHash = await bcrypt.hash(b.password, 10)
+    if (b.role !== undefined) {
+      const role = cleanText(b.role)
+      if (!ROLES.has(role)) return reply.code(400).send({ error: 'role invalido' })
+      data.role = role
+    }
+    if (b.rut !== undefined) data.rut = cleanText(b.rut)
+    if (b.codigoVendedor !== undefined) data.codigoVendedor = cleanText(b.codigoVendedor)
+    if (b.permisoDescuentos !== undefined) data.permisoDescuentos = Boolean(b.permisoDescuentos)
+    if (b.activo !== undefined) data.activo = Boolean(b.activo)
+    if (b.permisosExtra !== undefined) {
+      const permisos = sanitizePermisosExtra(b.permisosExtra)
+      if (permisos.error) return reply.code(400).send({ error: permisos.error })
+      data.permisosExtra = permisos.value
+    }
+    if (b.sucursalId !== undefined) {
+      const parsedSucursal = parseOptionalId(b.sucursalId, 'sucursalId')
+      if (parsedSucursal.error) return reply.code(400).send({ error: parsedSucursal.error })
+      const sucursalError = await validateSucursal(fastify.prisma, parsedSucursal.value)
+      if (sucursalError) return reply.code(404).send({ error: sucursalError })
+      data.sucursalId = parsedSucursal.value
+    }
+    if (b.password) data.passwordHash = await bcrypt.hash(String(b.password), 10)
+
+    const duplicate = await validateDuplicates(fastify.prisma, {
+      id,
+      rut: data.rut,
+      codigoVendedor: data.codigoVendedor,
+    })
+    if (duplicate) return reply.code(409).send({ error: duplicate })
+
+    const safetyError = await ensureAdminSafety(fastify.prisma, request.user, current, data)
+    if (safetyError) return reply.code(409).send({ error: safetyError })
+
     try {
-      const u = await fastify.prisma.user.update({
-        where: { id }, data,
-        select: { id: true, email: true, role: true, nombre: true, permisosExtra: true, activo: true },
-      })
+      const u = await fastify.prisma.user.update({ where: { id }, data, select: userSelect })
+      if (data.passwordHash || data.role !== undefined || data.activo === false) {
+        await fastify.prisma.session.deleteMany({ where: { userId: id } })
+      }
       return u
-    } catch (e) { if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrado' }); throw e }
+    } catch (e) {
+      if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrado' })
+      if (e.code === 'P2002') return reply.code(409).send({ error: uniqueErrorMessage(e) })
+      throw e
+    }
   })
 
-  // PUT /api/usuarios/:id/permisos — bulk update permisosExtra
   fastify.put('/:id/permisos', {
     preHandler: [fastify.authenticate, fastify.rbac('usuarios', 'write', { allowExtra: false })],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
-    const { permisosExtra } = request.body || {}
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
+    const permisos = sanitizePermisosExtra(request.body?.permisosExtra)
+    if (permisos.error) return reply.code(400).send({ error: permisos.error })
     try {
       const u = await fastify.prisma.user.update({
-        where: { id }, data: { permisosExtra: permisosExtra || null },
+        where: { id },
+        data: { permisosExtra: permisos.value },
         select: { id: true, permisosExtra: true },
       })
       return u
-    } catch (e) { if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrado' }); throw e }
+    } catch (e) {
+      if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrado' })
+      throw e
+    }
+  })
+
+  fastify.delete('/:id', {
+    preHandler: [fastify.authenticate, fastify.rbac('usuarios', 'delete', { allowExtra: false })],
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
+    const current = await fastify.prisma.user.findUnique({ where: { id }, select: userSelect })
+    if (!current) return reply.code(404).send({ error: 'no encontrado' })
+    const safetyError = await ensureAdminSafety(fastify.prisma, request.user, current, { activo: false })
+    if (safetyError) return reply.code(409).send({ error: safetyError })
+    await fastify.prisma.$transaction([
+      fastify.prisma.session.deleteMany({ where: { userId: id } }),
+      fastify.prisma.user.update({ where: { id }, data: { activo: false } }),
+    ])
+    return reply.code(204).send()
   })
 }

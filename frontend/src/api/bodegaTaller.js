@@ -15,6 +15,14 @@ export const useBodegaTallerItem = (id) =>
     enabled: !!id,
   })
 
+export const useBodegaTallerAutocomplete = (q, enabled = true) =>
+  useQuery({
+    queryKey: ['bodega-taller-autocomplete', q],
+    queryFn: () => api.get('/bodega-taller/autocomplete', { params: { q } }).then(r => r.data),
+    enabled: enabled && String(q || '').trim().length >= 2,
+    staleTime: 30_000,
+  })
+
 export const useCreateBodegaTaller = () => {
   const qc = useQueryClient()
   return useMutation({
@@ -27,6 +35,14 @@ export const useUpdateBodegaTaller = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, data }) => api.put(`/bodega-taller/${id}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['bodega-taller'] }),
+  })
+}
+
+export const useDeleteBodegaTaller = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/bodega-taller/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['bodega-taller'] }),
   })
 }

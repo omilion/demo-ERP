@@ -4,7 +4,7 @@ import { buildApp } from '../src/app.js'
 process.env.JWT_ACCESS_SECRET ||= 'test-access-secret'
 process.env.JWT_REFRESH_SECRET ||= 'test-refresh-secret'
 
-function tokenFor(app, role = 'admin') {
+function tokenFor(app, role = 'admin', extra = {}) {
   return app.jwt.sign({
     id: 1,
     role,
@@ -13,6 +13,7 @@ function tokenFor(app, role = 'admin') {
     scope: 'erp',
     aud: 'plastimar:erp',
     tokenType: 'access',
+    ...extra,
   })
 }
 
@@ -31,6 +32,8 @@ describe('subcategorias bodega taller legacy parity', () => {
     await app.prisma.bodegaTaller.deleteMany({ where: { codigoInterno: { contains: marker } } }).catch(() => {})
     await app.prisma.subcategoriaBodegaTaller.deleteMany({ where: { nombre: { contains: marker } } }).catch(() => {})
     await app.prisma.categoriaBodegaTaller.deleteMany({ where: { nombre: { contains: marker } } }).catch(() => {})
+    await app.prisma.proveedor.deleteMany({ where: { rut: { contains: marker } } }).catch(() => {})
+    await app.prisma.sucursal.deleteMany({ where: { nombre: { contains: marker } } }).catch(() => {})
     await app.close()
   })
 
@@ -133,6 +136,19 @@ describe('subcategorias bodega taller legacy parity', () => {
       payload: { nombre: `${marker}-DUP` },
     })
     expect(duplicate.statusCode).toBe(409)
+  })
+
+  it('soft deletes child subcategories when deleting an unused category', async () => {
+    const categoria = await createCategoria(`${marker}-delete-cat`)
+    const sub = await createSubcategoria(categoria.id, `${marker}-delete-sub`)
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/api/categorias-bodega-taller/${categoria.id}`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(del.statusCode).toBe(204)
+    const reloaded = await app.prisma.subcategoriaBodegaTaller.findUnique({ where: { id: sub.id } })
+    expect(reloaded.activo).toBe(false)
   })
 
   it('validates material category/subcategory consistency in bodega taller writes', async () => {
@@ -259,5 +275,126 @@ describe('subcategorias bodega taller legacy parity', () => {
       payload: { nombre: `${marker}-bloqueada-taller` },
     })
     expect(blockedTallerWrite.statusCode).toBe(403)
+  })
+
+  it('filters, exports and scopes bodega taller with legacy columns and traceable stock adjustments', async () => {
+    const categoria = await createCategoria(`${marker}-filtros-cat`)
+    const sub = await createSubcategoria(categoria.id, `${marker}-filtros-sub`)
+    const sucursalBase = 970000 + Math.floor(Date.now() % 10000)
+    const sucA = await app.prisma.sucursal.upsert({
+      where: { id: sucursalBase },
+      update: { nombre: `${marker}-Sucursal A`, activo: true },
+      create: { id: sucursalBase, nombre: `${marker}-Sucursal A` },
+    })
+    const sucB = await app.prisma.sucursal.upsert({
+      where: { id: sucursalBase + 1 },
+      update: { nombre: `${marker}-Sucursal B`, activo: true },
+      create: { id: sucursalBase + 1, nombre: `${marker}-Sucursal B` },
+    })
+    const proveedorA = await app.prisma.proveedor.create({ data: { nombre: `${marker} Proveedor A`, rut: `${marker}-pa` } })
+    const proveedorB = await app.prisma.proveedor.create({ data: { nombre: `${marker} Proveedor B`, rut: `${marker}-pb` } })
+
+    const createA = await app.inject({
+      method: 'POST',
+      url: '/api/bodega-taller',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        codigoInterno: `${marker}-mat-a`,
+        codigoBarra: `${marker}-bar-a`,
+        nombre: `${marker} Material A`,
+        categoriaId: categoria.id,
+        subcategoriaId: sub.id,
+        proveedorId: proveedorA.id,
+        sucursalId: sucA.id,
+        unidadMedida: 'Mts',
+        stock: 1,
+        stockCritico: 3,
+      },
+    })
+    expect(createA.statusCode).toBe(201)
+    const materialA = JSON.parse(createA.body)
+
+    const createB = await app.inject({
+      method: 'POST',
+      url: '/api/bodega-taller',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        codigoInterno: `${marker}-mat-b`,
+        codigoBarra: `${marker}-bar-b`,
+        nombre: `${marker} Material B`,
+        proveedorId: proveedorB.id,
+        sucursalId: sucB.id,
+        stock: 10,
+        stockCritico: 1,
+      },
+    })
+    expect(createB.statusCode).toBe(201)
+
+    const filtered = await app.inject({
+      method: 'GET',
+      url: `/api/bodega-taller?stockCritico=true&sucursalId=${sucA.id}&proveedor=${encodeURIComponent(`${marker} Proveedor A`)}&codigoBarra=${marker}-bar-a`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(filtered.statusCode).toBe(200)
+    const filteredBody = JSON.parse(filtered.body)
+    expect(filteredBody.total).toBe(1)
+    expect(filteredBody.items[0]).toMatchObject({
+      codigoInterno: `${marker}-mat-a`,
+      categoriaNombre: `${marker}-filtros-cat`,
+      subcategoriaNombre: `${marker}-filtros-sub`,
+      proveedorNombre: `${marker} Proveedor A`,
+      sucursalNombre: `${marker}-Sucursal A`,
+    })
+
+    const scoped = await app.inject({
+      method: 'GET',
+      url: `/api/bodega-taller?search=${marker}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'taller', { sucursalId: sucA.id })}` },
+    })
+    expect(scoped.statusCode).toBe(200)
+    const scopedCodes = JSON.parse(scoped.body).items.map(i => i.codigoInterno)
+    expect(scopedCodes).toContain(`${marker}-mat-a`)
+    expect(scopedCodes).not.toContain(`${marker}-mat-b`)
+
+    const autocomplete = await app.inject({
+      method: 'GET',
+      url: `/api/bodega-taller/autocomplete?q=${marker}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'taller', { sucursalId: sucA.id })}` },
+    })
+    expect(autocomplete.statusCode).toBe(200)
+    const autocompleteCodes = JSON.parse(autocomplete.body).map(i => i.codigoInterno)
+    expect(autocompleteCodes).toContain(`${marker}-mat-a`)
+    expect(autocompleteCodes).not.toContain(`${marker}-mat-b`)
+
+    const exportRes = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/export/bodega-taller?search=${marker}&sucursalId=${sucA.id}`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(exportRes.statusCode).toBe(200)
+    expect(exportRes.headers['content-type']).toContain('text/csv')
+    expect(exportRes.body).toContain('Cod Barra')
+    expect(exportRes.body).toContain(`${marker} Proveedor A`)
+    expect(exportRes.body).not.toContain(`${marker} Proveedor B`)
+
+    const duplicateBar = await app.inject({
+      method: 'POST',
+      url: '/api/bodega-taller',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { codigoInterno: `${marker}-mat-c`, codigoBarra: `${marker}-bar-a`, nombre: 'Duplicado barra' },
+    })
+    expect(duplicateBar.statusCode).toBe(409)
+
+    const updateStock = await app.inject({
+      method: 'PUT',
+      url: `/api/bodega-taller/${materialA.id}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { stock: 6 },
+    })
+    expect(updateStock.statusCode).toBe(200)
+    const movement = await app.prisma.bodegaTallerMovimiento.findFirst({
+      where: { bodegaTallerId: materialA.id, origenTipo: 'ajuste_manual' },
+    })
+    expect(movement).toMatchObject({ tipo: 'ajuste', cantidad: 5 })
   })
 })

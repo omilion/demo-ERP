@@ -38,3 +38,11 @@ export const useUpdatePermisos = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['usuarios'] }),
   })
 }
+
+export const useDeleteUsuario = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/usuarios/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['usuarios'] }),
+  })
+}

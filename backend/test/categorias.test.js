@@ -188,6 +188,29 @@ describe('subcategorias catalogo legacy parity', () => {
     expect(JSON.parse(importUnknown.body)).toMatchObject({ aplicable: false })
   })
 
+  it('validates category discount and deactivates child subcategories when deleting an unused category', async () => {
+    const invalidDesc = await app.inject({
+      method: 'POST',
+      url: '/api/categorias',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { nombre: `${marker}-desc-invalido`, porcDesc: 150 },
+    })
+    expect(invalidDesc.statusCode).toBe(400)
+
+    const categoria = await createCategoria(`${marker}-delete-subcats`)
+    const sub = await createSubcategoria(categoria.id, `${marker}-delete-sub`)
+
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/api/categorias/${categoria.id}`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(del.statusCode).toBe(204)
+
+    const reloadedSub = await app.prisma.subcategoria.findUnique({ where: { id: sub.id } })
+    expect(reloadedSub.activo).toBe(false)
+  })
+
   it('enforces catalog read and admin/config write permissions', async () => {
     const cajero = tokenFor(app, 'cajero')
     const bodeguero = tokenFor(app, 'bodeguero')

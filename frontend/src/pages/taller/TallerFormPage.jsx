@@ -4,7 +4,7 @@ import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../components/forms/index'
 import { useOdt, useCreateOdt, useUpdateOdt, useOdtOperarios, useOdtItemTallerEstado, useOdtTallerEstadoMasivo, useCreateOdtConsumo, useOdtMateriales, useDeleteOdtMaterial } from '../../api/odts'
 import { useProductos } from '../../api/productos'
-import { useBodegaTaller } from '../../api/bodegaTaller'
+import { useBodegaTallerAutocomplete } from '../../api/bodegaTaller'
 import { useTelas } from '../../api/telas'
 import { useHistorialMateriales } from '../../api/historialMateriales'
 import { useAuthStore } from '../../store/auth'
@@ -211,21 +211,20 @@ function OdtConsumosSection({ odtId }) {
 
   const trimmedSearch = search.trim()
   const productoParams = tipo === 'producto' && trimmedSearch ? { search: trimmedSearch } : {}
-  const bodegaParams = {
-    page: '1',
-    ...(tipo === 'material_taller' && trimmedSearch ? { search: trimmedSearch } : {}),
-  }
   const telaParams = tipo === 'tela' && trimmedSearch ? { search: trimmedSearch } : {}
 
   const { data: productosResult = { items: [] }, isLoading: loadingProductos } = useProductos(productoParams)
-  const { data: bodegaResult = { items: [] }, isLoading: loadingBodega } = useBodegaTaller(bodegaParams)
+  const { data: bodegaItems = [], isLoading: loadingBodega } = useBodegaTallerAutocomplete(
+    trimmedSearch,
+    tipo === 'material_taller',
+  )
   const { data: telasResult = { items: [] }, isLoading: loadingTelas } = useTelas(telaParams)
   const { data: historial = { items: [] }, isLoading: loadingHistorial } = useHistorialMateriales({ odtId })
   const { data: materiales = { items: [] }, isLoading: loadingMateriales } = useOdtMateriales(odtId)
 
   const source = {
     producto: { items: productosResult.items || [], loading: loadingProductos },
-    material_taller: { items: bodegaResult.items || [], loading: loadingBodega },
+    material_taller: { items: bodegaItems || [], loading: loadingBodega },
     tela: { items: telasResult.items || [], loading: loadingTelas },
   }[tipo]
 

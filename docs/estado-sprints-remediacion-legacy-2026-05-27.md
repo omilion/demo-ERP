@@ -5,29 +5,24 @@ Fecha de corte: 2026-05-27
 ## Resumen
 
 - Total de SPR documentados: 48.
-- Cerrados, aprobados o aprobados localmente: 36.
-- Pendientes de ejecucion: 12.
-- Estado del codigo: bloque Taller/Historial implementado y validado localmente; queda pendiente consolidar commit final de este lote antes de seguir con nuevos SPR.
+- Cerrados, aprobados o aprobados localmente: 41.
+- Pendientes de ejecucion: 7.
+- Estado del codigo: bloque Bodega Taller/Categorias/Usuarios implementado, probado y listo para commit; quedan 7 SPR pendientes.
 
 ## Criterio de orden
 
 1. Un SPR queda cerrado solo si su documento indica aprobado/cerrado y tiene evidencia de implementacion o descarte explicito.
 2. Un SPR pendiente se mantiene como pendiente si conserva checklist sin ejecutar o evidencia final vacia.
 3. Los cambios aprobados se consolidan en un commit unico de remediacion acumulada, salvo que se decida dividirlos manualmente por modulo antes de subir.
-4. Los 17 pendientes deben tratarse como el backlog siguiente; no estan dentro del bloque limpio de cierre actual.
+4. Los 7 pendientes deben tratarse como el backlog siguiente; no estan dentro del bloque limpio de cierre actual.
 
 ## Pendientes de ejecucion
 
 | SPR | Modulo / tema | Estado |
 | --- | --- | --- |
-| SPR-01 | autocompleta nombre material | Pendiente de ejecucion |
-| SPR-03 | bodega taller | Pendiente de ejecucion |
 | SPR-06 | cargo transporte | Pendiente de ejecucion |
-| SPR-07 | categorias bodega taller | Pendiente de ejecucion |
-| SPR-08 | categorias | Pendiente de ejecucion |
 | SPR-09 | clase excel | Pendiente de ejecucion |
 | SPR-11 | cobranza cliente | Pendiente de ejecucion |
-| SPR-43 | usuarios | Pendiente de ejecucion |
 | SPR-44 | vendor | Pendiente de ejecucion |
 | SPR-46 | venta web | Pendiente de ejecucion |
 | SPR-47 | web | Pendiente de ejecucion |
@@ -35,25 +30,24 @@ Fecha de corte: 2026-05-27
 
 ## Orden sugerido para continuar
 
-1. SPR-03 bodega taller.
-2. SPR-07 categorias bodega taller.
-3. SPR-01 autocompleta nombre material.
-4. SPR-08 categorias.
-5. SPR-43 usuarios.
-6. SPR-46 venta web.
-7. SPR-47 web.
-8. SPR-11 cobranza cliente.
-9. SPR-06 cargo transporte.
-10. SPR-09 clase excel.
-11. SPR-44 vendor.
-12. SPR-48 word textarea.
+1. SPR-46 venta web.
+2. SPR-47 web.
+3. SPR-11 cobranza cliente.
+4. SPR-06 cargo transporte.
+5. SPR-09 clase excel.
+6. SPR-44 vendor.
+7. SPR-48 word textarea.
 
-Este orden prioriza flujo operativo y datos productivos antes que librerias, assets o utilidades legacy.
+Este orden prioriza cerrar flujo web/cliente y luego utilidades legacy restantes.
 
 ## Cerrados o aprobados
 
 | SPR | Modulo / tema | Estado |
 | --- | --- | --- |
+| SPR-01 | autocompleta nombre material | Aprobado localmente - cerrado el 2026-05-27 |
+| SPR-03 | bodega taller | Aprobado localmente - cerrado el 2026-05-27 |
+| SPR-07 | categorias bodega taller | Aprobado localmente - cerrado el 2026-05-27 |
+| SPR-08 | categorias | Aprobado localmente - cerrado el 2026-05-27 |
 | SPR-02 | bitacora taller | Aprobado - cerrado el 2026-05-26 |
 | SPR-04 | bodega | Aprobado con observaciones no bloqueantes |
 | SPR-05 | caja | Aprobado |
@@ -89,6 +83,7 @@ Este orden prioriza flujo operativo y datos productivos antes que librerias, ass
 | SPR-40 | taller externo | Aprobado localmente con doble revision multiagente |
 | SPR-41 | taller historial materiales | Aprobado localmente con doble revision multiagente |
 | SPR-42 | taller | Aprobado localmente con doble revision multiagente |
+| SPR-43 | usuarios | Aprobado localmente - cerrado el 2026-05-27 |
 | SPR-45 | venta directa | Aprobado |
 
 ## Estado de limpieza esperado
@@ -116,9 +111,10 @@ Resultados:
 | `npm.cmd exec prisma migrate status` | OK, base `plastimar_test` actualizada con 26 migraciones. |
 | `npm.cmd exec prisma validate` | OK, schema Prisma valido. |
 | `npm.cmd run db:seed` | OK, seed cargado. |
-| `npm.cmd run test:ci -- --reporter=dot` | OK, 16 archivos, 126 tests. |
-| `npm.cmd run test:full -- --reporter=dot` | OK, 49 archivos, 432 tests. |
+| `npm.cmd test -- categorias-bodega-taller.test.js categorias.test.js usuarios.test.js` | OK, 3 archivos, 12 tests. |
+| `npm.cmd run test:ci` | OK, 16 archivos, 126 tests. |
+| `npm.cmd run test:full` | OK, 50 archivos, 437 tests. |
 | `frontend: npm.cmd run build` | OK, build Vite generado. Warning no bloqueante por chunk mayor a 500 kB. |
 | `frontend: npm.cmd run lint` | OK, ESLint sin errores. |
 
-Nota: una primera corrida backend sin `DATABASE_URL` fallo por ambiente local no configurado; no corresponde a una regresion del codigo. Con `DATABASE_URL` correcto, `odts.test.js`, `test:ci` y `test:full` pasaron.
+Nota: una primera corrida backend sin `DATABASE_URL` fallo por ambiente local no configurado; no corresponde a una regresion del codigo. Con `DATABASE_URL` correcto, las pruebas dirigidas del bloque (12/12), `test:ci` (126/126) y `test:full` (437/437) pasaron.
