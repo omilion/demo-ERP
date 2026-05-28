@@ -15,6 +15,23 @@ jobs:
   deploy:
     name: Build & Deploy
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: plastimar
+          POSTGRES_PASSWORD: plastimar
+          POSTGRES_DB: plastimar_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U plastimar -d plastimar_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://plastimar:plastimar@localhost:5432/plastimar_ci?schema=public
 
     steps:
       - name: Checkout
@@ -38,6 +55,12 @@ jobs:
         run: |
           npx prisma validate
           npx prisma generate
+
+      - name: Prepare backend test database
+        working-directory: backend
+        run: |
+          npx prisma migrate deploy
+          npm run db:seed
 
       - name: Run backend focal tests
         working-directory: backend
