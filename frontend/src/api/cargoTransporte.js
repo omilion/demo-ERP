@@ -29,3 +29,5 @@ export const useDeleteCargoTransporte = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: K }),
   })
 }
+
+export const cargoTransporteExportUrl = () => '/cargo-transporte/export'

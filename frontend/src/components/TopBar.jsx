@@ -9,6 +9,7 @@ const NAV_GROUPS = [
   { label: 'Ventas', items: [
     { label: 'Ventas', route: '/ventas', module: 'ventas' },
     { label: 'Matriz Ventas', route: '/matriz-ventas', module: 'ventas' },
+    { label: 'OC Online / Venta Web', route: '/ordenes-compra', module: 'ventas' },
     { label: 'Licitaciones', route: '/licitaciones', module: 'licitaciones' },
     { label: 'Reporteria Gerencial', route: '/reportes/gerenciales', module: 'reportes' },
     { label: 'Reportes Licitaciones', route: '/reportes/licitaciones', module: 'licitaciones' },
@@ -31,7 +32,7 @@ const NAV_GROUPS = [
   ] },
   { label: 'Caja', items: [
     { label: 'Movimientos', route: '/caja', module: 'caja' },
-    { label: 'Cobranza', route: '/cobranza', module: 'ventas' },
+    { label: 'Cobranza', route: '/cobranza', module: 'cobranza' },
   ] },
   { label: 'Clientes', items: [
     { label: 'Clientes', route: '/clientes', module: 'clientes' },

@@ -26,6 +26,18 @@ export const useUpdateOrdenCompra = () => {
   })
 }
 
+export const useProcesarOrdenCompraVenta = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }) => api.post(`/ordenes-compra/${id}/procesar-venta`, data).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['ordenes-compra'] })
+      qc.invalidateQueries({ queryKey: ['ordenes-compra', vars.id] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+    },
+  })
+}
+
 export const useDeleteOrdenCompra = () => {
   const qc = useQueryClient()
   return useMutation({
@@ -33,3 +45,5 @@ export const useDeleteOrdenCompra = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['ordenes-compra'] }),
   })
 }
+
+export const ordenesCompraExportUrl = () => '/ordenes-compra/export'

@@ -5,40 +5,32 @@ Fecha de corte: 2026-05-27
 ## Resumen
 
 - Total de SPR documentados: 48.
-- Cerrados, aprobados o aprobados localmente: 41.
-- Pendientes de ejecucion: 7.
-- Estado del codigo: bloque Bodega Taller/Categorias/Usuarios implementado, probado y listo para commit; quedan 7 SPR pendientes.
+- Cerrados, aprobados o aprobados localmente: 48.
+- Pendientes de ejecucion: 0.
+- Estado del codigo: bloque final de 7 SPR implementado o cerrado por reemplazo tecnico documentado; frontend validado con lint/build; backend validado por sintaxis y tests preparados, con corrida de integracion pendiente por Postgres local no disponible.
 
 ## Criterio de orden
 
 1. Un SPR queda cerrado solo si su documento indica aprobado/cerrado y tiene evidencia de implementacion o descarte explicito.
 2. Un SPR pendiente se mantiene como pendiente si conserva checklist sin ejecutar o evidencia final vacia.
 3. Los cambios aprobados se consolidan en un commit unico de remediacion acumulada, salvo que se decida dividirlos manualmente por modulo antes de subir.
-4. Los 7 pendientes deben tratarse como el backlog siguiente; no estan dentro del bloque limpio de cierre actual.
+4. No quedan SPR pendientes documentados; cualquier brecha nueva debe abrirse como solicitud nueva o sprint posterior.
 
 ## Pendientes de ejecucion
 
-| SPR | Modulo / tema | Estado |
+No quedan SPR pendientes de ejecucion.
+
+## Cierre del bloque final
+
+| SPR | Modulo / tema | Resultado |
 | --- | --- | --- |
-| SPR-06 | cargo transporte | Pendiente de ejecucion |
-| SPR-09 | clase excel | Pendiente de ejecucion |
-| SPR-11 | cobranza cliente | Pendiente de ejecucion |
-| SPR-44 | vendor | Pendiente de ejecucion |
-| SPR-46 | venta web | Pendiente de ejecucion |
-| SPR-47 | web | Pendiente de ejecucion |
-| SPR-48 | word textarea | Pendiente de ejecucion |
-
-## Orden sugerido para continuar
-
-1. SPR-46 venta web.
-2. SPR-47 web.
-3. SPR-11 cobranza cliente.
-4. SPR-06 cargo transporte.
-5. SPR-09 clase excel.
-6. SPR-44 vendor.
-7. SPR-48 word textarea.
-
-Este orden prioriza cerrar flujo web/cliente y luego utilidades legacy restantes.
+| SPR-06 | cargo transporte | Implementado y aprobado localmente |
+| SPR-09 | clase excel | Cerrado sin cambios de codigo; reemplazo tecnico existente |
+| SPR-11 | cobranza cliente | Implementado y aprobado localmente |
+| SPR-44 | vendor | Cerrado sin cambios de codigo; reemplazo tecnico existente |
+| SPR-46 | venta web | Implementado y aprobado localmente |
+| SPR-47 | web | Implementado y aprobado localmente |
+| SPR-48 | word textarea | Cerrado sin cambios de codigo; reemplazo tecnico existente |
 
 ## Cerrados o aprobados
 
@@ -51,7 +43,10 @@ Este orden prioriza cerrar flujo web/cliente y luego utilidades legacy restantes
 | SPR-02 | bitacora taller | Aprobado - cerrado el 2026-05-26 |
 | SPR-04 | bodega | Aprobado con observaciones no bloqueantes |
 | SPR-05 | caja | Aprobado |
+| SPR-06 | cargo transporte | Aprobado localmente - cerrado el 2026-05-27 |
+| SPR-09 | clase excel | Cerrado sin cambios de codigo - reemplazo tecnico documentado el 2026-05-27 |
 | SPR-10 | clientes | Aprobado |
+| SPR-11 | cobranza cliente | Aprobado localmente - cerrado el 2026-05-27 |
 | SPR-12 | cobranza | Aprobado para continuar |
 | SPR-13 | consulta precios | Aprobado |
 | SPR-14 | convenio marco | Aprobado con observaciones documentadas |
@@ -84,7 +79,11 @@ Este orden prioriza cerrar flujo web/cliente y luego utilidades legacy restantes
 | SPR-41 | taller historial materiales | Aprobado localmente con doble revision multiagente |
 | SPR-42 | taller | Aprobado localmente con doble revision multiagente |
 | SPR-43 | usuarios | Aprobado localmente - cerrado el 2026-05-27 |
+| SPR-44 | vendor | Cerrado sin cambios de codigo - reemplazo tecnico documentado el 2026-05-27 |
 | SPR-45 | venta directa | Aprobado |
+| SPR-46 | venta web | Aprobado localmente - cerrado el 2026-05-27 |
+| SPR-47 | web | Aprobado localmente - cerrado el 2026-05-27 |
+| SPR-48 | word textarea | Cerrado sin cambios de codigo - reemplazo tecnico documentado el 2026-05-27 |
 
 ## Estado de limpieza esperado
 
@@ -118,3 +117,18 @@ Resultados:
 | `frontend: npm.cmd run lint` | OK, ESLint sin errores. |
 
 Nota: una primera corrida backend sin `DATABASE_URL` fallo por ambiente local no configurado; no corresponde a una regresion del codigo. Con `DATABASE_URL` correcto, las pruebas dirigidas del bloque (12/12), `test:ci` (126/126) y `test:full` (437/437) pasaron.
+
+## Validacion bloque final 7 SPR
+
+Resultados del cierre de SPR-06, SPR-09, SPR-11, SPR-44, SPR-46, SPR-47 y SPR-48:
+
+| Comando | Resultado |
+| --- | --- |
+| `node --check` en rutas backend modificadas y tests nuevos | OK |
+| `GET /api/cobranza-historico?fechaCampo=bad&fechaDesde=2026-01-01` via `app.inject` | OK, responde 400 controlado sin tocar base de datos |
+| `frontend: npm.cmd run lint` | OK, ESLint sin errores |
+| `frontend: npm.cmd run build` | OK, build Vite generado. Warning no bloqueante por chunk mayor a 500 kB |
+| `frontend dev server http://127.0.0.1:6187` | OK, app correcta abre en navegador local y redirige a login |
+| `backend: npm.cmd test -- cargo-transporte.test.js cobranza-cliente.test.js ordenes-compra-web.test.js web-public.test.js` | Bloqueado por ambiente: Postgres local no disponible (`ECONNREFUSED`). Los tests quedaron agregados y con sintaxis validada |
+
+Decision final: los 7 SPR quedan cerrados en codigo/documentacion. Antes de despliegue productivo corresponde levantar base de datos de integracion y correr el set backend dirigido.

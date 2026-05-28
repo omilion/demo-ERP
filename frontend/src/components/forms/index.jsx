@@ -94,10 +94,10 @@ const inputBase = (error, extra = {}) => ({
   ...extra,
 })
 
-export const Input = ({ value, onChange, placeholder, type = 'text', error, disabled, prefix }) => (
+export const Input = ({ value, onChange, placeholder, type = 'text', error, disabled, prefix, ...props }) => (
   <div style={{ position: 'relative' }}>
     {prefix && <span style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', fontSize: 13, pointerEvents: 'none' }}>{prefix}</span>}
-    <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} disabled={disabled}
+    <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} disabled={disabled} {...props}
       style={{ ...inputBase(error, prefix ? { paddingLeft: 26 } : {}), opacity: disabled ? 0.6 : 1 }}
       onFocus={e => !error && (e.target.style.borderColor = 'var(--green-600)')}
       onBlur={e => !error && (e.target.style.borderColor = 'var(--border)')}

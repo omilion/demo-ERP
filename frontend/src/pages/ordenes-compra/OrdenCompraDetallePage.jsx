@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Badge, PageHeader, Btn, Table } from '../../components/shared'
 import { FormField, Input, Select, Textarea } from '../../components/forms'
-import { useOrdenCompra, useUpdateOrdenCompra } from '../../api/ordenesCompra'
+import { useOrdenCompra, useProcesarOrdenCompraVenta, useUpdateOrdenCompra } from '../../api/ordenesCompra'
+import { useClientes, useClienteSucursales } from '../../api/clientes'
 
 const ESTADOS = ['', 'Pendiente', 'En proceso', 'Despachada', 'Entregada', 'Cancelada', 'Pagada']
 const CANALES = ['', 'Web', 'Convenio Marco', 'Venta Sala', 'Telefónica']
@@ -25,8 +26,14 @@ export default function OrdenCompraDetallePage() {
   const navigate = useNavigate()
   const { data, isLoading } = useOrdenCompra(id)
   const updateMut = useUpdateOrdenCompra()
+  const procesarMut = useProcesarOrdenCompraVenta()
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({})
+  const [clienteId, setClienteId] = useState('')
+  const [clienteSucursalId, setClienteSucursalId] = useState('')
+  const { data: clientesResult } = useClientes()
+  const clientes = clientesResult?.items ?? []
+  const { data: sucursalesCliente = [] } = useClienteSucursales(clienteId ? Number(clienteId) : null)
 
   if (isLoading) return <main style={{ padding: 24 }}>Cargando…</main>
   if (!data) return <main style={{ padding: 24 }}>No encontrada</main>
@@ -36,6 +43,21 @@ export default function OrdenCompraDetallePage() {
 
   const handleSave = () => {
     updateMut.mutate({ id: data.id, data: form }, { onSuccess: () => setEditing(false) })
+  }
+
+  const handleProcesarVenta = () => {
+    if (!clienteId) return alert('Selecciona el cliente ERP para crear la Venta Web')
+    procesarMut.mutate({
+      id: data.id,
+      data: { clienteId: Number(clienteId), clienteSucursalId: clienteSucursalId ? Number(clienteSucursalId) : undefined },
+    }, {
+      onSuccess: venta => navigate(`/ventas/${venta.id}/editar`),
+      onError: err => {
+        const ventaId = err?.response?.data?.ventaId
+        if (ventaId) return navigate(`/ventas/${ventaId}/editar`)
+        alert(err?.response?.data?.error || 'No se pudo procesar la OC online')
+      },
+    })
   }
 
   const cols = [
@@ -52,6 +74,15 @@ export default function OrdenCompraDetallePage() {
     { key: '_total', label: 'Total', align: 'right',
       render: (_, row) => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600, fontSize: 12 }}>{fmt((row.cantidad||0) * (row.precio||0))}</span> },
   ]
+  const clienteOptions = [
+    { value: '', label: 'Seleccionar cliente ERP' },
+    ...clientes.map(c => ({ value: String(c.id), label: `${c.nombre} (${c.rut})` })),
+  ]
+  const sucursalOptions = [
+    { value: '', label: sucursalesCliente.length ? 'Sin sucursal especifica' : 'Sin sucursales registradas' },
+    ...sucursalesCliente.map(s => ({ value: String(s.id), label: `${s.nombre}${s.comuna ? ` - ${s.comuna}` : ''}` })),
+  ]
+  const canProcess = !['Procesada', 'Anulada', 'Cancelada'].includes(data.estadoCompra)
 
   return (
     <main style={{ maxWidth: 1280, margin: '0 auto', padding: 24 }}>
@@ -124,6 +155,23 @@ export default function OrdenCompraDetallePage() {
             </div>
           )}
         </>
+      )}
+
+      {!editing && (
+        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>Procesar como Venta Web</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) minmax(220px, 1fr) auto', gap: 10, alignItems: 'end' }}>
+            <FormField label="Cliente ERP">
+              <Select value={clienteId} onChange={v => { setClienteId(v); setClienteSucursalId('') }} options={clienteOptions} disabled={!canProcess} />
+            </FormField>
+            <FormField label="Sucursal / entrega">
+              <Select value={clienteSucursalId} onChange={setClienteSucursalId} options={sucursalOptions} disabled={!canProcess || !clienteId || !sucursalesCliente.length} />
+            </FormField>
+            <Btn variant="primary" size="sm" onClick={handleProcesarVenta} disabled={!canProcess || procesarMut.isPending}>
+              {procesarMut.isPending ? 'Procesando...' : 'Crear venta'}
+            </Btn>
+          </div>
+        </div>
       )}
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>

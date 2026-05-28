@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Badge, KpiCard, PageHeader, SearchBar, Table } from '../../components/shared'
-import { useOrdenesCompra, useUpdateOrdenCompra } from '../../api/ordenesCompra'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table } from '../../components/shared'
+import { useOrdenesCompra, useUpdateOrdenCompra, ordenesCompraExportUrl } from '../../api/ordenesCompra'
+import { downloadFromBackend } from '../../utils/csv'
 
 const ESTADO_TONE = {
   'Procesada':  'green', 'Pendiente':  'amber', 'Entregada': 'green',
@@ -12,7 +13,10 @@ const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
 export default function OrdenesCompraPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [search, setSearch] = useState('')
+  const [estado, setEstado] = useState(searchParams.get('estado') || '')
+  const [canal, setCanal] = useState(searchParams.get('canal') || '')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [page, setPage] = useState(1)
   const debounceRef = useRef(null)
@@ -25,6 +29,8 @@ export default function OrdenesCompraPage() {
 
   const params = { page: String(page) }
   if (debouncedSearch) params.search = debouncedSearch
+  if (estado) params.estado = estado
+  if (canal) params.canal = canal
 
   const { data: result = { items: [], total: 0, limit: 100 }, isLoading } = useOrdenesCompra(params)
   const updateMut = useUpdateOrdenCompra()
@@ -83,6 +89,7 @@ export default function OrdenesCompraPage() {
         title="Órdenes de Compra Online"
         subtitle={`${total.toLocaleString('es-CL')} órdenes desde el sitio web`}
         breadcrumb={['Inicio', 'Ventas', 'OC Online']}
+        actions={<Btn variant="secondary" icon="download" size="sm" onClick={() => downloadFromBackend(ordenesCompraExportUrl(), `ordenes_compra_online_${new Date().toISOString().slice(0, 10)}.csv`, params)}>Exportar CSV</Btn>}
       />
       <div className="kpi-strip">
         <KpiCard label="Total OC" value={total.toLocaleString('es-CL')} icon="shoppingCart" sublabel="Histórico" />
@@ -91,8 +98,18 @@ export default function OrdenesCompraPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <SearchBar placeholder="Buscar N° compra, email…" value={search} onChange={setSearch} style={{ width: 320 }} />
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <SearchBar placeholder="Buscar N compra, email..." value={search} onChange={setSearch} style={{ width: 300 }} />
+            <select value={estado} onChange={e => { setEstado(e.target.value); setPage(1) }} style={filterSelect}>
+              <option value="">Todos los estados</option>
+              {['Pendiente', 'En proceso', 'Recepcionada', 'Procesada', 'Despachada', 'Entregada', 'Pagada', 'Cancelada', 'Anulada'].map(e => <option key={e} value={e}>{e}</option>)}
+            </select>
+            <select value={canal} onChange={e => { setCanal(e.target.value); setPage(1) }} style={filterSelect}>
+              <option value="">Todos los canales</option>
+              {['Web', 'Convenio Marco', 'Venta Sala', 'Telefónica'].map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}>‹ Anterior</button>
             <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{page} / {pages}</span>
@@ -106,4 +123,13 @@ export default function OrdenesCompraPage() {
       </div>
     </main>
   )
+}
+
+const filterSelect = {
+  padding: '5px 8px',
+  fontSize: 12,
+  borderRadius: 6,
+  border: '1px solid var(--border)',
+  background: '#fff',
+  color: 'var(--text-1)',
 }

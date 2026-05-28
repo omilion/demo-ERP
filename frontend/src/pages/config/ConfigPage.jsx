@@ -6,7 +6,7 @@ import {
   useFirmas, useCreateFirma, useDeleteFirma,
   useBloqueos, useUpdateBloqueo,
 } from '../../api/config'
-import { useCargosTransporte, useCreateCargoTransporte, useUpdateCargoTransporte, useDeleteCargoTransporte } from '../../api/cargoTransporte'
+import { useCargosTransporte, useCreateCargoTransporte, useUpdateCargoTransporte, useDeleteCargoTransporte, cargoTransporteExportUrl } from '../../api/cargoTransporte'
 import { useGastos, useCreateGasto, useUpdateGasto, useDeleteGasto } from '../../api/gastos'
 import {
   useCategoriasBodegaTaller, useCreateCategoriaBT, useUpdateCategoriaBT, useDeleteCategoriaBT,
@@ -65,41 +65,74 @@ function CargoTransporteSection() {
   const deleteMut = useDeleteCargoTransporte()
   const [nuevo, setNuevo] = useState({ nombre: '', valor: 0 })
   const [edits, setEdits] = useState({})
+  const normalizeCargo = value => String(value ?? '').trim().replace(/\s+/g, ' ')
+  const duplicateCargoName = (nombre, id = null) => {
+    const key = normalizeCargo(nombre).toLocaleLowerCase('es-CL')
+    return data.some(c => c.id !== id && normalizeCargo(c.nombre).toLocaleLowerCase('es-CL') === key)
+  }
+  const validateCargo = (cargo, id = null) => {
+    const nombre = normalizeCargo(cargo.nombre)
+    const valor = Number(cargo.valor)
+    if (nombre.length < 2) return { error: 'El nombre debe tener al menos 2 caracteres.' }
+    if (duplicateCargoName(nombre, id)) return { error: 'Este nombre de cargo transporte ya existe.' }
+    if (!Number.isFinite(valor) || valor < 0 || valor > 100) return { error: 'El valor debe estar entre 0 y 100%.' }
+    return { data: { nombre, valor, activo: cargo.activo !== false } }
+  }
 
   if (isLoading) return <div>Cargando…</div>
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16 }}>
-      <div style={{ fontWeight: 600, marginBottom: 12 }}>Nuevo cargo</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ fontWeight: 600 }}>Nuevo cargo</div>
+        <Btn size="sm" variant="secondary" icon="download" onClick={() => downloadFromBackend(cargoTransporteExportUrl(), `cargo_transporte_${new Date().toISOString().slice(0, 10)}.csv`)}>
+          Exportar CSV
+        </Btn>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 8, alignItems: 'end', marginBottom: 16 }}>
         <FormField label="Nombre"><Input value={nuevo.nombre} onChange={v => setNuevo(s => ({ ...s, nombre: v }))} /></FormField>
-        <FormField label="Valor / %"><Input type="number" value={nuevo.valor} onChange={v => setNuevo(s => ({ ...s, valor: v }))} /></FormField>
+        <FormField label="Valor %"><Input type="number" min="0" max="100" value={nuevo.valor} onChange={v => setNuevo(s => ({ ...s, valor: v }))} /></FormField>
         <Btn variant="primary" onClick={() => {
-          if (!nuevo.nombre) return
-          createMut.mutate(nuevo, { onSuccess: () => setNuevo({ nombre: '', valor: 0 }) })
+          const validated = validateCargo({ ...nuevo, activo: true })
+          if (validated.error) return alert(validated.error)
+          createMut.mutate(validated.data, {
+            onSuccess: () => setNuevo({ nombre: '', valor: 0 }),
+            onError: err => alert(err?.response?.data?.error || 'No se pudo crear el cargo'),
+          })
         }}>+ Agregar</Btn>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead><tr style={{ background: 'var(--bg-muted)' }}>
           <th style={{ padding: 10, textAlign: 'left' }}>Nombre</th>
-          <th style={{ padding: 10, textAlign: 'right' }}>Valor</th>
+          <th style={{ padding: 10, textAlign: 'right' }}>Valor %</th>
           <th style={{ padding: 10 }}>Activo</th>
           <th style={{ padding: 10 }}></th>
         </tr></thead>
         <tbody>
           {data.map(c => {
             const d = edits[c.id] || c
-            const dirty = d.nombre !== c.nombre || parseFloat(d.valor) !== c.valor || d.activo !== c.activo
+            const dirty = d.nombre !== c.nombre || Number(d.valor) !== Number(c.valor) || d.activo !== c.activo
             return (
               <tr key={c.id} style={{ borderTop: '1px solid var(--border)' }}>
                 <td style={{ padding: 10 }}><Input value={d.nombre} onChange={v => setEdits(s => ({ ...s, [c.id]: { ...d, nombre: v } }))} /></td>
-                <td style={{ padding: 10, width: 140 }}><Input type="number" value={d.valor} onChange={v => setEdits(s => ({ ...s, [c.id]: { ...d, valor: v } }))} /></td>
+                <td style={{ padding: 10, width: 140 }}><Input type="number" min="0" max="100" value={d.valor} onChange={v => setEdits(s => ({ ...s, [c.id]: { ...d, valor: v } }))} /></td>
                 <td style={{ padding: 10, textAlign: 'center' }}>
                   <input type="checkbox" checked={d.activo} onChange={e => setEdits(s => ({ ...s, [c.id]: { ...d, activo: e.target.checked } }))} />
                 </td>
                 <td style={{ padding: 10, textAlign: 'right', display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                  {dirty && <Btn size="sm" variant="primary" onClick={() => updateMut.mutate({ id: c.id, data: { nombre: d.nombre, valor: d.valor, activo: d.activo } })}>Guardar</Btn>}
-                  <button onClick={() => { if (confirm('¿Eliminar?')) deleteMut.mutate(c.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer' }}>Borrar</button>
+                  {dirty && <Btn size="sm" variant="primary" onClick={() => {
+                    const validated = validateCargo(d, c.id)
+                    if (validated.error) return alert(validated.error)
+                    updateMut.mutate({ id: c.id, data: validated.data }, {
+                      onSuccess: () => setEdits(s => {
+                        const next = { ...s }
+                        delete next[c.id]
+                        return next
+                      }),
+                      onError: err => alert(err?.response?.data?.error || 'No se pudo guardar el cargo'),
+                    })
+                  }}>Guardar</Btn>}
+                  <button onClick={() => { if (confirm('Desactivar cargo transporte? Se mantiene para historial.')) deleteMut.mutate(c.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer' }}>Desactivar</button>
                 </td>
               </tr>
             )
@@ -117,7 +150,6 @@ function GastosSection() {
   const deleteMut = useDeleteGasto()
   const [nuevo, setNuevo] = useState('')
   const [edits, setEdits] = useState({})
-
   if (isLoading) return <div>Cargando…</div>
 
   const normalize = value => String(value ?? '').trim().replace(/\s+/g, ' ')
@@ -636,23 +668,66 @@ function BannersSection() {
     mutationFn: (id) => api.delete(`/banners/${id}`).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['banners'] }),
   })
-  const [nuevo, setNuevo] = useState({ titulo: '', subtitulo: '', imagenUrl: '', link: '', orden: 0 })
+  const uploadMut = useMutation({
+    mutationFn: (data) => api.post('/banners/upload', data).then(r => r.data),
+  })
+  const [nuevo, setNuevo] = useState({ titulo: '', subtitulo: '', imagenUrl: '', link: '', orden: 0, activo: true })
+  const [edits, setEdits] = useState({})
 
   if (isLoading) return <div>Cargando…</div>
+
+  const cleanBanner = b => ({
+    titulo: String(b.titulo || '').trim(),
+    subtitulo: String(b.subtitulo || '').trim() || null,
+    imagenUrl: String(b.imagenUrl || '').trim() || null,
+    link: String(b.link || '').trim() || null,
+    orden: Number(b.orden) || 0,
+    activo: b.activo !== false,
+  })
+  const saveBanner = (id, data) => {
+    const payload = cleanBanner(data)
+    if (!payload.titulo) return alert('Titulo requerido')
+    updateMut.mutate({ id, data: payload }, {
+      onSuccess: () => setEdits(s => {
+        const next = { ...s }
+        delete next[id]
+        return next
+      }),
+      onError: err => alert(err?.response?.data?.error || 'No se pudo guardar el banner'),
+    })
+  }
+  const uploadBannerImage = (file, onUrl) => {
+    if (!file) return
+    if (!['image/png', 'image/jpeg'].includes(file.type)) return alert('Solo PNG o JPG')
+    if (file.size > 3 * 1024 * 1024) return alert('La imagen supera 3 MB')
+    const reader = new FileReader()
+    reader.onload = () => uploadMut.mutate({ data: reader.result }, {
+      onSuccess: res => onUrl(res.url),
+      onError: err => alert(err?.response?.data?.error || 'No se pudo subir la imagen'),
+    })
+    reader.readAsDataURL(file)
+  }
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16 }}>
       <div style={{ fontWeight: 600, marginBottom: 12 }}>Banners web</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr) auto', gap: 8, alignItems: 'end', marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr) auto', gap: 8, alignItems: 'end', marginBottom: 8 }}>
         <FormField label="Título"><Input value={nuevo.titulo} onChange={v => setNuevo(s => ({ ...s, titulo: v }))} /></FormField>
         <FormField label="Subtítulo"><Input value={nuevo.subtitulo} onChange={v => setNuevo(s => ({ ...s, subtitulo: v }))} /></FormField>
         <FormField label="Imagen URL"><Input value={nuevo.imagenUrl} onChange={v => setNuevo(s => ({ ...s, imagenUrl: v }))} /></FormField>
         <FormField label="Link"><Input value={nuevo.link} onChange={v => setNuevo(s => ({ ...s, link: v }))} /></FormField>
         <FormField label="Orden"><Input type="number" value={nuevo.orden} onChange={v => setNuevo(s => ({ ...s, orden: v }))} /></FormField>
         <Btn variant="primary" onClick={() => {
-          if (!nuevo.titulo) return
-          createMut.mutate(nuevo, { onSuccess: () => setNuevo({ titulo: '', subtitulo: '', imagenUrl: '', link: '', orden: 0 }) })
+          const payload = cleanBanner(nuevo)
+          if (!payload.titulo) return alert('Titulo requerido')
+          createMut.mutate(payload, {
+            onSuccess: () => setNuevo({ titulo: '', subtitulo: '', imagenUrl: '', link: '', orden: 0, activo: true }),
+            onError: err => alert(err?.response?.data?.error || 'No se pudo crear el banner'),
+          })
         }}>+ Agregar</Btn>
+      </div>
+      <div style={{ marginBottom: 16, fontSize: 12, color: 'var(--text-2)' }}>
+        <input type="file" accept="image/png,image/jpeg" onChange={e => uploadBannerImage(e.target.files?.[0], url => setNuevo(s => ({ ...s, imagenUrl: url })))} />
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead><tr style={{ background: 'var(--bg-muted)' }}>
@@ -664,20 +739,32 @@ function BannersSection() {
           <th style={{ padding: 10 }}></th>
         </tr></thead>
         <tbody>
-          {banners.map(b => (
+          {banners.map(b => {
+            const d = edits[b.id] || b
+            const dirty = JSON.stringify(cleanBanner(d)) !== JSON.stringify(cleanBanner(b))
+            return (
             <tr key={b.id} style={{ borderTop: '1px solid var(--border)' }}>
-              <td style={{ padding: 10 }}>{b.titulo}<br /><span style={{ fontSize: 11, color: 'var(--text-3)' }}>{b.subtitulo}</span></td>
-              <td style={{ padding: 10 }}>{b.imagenUrl ? <img src={b.imagenUrl} alt="" style={{ height: 32 }} /> : '—'}</td>
-              <td style={{ padding: 10, fontSize: 11 }}>{b.link || '—'}</td>
-              <td style={{ padding: 10, textAlign: 'center' }}>{b.orden}</td>
-              <td style={{ padding: 10, textAlign: 'center' }}>
-                <input type="checkbox" checked={b.activo} onChange={e => updateMut.mutate({ id: b.id, data: { activo: e.target.checked } })} />
+              <td style={{ padding: 10 }}>
+                <Input value={d.titulo || ''} onChange={v => setEdits(s => ({ ...s, [b.id]: { ...d, titulo: v } }))} />
+                <div style={{ marginTop: 6 }}><Input value={d.subtitulo || ''} onChange={v => setEdits(s => ({ ...s, [b.id]: { ...d, subtitulo: v } }))} /></div>
               </td>
-              <td style={{ padding: 10, textAlign: 'right' }}>
+              <td style={{ padding: 10 }}>
+                {d.imagenUrl ? <img src={d.imagenUrl} alt="" style={{ height: 32, display: 'block', marginBottom: 6 }} /> : '—'}
+                <Input value={d.imagenUrl || ''} onChange={v => setEdits(s => ({ ...s, [b.id]: { ...d, imagenUrl: v } }))} />
+                <input type="file" accept="image/png,image/jpeg" style={{ marginTop: 6, fontSize: 11 }} onChange={e => uploadBannerImage(e.target.files?.[0], url => setEdits(s => ({ ...s, [b.id]: { ...d, imagenUrl: url } })))} />
+              </td>
+              <td style={{ padding: 10, fontSize: 11 }}><Input value={d.link || ''} onChange={v => setEdits(s => ({ ...s, [b.id]: { ...d, link: v } }))} /></td>
+              <td style={{ padding: 10, textAlign: 'center', width: 90 }}><Input type="number" value={d.orden ?? 0} onChange={v => setEdits(s => ({ ...s, [b.id]: { ...d, orden: v } }))} /></td>
+              <td style={{ padding: 10, textAlign: 'center' }}>
+                <input type="checkbox" checked={d.activo} onChange={e => setEdits(s => ({ ...s, [b.id]: { ...d, activo: e.target.checked } }))} />
+              </td>
+              <td style={{ padding: 10, textAlign: 'right', display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                {dirty && <Btn size="sm" variant="primary" onClick={() => saveBanner(b.id, d)}>Guardar</Btn>}
                 <button onClick={() => { if (confirm('¿Eliminar?')) deleteMut.mutate(b.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer' }}>Borrar</button>
               </td>
             </tr>
-          ))}
+            )
+          })}
         </tbody>
       </table>
     </div>
@@ -686,40 +773,89 @@ function BannersSection() {
 
 function UsuariosWebSection() {
   const qc = useQueryClient()
+  const [search, setSearch] = useState('')
+  const [edits, setEdits] = useState({})
   const { data: users = [], isLoading } = useQuery({
-    queryKey: ['usuarios-web'],
-    queryFn: () => api.get('/usuarios-web').then(r => r.data),
+    queryKey: ['usuarios-web', search],
+    queryFn: () => api.get('/usuarios-web', { params: search ? { search } : {} }).then(r => r.data),
   })
   const updateMut = useMutation({
     mutationFn: ({ id, data }) => api.put(`/usuarios-web/${id}`, data).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['usuarios-web'] }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['usuarios-web'] })
+      setEdits(s => {
+        const next = { ...s }
+        delete next[vars.id]
+        return next
+      })
+    },
   })
 
   if (isLoading) return <div>Cargando…</div>
 
+  const saveUser = (id, data) => {
+    if (!String(data.nombre || '').trim()) return alert('Nombre requerido')
+    if (data.password && String(data.password).length < 8) return alert('La password debe tener al menos 8 caracteres')
+    updateMut.mutate({
+      id,
+      data: {
+        nombre: data.nombre,
+        rut: data.rut || null,
+        telefono: data.telefono || null,
+        direccion: data.direccion || null,
+        comuna: data.comuna || null,
+        region: data.region || null,
+        activo: data.activo !== false,
+        password: data.password || undefined,
+      },
+    }, { onError: err => alert(err?.response?.data?.error || 'No se pudo guardar usuario web') })
+  }
+
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16 }}>
-      <div style={{ fontWeight: 600, marginBottom: 12 }}>Usuarios web tienda ({users.length})</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ fontWeight: 600 }}>Usuarios web tienda ({users.length})</div>
+        <Input value={search} onChange={setSearch} placeholder="Buscar email, nombre o RUT" />
+      </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead><tr style={{ background: 'var(--bg-muted)' }}>
           <th style={{ padding: 10, textAlign: 'left' }}>Email</th>
           <th style={{ padding: 10, textAlign: 'left' }}>Nombre</th>
           <th style={{ padding: 10 }}>RUT</th>
           <th style={{ padding: 10 }}>Teléfono</th>
+          <th style={{ padding: 10 }}>Direccion</th>
+          <th style={{ padding: 10 }}>Password</th>
           <th style={{ padding: 10 }}>Activo</th>
+          <th style={{ padding: 10 }}></th>
         </tr></thead>
         <tbody>
-          {users.map(u => (
+          {users.map(u => {
+            const d = edits[u.id] || { ...u, password: '' }
+            const dirty = JSON.stringify({ nombre: d.nombre, rut: d.rut || '', telefono: d.telefono || '', direccion: d.direccion || '', comuna: d.comuna || '', region: d.region || '', activo: d.activo, password: d.password || '' }) !==
+              JSON.stringify({ nombre: u.nombre, rut: u.rut || '', telefono: u.telefono || '', direccion: u.direccion || '', comuna: u.comuna || '', region: u.region || '', activo: u.activo, password: '' })
+            return (
             <tr key={u.id} style={{ borderTop: '1px solid var(--border)' }}>
               <td style={{ padding: 10 }}>{u.email}</td>
-              <td style={{ padding: 10 }}>{u.nombre}</td>
-              <td style={{ padding: 10 }}>{u.rut || '—'}</td>
-              <td style={{ padding: 10 }}>{u.telefono || '—'}</td>
+              <td style={{ padding: 10 }}><Input value={d.nombre || ''} onChange={v => setEdits(s => ({ ...s, [u.id]: { ...d, nombre: v } }))} /></td>
+              <td style={{ padding: 10 }}><Input value={d.rut || ''} onChange={v => setEdits(s => ({ ...s, [u.id]: { ...d, rut: v } }))} /></td>
+              <td style={{ padding: 10 }}><Input value={d.telefono || ''} onChange={v => setEdits(s => ({ ...s, [u.id]: { ...d, telefono: v } }))} /></td>
+              <td style={{ padding: 10 }}>
+                <Input value={d.direccion || ''} onChange={v => setEdits(s => ({ ...s, [u.id]: { ...d, direccion: v } }))} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginTop: 4 }}>
+                  <Input value={d.comuna || ''} onChange={v => setEdits(s => ({ ...s, [u.id]: { ...d, comuna: v } }))} placeholder="Comuna" />
+                  <Input value={d.region || ''} onChange={v => setEdits(s => ({ ...s, [u.id]: { ...d, region: v } }))} placeholder="Region" />
+                </div>
+              </td>
+              <td style={{ padding: 10, width: 150 }}><Input type="password" value={d.password || ''} onChange={v => setEdits(s => ({ ...s, [u.id]: { ...d, password: v } }))} placeholder="Nueva password" /></td>
               <td style={{ padding: 10, textAlign: 'center' }}>
-                <input type="checkbox" checked={u.activo} onChange={e => updateMut.mutate({ id: u.id, data: { activo: e.target.checked } })} />
+                <input type="checkbox" checked={d.activo} onChange={e => setEdits(s => ({ ...s, [u.id]: { ...d, activo: e.target.checked } }))} />
+              </td>
+              <td style={{ padding: 10, textAlign: 'right' }}>
+                {dirty && <Btn size="sm" variant="primary" onClick={() => saveUser(u.id, d)}>Guardar</Btn>}
               </td>
             </tr>
-          ))}
+            )
+          })}
         </tbody>
       </table>
     </div>

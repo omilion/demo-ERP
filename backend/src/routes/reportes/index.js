@@ -6,6 +6,7 @@ import { attachOperarios, attachOrdenes, normalizeOdtFechaField, tipoTallerFilte
 import { computeEstado } from '../productos/helpers.js'
 import { getUserSucursalId, withMovimientoSucursalScope } from '../caja/scope.js'
 import { attachClientes, computeDiscountAmount, computeTotal } from '../ventas/helpers.js'
+import { buildCobranzaHistoricoFilters } from '../cobranza/index.js'
 import { buildCobranzaHistoricoScopeWhere, mergeCobranzaWhere } from '../cobranza/scope.js'
 import { attachConsultaPreciosData } from '../productos/pricing.js'
 import { buildProveedorWhere, proveedorOrderBy } from '../proveedores/helpers.js'
@@ -394,12 +395,32 @@ export async function buildOdtExportWhere(fastify, query = {}, user = null) {
 }
 
 export async function buildVentasExportWhere(fastify, query = {}) {
-  const { desde, hasta, tipo, rut, nInterno, oc, guia, odt, estadoPago, estadoEntrega, search, scope: scopeParam } = query
+  const {
+    desde,
+    hasta,
+    fechaDesde,
+    fechaHasta,
+    fechaDocDesde,
+    fechaDocHasta,
+    tipo,
+    rut,
+    nInterno,
+    oc,
+    guia,
+    odt,
+    estadoPago,
+    estadoEntrega,
+    search,
+    scope: scopeParam,
+    documento,
+    nDoc,
+    creador,
+  } = query
   const scope = parseOrdenScope(scopeParam, 'operacional')
   if (!scope) return { error: 'scope invalido' }
   let where = { eliminada: false }
-  if (desde || hasta) {
-    const range = buildDateRange(desde, hasta)
+  if (desde || hasta || fechaDesde || fechaHasta) {
+    const range = buildDateRange(fechaDesde || desde, fechaHasta || hasta)
     if (range.error) return { error: range.error }
     applyRange(where, 'createdAt', range)
   }
@@ -437,6 +458,25 @@ export async function buildVentasExportWhere(fastify, query = {}) {
   }
   if (estadoPago) where.estadoPago = estadoPago
   if (estadoEntrega) where.estadoEntrega = estadoEntrega
+  if (creador) where.creadorNombre = { contains: creador, mode: 'insensitive' }
+  if (documento || nDoc || fechaDocDesde || fechaDocHasta) {
+    if (!fastify.prisma.movimientoCaja?.findMany) return { error: 'Filtro de documentos no disponible' }
+    const docWhere = { eliminado: false, ordenId: { not: null } }
+    if (documento) docWhere.documento = { contains: documento, mode: 'insensitive' }
+    if (nDoc) docWhere.nDoc = { contains: nDoc, mode: 'insensitive' }
+    if (fechaDocDesde || fechaDocHasta) {
+      const range = buildDateRange(fechaDocDesde, fechaDocHasta)
+      if (range.error) return { error: 'Rango de fechas de documento invalido' }
+      applyRange(docWhere, 'fecha', range)
+    }
+    const documentos = await fastify.prisma.movimientoCaja.findMany({
+      where: docWhere,
+      select: { ordenId: true },
+      take: 5000,
+    })
+    const ids = [...new Set(documentos.map(d => d.ordenId).filter(Boolean))]
+    where = mergeWhere(where, { id: ids.length ? { in: ids } : -1 })
+  }
   if (odt) {
     const parsedOdt = parsePositiveInt(odt)
     if (!parsedOdt) return { error: 'odt invalida' }
@@ -899,19 +939,9 @@ export default async function reportesRoutes(fastify) {
   fastify.get('/export/cobranza', {
     preHandler: [fastify.authenticate, fastify.rbac('cobranza', 'read')],
   }, async (request, reply) => {
-    const { ejecutiva, estado, mes, search } = request.query
-    const filters = {}
-    if (ejecutiva) filters.ejecutiva = { contains: ejecutiva, mode: 'insensitive' }
-    if (estado) filters.estado = { equals: estado, mode: 'insensitive' }
-    if (mes) filters.mesAnio = { contains: mes, mode: 'insensitive' }
-    if (search) {
-      const isNum = /^\d+$/.test(String(search).trim())
-      filters.OR = [
-        { cliente: { contains: search, mode: 'insensitive' } },
-        { rut: { contains: search, mode: 'insensitive' } },
-        ...(isNum ? [{ ndoc: Number.parseInt(search, 10) }, { interno: Number.parseInt(search, 10) }] : []),
-      ]
-    }
+    const builtFilters = buildCobranzaHistoricoFilters(request.query)
+    if (builtFilters.error) return reply.code(400).send({ error: builtFilters.error })
+    const { filters } = builtFilters
     const where = mergeCobranzaWhere(filters, await buildCobranzaHistoricoScopeWhere(fastify.prisma, request.user))
     const items = await fastify.prisma.cobranzaHistorico.findMany({
       where, orderBy: { fechaFactura: 'desc' },

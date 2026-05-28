@@ -1,28 +1,80 @@
-import { parsePage } from '../operational-utils.js'
+import { parseDate, parsePage, parsePositiveInt } from '../operational-utils.js'
 import { buildCobranzaHistoricoScopeWhere, mergeCobranzaWhere } from './scope.js'
+
+const FECHA_FIELDS = {
+  factura: 'fechaFactura',
+  fechaFactura: 'fechaFactura',
+  pago: 'fechaPago',
+  fechaPago: 'fechaPago',
+  gestion: 'fechaGestion',
+  fechaGestion: 'fechaGestion',
+  ingresoPago: 'ingresoPago',
+}
+
+export function buildCobranzaHistoricoFilters(query = {}) {
+  const {
+    ejecutiva,
+    estado,
+    search,
+    mes,
+    fechaCampo = 'fechaFactura',
+    fechaDesde,
+    fechaHasta,
+    ndoc,
+    interno,
+    rut,
+    cliente,
+  } = query
+  const filters = {}
+  if (ejecutiva) filters.ejecutiva = { contains: ejecutiva, mode: 'insensitive' }
+  if (estado) filters.estado = { equals: estado, mode: 'insensitive' }
+  if (mes) filters.mesAnio = { contains: mes, mode: 'insensitive' }
+  if (rut) filters.rut = { contains: rut, mode: 'insensitive' }
+  if (cliente) filters.cliente = { contains: cliente, mode: 'insensitive' }
+  if (ndoc) {
+    const parsed = parsePositiveInt(ndoc)
+    if (!parsed) return { error: 'ndoc invalido' }
+    filters.ndoc = parsed
+  }
+  if (interno) {
+    const parsed = parsePositiveInt(interno)
+    if (!parsed) return { error: 'interno invalido' }
+    filters.interno = parsed
+  }
+  if (fechaDesde || fechaHasta) {
+    const field = FECHA_FIELDS[fechaCampo]
+    if (!field) return { error: 'fechaCampo invalido' }
+    const gte = parseDate(fechaDesde)
+    const lte = parseDate(fechaHasta, true)
+    if ((fechaDesde && !gte) || (fechaHasta && !lte)) return { error: 'Rango de fechas invalido' }
+    filters[field] = {}
+    if (gte) filters[field].gte = gte
+    if (lte) filters[field].lte = lte
+  }
+  if (search) {
+    filters.OR = [
+      { cliente: { contains: search, mode: 'insensitive' } },
+      { rut: { contains: search, mode: 'insensitive' } },
+      { ndoc: /^\d+$/.test(String(search).trim()) ? Number.parseInt(search, 10) : -1 },
+      { interno: /^\d+$/.test(String(search).trim()) ? Number.parseInt(search, 10) : -1 },
+    ]
+  }
+  return { filters }
+}
 
 export default async function cobranzaHistoricoRoutes(fastify) {
   fastify.register(async function (f) {
     // GET /api/cobranza-historico?ejecutiva=...&estado=...&search=...&mes=...&page=1
     f.get('/', {
       preHandler: [f.authenticate, f.rbac('cobranza', 'read')],
-    }, async (request) => {
-      const { ejecutiva, estado, search, mes, page = '1' } = request.query
+    }, async (request, reply) => {
+      const { page = '1' } = request.query
       const LIMIT = 100
       const offset = (parsePage(page) - 1) * LIMIT
 
-      const filters = {}
-      if (ejecutiva) filters.ejecutiva = { contains: ejecutiva, mode: 'insensitive' }
-      if (estado) filters.estado = { equals: estado, mode: 'insensitive' }
-      if (mes) filters.mesAnio = { contains: mes, mode: 'insensitive' }
-      if (search) {
-        filters.OR = [
-          { cliente: { contains: search, mode: 'insensitive' } },
-          { rut: { contains: search, mode: 'insensitive' } },
-          { ndoc: /^\d+$/.test(String(search).trim()) ? Number.parseInt(search, 10) : -1 },
-          { interno: /^\d+$/.test(String(search).trim()) ? Number.parseInt(search, 10) : -1 },
-        ]
-      }
+      const built = buildCobranzaHistoricoFilters(request.query)
+      if (built.error) return reply.code(400).send({ error: built.error })
+      const { filters } = built
       const where = mergeCobranzaWhere(filters, await buildCobranzaHistoricoScopeWhere(f.prisma, request.user))
 
       const [items, total] = await Promise.all([
@@ -77,7 +129,7 @@ export default async function cobranzaHistoricoRoutes(fastify) {
     // GET /api/cobranza-historico/ejecutivas
     f.get('/ejecutivas', {
       preHandler: [f.authenticate, f.rbac('cobranza', 'read')],
-    }, async (request) => {
+    }, async (request, reply) => {
       const where = mergeCobranzaWhere(
         { ejecutiva: { not: null } },
         await buildCobranzaHistoricoScopeWhere(f.prisma, request.user),
@@ -96,7 +148,7 @@ export default async function cobranzaHistoricoRoutes(fastify) {
     // GET /api/cobranza-historico/meses
     f.get('/meses', {
       preHandler: [f.authenticate, f.rbac('cobranza', 'read')],
-    }, async (request) => {
+    }, async (request, reply) => {
       const where = mergeCobranzaWhere(
         { mesAnio: { not: null } },
         await buildCobranzaHistoricoScopeWhere(f.prisma, request.user),

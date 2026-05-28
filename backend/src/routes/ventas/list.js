@@ -1,6 +1,6 @@
 import { attachClientes, attachProductos } from './helpers.js'
 import { computeVentaFinancialState } from './financial.js'
-import { parsePagination, parsePositiveInt } from '../operational-utils.js'
+import { parseDate, parsePagination, parsePositiveInt } from '../operational-utils.js'
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenScope } from '../historico/corte.js'
 import { getUserSucursalId } from '../caja/scope.js'
 
@@ -24,7 +24,24 @@ export default async function listVentas(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request, reply) => {
-    const { estadoPago, estadoEntrega, tipo, search, orderBy: orderParam, clienteId, scope: scopeParam } = request.query
+    const {
+      estadoPago,
+      estadoEntrega,
+      tipo,
+      search,
+      orderBy: orderParam,
+      clienteId,
+      scope: scopeParam,
+      desde,
+      hasta,
+      fechaDesde,
+      fechaHasta,
+      fechaDocDesde,
+      fechaDocHasta,
+      documento,
+      nDoc,
+      creador,
+    } = request.query
     const pagination = parsePagination(request.query, { defaultLimit: 100, maxLimit: 500 })
     if (!pagination) return reply.code(400).send({ error: 'Paginacion invalida' })
     const scope = parseOrdenScope(scopeParam, 'operacional')
@@ -35,10 +52,39 @@ export default async function listVentas(fastify) {
     if (estadoPago) where.estadoPago = estadoPago
     if (estadoEntrega) where.estadoEntrega = estadoEntrega
     if (tipo) where.tipo = buildTipoWhere(tipo)
+    if (desde || hasta || fechaDesde || fechaHasta) {
+      const gte = parseDate(fechaDesde || desde)
+      const lte = parseDate(fechaHasta || hasta, true)
+      if (((fechaDesde || desde) && !gte) || ((fechaHasta || hasta) && !lte)) return reply.code(400).send({ error: 'Rango de fechas invalido' })
+      where.createdAt = {}
+      if (gte) where.createdAt.gte = gte
+      if (lte) where.createdAt.lte = lte
+    }
+    if (creador) where.creadorNombre = { contains: creador, mode: 'insensitive' }
     if (clienteId) {
       const parsedClienteId = parsePositiveInt(clienteId)
       if (!parsedClienteId) return reply.code(400).send({ error: 'clienteId invalido' })
       where.clienteId = parsedClienteId
+    }
+    if (documento || nDoc || fechaDocDesde || fechaDocHasta) {
+      const docWhere = { eliminado: false, ordenId: { not: null } }
+      if (documento) docWhere.documento = { contains: documento, mode: 'insensitive' }
+      if (nDoc) docWhere.nDoc = { contains: nDoc, mode: 'insensitive' }
+      if (fechaDocDesde || fechaDocHasta) {
+        const gte = parseDate(fechaDocDesde)
+        const lte = parseDate(fechaDocHasta, true)
+        if ((fechaDocDesde && !gte) || (fechaDocHasta && !lte)) return reply.code(400).send({ error: 'Rango de fechas de documento invalido' })
+        docWhere.fecha = {}
+        if (gte) docWhere.fecha.gte = gte
+        if (lte) docWhere.fecha.lte = lte
+      }
+      const documentos = await fastify.prisma.movimientoCaja.findMany({
+        where: docWhere,
+        select: { ordenId: true },
+        take: 5000,
+      })
+      const ids = [...new Set(documentos.map(d => d.ordenId).filter(Boolean))]
+      where = mergeWhere(where, { id: ids.length ? { in: ids } : -1 })
     }
     if (search) {
       const text = search.trim()

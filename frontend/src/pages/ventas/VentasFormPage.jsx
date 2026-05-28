@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../components/forms/index'
 import { Icon } from '../../components/shared'
@@ -512,6 +512,7 @@ function MultasSection({ ordenId }) {
 export default function VentasFormPage() {
   const navigate = useNavigate()
   const { id } = useParams()
+  const [searchParams] = useSearchParams()
   const isEdit = !!id
   const user = useAuthStore(s => s.user)
   const canDeleteVentas = can(user, 'ventas', 'delete')
@@ -542,9 +543,9 @@ export default function VentasFormPage() {
   }
 
   const { data, set } = useForm({
-    clienteId: '', clienteSucursalId: '', tipo: 'Normal', estado: 'Activa',
+    clienteId: '', clienteSucursalId: '', tipo: searchParams.get('tipo') || 'Normal', estado: 'Activa',
     estadoPago: 'No pagada', estadoEntrega: 'Pendiente entrega',
-    abono: '', guias: '', facturado: '', descuentoPct: '', licitacion: '', observaciones: '',
+    abono: '', guias: '', facturado: '', descuentoPct: '', licitacion: searchParams.get('oc') || '', observaciones: searchParams.get('obs') || '',
   })
   const selectedClienteId = data.clienteId ? Number(data.clienteId) : null
   const { data: sucursalesCliente = [] } = useClienteSucursales(selectedClienteId)

@@ -122,7 +122,7 @@ export default function DashboardPage() {
         )}
         {show.ventas && (
           <KpiCard label="Cotizaciones Web" value={n(webPend)} icon="cloud" tone={webPend > 0 ? 'amber' : 'neutral'}
-            sublabel="Pendientes revisión" onClick={() => navigate('/ventas?filtro=web')} />
+            sublabel="Pendientes revision" onClick={() => navigate('/ordenes-compra?estado=Pendiente')} />
         )}
         {show.taller && (
           <KpiCard label="ODTs Activas" value={n(stats?.odts?.total)} icon="wrench"
@@ -209,7 +209,7 @@ export default function DashboardPage() {
             <ActionRow icon="grid" label="Matriz Ventas" onClick={() => navigate('/matriz-ventas')} />
             <ActionRow icon="dollarSign" label="Ventas No Pagadas" badge={n(stats?.ventas?.noPagadas)} badgeTone="red" onClick={() => navigate('/ventas?filtro=no_pagadas')} />
             <ActionRow icon="truck" label="Pendientes Entrega" badge={n(stats?.ventas?.pendienteEntrega)} badgeTone="blue" onClick={() => navigate('/ventas?filtro=pendiente_entrega')} />
-            <ActionRow icon="cloud" label="Cotizaciones Web" badge={n(webPend)} badgeTone={webPend > 0 ? 'amber' : 'neutral'} onClick={() => navigate('/ventas?filtro=web')} />
+            <ActionRow icon="cloud" label="Cotizaciones Web" badge={n(webPend)} badgeTone={webPend > 0 ? 'amber' : 'neutral'} onClick={() => navigate('/ordenes-compra?estado=Pendiente')} />
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
             {canWriteVentas && <ActionRow icon="plusCircle" label="Nueva Venta Sala" onClick={() => navigate('/ventas/nueva')} />}
             <ActionRow icon="clipboard" label="Cotizar Licitación" onClick={() => navigate('/licitaciones')} />
@@ -252,7 +252,7 @@ export default function DashboardPage() {
             {canReadProveedores && <ActionRow icon="alertTriangle" label="Boletas No Pagadas" badge={n(provPagos.boletasNoPagadas)} badgeTone={provPagos.boletasNoPagadas > 0 ? 'red' : 'neutral'} onClick={() => navigate('/pagos-proveedores?doc=Boleta&estado=Pendiente')} />}
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
             {canReadCaja && <ActionRow icon="creditCard" label="Caja Movimientos" onClick={() => navigate('/caja')} />}
-            {canReadVentas && <ActionRow icon="fileText" label="Órdenes Compra" onClick={() => navigate('/ordenes-compra')} />}
+            {canReadVentas && <ActionRow icon="fileText" label="Ordenes Compra Online" onClick={() => navigate('/ordenes-compra')} />}
           </SectionCard>
         )}
 

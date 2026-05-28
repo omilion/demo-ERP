@@ -74,6 +74,13 @@ export default function CobranzaPage() {
   const [estadoTab, setEstadoTab] = useState('No pagada')
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
+  const [fechaDesde, setFechaDesde] = useState('')
+  const [fechaHasta, setFechaHasta] = useState('')
+  const [fechaDocDesde, setFechaDocDesde] = useState('')
+  const [fechaDocHasta, setFechaDocHasta] = useState('')
+  const [documento, setDocumento] = useState('')
+  const [nDoc, setNDoc] = useState('')
+  const [creador, setCreador] = useState('')
   const debounceRef = useRef(null)
 
   // Historico filters
@@ -81,6 +88,13 @@ export default function CobranzaPage() {
   const [histEstado, setHistEstado] = useState('')
   const [histMes, setHistMes] = useState('')
   const [histSearch, setHistSearch] = useState('')
+  const [histFechaCampo, setHistFechaCampo] = useState('fechaFactura')
+  const [histFechaDesde, setHistFechaDesde] = useState('')
+  const [histFechaHasta, setHistFechaHasta] = useState('')
+  const [histNdoc, setHistNdoc] = useState('')
+  const [histInterno, setHistInterno] = useState('')
+  const [histRut, setHistRut] = useState('')
+  const [histCliente, setHistCliente] = useState('')
   const [histDebounced, setHistDebounced] = useState('')
   const histDebRef = useRef(null)
   const [paymentRow, setPaymentRow] = useState(null)
@@ -112,6 +126,13 @@ export default function CobranzaPage() {
   // Active cobranza
   const activeParams = { orderBy: 'asc', estadoPago: estadoTab, limit: '500' }
   if (debounced) activeParams.search = debounced
+  if (fechaDesde) activeParams.fechaDesde = fechaDesde
+  if (fechaHasta) activeParams.fechaHasta = fechaHasta
+  if (fechaDocDesde) activeParams.fechaDocDesde = fechaDocDesde
+  if (fechaDocHasta) activeParams.fechaDocHasta = fechaDocHasta
+  if (documento) activeParams.documento = documento
+  if (nDoc) activeParams.nDoc = nDoc
+  if (creador) activeParams.creador = creador
   const { data: activeResult = { items: [], total: 0 }, isLoading, isError: activeError, error: activeQueryError } = useVentas(activeParams)
   const { data: turno } = useTurnoActivo(canRegisterPayment)
   const registrarPagoMut = useRegistrarPagoCobranza()
@@ -124,6 +145,13 @@ export default function CobranzaPage() {
   if (histEstado) histParams.estado = histEstado
   if (histMes) histParams.mes = histMes
   if (histDebounced) histParams.search = histDebounced
+  if (histFechaCampo) histParams.fechaCampo = histFechaCampo
+  if (histFechaDesde) histParams.fechaDesde = histFechaDesde
+  if (histFechaHasta) histParams.fechaHasta = histFechaHasta
+  if (histNdoc) histParams.ndoc = histNdoc
+  if (histInterno) histParams.interno = histInterno
+  if (histRut) histParams.rut = histRut
+  if (histCliente) histParams.cliente = histCliente
   const { data: histResult = { items: [], total: 0, stats: { cobrado: 0, pendiente: 0, n_canceladas: 0, n_pendientes: 0 } }, isLoading: histLoading, isError: histError, error: histQueryError } = useCobranzaHistorico(histParams)
   const { data: ejecutivas = [] } = useCobranzaEjecutivas()
   const { data: meses = [] } = useCobranzaMeses()
@@ -133,6 +161,7 @@ export default function CobranzaPage() {
   const paymentSaldo = paymentRow ? Math.max(0, (paymentRow.total || 0) - (paymentRow.abono || 0)) : 0
   const paymentDocs = paymentRow ? activeReferentialDocs(paymentRow).filter(doc => docSaldo(paymentRow, doc) > 0) : []
   const selectedPaymentDocKey = paymentForm.documento && paymentForm.nDoc ? `${paymentForm.documento}|||${paymentForm.nDoc}` : ''
+  const miniInput = { padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }
 
   const openPayment = (row) => {
     const saldo = Math.max(0, (row.total || 0) - (row.abono || 0))
@@ -319,6 +348,25 @@ export default function CobranzaPage() {
       key: 'mesAnio', label: 'Período',
       render: v => <Badge tone="gray">{v || '—'}</Badge>
     },
+    {
+      key: '_acc', label: '',
+      render: (_, row) => (
+        <div style={{ display: 'flex', gap: 4 }}>
+          {row.ordenId && (
+            <button
+              onClick={e => { e.stopPropagation(); navigate(ventaPath(row.ordenId, user)) }}
+              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500, whiteSpace: 'nowrap' }}
+            >Venta</button>
+          )}
+          {row.rut && (
+            <button
+              onClick={e => { e.stopPropagation(); navigate('/clientes?search=' + encodeURIComponent(row.rut)) }}
+              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--blue, #2563eb)', fontWeight: 500, whiteSpace: 'nowrap' }}
+            >Cliente</button>
+          )}
+        </div>
+      )
+    },
   ]
 
   return (
@@ -333,6 +381,13 @@ export default function CobranzaPage() {
               if (mainTab === 'activo') {
                 const params = { estadoPago: estadoTab }
                 if (debounced) params.search = debounced
+                if (fechaDesde) params.fechaDesde = fechaDesde
+                if (fechaHasta) params.fechaHasta = fechaHasta
+                if (fechaDocDesde) params.fechaDocDesde = fechaDocDesde
+                if (fechaDocHasta) params.fechaDocHasta = fechaDocHasta
+                if (documento) params.documento = documento
+                if (nDoc) params.nDoc = nDoc
+                if (creador) params.creador = creador
                 downloadFromBackend('/reportes/export/cobranza-activa', `cobranza_${new Date().toISOString().slice(0,10)}.csv`, params)
                   .catch(err => alert(err?.response?.data?.error || 'No se pudo exportar cobranza activa'))
               } else {
@@ -341,6 +396,13 @@ export default function CobranzaPage() {
                 if (histEstado) params.estado = histEstado
                 if (histMes) params.mes = histMes
                 if (histDebounced) params.search = histDebounced
+                if (histFechaCampo) params.fechaCampo = histFechaCampo
+                if (histFechaDesde) params.fechaDesde = histFechaDesde
+                if (histFechaHasta) params.fechaHasta = histFechaHasta
+                if (histNdoc) params.ndoc = histNdoc
+                if (histInterno) params.interno = histInterno
+                if (histRut) params.rut = histRut
+                if (histCliente) params.cliente = histCliente
                 downloadFromBackend('/reportes/export/cobranza', `cobranza_historico_${new Date().toISOString().slice(0,10)}.csv`, params)
                   .catch(err => alert(err?.response?.data?.error || 'No se pudo exportar historico de cobranza'))
               }
@@ -372,9 +434,23 @@ export default function CobranzaPage() {
           <Tabs tabs={MAIN_TABS} active={mainTab} onChange={t => setMainTab(t)} />
 
           {mainTab === 'activo' && (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
-              <Tabs tabs={ESTADO_TABS} active={estadoTab} onChange={t => { setEstadoTab(t); setSearch('') }} />
-              <SearchBar placeholder="Buscar cliente, N° venta…" value={search} onChange={setSearch} style={{ width: 240 }} />
+            <div style={{ display: 'grid', gap: 8, marginBottom: 10, justifyItems: 'end' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <Tabs tabs={ESTADO_TABS} active={estadoTab} onChange={t => { setEstadoTab(t); setSearch('') }} />
+                <SearchBar placeholder="Buscar cliente, N venta..." value={search} onChange={setSearch} style={{ width: 240 }} />
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={miniInput} title="Fecha venta desde" />
+                <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} style={miniInput} title="Fecha venta hasta" />
+                <input type="date" value={fechaDocDesde} onChange={e => setFechaDocDesde(e.target.value)} style={miniInput} title="Fecha documento desde" />
+                <input type="date" value={fechaDocHasta} onChange={e => setFechaDocHasta(e.target.value)} style={miniInput} title="Fecha documento hasta" />
+                <input value={documento} onChange={e => setDocumento(e.target.value)} placeholder="Documento" style={{ ...miniInput, width: 110 }} />
+                <input value={nDoc} onChange={e => setNDoc(e.target.value)} placeholder="N doc" style={{ ...miniInput, width: 90 }} />
+                <input value={creador} onChange={e => setCreador(e.target.value)} placeholder="Creada por" style={{ ...miniInput, width: 120 }} />
+                {(fechaDesde || fechaHasta || fechaDocDesde || fechaDocHasta || documento || nDoc || creador) && (
+                  <button onClick={() => { setFechaDesde(''); setFechaHasta(''); setFechaDocDesde(''); setFechaDocHasta(''); setDocumento(''); setNDoc(''); setCreador('') }} style={{ ...miniInput, cursor: 'pointer' }}>Limpiar</button>
+                )}
+              </div>
             </div>
           )}
 
@@ -395,6 +471,21 @@ export default function CobranzaPage() {
                 {meses.map(m => <option key={m.mes_anio} value={m.mes_anio}>{m.mes_anio} ({m.total})</option>)}
               </select>
               <SearchBar placeholder="Cliente, RUT..." value={histSearch} onChange={setHistSearch} style={{ width: 200 }} />
+              <select value={histFechaCampo} onChange={e => setHistFechaCampo(e.target.value)} style={miniInput}>
+                <option value="fechaFactura">Fecha doc</option>
+                <option value="fechaPago">Fecha pago</option>
+                <option value="fechaGestion">Fecha gestion</option>
+                <option value="ingresoPago">Ingreso pago</option>
+              </select>
+              <input type="date" value={histFechaDesde} onChange={e => setHistFechaDesde(e.target.value)} style={miniInput} />
+              <input type="date" value={histFechaHasta} onChange={e => setHistFechaHasta(e.target.value)} style={miniInput} />
+              <input value={histNdoc} onChange={e => setHistNdoc(e.target.value)} placeholder="N doc" style={{ ...miniInput, width: 90 }} />
+              <input value={histInterno} onChange={e => setHistInterno(e.target.value)} placeholder="N interno" style={{ ...miniInput, width: 95 }} />
+              <input value={histRut} onChange={e => setHistRut(e.target.value)} placeholder="RUT" style={{ ...miniInput, width: 110 }} />
+              <input value={histCliente} onChange={e => setHistCliente(e.target.value)} placeholder="Cliente" style={{ ...miniInput, width: 130 }} />
+              {(histFechaDesde || histFechaHasta || histNdoc || histInterno || histRut || histCliente) && (
+                <button onClick={() => { setHistFechaDesde(''); setHistFechaHasta(''); setHistNdoc(''); setHistInterno(''); setHistRut(''); setHistCliente('') }} style={{ ...miniInput, cursor: 'pointer' }}>Limpiar</button>
+              )}
             </div>
           )}
         </div>

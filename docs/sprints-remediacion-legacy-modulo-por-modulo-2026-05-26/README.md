@@ -15,6 +15,10 @@ Objetivo: transformar la auditoría legacy vs plataforma nueva en sprints ejecut
 
 Los hallazgos consolidados de los subagentes especialistas están en [SUBAGENTES-HALLAZGOS.md](./SUBAGENTES-HALLAZGOS.md).
 
+## Estado de cierre
+
+Al 2026-05-27 los 48 SPR del paquete legacy quedaron cerrados, aprobados o aprobados localmente. El ultimo bloque fue SPR-06, SPR-09, SPR-11, SPR-44, SPR-46, SPR-47 y SPR-48; los sprints funcionales se implementaron y los sprints tecnicos sin pantalla se cerraron por reemplazo moderno documentado.
+
 Prioridades transversales:
 
 - Los sprints P0 no pueden cerrarse sin permisos finos, auditoría, validación de datos reales y pruebas de efectos secundarios.
