@@ -105,7 +105,7 @@ Navegación legacy detectada:
 
 - Implementación realizada: se agregaron validaciones de nombre, duplicado y porcentaje 0-100; exportación CSV; desactivación segura en vez de eliminación física; UI con porcentaje, validación local y botón de exportación.
 - Archivos modificados: `backend/src/routes/cargo-transporte/index.js`, `frontend/src/api/cargoTransporte.js`, `frontend/src/pages/config/ConfigPage.jsx`, `frontend/src/components/forms/index.jsx`, `backend/test/cargo-transporte.test.js`.
-- Pruebas ejecutadas: `node --check` en ruta y test nuevo; `frontend: npm.cmd run lint` OK; `frontend: npm.cmd run build` OK. El test de integración backend quedó preparado, pero la ejecución local falla por Postgres no disponible (`ECONNREFUSED`).
-- Riesgos residuales: requiere una corrida de integración con base de datos levantada antes de desplegar.
+- Pruebas ejecutadas: `node --check` en ruta y test nuevo; `frontend: npm.cmd run lint` OK; `frontend: npm.cmd run build` OK; `backend: npm.cmd test -- cargo-transporte.test.js cobranza-cliente.test.js ordenes-compra-web.test.js web-public.test.js` OK, 4 archivos, 9 tests.
+- Riesgos residuales: sin riesgos bloqueantes detectados en el set dirigido.
 - Validación del lead: aprobado localmente con revisión backend/frontend y cobertura nueva.
 - Decisión final: cerrado.

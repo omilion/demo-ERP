@@ -7,7 +7,7 @@ Fecha de corte: 2026-05-27
 - Total de SPR documentados: 48.
 - Cerrados, aprobados o aprobados localmente: 48.
 - Pendientes de ejecucion: 0.
-- Estado del codigo: bloque final de 7 SPR implementado o cerrado por reemplazo tecnico documentado; frontend validado con lint/build; backend validado por sintaxis y tests preparados, con corrida de integracion pendiente por Postgres local no disponible.
+- Estado del codigo: bloque final de 7 SPR implementado o cerrado por reemplazo tecnico documentado; frontend validado con lint/build; backend validado por sintaxis y set dirigido de integracion.
 
 ## Criterio de orden
 
@@ -129,6 +129,6 @@ Resultados del cierre de SPR-06, SPR-09, SPR-11, SPR-44, SPR-46, SPR-47 y SPR-48
 | `frontend: npm.cmd run lint` | OK, ESLint sin errores |
 | `frontend: npm.cmd run build` | OK, build Vite generado. Warning no bloqueante por chunk mayor a 500 kB |
 | `frontend dev server http://127.0.0.1:6187` | OK, app correcta abre en navegador local y redirige a login |
-| `backend: npm.cmd test -- cargo-transporte.test.js cobranza-cliente.test.js ordenes-compra-web.test.js web-public.test.js` | Bloqueado por ambiente: Postgres local no disponible (`ECONNREFUSED`). Los tests quedaron agregados y con sintaxis validada |
+| `backend: npm.cmd test -- cargo-transporte.test.js cobranza-cliente.test.js ordenes-compra-web.test.js web-public.test.js` | OK, 4 archivos, 9 tests |
 
-Decision final: los 7 SPR quedan cerrados en codigo/documentacion. Antes de despliegue productivo corresponde levantar base de datos de integracion y correr el set backend dirigido.
+Decision final: los 7 SPR quedan cerrados en codigo/documentacion. La base de integracion `plastimar_test` en `localhost:55432` quedo validada con migraciones al dia y set backend dirigido completo.

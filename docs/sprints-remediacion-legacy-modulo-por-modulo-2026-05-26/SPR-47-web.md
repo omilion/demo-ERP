@@ -105,7 +105,7 @@ Navegación legacy detectada:
 
 - Implementación realizada: se reforzó administración web con carga de banners PNG/JPG, validación de URL segura, edición inline de banners, búsqueda/edición de usuarios web, normalización de email y validación de contraseña.
 - Archivos modificados: `backend/src/routes/banners/index.js`, `backend/src/routes/usuarios-web/index.js`, `frontend/src/pages/config/ConfigPage.jsx`, `backend/test/web-public.test.js`.
-- Pruebas ejecutadas: `node --check` en rutas y test nuevo; `frontend: npm.cmd run lint` OK; `frontend: npm.cmd run build` OK. El test de integración backend quedó preparado, pero la ejecución local falla por Postgres no disponible (`ECONNREFUSED`).
-- Riesgos residuales: requiere una corrida de integración con base de datos levantada antes de desplegar.
+- Pruebas ejecutadas: `node --check` en rutas y test nuevo; `frontend: npm.cmd run lint` OK; `frontend: npm.cmd run build` OK; `backend: npm.cmd test -- cargo-transporte.test.js cobranza-cliente.test.js ordenes-compra-web.test.js web-public.test.js` OK, 4 archivos, 9 tests.
+- Riesgos residuales: sin riesgos bloqueantes detectados en el set dirigido.
 - Validación del lead: aprobado localmente con revisión backend/frontend y cobertura nueva.
 - Decisión final: cerrado.

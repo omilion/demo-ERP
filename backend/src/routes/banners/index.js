@@ -12,7 +12,7 @@ function uploadsRoot() {
   return path.resolve(process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads'))
 }
 
-function onlyAdmin(req, reply) {
+async function onlyAdmin(req, reply) {
   if (req.user?.role !== 'admin') return reply.code(403).send({ error: 'Forbidden' })
 }
 

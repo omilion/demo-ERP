@@ -110,7 +110,7 @@ Navegación legacy detectada:
 
 - Implementación realizada: se agregaron filtros legacy/equivalentes para cobranza activa e histórica por fechas, documento, N doc, interno, RUT, cliente y creador; exportación usa los mismos filtros; la tabla histórica permite navegar a venta y cliente.
 - Archivos modificados: `backend/src/routes/cobranza/index.js`, `backend/src/routes/ventas/list.js`, `backend/src/routes/reportes/index.js`, `frontend/src/pages/cobranza/CobranzaPage.jsx`, `backend/test/cobranza-cliente.test.js`.
-- Pruebas ejecutadas: `node --check` en rutas y test nuevo; `frontend: npm.cmd run lint` OK; `frontend: npm.cmd run build` OK. El test de integración backend quedó preparado, pero la ejecución local falla por Postgres no disponible (`ECONNREFUSED`).
-- Riesgos residuales: requiere una corrida de integración con base de datos levantada antes de desplegar.
+- Pruebas ejecutadas: `node --check` en rutas y test nuevo; `frontend: npm.cmd run lint` OK; `frontend: npm.cmd run build` OK; `backend: npm.cmd test -- cargo-transporte.test.js cobranza-cliente.test.js ordenes-compra-web.test.js web-public.test.js` OK, 4 archivos, 9 tests.
+- Riesgos residuales: sin riesgos bloqueantes detectados en el set dirigido.
 - Validación del lead: aprobado localmente con revisión backend/frontend y cobertura nueva.
 - Decisión final: cerrado.

@@ -116,7 +116,7 @@ Navegación legacy detectada:
 
 - Implementación realizada: se conectó OC Online/Venta Web al menú y dashboard; se agregaron filtros/exportación; actualización validada; anulación lógica; conversión transaccional de OC online a `Orden` tipo `Venta Web`; y stock se descuenta/restaura como venta directa.
 - Archivos modificados: `backend/src/routes/ordenes-compra/index.js`, `backend/src/routes/ventas/stock.js`, `frontend/src/api/ordenesCompra.js`, `frontend/src/components/TopBar.jsx`, `frontend/src/pages/dashboard/DashboardPage.jsx`, `frontend/src/pages/ordenes-compra/OrdenesCompraPage.jsx`, `frontend/src/pages/ordenes-compra/OrdenCompraDetallePage.jsx`, `frontend/src/pages/ventas/VentasFormPage.jsx`, `backend/test/ordenes-compra-web.test.js`.
-- Pruebas ejecutadas: `node --check` en rutas y test nuevo; `frontend: npm.cmd run lint` OK; `frontend: npm.cmd run build` OK. El test de integración backend quedó preparado, pero la ejecución local falla por Postgres no disponible (`ECONNREFUSED`).
-- Riesgos residuales: requiere una corrida de integración con base de datos levantada antes de desplegar; no se incluyeron pagos/vouchers legacy porque el alcance actual cubre ingreso, gestión y conversión a venta.
+- Pruebas ejecutadas: `node --check` en rutas y test nuevo; `frontend: npm.cmd run lint` OK; `frontend: npm.cmd run build` OK; `backend: npm.cmd test -- cargo-transporte.test.js cobranza-cliente.test.js ordenes-compra-web.test.js web-public.test.js` OK, 4 archivos, 9 tests.
+- Riesgos residuales: no se incluyeron pagos/vouchers legacy porque el alcance actual cubre ingreso, gestión y conversión a venta.
 - Validación del lead: aprobado localmente con revisión backend/frontend y cobertura nueva.
 - Decisión final: cerrado.
