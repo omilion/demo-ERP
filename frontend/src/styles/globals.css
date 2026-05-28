@@ -135,6 +135,80 @@ a { text-decoration: none; color: inherit; }
   min-width: max-content;
 }
 
+.table-shell {
+  width: 100%;
+  max-width: 100%;
+}
+
+.table-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+}
+
+.table-tools-label,
+.table-zoom-value {
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: 'DM Mono', monospace;
+}
+
+.table-zoom-value {
+  min-width: 36px;
+  text-align: right;
+}
+
+.table-zoom-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text-2);
+}
+
+.table-zoom-btn:hover:not(:disabled) {
+  color: var(--green-700);
+  border-color: var(--green-100);
+  background: var(--green-50);
+}
+
+.table-zoom-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.table-zoom-range {
+  width: 118px;
+  accent-color: var(--green-600);
+}
+
+.table-wrap .data-table {
+  table-layout: fixed;
+  min-width: 100%;
+}
+
+.table-wrap .data-table th,
+.table-wrap .data-table td {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.table-cell-clip {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 760px) {
   .topbar-inner {
     height: auto;

@@ -231,6 +231,62 @@ export const SearchBar = ({ placeholder, value, onChange, style }) => (
 )
 
 // ── Table ─────────────────────────────────────────────────────────────────────
+const TABLE_ZOOM_KEY = 'plastimar.tableZoom'
+const TABLE_ZOOM_MIN = 0.8
+const TABLE_ZOOM_MAX = 1.25
+const TABLE_ZOOM_STEP = 0.05
+
+const clampTableZoom = value => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 1
+  return Math.min(TABLE_ZOOM_MAX, Math.max(TABLE_ZOOM_MIN, Math.round(parsed / TABLE_ZOOM_STEP) * TABLE_ZOOM_STEP))
+}
+
+const readTableZoom = () => {
+  if (typeof window === 'undefined') return 1
+  try {
+    return clampTableZoom(window.localStorage?.getItem(TABLE_ZOOM_KEY) ?? 1)
+  } catch {
+    return 1
+  }
+}
+
+const saveTableZoom = value => {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage?.setItem(TABLE_ZOOM_KEY, String(value))
+  } catch {
+    // Non-critical preference; keep the table usable if storage is blocked.
+  }
+}
+
+const getColumnBaseWidth = col => {
+  const explicit = col.width ?? col.maxWidth ?? col.minWidth
+  if (typeof explicit === 'number' && Number.isFinite(explicit)) return Math.max(56, explicit)
+  if (typeof explicit === 'string') {
+    const trimmed = explicit.trim()
+    const px = Number.parseFloat(trimmed)
+    if (trimmed.endsWith('px') && Number.isFinite(px)) return Math.max(56, px)
+  }
+
+  const signature = `${col.key || ''} ${col.label || ''}`.toLowerCase()
+  if (!col.label || /_acc|_edit|accion|acciones/.test(signature)) return 118
+  if (/foto|imagen|image|img/.test(signature)) return 68
+  if (/web|id|cod|codigo|rut|doc|fecha|estado|stock|desc|precio|costo|valor|monto|total|folio|nro|numero|unidad|unid/.test(signature)) return 124
+  if (/email|correo|direccion|referencia|descripcion|observacion|detalle|producto|nombre|cliente|proveedor|organismo|material|trabajador|contacto|razon|sucursal/.test(signature)) return 220
+  return 150
+}
+
+const getCellTitle = (col, value, row, rendered) => {
+  if (typeof col.title === 'function') return col.title(value, row) || undefined
+  if (col.title) return String(col.title)
+  if (value != null && typeof value !== 'object') return String(value)
+  if (value?.nombre) return String(value.nombre)
+  if (value?.razonSocial) return String(value.razonSocial)
+  if (typeof rendered === 'string' || typeof rendered === 'number' || typeof rendered === 'boolean') return String(rendered)
+  return undefined
+}
+
 export const Table = ({
   columns,
   rows,
@@ -246,11 +302,22 @@ export const Table = ({
   const [hovRow, setHovRow] = useState(null)
   const [activeRow, setActiveRow] = useState(0)
   const [hasKeyboardFocus, setHasKeyboardFocus] = useState(false)
+  const [tableZoom, setTableZoomState] = useState(readTableZoom)
   const wrapRef = useRef(null)
   const keyboardEnabled = keyboard ?? Boolean(onRowClick || onRowDoubleClick)
   const autoFocusEnabled = autoFocus ?? keyboardEnabled
   const stickyHeaderEnabled = stickyHeader ?? keyboardEnabled
   const clampedActiveRow = Math.min(Math.max(activeRow, 0), Math.max(rows.length - 1, 0))
+  const columnWidths = columns.map(col => Math.round(getColumnBaseWidth(col) * tableZoom))
+  const tableWidth = columnWidths.reduce((sum, width) => sum + width, 0)
+  const zoomPercent = Math.round(tableZoom * 100)
+  const cellPadding = `${Math.max(6, Math.round(9 * tableZoom))}px ${Math.max(8, Math.round(14 * tableZoom))}px`
+
+  const setTableZoom = value => {
+    const next = clampTableZoom(value)
+    setTableZoomState(next)
+    saveTableZoom(next)
+  }
 
   useEffect(() => {
     if (!keyboardEnabled || !autoFocusEnabled || !rows.length || !wrapRef.current) return
@@ -314,34 +381,73 @@ export const Table = ({
   }
 
   return (
-    <div
-      ref={wrapRef}
-      className={`table-wrap${stickyHeaderEnabled ? ' table-wrap-sticky' : ''}${keyboardEnabled ? ' table-wrap-keyboard' : ''}`}
-      tabIndex={keyboardEnabled ? 0 : undefined}
-      role={keyboardEnabled ? 'region' : undefined}
-      aria-label={ariaLabel}
-      onKeyDown={handleKeyDown}
-      onFocus={() => setHasKeyboardFocus(true)}
-      onBlur={event => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setHasKeyboardFocus(false)
-      }}
-      onMouseDown={event => {
-        if (keyboardEnabled && !isInteractiveTarget(event.target)) {
-          wrapRef.current?.focus({ preventScroll: true })
-        }
-      }}
-    >
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+    <div className="table-shell">
+      <div className="table-tools" aria-label="Controles de tabla">
+        <span className="table-tools-label">Zoom</span>
+        <button
+          type="button"
+          className="table-zoom-btn"
+          title="Reducir zoom"
+          aria-label="Reducir zoom de tabla"
+          disabled={tableZoom <= TABLE_ZOOM_MIN}
+          onClick={() => setTableZoom(tableZoom - TABLE_ZOOM_STEP)}
+        >
+          <Icon name="minus" size={13} />
+        </button>
+        <input
+          className="table-zoom-range"
+          type="range"
+          min={TABLE_ZOOM_MIN * 100}
+          max={TABLE_ZOOM_MAX * 100}
+          step={TABLE_ZOOM_STEP * 100}
+          value={zoomPercent}
+          onChange={event => setTableZoom(Number(event.target.value) / 100)}
+          aria-label="Zoom de tabla"
+          title="Zoom de tabla"
+        />
+        <button
+          type="button"
+          className="table-zoom-btn"
+          title="Aumentar zoom"
+          aria-label="Aumentar zoom de tabla"
+          disabled={tableZoom >= TABLE_ZOOM_MAX}
+          onClick={() => setTableZoom(tableZoom + TABLE_ZOOM_STEP)}
+        >
+          <Icon name="plus" size={13} />
+        </button>
+        <span className="table-zoom-value">{zoomPercent}%</span>
+      </div>
+      <div
+        ref={wrapRef}
+        className={`table-wrap${stickyHeaderEnabled ? ' table-wrap-sticky' : ''}${keyboardEnabled ? ' table-wrap-keyboard' : ''}`}
+        tabIndex={keyboardEnabled ? 0 : undefined}
+        role={keyboardEnabled ? 'region' : undefined}
+        aria-label={ariaLabel}
+        onKeyDown={handleKeyDown}
+        onFocus={() => setHasKeyboardFocus(true)}
+        onBlur={event => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setHasKeyboardFocus(false)
+        }}
+        onMouseDown={event => {
+          if (keyboardEnabled && !isInteractiveTarget(event.target)) {
+            wrapRef.current?.focus({ preventScroll: true })
+          }
+        }}
+      >
+      <table className="data-table" style={{ width: tableWidth, minWidth: '100%', borderCollapse: 'collapse', fontSize: 12.5 * tableZoom }}>
+        <colgroup>
+          {columnWidths.map((width, i) => <col key={i} style={{ width }} />)}
+        </colgroup>
         <thead>
           <tr style={{ borderBottom: '2px solid var(--border)' }}>
             {columns.map((col, i) => (
-              <th key={i} style={{
-                padding: '9px 14px', textAlign: col.align || 'left',
-                fontWeight: 600, fontSize: 11, textTransform: 'uppercase',
-                letterSpacing: 0.4, color: 'var(--text-3)', whiteSpace: 'nowrap',
+              <th key={i} title={col.label} style={{
+                padding: cellPadding, textAlign: col.align || 'left',
+                fontWeight: 600, fontSize: Math.max(10, 11 * tableZoom), textTransform: 'uppercase',
+                letterSpacing: 0, color: 'var(--text-3)', whiteSpace: 'nowrap',
                 background: 'oklch(0.985 0.004 155)', position: stickyHeaderEnabled ? 'sticky' : undefined,
                 top: stickyHeaderEnabled ? 0 : undefined, zIndex: stickyHeaderEnabled ? 2 : undefined,
-              }}>{col.label}</th>
+              }}><span className="table-cell-clip">{col.label}</span></th>
             ))}
           </tr>
         </thead>
@@ -362,15 +468,28 @@ export const Table = ({
                 outline: clampedActiveRow === ri && keyboardEnabled && hasKeyboardFocus ? '1px solid var(--green-600)' : 'none',
                 outlineOffset: -1,
               }}>
-              {columns.map((col, ci) => (
-                <td key={ci} style={{ padding: '9px 14px', verticalAlign: 'middle', textAlign: col.align || 'left', whiteSpace: col.wrap ? 'normal' : 'nowrap' }}>
-                  {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '—')}
-                </td>
-              ))}
+              {columns.map((col, ci) => {
+                const rawValue = row[col.key]
+                const title = getCellTitle(col, rawValue, row)
+                return (
+                  <td key={ci} title={title} style={{
+                    padding: cellPadding,
+                    verticalAlign: 'middle',
+                    textAlign: col.align || 'left',
+                    whiteSpace: col.wrap ? 'normal' : 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: col.wrap ? undefined : 'ellipsis',
+                    overflowWrap: col.wrap ? 'anywhere' : undefined,
+                  }}>
+                    {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '—')}
+                  </td>
+                )
+              })}
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }
