@@ -47,7 +47,7 @@ export default function AccesosPage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1440, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title="Accesos al Sistema"
         subtitle={`${total.toLocaleString('es-CL')} eventos registrados`}
@@ -70,7 +70,7 @@ export default function AccesosPage() {
         </div>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-          : <Table columns={cols} rows={items} emptyMessage="Sin accesos" />
+          : <Table columns={cols} rows={items} emptyMessage="Sin accesos" keyboard ariaLabel="Accesos al sistema" getRowKey={(row, index) => row.id || index} />
         }
       </div>
     </main>

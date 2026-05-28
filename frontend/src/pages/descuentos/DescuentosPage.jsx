@@ -23,7 +23,7 @@ export default function DescuentosPage() {
   if (isLoading) return <main style={{ padding: 24 }}>Cargando...</main>
 
   return (
-    <main style={{ maxWidth: 960, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title="Descuentos"
         subtitle="Porcentajes de descuento aplicables en ventas"

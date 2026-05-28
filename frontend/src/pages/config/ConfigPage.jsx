@@ -36,7 +36,7 @@ const TABS = [
 export default function ConfigPage() {
   const [tab, setTab] = useState('empresa')
   return (
-    <main style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title="Configuración"
         subtitle="Empresa, firmas y bloqueos del sistema"
@@ -369,7 +369,7 @@ function EmpresaSection() {
           </div>
           <Btn variant="primary" icon="plus" size="sm" onClick={startCreate}>Crear nuevo</Btn>
         </div>
-        <Table columns={columns} rows={empresas} onRowClick={selectEmpresa} emptyMessage="No hay datos para mostrar" />
+        <Table columns={columns} rows={empresas} onRowClick={selectEmpresa} emptyMessage="No hay datos para mostrar" ariaLabel="Razones sociales Plastimar" getRowKey={row => row.id} />
       </div>
 
       <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--border)', padding: 16 }}>
@@ -454,7 +454,7 @@ function FirmasSection() {
           >+ Agregar</Btn>
         </div>
       </div>
-      <Table columns={columns} rows={data ?? []} emptyMessage="Sin firmas configuradas" />
+      <Table columns={columns} rows={data ?? []} emptyMessage="Sin firmas configuradas" keyboard ariaLabel="Firmas configuradas" getRowKey={row => row.id} />
     </div>
   )
 }

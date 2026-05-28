@@ -215,7 +215,7 @@ export default function LicitacionDetallePage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1280, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title={`Licitación ${data.idLicitacion || `#${data.id}`}`}
         subtitle={data.referencia || 'Sin referencia'}
@@ -386,7 +386,15 @@ export default function LicitacionDetallePage() {
             {canWriteLicitaciones && <button type="button" onClick={adjudicarTodo} disabled={!items.length || updateItemMut.isPending} style={btnSm}>Adjudicar todo</button>}
           </div>
         </div>
-        <Table columns={cols} rows={items} emptyMessage="Sin productos cotizados" />
+        <Table
+          columns={cols}
+          rows={items}
+          emptyMessage="Sin productos cotizados"
+          keyboard
+          onRowDoubleClick={canWriteLicitaciones ? row => startEditItem(row) : undefined}
+          ariaLabel="Productos cotizados"
+          getRowKey={row => row.id}
+        />
 
         {editItemId && (
           <div style={{ padding: 12, borderTop: '1px solid var(--border)', background: 'var(--bg-2)' }}>

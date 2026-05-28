@@ -244,7 +244,7 @@ export default function PasarTallerPage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1480, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title="Pasar a Taller"
         subtitle={data.orden ? `Venta ${data.orden.nInterno || data.orden.id} - ${data.orden.cliente?.razonSocial || data.orden.cliente?.nombre || 'Sin cliente'}` : 'Notificar productos transitorios de una venta'}
@@ -307,7 +307,7 @@ export default function PasarTallerPage() {
           <div style={{ fontWeight: 700 }}>Productos para enviar a taller</div>
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{items.length} producto(s) transitorio(s) pendiente(s)</div>
         </div>
-        <Table columns={cols} rows={items} emptyMessage={data.orden ? 'No hay productos transitorios pendientes en esta venta' : 'Busca una venta para ver sus productos'} />
+        <Table columns={cols} rows={items} emptyMessage={data.orden ? 'No hay productos transitorios pendientes en esta venta' : 'Busca una venta para ver sus productos'} keyboard ariaLabel="Productos para enviar a taller" getRowKey={(row, index) => row.ordenItemId || index} />
       </section>
     </main>
   )

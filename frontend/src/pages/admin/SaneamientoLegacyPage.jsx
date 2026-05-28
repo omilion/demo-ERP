@@ -223,7 +223,7 @@ export default function SaneamientoLegacyPage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1440, margin: '0 auto', padding: 'clamp(12px, 2vw, 24px)' }}>
+    <main className="page page-wide">
       <PageHeader
         title="Saneamiento legacy controlado"
         subtitle="Vista de revision segura: conteos, muestras y riesgos sin ejecutar correcciones masivas."
@@ -255,7 +255,7 @@ export default function SaneamientoLegacyPage() {
         {!isError && tab === 'resumen' && (
           isLoading
             ? <StateBox title="Cargando dry-run" detail="Calculando conteos de integridad legacy..." />
-            : <Table columns={summaryCols} rows={enriched} emptyMessage="Sin categorias configuradas" />
+            : <Table columns={summaryCols} rows={enriched} emptyMessage="Sin categorias configuradas" keyboard ariaLabel="Resumen de saneamiento legacy" getRowKey={row => row.key} />
         )}
 
         {!isError && tab === 'muestras' && (
@@ -273,7 +273,7 @@ export default function SaneamientoLegacyPage() {
             </div>
             {sampleError && <StateBox tone="red" title="No se pudo cargar la muestra" detail="La categoria seleccionada no respondio correctamente." />}
             {!sampleError && sampleLoading && <StateBox title="Cargando muestra" detail="Consultando registros representativos..." />}
-            {!sampleError && !sampleLoading && <Table columns={sampleCols} rows={sampleRows} emptyMessage="Sin hallazgos para esta categoria" />}
+            {!sampleError && !sampleLoading && <Table columns={sampleCols} rows={sampleRows} emptyMessage="Sin hallazgos para esta categoria" keyboard ariaLabel="Muestra de hallazgos legacy" getRowKey={(row, index) => row.id || index} />}
           </div>
         )}
 

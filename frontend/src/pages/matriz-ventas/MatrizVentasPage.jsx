@@ -250,7 +250,7 @@ export default function MatrizVentasPage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1480, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title="Matriz de Ventas"
         subtitle={`${data.defaultVentasHoy ? 'Ventas hoy - ' : ''}${total.toLocaleString('es-CL')} registros (${fmt(data.totalMonto || 0)})`}
@@ -323,7 +323,7 @@ export default function MatrizVentasPage() {
         </div>
         {isLoading
           ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={data.items} emptyMessage="Sin ventas" onRowClick={openVenta} />
+          : <Table columns={cols} rows={data.items} emptyMessage="Sin ventas" onRowClick={openVenta} ariaLabel="Matriz de ventas" getRowKey={row => row.id} />
         }
       </div>
     </main>

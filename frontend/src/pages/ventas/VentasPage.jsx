@@ -128,7 +128,7 @@ export default function VentasPage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1440, margin: '0 auto', padding: '24px' }}>
+    <main className="page page-wide">
       <PageHeader
         title="Matriz Ventas"
         subtitle={`${total.toLocaleString('es-CL')} ventas en total`}
@@ -163,7 +163,7 @@ export default function VentasPage() {
         </div>
         {isLoading
           ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={filtered} onRowClick={row => setSelected(row)} />
+          : <Table columns={cols} rows={filtered} onRowClick={row => setSelected(row)} emptyMessage="Sin ventas" ariaLabel="Ventas" getRowKey={row => row.id} />
         }
         <Pager page={page} pages={pages} total={total} limit={LIMIT} shown={ventas.length} onChange={setPagerPage} disabled={isLoading} />
       </div>

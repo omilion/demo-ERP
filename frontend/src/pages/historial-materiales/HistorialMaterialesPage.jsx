@@ -131,7 +131,7 @@ export default function HistorialMaterialesPage() {
   }
 
   return (
-    <main style={{ maxWidth: 1440, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title="Historial de Materiales"
         subtitle="Movimientos en talleres"
@@ -175,7 +175,7 @@ export default function HistorialMaterialesPage() {
         )}
         {isLoading
           ? <div style={{ padding: 48, textAlign: 'center' }}>Cargando...</div>
-          : <Table columns={cols} rows={rows} emptyMessage="Sin movimientos" />
+          : <Table columns={cols} rows={rows} emptyMessage="Sin movimientos" keyboard ariaLabel="Historial de materiales" getRowKey={(row, index) => row.id || index} />
         }
         <Pager
           page={data.page || page}

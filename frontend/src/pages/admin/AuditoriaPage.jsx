@@ -23,7 +23,7 @@ export default function AuditoriaPage() {
   const pages = Math.max(1, Math.ceil(total / limit))
 
   return (
-    <main style={{ maxWidth: 1500, margin: '0 auto', padding: 'clamp(12px, 2vw, 24px)' }}>
+    <main className="page page-wide">
       <PageHeader
         title="Auditoría de Actividad"
         subtitle="Registro inmutable de todas las modificaciones por usuario. Solo administradores."

@@ -84,7 +84,7 @@ export default function OrdenesCompraPage() {
   const montoTotal = items.reduce((s, i) => s + (i.total || 0), 0)
 
   return (
-    <main style={{ maxWidth: 1440, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title="Órdenes de Compra Online"
         subtitle={`${total.toLocaleString('es-CL')} órdenes desde el sitio web`}
@@ -118,7 +118,7 @@ export default function OrdenesCompraPage() {
         </div>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-          : <Table columns={cols} rows={items} onRowClick={row => navigate('/ordenes-compra/' + row.id)} emptyMessage="Sin órdenes" />
+          : <Table columns={cols} rows={items} onRowClick={row => navigate('/ordenes-compra/' + row.id)} emptyMessage="Sin órdenes" ariaLabel="Ordenes de compra" getRowKey={row => row.id} />
         }
       </div>
     </main>

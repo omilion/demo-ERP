@@ -363,7 +363,7 @@ function TableView({ items, total, limit, onOpen }) {
   ]
   return (
     <>
-      <Table columns={cols} rows={items} onRowClick={onOpen} emptyMessage="Sin registros para este filtro" />
+      <Table columns={cols} rows={items} onRowClick={onOpen} emptyMessage="Sin registros para este filtro" ariaLabel="Registros CRM" getRowKey={row => row.id} />
       {total > limit && (
         <div style={{ padding: '10px 20px', textAlign: 'center', fontSize: 12, color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>
           Mostrando {limit} de {total.toLocaleString('es-CL')} registros. Usa los filtros para acotar.
@@ -445,7 +445,7 @@ export default function CrmPage() {
   }
 
   return (
-    <main style={{ maxWidth: 1500, margin: '0 auto', padding: '24px' }}>
+    <main className="page page-wide">
       <PageHeader
         title="CRM — Pipeline de Ventas"
         subtitle={`${total.toLocaleString('es-CL')} registros de seguimiento`}

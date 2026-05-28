@@ -442,7 +442,7 @@ export default function TallerPage() {
   }
 
   return (
-    <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px' }}>
+    <main className="page page-wide">
       <PageHeader
         title="Taller - Ordenes de Trabajo"
         subtitle={`${total.toLocaleString('es-CL')} ODTs en total`}

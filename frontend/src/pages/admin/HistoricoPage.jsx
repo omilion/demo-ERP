@@ -56,7 +56,7 @@ export default function HistoricoPage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1440, margin: '0 auto', padding: 'clamp(12px, 2vw, 24px)' }}>
+    <main className="page page-wide">
       <PageHeader
         title="Corte e Historico"
         subtitle={corte ? `Primer n interno valido: ${corte.nInterno} - ${fmtDateTime(corte.createdAt)}` : 'Sin primer n interno valido detectado'}
@@ -91,7 +91,7 @@ export default function HistoricoPage() {
         </div>
         {isLoading
           ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={data.items} emptyMessage="Sin registros historicos para este filtro" />
+          : <Table columns={cols} rows={data.items} emptyMessage="Sin registros historicos para este filtro" keyboard ariaLabel="Registros historicos" getRowKey={row => row.id} />
         }
       </section>
     </main>

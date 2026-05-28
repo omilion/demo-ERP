@@ -336,7 +336,7 @@ export default function RrhhPage() {
   const allegroCount = resumen?.porEmpresa?.find(e => e.empresa === 'allegro')?.count || 0
 
   return (
-    <main style={{ maxWidth: 1360, margin: '0 auto', padding: 'clamp(12px, 2vw, 24px)' }}>
+    <main className="page page-wide">
       <PageHeader
         title="RRHH — Trabajadores"
         subtitle={`${total.toLocaleString('es-CL')} trabajadores ${empresa ? `en ${empresa}` : 'activos'}`}
@@ -369,7 +369,7 @@ export default function RrhhPage() {
         </div>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-          : <Table columns={cols} rows={trabajadores} emptyMessage="Sin trabajadores" onRowClick={row => setSelected(row)} />
+          : <Table columns={cols} rows={trabajadores} emptyMessage="Sin trabajadores" onRowClick={row => setSelected(row)} ariaLabel="Trabajadores" getRowKey={row => row.id} />
         }
         {total > (result.limit ?? 100) && (
           <div style={{ padding: '10px 20px', textAlign: 'center', fontSize: 12, color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>

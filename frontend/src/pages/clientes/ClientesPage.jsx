@@ -55,7 +55,7 @@ export default function ClientesPage() {
   const pages = result.pages ?? Math.max(1, Math.ceil(totalClientes / limit))
   const shown = clientes
 
-  if (isLoading && !result.items?.length) return <main style={{ padding: 24 }}><p>Cargando...</p></main>
+  if (isLoading && !result.items?.length) return <main className="page page-wide"><p>Cargando...</p></main>
 
   const tipos = ['Empresa', 'Institucional', 'Municipal', 'Gobierno', 'Distribuidor']
   const fmt = n => '$' + Number(n).toLocaleString('es-CL')
@@ -114,7 +114,7 @@ export default function ClientesPage() {
   const deudaTotal = clientes.reduce((s, c) => s + (c.saldo || 0), 0)
 
   return (
-    <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px' }}>
+    <main className="page page-wide">
       <PageHeader title="Clientes" subtitle={`${shown.length} de ${totalClientes.toLocaleString('es-CL')} clientes`} breadcrumb={['Inicio', 'Clientes']}
         actions={<>
           <Btn variant="secondary" icon="download" size="sm"
@@ -169,7 +169,7 @@ export default function ClientesPage() {
             )}
           </div>
         </div>
-        <Table columns={cols} rows={shown} />
+        <Table columns={cols} rows={shown} emptyMessage="Sin clientes" keyboard onRowDoubleClick={row => setSelected(row)} ariaLabel="Clientes" getRowKey={row => row.id} />
         <Pager page={page} pages={pages} total={totalClientes} limit={limit} shown={shown.length} onChange={setPagerPage} disabled={isLoading} />
       </div>
       {selected && <ViewClientePanel cliente={selected} canWrite={canWriteClientes} onClose={() => setSelected(null)} onEdit={() => { navigate('/clientes/' + selected.id + '/editar'); setSelected(null) }} />}

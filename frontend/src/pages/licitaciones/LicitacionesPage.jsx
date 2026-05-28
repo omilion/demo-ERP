@@ -148,7 +148,7 @@ export default function LicitacionesPage() {
   }
 
   return (
-    <main style={{ maxWidth: 1440, margin: '0 auto', padding: '24px' }}>
+    <main className="page page-wide">
       <PageHeader
         title="Cotizaciones de Licitación"
         subtitle={`${total.toLocaleString('es-CL')} cotizaciones a organismos públicos`}
@@ -188,7 +188,7 @@ export default function LicitacionesPage() {
         </div>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-          : <Table columns={cols} rows={cotizaciones} onRowClick={row => navigate('/licitaciones/' + row.id)} emptyMessage="Sin cotizaciones registradas" />
+          : <Table columns={cols} rows={cotizaciones} onRowClick={row => navigate('/licitaciones/' + row.id)} emptyMessage="Sin cotizaciones registradas" ariaLabel="Licitaciones" getRowKey={row => row.id} />
         }
       </div>
     </main>

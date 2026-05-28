@@ -265,7 +265,7 @@ export default function CajaPage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1280, margin: '0 auto', padding: '24px' }}>
+    <main className="page page-wide">
       <PageHeader
         title="Caja"
         subtitle={turno ? `Turno abierto · Caja ${turno.caja?.nombre ?? ''}` : 'Sin turno activo'}
@@ -356,7 +356,7 @@ export default function CajaPage() {
             ) : !turno ? (
               <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Sin turno activo. Abre un turno para registrar movimientos.</div>
             ) : (
-              <Table columns={colsHoy} rows={movimientos} emptyMessage="Sin movimientos en este turno" />
+              <Table columns={colsHoy} rows={movimientos} emptyMessage="Sin movimientos en este turno" keyboard ariaLabel="Movimientos del turno de caja" getRowKey={(row, index) => row.id || index} />
             )}
           </>
         ) : (
@@ -366,7 +366,7 @@ export default function CajaPage() {
             ) : histLoading ? (
               <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
             ) : (
-              <Table columns={colsHist} rows={histResult.items} emptyMessage="Sin registros para este filtro" />
+              <Table columns={colsHist} rows={histResult.items} emptyMessage="Sin registros para este filtro" keyboard ariaLabel="Historico de caja" getRowKey={(row, index) => row.id || index} />
             )}
           </>
         )}

@@ -78,7 +78,7 @@ export default function PagoProveedorDetallePage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1280, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title={`Pago ${data.nDoc || `#${data.id}`}`}
         subtitle={data.documento || 'Sin tipo doc'}
@@ -164,7 +164,7 @@ export default function PagoProveedorDetallePage() {
           <div style={{ fontWeight: 600, fontSize: 14 }}>Detalle factura <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>({detalles.length})</span></div>
           <span style={{ fontSize: 12 }}><span style={{ color: 'var(--text-3)' }}>Subtotal:</span> <strong style={{ fontFamily: "'DM Mono', monospace" }}>{fmt(subtotal)}</strong></span>
         </div>
-        <Table columns={cols} rows={detalles} emptyMessage="Sin detalle" />
+        <Table columns={cols} rows={detalles} emptyMessage="Sin detalle" keyboard ariaLabel="Detalle de factura proveedor" getRowKey={row => row.id} />
       </div>
     </main>
   )

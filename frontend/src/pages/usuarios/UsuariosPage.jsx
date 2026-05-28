@@ -77,7 +77,7 @@ export default function UsuariosPage() {
   const conExtra = usuarios.filter(u => u.permisosExtra).length
 
   return (
-    <main style={{ maxWidth: 1520, margin: '0 auto', padding: '24px' }}>
+    <main className="page page-wide">
       <PageHeader
         title="Usuarios"
         subtitle={`${usuarios.length} usuarios del sistema`}
@@ -105,7 +105,7 @@ export default function UsuariosPage() {
         </div>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={filtered} emptyMessage="Sin usuarios" />
+          : <Table columns={cols} rows={filtered} emptyMessage="Sin usuarios" keyboard onRowDoubleClick={row => setEditing(row)} ariaLabel="Usuarios" getRowKey={row => row.id} />
         }
       </div>
 

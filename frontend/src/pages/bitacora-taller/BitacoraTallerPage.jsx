@@ -149,7 +149,7 @@ export default function BitacoraTallerPage() {
   }
 
   return (
-    <main style={{ maxWidth: 1280, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title="Bitacora Taller"
         subtitle={`${data.total} entradas`}
@@ -176,7 +176,7 @@ export default function BitacoraTallerPage() {
         {isError && <div style={{ padding: 12, color: 'var(--red)', fontSize: 12 }}>{getErrorMessage(error)}</div>}
         {isLoading
           ? <div style={{ padding: 48, textAlign: 'center' }}>Cargando...</div>
-          : <Table columns={cols} rows={data.items} emptyMessage="Sin bitacora" />
+          : <Table columns={cols} rows={data.items} emptyMessage="Sin bitacora" keyboard ariaLabel="Bitacora de taller" getRowKey={row => row.id} />
         }
         <Pager
           page={data.page || page}

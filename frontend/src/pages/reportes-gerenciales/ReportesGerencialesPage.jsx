@@ -271,7 +271,7 @@ export default function ReportesGerencialesPage() {
   ]
 
   return (
-    <main style={{ padding: '24px 32px 40px', maxWidth: 1480, margin: '0 auto' }}>
+    <main className="page page-wide">
       <PageHeader
         title="Reporteria gerencial"
         subtitle="Vista filtrable de ventas, caja, cobranza, stock critico, licitaciones y pendientes operacionales."
@@ -379,6 +379,8 @@ export default function ReportesGerencialesPage() {
                 rows={ventas.slice(0, 12)}
                 onRowClick={row => navigate(`/ventas/${row.id}`)}
                 emptyMessage="Sin ventas para los filtros aplicados"
+                ariaLabel="Ultimas ventas filtradas"
+                getRowKey={row => row.id}
               />
             </QueryBlock>
           </Panel>
@@ -395,6 +397,8 @@ export default function ReportesGerencialesPage() {
                 rows={licitaciones.slice(0, 12)}
                 onRowClick={row => navigate(`/licitaciones/${row.id}`)}
                 emptyMessage="Sin licitaciones para el periodo"
+                ariaLabel="Licitaciones del periodo"
+                getRowKey={row => row.id}
               />
             </QueryBlock>
           </Panel>
@@ -416,6 +420,8 @@ export default function ReportesGerencialesPage() {
                 rows={odtsPendientes.slice(0, 14)}
                 onRowClick={row => navigate(`/taller/${row.id}`)}
                 emptyMessage="Sin ODTs pendientes"
+                ariaLabel="ODTs pendientes"
+                getRowKey={row => row.id}
               />
             </QueryBlock>
           </Panel>
@@ -432,6 +438,8 @@ export default function ReportesGerencialesPage() {
                 rows={despachosPendientes.slice(0, 14)}
                 onRowClick={() => navigate('/despachos')}
                 emptyMessage="Sin despachos pendientes"
+                ariaLabel="Despachos pendientes"
+                getRowKey={(row, index) => row.id || row.interno || index}
               />
             </QueryBlock>
           </Panel>
@@ -453,6 +461,8 @@ export default function ReportesGerencialesPage() {
                 rows={stockProductos.slice(0, 14)}
                 onRowClick={() => navigate('/bodega')}
                 emptyMessage="Sin productos criticos"
+                ariaLabel="Productos con stock critico"
+                getRowKey={(row, index) => row.id || row.codigoInterno || index}
               />
             </QueryBlock>
           </Panel>
@@ -469,6 +479,8 @@ export default function ReportesGerencialesPage() {
                 rows={stockMateriales.slice(0, 14)}
                 onRowClick={() => navigate('/bodega-taller')}
                 emptyMessage="Sin materiales criticos"
+                ariaLabel="Materiales de taller criticos"
+                getRowKey={(row, index) => row.id || row.codigoInterno || index}
               />
             </QueryBlock>
           </Panel>

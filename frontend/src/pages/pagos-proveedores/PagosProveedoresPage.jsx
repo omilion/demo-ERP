@@ -177,7 +177,7 @@ export default function PagosProveedoresPage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1440, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title="Pagos a Proveedores"
         subtitle={`${total.toLocaleString('es-CL')} pagos registrados`}
@@ -243,7 +243,7 @@ export default function PagosProveedoresPage() {
         )}
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={items} onRowClick={row => navigate('/pagos-proveedores/' + row.id)} emptyMessage="Sin pagos" />
+          : <Table columns={cols} rows={items} onRowClick={row => navigate('/pagos-proveedores/' + row.id)} emptyMessage="Sin pagos" ariaLabel="Pagos a proveedores" getRowKey={row => row.id} />
         }
       </div>
       {showCreate && (

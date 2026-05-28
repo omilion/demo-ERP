@@ -58,7 +58,7 @@ export default function TelaDetallePage() {
   }
 
   return (
-    <main style={{ maxWidth: 1180, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title={data.nombre || data.codigo}
         subtitle={data.tipo || 'Sin tipo'}
@@ -141,7 +141,7 @@ export default function TelaDetallePage() {
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, fontSize: 14 }}>
           Histórico de movimientos <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>({movimientos.length})</span>
         </div>
-        <Table columns={cols} rows={movimientos} emptyMessage="Sin movimientos" />
+        <Table columns={cols} rows={movimientos} emptyMessage="Sin movimientos" keyboard ariaLabel="Movimientos de tela" getRowKey={row => row.id} />
       </div>
     </main>
   )

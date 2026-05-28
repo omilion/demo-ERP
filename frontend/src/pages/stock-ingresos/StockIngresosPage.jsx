@@ -176,7 +176,7 @@ export default function StockIngresosPage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1440, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title="Ingreso Mercaderia"
         subtitle="Facturas, boletas y notas que afectan stock de bodega"
@@ -207,7 +207,7 @@ export default function StockIngresosPage() {
         </div>
         {isLoading
           ? <div style={{ padding: 48, textAlign: 'center' }}>Cargando...</div>
-          : <Table columns={cols} rows={data.items || []} emptyMessage="Sin documentos de bodega" />
+          : <Table columns={cols} rows={data.items || []} emptyMessage="Sin documentos de bodega" keyboard ariaLabel="Documentos de ingreso de mercaderia" getRowKey={row => row.id} />
         }
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Pagina {page} de {totalPages} - {data.total || 0} registros</span>

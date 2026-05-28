@@ -101,7 +101,7 @@ export default function DashboardPage() {
   const fecha = now.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })
 
   return (
-    <main style={{ maxWidth: 1360, margin: '0 auto', padding: 'clamp(12px, 2vw, 24px)' }}>
+    <main className="page page-wide">
       <PageHeader
         title="Panel de Control"
         subtitle={`${fecha} · ${hora} · Sucursal 5 Oriente`}

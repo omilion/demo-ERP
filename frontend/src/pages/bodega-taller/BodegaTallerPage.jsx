@@ -113,7 +113,7 @@ export default function BodegaTallerPage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1680, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title="Bodega Taller"
         subtitle={`${total.toLocaleString('es-CL')} materiales de taller`}
@@ -159,7 +159,15 @@ export default function BodegaTallerPage() {
         </div>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={items} emptyMessage="Sin materiales" onRowDoubleClick={row => canWrite && setEditing(row)} />
+          : <Table
+              columns={cols}
+              rows={items}
+              emptyMessage="Sin materiales"
+              onRowDoubleClick={canWrite ? row => setEditing(row) : undefined}
+              autoFocus
+              ariaLabel="Materiales de bodega taller"
+              getRowKey={row => row.id}
+            />
         }
       </div>
 

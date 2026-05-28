@@ -50,7 +50,7 @@ export default function TelasPage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1280, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title="Telas"
         subtitle={`${total.toLocaleString('es-CL')} telas en catálogo`}
@@ -68,7 +68,7 @@ export default function TelasPage() {
         </div>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-          : <Table columns={cols} rows={telas} onRowClick={row => navigate('/telas/' + row.id)} emptyMessage="Sin telas" />
+          : <Table columns={cols} rows={telas} onRowClick={row => navigate('/telas/' + row.id)} emptyMessage="Sin telas" ariaLabel="Telas" getRowKey={row => row.id} />
         }
       </div>
     </main>

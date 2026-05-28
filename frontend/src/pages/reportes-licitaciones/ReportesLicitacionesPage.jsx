@@ -152,7 +152,7 @@ export default function ReportesLicitacionesPage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1500, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <style>{`
         @media print {
           nav, .no-print, .topbar { display: none !important; }
@@ -203,7 +203,7 @@ export default function ReportesLicitacionesPage() {
       <div style={{ background: '#fff', borderRadius: 10, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={columns} rows={displayItems} onRowClick={row => navigate(`/licitaciones/${row.id}`)} emptyMessage="No hay resultados" />
+          : <Table columns={columns} rows={displayItems} onRowClick={row => navigate(`/licitaciones/${row.id}`)} emptyMessage="No hay resultados" ariaLabel="Reporte de licitaciones" getRowKey={row => row.id} />
         }
         <div className="no-print">
           <Pager page={page} pages={pages} total={data.total || 0} limit={data.limit || limit} shown={items.length} onChange={setPage} disabled={isLoading} />

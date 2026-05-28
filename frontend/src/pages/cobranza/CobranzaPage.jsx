@@ -370,7 +370,7 @@ export default function CobranzaPage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1400, margin: '0 auto', padding: '24px' }}>
+    <main className="page page-wide">
       <PageHeader
         title="Cobranza"
         subtitle={mainTab === 'activo' ? `${total.toLocaleString('es-CL')} documentos por cobrar` : `${histResult.total.toLocaleString('es-CL')} registros históricos`}
@@ -495,13 +495,13 @@ export default function CobranzaPage() {
             ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--red)' }}>{activeQueryError?.response?.data?.error || 'No se pudo cargar cobranza activa'}</div>
             : isLoading
             ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-            : <Table columns={colsActivo} rows={ventas} onRowClick={row => navigate(ventaPath(row.id, user))} emptyMessage="Sin documentos pendientes de cobro" />
+            : <Table columns={colsActivo} rows={ventas} onRowClick={row => navigate(ventaPath(row.id, user))} emptyMessage="Sin documentos pendientes de cobro" ariaLabel="Documentos pendientes de cobro" getRowKey={row => row.id} />
         ) : (
           histError
             ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--red)' }}>{histQueryError?.response?.data?.error || 'No se pudo cargar historico de cobranza'}</div>
             : histLoading
             ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-            : <Table columns={colsHist} rows={histResult.items} emptyMessage="Sin registros históricos para este filtro" />
+            : <Table columns={colsHist} rows={histResult.items} emptyMessage="Sin registros históricos para este filtro" keyboard ariaLabel="Historial de cobranza" getRowKey={row => row.id} />
         )}
 
         {mainTab === 'historico' && histResult.total > histResult.limit && (

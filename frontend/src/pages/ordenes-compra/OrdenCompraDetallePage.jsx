@@ -85,7 +85,7 @@ export default function OrdenCompraDetallePage() {
   const canProcess = !['Procesada', 'Anulada', 'Cancelada'].includes(data.estadoCompra)
 
   return (
-    <main style={{ maxWidth: 1280, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title={`OC ${data.nCompra}`}
         subtitle={data.emailComprador || 'Sin email'}
@@ -179,7 +179,7 @@ export default function OrdenCompraDetallePage() {
           <div style={{ fontWeight: 600, fontSize: 14 }}>Productos <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>({items.length})</span></div>
           <span style={{ fontSize: 12 }}><span style={{ color: 'var(--text-3)' }}>Subtotal items:</span> <strong style={{ fontFamily: "'DM Mono', monospace" }}>{fmt(subtotal)}</strong></span>
         </div>
-        <Table columns={cols} rows={items} emptyMessage="Sin productos" />
+        <Table columns={cols} rows={items} emptyMessage="Sin productos" keyboard ariaLabel="Productos de orden de compra" getRowKey={row => row.id} />
       </div>
     </main>
   )

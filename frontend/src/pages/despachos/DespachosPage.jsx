@@ -302,7 +302,7 @@ export default function DespachosPage() {
   }
 
   return (
-    <main style={{ maxWidth: 1600, margin: '0 auto', padding: 24 }}>
+    <main className="page page-wide">
       <PageHeader
         title="Despachos y Guias"
         subtitle="Matriz logistica de ventas, registros de despacho y guias"
@@ -380,7 +380,7 @@ export default function DespachosPage() {
         {ordenIdParam && <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)' }}><Badge tone="blue">Orden #{ordenIdParam}</Badge></div>}
         {currentLoading
           ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={columns} rows={rows} emptyMessage={tab === 'matriz' ? 'Sin ventas para despacho' : 'Sin registros'} />
+          : <Table columns={columns} rows={rows} emptyMessage={tab === 'matriz' ? 'Sin ventas para despacho' : 'Sin registros'} keyboard ariaLabel="Despachos" getRowKey={(row, index) => row.id || row.ordenId || row.numeroGuia || index} />
         }
         <Pager page={page} pages={pages} total={total} limit={limit} shown={rows.length} onChange={setPage} disabled={currentLoading} />
       </div>

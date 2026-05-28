@@ -79,7 +79,7 @@ export default function IntegridadPage() {
   }
 
   return (
-    <main style={{ maxWidth: 1400, margin: '0 auto', padding: 'clamp(12px, 2vw, 24px)' }}>
+    <main className="page page-wide">
       <PageHeader
         title="Integridad de Datos"
         subtitle="Revisar y corregir registros con problemas. Solo administradores."

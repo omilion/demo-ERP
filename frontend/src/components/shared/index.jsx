@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const ICONS = {
   warehouse:    <><rect x="2" y="7" width="20" height="14" rx="1.5"/><polyline points="16,7 12,3 8,7"/><line x1="12" y1="3" x2="12" y2="21"/></>,
@@ -231,16 +231,106 @@ export const SearchBar = ({ placeholder, value, onChange, style }) => (
 )
 
 // ── Table ─────────────────────────────────────────────────────────────────────
-export const Table = ({ columns, rows, onRowClick, onRowDoubleClick, emptyMessage = 'Sin resultados' }) => {
+export const Table = ({
+  columns,
+  rows,
+  onRowClick,
+  onRowDoubleClick,
+  emptyMessage = 'Sin resultados',
+  keyboard,
+  autoFocus,
+  stickyHeader,
+  ariaLabel = 'Tabla de datos',
+  getRowKey,
+}) => {
   const [hovRow, setHovRow] = useState(null)
+  const [activeRow, setActiveRow] = useState(0)
+  const [hasKeyboardFocus, setHasKeyboardFocus] = useState(false)
+  const wrapRef = useRef(null)
+  const keyboardEnabled = keyboard ?? Boolean(onRowClick || onRowDoubleClick)
+  const autoFocusEnabled = autoFocus ?? keyboardEnabled
+  const stickyHeaderEnabled = stickyHeader ?? keyboardEnabled
+  const clampedActiveRow = Math.min(Math.max(activeRow, 0), Math.max(rows.length - 1, 0))
+
+  useEffect(() => {
+    if (!keyboardEnabled || !autoFocusEnabled || !rows.length || !wrapRef.current) return
+    const activeElement = document.activeElement
+    const canFocusTable = !activeElement || activeElement === document.body || wrapRef.current.contains(activeElement)
+    if (canFocusTable) wrapRef.current.focus({ preventScroll: true })
+  }, [autoFocusEnabled, keyboardEnabled, rows.length])
+
+  useEffect(() => {
+    if (!keyboardEnabled || !wrapRef.current) return
+    const row = wrapRef.current.querySelector(`[data-table-row="${clampedActiveRow}"]`)
+    row?.scrollIntoView({ block: 'nearest' })
+  }, [clampedActiveRow, keyboardEnabled])
+
   if (!rows.length) return (
     <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
       <Icon name="info" size={24} color="var(--border)" />
       <p style={{ marginTop: 12 }}>{emptyMessage}</p>
     </div>
   )
+
+  const isInteractiveTarget = target => target?.closest?.('input, textarea, select, button, a, [contenteditable="true"], [role="button"]')
+  const runRowAction = event => {
+    const row = rows[clampedActiveRow]
+    if (!row) return
+    const action = (event.ctrlKey || event.metaKey) ? (onRowDoubleClick || onRowClick) : (onRowClick || onRowDoubleClick)
+    if (action) action(row)
+  }
+  const handleKeyDown = event => {
+    if (!keyboardEnabled || isInteractiveTarget(event.target)) return
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setActiveRow(Math.min(clampedActiveRow + 1, rows.length - 1))
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setActiveRow(Math.max(clampedActiveRow - 1, 0))
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      wrapRef.current?.scrollBy({ left: 90, behavior: 'smooth' })
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      wrapRef.current?.scrollBy({ left: -90, behavior: 'smooth' })
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      setActiveRow(0)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      setActiveRow(rows.length - 1)
+    } else if (event.key === 'PageDown') {
+      event.preventDefault()
+      setActiveRow(Math.min(clampedActiveRow + 10, rows.length - 1))
+    } else if (event.key === 'PageUp') {
+      event.preventDefault()
+      setActiveRow(Math.max(clampedActiveRow - 10, 0))
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      runRowAction(event)
+    } else if (event.key === 'Escape') {
+      wrapRef.current?.blur()
+    }
+  }
+
   return (
-    <div className="table-wrap">
+    <div
+      ref={wrapRef}
+      className={`table-wrap${stickyHeaderEnabled ? ' table-wrap-sticky' : ''}${keyboardEnabled ? ' table-wrap-keyboard' : ''}`}
+      tabIndex={keyboardEnabled ? 0 : undefined}
+      role={keyboardEnabled ? 'region' : undefined}
+      aria-label={ariaLabel}
+      onKeyDown={handleKeyDown}
+      onFocus={() => setHasKeyboardFocus(true)}
+      onBlur={event => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setHasKeyboardFocus(false)
+      }}
+      onMouseDown={event => {
+        if (keyboardEnabled && !isInteractiveTarget(event.target)) {
+          wrapRef.current?.focus({ preventScroll: true })
+        }
+      }}
+    >
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
         <thead>
           <tr style={{ borderBottom: '2px solid var(--border)' }}>
@@ -249,20 +339,28 @@ export const Table = ({ columns, rows, onRowClick, onRowDoubleClick, emptyMessag
                 padding: '9px 14px', textAlign: col.align || 'left',
                 fontWeight: 600, fontSize: 11, textTransform: 'uppercase',
                 letterSpacing: 0.4, color: 'var(--text-3)', whiteSpace: 'nowrap',
-                background: 'oklch(0.985 0.004 155)',
+                background: 'oklch(0.985 0.004 155)', position: stickyHeaderEnabled ? 'sticky' : undefined,
+                top: stickyHeaderEnabled ? 0 : undefined, zIndex: stickyHeaderEnabled ? 2 : undefined,
               }}>{col.label}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.map((row, ri) => (
-            <tr key={ri} onMouseEnter={() => setHovRow(ri)} onMouseLeave={() => setHovRow(null)}
-              onClick={() => onRowClick && onRowClick(row)}
-              onDoubleClick={() => onRowDoubleClick && onRowDoubleClick(row)}
+            <tr key={getRowKey ? getRowKey(row, ri) : ri} data-table-row={ri} onMouseEnter={() => setHovRow(ri)} onMouseLeave={() => setHovRow(null)}
+              onClick={event => {
+                setActiveRow(ri)
+                if (!isInteractiveTarget(event.target)) onRowClick?.(row)
+              }}
+              onDoubleClick={event => {
+                if (!isInteractiveTarget(event.target)) onRowDoubleClick?.(row)
+              }}
               style={{
                 borderBottom: '1px solid var(--border)',
-                background: hovRow === ri ? 'var(--green-50)' : (ri % 2 === 0 ? '#fff' : 'oklch(0.99 0.002 220)'),
+                background: clampedActiveRow === ri && keyboardEnabled && hasKeyboardFocus ? 'oklch(0.94 0.04 150)' : hovRow === ri ? 'var(--green-50)' : (ri % 2 === 0 ? '#fff' : 'oklch(0.99 0.002 220)'),
                 cursor: (onRowClick || onRowDoubleClick) ? 'pointer' : 'default', transition: 'background 0.1s',
+                outline: clampedActiveRow === ri && keyboardEnabled && hasKeyboardFocus ? '1px solid var(--green-600)' : 'none',
+                outlineOffset: -1,
               }}>
               {columns.map((col, ci) => (
                 <td key={ci} style={{ padding: '9px 14px', verticalAlign: 'middle', textAlign: col.align || 'left', whiteSpace: col.wrap ? 'normal' : 'nowrap' }}>

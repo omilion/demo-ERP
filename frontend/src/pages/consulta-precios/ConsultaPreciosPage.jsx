@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, Icon, KpiCard, PageHeader, Pager, Table } from '../../components/shared'
 import { useCategorias } from '../../api/categorias'
 import { useProductos, useUpdateProducto } from '../../api/productos'
@@ -30,6 +31,7 @@ function price(value) {
 }
 
 export default function ConsultaPreciosPage() {
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const [mode, setMode] = useState('general')
   const [term, setTerm] = useState('')
@@ -178,7 +180,7 @@ export default function ConsultaPreciosPage() {
   ]
 
   return (
-    <main style={{ maxWidth: 1680, margin: '0 auto', padding: '24px' }}>
+    <main className="page page-wide">
       <PageHeader
         title="Consulta Precios"
         subtitle="Vista operativa de precios y stock"
@@ -253,7 +255,15 @@ export default function ConsultaPreciosPage() {
 
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando productos...</div>
-          : <Table columns={cols} rows={items} emptyMessage="No hay productos con ese criterio" />
+          : <Table
+              columns={cols}
+              rows={items}
+              emptyMessage="No hay productos con ese criterio"
+              onRowDoubleClick={canEditPrecio ? row => navigate('/bodega/' + row.id + '/editar') : undefined}
+              autoFocus
+              ariaLabel="Consulta de precios de productos"
+              getRowKey={row => row.id}
+            />
         }
         <Pager
           page={data.page ?? page}

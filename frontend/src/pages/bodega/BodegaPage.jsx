@@ -113,7 +113,7 @@ export default function BodegaPage() {
   const sinStock = productos.filter(p => p.estado === 'Sin stock').length
 
   return (
-    <main style={{ maxWidth: 1680, margin: '0 auto', padding: '24px' }}>
+    <main className="page page-wide">
       <PageHeader
         title="Bodega"
         subtitle="Control de stock e inventario"
@@ -176,7 +176,17 @@ export default function BodegaPage() {
         )}
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando productos...</div>
-          : <Table columns={cols} rows={productos} emptyMessage="No hay productos con ese criterio" onRowDoubleClick={row => canWriteCatalogo && navigate('/bodega/' + row.id + '/editar')} />
+          : <Table
+              columns={cols}
+              rows={productos}
+              emptyMessage="No hay productos con ese criterio"
+              onRowDoubleClick={canWriteCatalogo ? row => navigate('/bodega/' + row.id + '/editar') : undefined}
+              keyboard
+              autoFocus
+              stickyHeader
+              ariaLabel="Productos de bodega"
+              getRowKey={row => row.id}
+            />
         }
       </div>
 
