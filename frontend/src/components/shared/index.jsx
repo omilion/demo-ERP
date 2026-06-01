@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useAuthStore } from '../../store/auth'
 
 const ICONS = {
   warehouse:    <><rect x="2" y="7" width="20" height="14" rx="1.5"/><polyline points="16,7 12,3 8,7"/><line x1="12" y1="3" x2="12" y2="21"/></>,
@@ -287,6 +288,105 @@ const getCellTitle = (col, value, row, rendered) => {
   return undefined
 }
 
+const getColumnPrefsKey = (key, user) => {
+  const userKey = user?.id || user?.email || user?.nombre || user?.role || 'anon'
+  return `plastimar.table.columns.${userKey}.${key}`
+}
+
+const readColumnPrefs = (key, user, columns) => {
+  if (!key || typeof window === 'undefined') return null
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(getColumnPrefsKey(key, user)) || 'null')
+    if (!Array.isArray(parsed)) return null
+    const allowed = new Set(columns.map(col => col.key))
+    return parsed.filter(colKey => allowed.has(colKey))
+  } catch {
+    return null
+  }
+}
+
+const saveColumnPrefs = (key, user, selected) => {
+  if (!key || typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(getColumnPrefsKey(key, user), JSON.stringify(selected))
+  } catch {
+    // User preference only. If local storage is blocked, keep the table usable.
+  }
+}
+
+function TableColumnSelector({ columns, selected, onChange, onReset, required }) {
+  const [open, setOpen] = useState(false)
+  const selectedSet = new Set(selected)
+  const configurable = columns.filter(col => col.label)
+
+  const toggle = key => {
+    if (required.has(key)) return
+    const next = selectedSet.has(key)
+      ? selected.filter(colKey => colKey !== key)
+      : [...selected, key]
+    onChange(next)
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button type="button" className="table-tool-btn table-column-btn" onClick={() => setOpen(value => !value)} title="Columnas visibles">
+        <Icon name="list" size={13} />
+        <span>Columnas</span>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute',
+          top: 'calc(100% + 8px)',
+          right: 0,
+          width: 320,
+          maxWidth: '88vw',
+          background: '#fff',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          boxShadow: '0 14px 36px oklch(0 0 0 / 0.16)',
+          zIndex: 60,
+          overflow: 'hidden',
+        }}>
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>Columnas visibles</div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>La vista queda guardada para este usuario.</div>
+            </div>
+            <button type="button" onClick={() => setOpen(false)} style={{ color: 'var(--text-3)', padding: 4 }}>
+              <Icon name="x" size={16} />
+            </button>
+          </div>
+          <div style={{ maxHeight: 360, overflowY: 'auto', padding: 8 }}>
+            {configurable.map(col => {
+              const locked = required.has(col.key)
+              return (
+                <label key={col.key} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 9,
+                  padding: '8px 9px',
+                  borderRadius: 7,
+                  cursor: locked ? 'default' : 'pointer',
+                  color: locked ? 'var(--text-3)' : 'var(--text-1)',
+                  fontSize: 13,
+                }}>
+                  <input type="checkbox" checked={selectedSet.has(col.key)} disabled={locked} onChange={() => toggle(col.key)} />
+                  <span style={{ flex: 1 }}>{col.label}</span>
+                  {locked && <span style={{ fontSize: 10, color: 'var(--text-3)' }}>fija</span>}
+                </label>
+              )
+            })}
+          </div>
+          <div style={{ padding: 10, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+            <button type="button" className="table-tool-btn" onClick={onReset}>Restaurar base</button>
+            <button type="button" className="table-tool-btn table-column-save" onClick={() => setOpen(false)}>Guardar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export const Table = ({
   columns,
   rows,
@@ -298,17 +398,28 @@ export const Table = ({
   stickyHeader,
   ariaLabel = 'Tabla de datos',
   getRowKey,
+  columnPrefsKey,
+  columnPrefs = true,
 }) => {
+  const user = useAuthStore(s => s.user)
   const [hovRow, setHovRow] = useState(null)
   const [activeRow, setActiveRow] = useState(0)
   const [hasKeyboardFocus, setHasKeyboardFocus] = useState(false)
   const [tableZoom, setTableZoomState] = useState(readTableZoom)
+  const autoColumnPrefs = columnPrefs && columns.length >= 6
+  const prefsKey = autoColumnPrefs ? (columnPrefsKey || ariaLabel) : null
+  const defaultColumnKeys = columns.filter(col => !col.defaultHidden).map(col => col.key)
+  const requiredColumns = new Set(columns.filter(col => col.required || col.key === '_actions' || col.key === '_acc').map(col => col.key))
+  const [selectedColumns, setSelectedColumns] = useState(() => readColumnPrefs(prefsKey, user, columns) || defaultColumnKeys)
   const wrapRef = useRef(null)
   const keyboardEnabled = keyboard ?? Boolean(onRowClick || onRowDoubleClick)
   const autoFocusEnabled = autoFocus ?? keyboardEnabled
   const stickyHeaderEnabled = stickyHeader ?? keyboardEnabled
   const clampedActiveRow = Math.min(Math.max(activeRow, 0), Math.max(rows.length - 1, 0))
-  const columnWidths = columns.map(col => Math.round(getColumnBaseWidth(col) * tableZoom))
+  const allowedColumnKeys = new Set(columns.map(col => col.key))
+  const selectedColumnSet = new Set([...selectedColumns.filter(colKey => allowedColumnKeys.has(colKey)), ...requiredColumns])
+  const effectiveColumns = prefsKey ? columns.filter(col => selectedColumnSet.has(col.key)) : columns
+  const columnWidths = effectiveColumns.map(col => Math.round(getColumnBaseWidth(col) * tableZoom))
   const tableWidth = columnWidths.reduce((sum, width) => sum + width, 0)
   const zoomPercent = Math.round(tableZoom * 100)
   const cellPadding = `${Math.max(6, Math.round(9 * tableZoom))}px ${Math.max(8, Math.round(14 * tableZoom))}px`
@@ -318,6 +429,16 @@ export const Table = ({
     setTableZoomState(next)
     saveTableZoom(next)
   }
+
+  const updateSelectedColumns = next => {
+    const clean = columns
+      .map(col => col.key)
+      .filter(colKey => next.includes(colKey) || requiredColumns.has(colKey))
+    setSelectedColumns(clean)
+    saveColumnPrefs(prefsKey, user, clean)
+  }
+
+  const resetSelectedColumns = () => updateSelectedColumns(defaultColumnKeys)
 
   useEffect(() => {
     if (!keyboardEnabled || !autoFocusEnabled || !rows.length || !wrapRef.current) return
@@ -331,13 +452,6 @@ export const Table = ({
     const row = wrapRef.current.querySelector(`[data-table-row="${clampedActiveRow}"]`)
     row?.scrollIntoView({ block: 'nearest' })
   }, [clampedActiveRow, keyboardEnabled])
-
-  if (!rows.length) return (
-    <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
-      <Icon name="info" size={24} color="var(--border)" />
-      <p style={{ marginTop: 12 }}>{emptyMessage}</p>
-    </div>
-  )
 
   const isInteractiveTarget = target => target?.closest?.('input, textarea, select, button, a, [contenteditable="true"], [role="button"]')
   const runRowAction = event => {
@@ -383,6 +497,15 @@ export const Table = ({
   return (
     <div className="table-shell">
       <div className="table-tools" aria-label="Controles de tabla">
+        {prefsKey && (
+          <TableColumnSelector
+            columns={columns}
+            selected={[...selectedColumnSet]}
+            onChange={updateSelectedColumns}
+            onReset={resetSelectedColumns}
+            required={requiredColumns}
+          />
+        )}
         <span className="table-tools-label">Zoom</span>
         <button
           type="button"
@@ -417,7 +540,13 @@ export const Table = ({
         </button>
         <span className="table-zoom-value">{zoomPercent}%</span>
       </div>
-      <div
+      {!rows.length ? (
+        <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
+          <Icon name="info" size={24} color="var(--border)" />
+          <p style={{ marginTop: 12 }}>{emptyMessage}</p>
+        </div>
+      ) : (
+        <div
         ref={wrapRef}
         className={`table-wrap${stickyHeaderEnabled ? ' table-wrap-sticky' : ''}${keyboardEnabled ? ' table-wrap-keyboard' : ''}`}
         tabIndex={keyboardEnabled ? 0 : undefined}
@@ -440,7 +569,7 @@ export const Table = ({
         </colgroup>
         <thead>
           <tr style={{ borderBottom: '2px solid var(--border)' }}>
-            {columns.map((col, i) => (
+            {effectiveColumns.map((col, i) => (
               <th key={i} title={col.label} style={{
                 padding: cellPadding, textAlign: col.align || 'left',
                 fontWeight: 600, fontSize: Math.max(10, 11 * tableZoom), textTransform: 'uppercase',
@@ -468,7 +597,7 @@ export const Table = ({
                 outline: clampedActiveRow === ri && keyboardEnabled && hasKeyboardFocus ? '1px solid var(--green-600)' : 'none',
                 outlineOffset: -1,
               }}>
-              {columns.map((col, ci) => {
+              {effectiveColumns.map((col, ci) => {
                 const rawValue = row[col.key]
                 const title = getCellTitle(col, rawValue, row)
                 return (
@@ -490,6 +619,7 @@ export const Table = ({
         </tbody>
       </table>
       </div>
+      )}
     </div>
   )
 }

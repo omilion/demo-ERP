@@ -57,6 +57,59 @@ function StockRow({ label, icon, critico, sinStock, onClick }) {
   )
 }
 
+function QuickAccessTile({ label, icon, tone = 'blue', badge, onClick }) {
+  const colors = {
+    red: { bg: '#dc4f4f', hover: '#c94545' },
+    green: { bg: '#58b957', hover: '#4ca84b' },
+    blue: { bg: '#337fb9', hover: '#2c70a4' },
+    cyan: { bg: '#56bed9', hover: '#45abc7' },
+    amber: { bg: '#f3b247', hover: '#dd9e35' },
+    purple: { bg: '#8e24aa', hover: '#7b1f93' },
+  }
+  const palette = colors[tone] || colors.blue
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        minHeight: 66,
+        border: 0,
+        borderRadius: 6,
+        background: palette.bg,
+        color: '#fff',
+        display: 'grid',
+        gridTemplateColumns: '52px minmax(0, 1fr) auto',
+        alignItems: 'center',
+        gap: 12,
+        padding: '10px 18px',
+        cursor: 'pointer',
+        textAlign: 'left',
+        boxShadow: 'inset 0 -1px 0 oklch(0 0 0 / 0.08)',
+      }}
+      onMouseEnter={event => { event.currentTarget.style.background = palette.hover }}
+      onMouseLeave={event => { event.currentTarget.style.background = palette.bg }}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name={icon} size={35} />
+      </span>
+      <span style={{ fontSize: 17, lineHeight: 1.2, fontWeight: 700, overflowWrap: 'anywhere' }}>{label}</span>
+      {badge != null && (
+        <span style={{
+          minWidth: 34,
+          justifySelf: 'end',
+          padding: '5px 8px',
+          borderRadius: 999,
+          background: 'oklch(1 0 0 / 0.18)',
+          fontFamily: "'DM Mono', monospace",
+          fontSize: 13,
+          fontWeight: 700,
+          textAlign: 'center',
+        }}>{badge}</span>
+      )}
+    </button>
+  )
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate()
   const { data: stats, isLoading } = useDashboardStats()
@@ -100,6 +153,29 @@ export default function DashboardPage() {
   const now = new Date()
   const hora = now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
   const fecha = now.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })
+  const invCritico = (inv.critico ?? 0) + (inv.sinStock ?? 0)
+  const talCritico = (tal.critico ?? 0) + (tal.sinStock ?? 0)
+
+  const quickAccess = [
+    show.bodega && { label: 'Mantencion Bodega Inventario y Web', icon: 'warehouse', tone: 'red', route: '/bodega' },
+    show.bodega && { label: 'Stock Critico Bodega Inventario', icon: 'alertTriangle', tone: 'red', badge: n(invCritico), route: '/bodega?filtro=critico' },
+    show.bodega && { label: 'Mantencion Bodega Taller', icon: 'box', tone: 'green', route: '/bodega?tab=taller' },
+    show.bodega && { label: 'Stock Critico Bodega Taller', icon: 'alertTriangle', tone: 'green', badge: n(talCritico), route: '/bodega?tab=taller&filtro=critico' },
+    show.ventas && { label: 'Matriz Ventas', icon: 'grid', tone: 'blue', route: '/matriz-ventas' },
+    show.ventas && { label: 'Ventas No pagadas', icon: 'alertTriangle', tone: 'red', badge: n(stats?.ventas?.noPagadas), route: '/ventas?filtro=no_pagadas' },
+    show.ventas && { label: 'Ventas Pendientes entrega', icon: 'truck', tone: 'red', badge: n(stats?.ventas?.pendienteEntrega), route: '/ventas?filtro=pendiente_entrega' },
+    canReadCatalogo && { label: 'Consulta Precios', icon: 'tag', tone: 'blue', route: '/consulta-precios' },
+    canWriteVentas && { label: 'Venta por Sala', icon: 'shoppingCart', tone: 'cyan', route: '/ventas/nueva' },
+    show.taller && { label: 'OT Taller Pendientes', icon: 'wrench', tone: 'cyan', badge: n(stats?.odts?.pendientes), route: '/taller?estado=Pendiente' },
+    show.taller && { label: 'OT Taller Prioritarias', icon: 'wrench', tone: 'red', badge: n(stats?.odts?.urgentes), route: '/taller?prioridad=urgente' },
+    show.taller && { label: 'OT Taller Espumas Pendientes', icon: 'wrench', tone: 'green', route: '/taller?tipo=Espumas&estado=Pendiente' },
+    show.taller && { label: 'OT Taller Espumas Prioritarias', icon: 'wrench', tone: 'green', route: '/taller?tipo=Espumas&prioridad=urgente' },
+    show.taller && { label: 'OT Taller Confecciones Pendientes', icon: 'wrench', tone: 'blue', route: '/taller?tipo=Confecciones&estado=Pendiente' },
+    show.taller && { label: 'OT Taller Confecciones Prioritarias', icon: 'wrench', tone: 'blue', route: '/taller?tipo=Confecciones&prioridad=urgente' },
+    show.taller && { label: 'OT Taller Madera Pendientes', icon: 'wrench', tone: 'cyan', route: '/taller?tipo=Madera&estado=Pendiente' },
+    show.taller && { label: 'OT Taller Madera Prioritarias', icon: 'wrench', tone: 'cyan', route: '/taller?tipo=Madera&prioridad=urgente' },
+    show.cobranza && { label: 'Cobranza / Documentos pagos Proveedores', icon: 'dollarSign', tone: 'amber', route: '/cobranza' },
+  ].filter(Boolean)
 
   return (
     <main className="page page-wide">
@@ -111,6 +187,38 @@ export default function DashboardPage() {
           canWriteVentas && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/ventas/nueva')}>Nueva Venta</Btn>
         }
       />
+
+      <section style={{ marginBottom: 18 }}>
+        <div style={{
+          background: '#a82295',
+          color: '#fff',
+          padding: '9px 12px',
+          fontSize: 16,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          borderRadius: '6px 6px 0 0',
+        }}>
+          Elija una operacion
+        </div>
+        <div style={{
+          background: '#fff',
+          border: '1px solid var(--border)',
+          borderTop: 0,
+          borderRadius: '0 0 8px 8px',
+          padding: 6,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+          gap: 6,
+        }}>
+          {quickAccess.map(item => (
+            <QuickAccessTile
+              key={`${item.route}-${item.label}`}
+              {...item}
+              onClick={() => navigate(item.route)}
+            />
+          ))}
+        </div>
+      </section>
 
       <div className="kpi-strip">
         {canReadVentas && (

@@ -208,6 +208,7 @@ export default function BodegaPage() {
               stickyHeader
               ariaLabel="Productos de bodega"
               getRowKey={row => row.id}
+              columnPrefs={false}
             />
         }
       </div>

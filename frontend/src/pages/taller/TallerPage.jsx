@@ -639,7 +639,7 @@ export default function TallerPage() {
               <p style={{ marginTop: 12 }}>Sin ODTs con ese criterio</p>
             </div>
           ) : (
-            <Table columns={visibleColumns} rows={odts} onRowClick={setSelected} />
+            <Table columns={visibleColumns} rows={odts} onRowClick={setSelected} columnPrefs={false} />
           )}
         </div>
         <Pager page={page} pages={pages} total={total} limit={LIMIT} shown={odts.length} onChange={setPagerPage} disabled={isLoading} />
