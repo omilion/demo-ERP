@@ -161,10 +161,10 @@ function buildQuickAccess({ show, canReadCatalogo, canWriteVentas, stats, inv, t
   const talCritico = (tal.critico ?? 0) + (tal.sinStock ?? 0)
 
   return [
-    show.bodega && { label: 'Mantencion Bodega Inventario y Web', icon: 'warehouse', tone: 'red', route: '/bodega' },
-    show.bodega && { label: 'Stock Critico Bodega Inventario', icon: 'alertTriangle', tone: 'red', badge: n(invCritico), route: '/bodega?filtro=critico' },
-    show.bodega && { label: 'Mantencion Bodega Taller', icon: 'box', tone: 'green', route: '/bodega?tab=taller' },
-    show.bodega && { label: 'Stock Critico Bodega Taller', icon: 'alertTriangle', tone: 'green', badge: n(talCritico), route: '/bodega?tab=taller&filtro=critico' },
+    show.bodega && { label: 'Mantención Bodega Inventario y Web', icon: 'warehouse', tone: 'red', route: '/bodega' },
+    show.bodega && { label: 'Stock Crítico Bodega Inventario', icon: 'alertTriangle', tone: 'red', badge: n(invCritico), route: '/bodega?filtro=critico' },
+    show.bodega && { label: 'Mantención Bodega Taller', icon: 'box', tone: 'green', route: '/bodega?tab=taller' },
+    show.bodega && { label: 'Stock Crítico Bodega Taller', icon: 'alertTriangle', tone: 'green', badge: n(talCritico), route: '/bodega?tab=taller&filtro=critico' },
     show.ventas && { label: 'Matriz Ventas', icon: 'grid', tone: 'blue', route: '/matriz-ventas' },
     show.ventas && { label: 'Ventas No pagadas', icon: 'alertTriangle', tone: 'red', badge: n(stats?.ventas?.noPagadas), route: '/ventas?filtro=no_pagadas' },
     show.ventas && { label: 'Ventas Pendientes entrega', icon: 'truck', tone: 'red', badge: n(stats?.ventas?.pendienteEntrega), route: '/ventas?filtro=pendiente_entrega' },
@@ -215,9 +215,6 @@ export default function DashboardPage() {
   const { data: stats, isLoading } = useDashboardStats()
   const { user } = useAuthStore()
   const { show, inv, tal, quickAccess } = getAccessModel(user, stats, isLoading)
-  const now = new Date()
-  const hora = now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
-  const fecha = now.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })
   const mainModules = [
     { label: 'Dashboard', icon: 'barChart2', tone: 'green', route: '/dashboard/operativo' },
     show.ventas && { label: 'Ventas', icon: 'shoppingCart', tone: 'blue', route: '/matriz-ventas' },
@@ -230,13 +227,7 @@ export default function DashboardPage() {
   ].filter(Boolean)
 
   return (
-    <main className="page page-wide">
-      <PageHeader
-        title="Inicio Plastimar"
-        subtitle={`${fecha} · ${hora} · Sucursal 5 Oriente`}
-        breadcrumb={['Inicio']}
-      />
-
+    <main className="page page-wide" style={{ paddingTop: 18 }}>
       <section style={{ marginBottom: 22 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 12 }}>
           {mainModules.map(item => (
@@ -247,7 +238,7 @@ export default function DashboardPage() {
 
       <section>
         <div style={{
-          background: '#a82295',
+          background: 'var(--green-700)',
           color: '#fff',
           padding: '9px 12px',
           fontSize: 16,
@@ -255,7 +246,7 @@ export default function DashboardPage() {
           textTransform: 'uppercase',
           borderRadius: '6px 6px 0 0',
         }}>
-          Accesos rapidos
+          Accesos rápidos
         </div>
         <div style={{
           background: '#fff',
@@ -363,15 +354,15 @@ export function DashboardOperativoPage() {
             tone={stats?.odts?.urgentes > 0 ? 'amber' : 'neutral'} onClick={() => navigate('/taller')} />
         )}
         {show.bodega && (
-          <KpiCard label="Stock Crítico — Inv." value={n((inv.critico ?? 0) + (inv.sinStock ?? 0))} icon="alertTriangle" tone="amber"
+          <KpiCard label="Stock Crítico - Inv." value={n((inv.critico ?? 0) + (inv.sinStock ?? 0))} icon="alertTriangle" tone="amber"
             sublabel={!isLoading ? `${inv.sinStock ?? 0} sin stock` : ''} onClick={() => navigate('/bodega?filtro=critico')} />
         )}
         {show.bodega && (
-          <KpiCard label="Stock Crítico — Taller" value={n((tal.critico ?? 0) + (tal.sinStock ?? 0))} icon="alertTriangle" tone="amber"
+          <KpiCard label="Stock Crítico - Taller" value={n((tal.critico ?? 0) + (tal.sinStock ?? 0))} icon="alertTriangle" tone="amber"
             sublabel={!isLoading ? `${tal.sinStock ?? 0} sin stock` : ''} onClick={() => navigate('/bodega?tab=taller&filtro=critico')} />
         )}
         {show.crm && (
-          <KpiCard label="CRM — Pendientes" value={n(crm.pendientes)} icon="phone" tone={crm.altaPrioridad > 0 ? 'red' : 'blue'}
+          <KpiCard label="CRM - Pendientes" value={n(crm.pendientes)} icon="phone" tone={crm.altaPrioridad > 0 ? 'red' : 'blue'}
             sublabel={!isLoading ? `${crm.altaPrioridad} prioridad alta` : ''} onClick={() => navigate('/crm')} />
         )}
         {canReadVentas && (
@@ -382,7 +373,7 @@ export function DashboardOperativoPage() {
 
       <div className="dash-grid">
         {show.taller && (
-          <SectionCard title="Talleres — ODTs Activas" icon="tool">
+          <SectionCard title="Talleres - ODTs Activas" icon="tool">
             <div style={{ padding: '4px 14px 8px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
