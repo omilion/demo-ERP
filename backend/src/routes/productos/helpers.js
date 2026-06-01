@@ -8,6 +8,7 @@ export function computeEstadoOperacional(p) {
   const estadoInventario = String(p.estadoInventario || '').trim().toLowerCase()
   if (estadoInventario.includes('descontinu')) return 'Descontinuado'
   if (estadoInventario.includes('reserva')) return 'Reserva'
+  if (estadoInventario.includes('transitorio')) return 'Transitorio'
   if (estadoInventario.includes('transito')) return 'En transito'
   if (!p.codigoInterno || !p.nombre || !p.categoria || !p.proveedor) return 'Incompleto'
   if (p.stock === 0) return 'Sin stock'

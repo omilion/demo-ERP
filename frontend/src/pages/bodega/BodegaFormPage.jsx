@@ -1,9 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
-import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../components/forms/index'
+import { FormField, FormDivider, FormSection, Input, Select, Textarea, useForm } from '../../components/forms/index'
 import { useProducto, useUpdateProducto, useCreateProducto, useHistorialPrecios, useMovimientos, useAddMovimiento, useUploadProductoImagen } from '../../api/productos'
 import { useCategorias } from '../../api/categorias'
+
+const ESTADO_INVENTARIO_OPTIONS = [
+  'Inventariado',
+  'Transitorio',
+  'Activo',
+  'Descontinuado',
+  'En transito',
+  'Reserva',
+]
 
 function PrecioHistorial({ historial }) {
   if (!historial.length) return null
@@ -115,7 +124,7 @@ export default function BodegaFormPage() {
     cod: '', nombre: '', cat: '', bodega: 'Inventario', stock: '', minimo: '', precio: '',
     codigoBarra: '', proveedor: '', ubicacion: '', descripcion: '', precioMarco: '',
     categoriaId: '', subcategoriaId: '', porcDesc: '',
-    idMarco: '', unidadMedida: '', estadoInventario: '',
+    idMarco: '', unidadMedida: '', estadoInventario: 'Inventariado',
     visibleWeb: false, destacadoWeb: false, fotoUrl: '', fotoUrlGrande: '', fotosGaleria: '',
     descripcionWeb: '', precioWeb: '', ordenWeb: '',
   })
@@ -147,7 +156,7 @@ export default function BodegaFormPage() {
       set('precioMarco', found.precioMarco != null ? String(found.precioMarco) : '')
       set('idMarco', found.idMarco || '')
       set('unidadMedida', found.unidadMedida || '')
-      set('estadoInventario', found.estadoInventario || '')
+      set('estadoInventario', found.estadoInventario || 'Inventariado')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [found?.id])
@@ -200,7 +209,7 @@ export default function BodegaFormPage() {
       precioMarco: data.precioMarco !== '' ? Number(data.precioMarco) : undefined,
       idMarco: data.idMarco || undefined,
       unidadMedida: data.unidadMedida || undefined,
-      estadoInventario: data.estadoInventario || undefined,
+      estadoInventario: data.estadoInventario || 'Inventariado',
       visibleWeb: !!data.visibleWeb,
       destacadoWeb: !!data.destacadoWeb,
       fotoUrl: data.fotoUrl || undefined,
@@ -245,7 +254,7 @@ export default function BodegaFormPage() {
       onSave={handleSave}
       saving={saving}
     >
-      <FormDivider label="Datos del producto" />
+      <FormSection title="Datos del producto">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
         <FormField label="Código" required error={errors.cod}>
           <Input value={data.cod} onChange={v => set('cod', v)} placeholder="ESP-001" error={errors.cod} disabled={isEdit} />
@@ -267,10 +276,7 @@ export default function BodegaFormPage() {
       <FormField label="Descripción larga" hint="Detalles internos">
         <Textarea value={data.descripcion} onChange={v => set('descripcion', v)} rows={2} />
       </FormField>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
-        <FormField label="Bodega">
-          <Select value={data.bodega} onChange={v => set('bodega', v)} options={['Inventario','Taller']} />
-        </FormField>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <FormField label="Subcategoria">
           <Select
             value={data.subcategoriaId}
@@ -279,25 +285,29 @@ export default function BodegaFormPage() {
             options={[{ value: '', label: 'Sin subcategoria' }, ...subcategorias.map(sc => ({ value: String(sc.id), label: sc.nombre }))]}
           />
         </FormField>
-        <FormField label="Unidad medida" hint="ej. UN, MT, KG">
-          <Input value={data.unidadMedida} onChange={v => set('unidadMedida', v)} placeholder="UN" />
-        </FormField>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <FormField label="Ubicación física" hint="Pasillo/Rack">
-          <Input value={data.ubicacion} onChange={v => set('ubicacion', v)} placeholder="A-12" />
-        </FormField>
         <FormField label="Proveedor habitual">
           <Input value={data.proveedor} onChange={v => set('proveedor', v)} placeholder="Nombre proveedor" />
         </FormField>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14 }}>
-        <FormField label="Estado inventario" hint="Activo/Descontinuado/etc">
-          <Select value={data.estadoInventario} onChange={v => set('estadoInventario', v)} options={['', 'Inventariado', 'Activo', 'Descontinuado', 'En transito', 'Reserva']} />
+      </FormSection>
+
+      <FormSection title="Inventario" tone="inventory">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <FormField label="Bodega">
+          <Select value={data.bodega} onChange={v => set('bodega', v)} options={['Inventario','Taller']} />
+        </FormField>
+        <FormField label="Estado inventario" hint="Inventariado descuenta stock. Transitorio se usa para taller.">
+          <Select value={data.estadoInventario} onChange={v => set('estadoInventario', v)} options={ESTADO_INVENTARIO_OPTIONS} />
         </FormField>
       </div>
-
-      <FormDivider label="Inventario" />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <FormField label="Unidad medida" hint="ej. UN, MT, KG">
+          <Input value={data.unidadMedida} onChange={v => set('unidadMedida', v)} placeholder="UN" />
+        </FormField>
+        <FormField label="Ubicación física" hint="Pasillo/Rack">
+          <Input value={data.ubicacion} onChange={v => set('ubicacion', v)} placeholder="A-12" />
+        </FormField>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <FormField label="Stock actual" hint="Unidades">
           <Input value={data.stock} onChange={v => set('stock', v)} type="number" placeholder="0" disabled={isEdit} />
@@ -307,8 +317,9 @@ export default function BodegaFormPage() {
           <Input value={data.minimo} onChange={v => set('minimo', v)} type="number" placeholder="0" />
         </FormField>
       </div>
+      </FormSection>
 
-      <FormDivider label="Precios" />
+      <FormSection title="Precios" tone="price">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <FormField label="Precio lista">
           <Input value={data.precio} onChange={v => set('precio', v)} type="number" prefix="$" placeholder="0" />
@@ -326,7 +337,9 @@ export default function BodegaFormPage() {
       </FormField>
       </div>
 
-      <FormDivider label="Imagenes del producto" />
+      </FormSection>
+
+      <FormSection title="Imagenes del producto">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <ImageUploadField
           label="Miniatura"
@@ -352,7 +365,9 @@ export default function BodegaFormPage() {
         previewSize={72}
       />
 
-      <FormDivider label="Tienda Web" />
+      </FormSection>
+
+      <FormSection title="Tienda Web">
       <div style={{ display: 'flex', gap: 24, marginBottom: 8 }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-2)', cursor: 'pointer' }}>
           <input type="checkbox" checked={!!data.visibleWeb} onChange={e => set('visibleWeb', e.target.checked)} />
@@ -402,6 +417,7 @@ export default function BodegaFormPage() {
           </div>
         </>
       )}
+      </FormSection>
 
       {isEdit && found && <div id="movimientos"><MovimientosSection productoId={found.id} stockActual={found.stock} /></div>}
 

@@ -11,8 +11,8 @@ import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 import { ColumnSelector, useColumnPreferences } from '../../components/ColumnSelector'
 
-const estadoInventarioOptions = ['', 'Inventariado', 'Activo', 'Descontinuado', 'En transito', 'Reserva']
-const estadoOperativoOptions = ['', 'Disponible', 'Stock critico', 'Sin stock', 'Incompleto', 'Descontinuado', 'En transito', 'Reserva']
+const estadoInventarioOptions = ['', 'Inventariado', 'Transitorio', 'Activo', 'Descontinuado', 'En transito', 'Reserva']
+const estadoOperativoOptions = ['', 'Disponible', 'Stock critico', 'Sin stock', 'Incompleto', 'Descontinuado', 'Transitorio', 'En transito', 'Reserva']
 
 function money(value) {
   return '$' + Number(value || 0).toLocaleString('es-CL')
@@ -110,7 +110,7 @@ export default function BodegaPage() {
     { key: 'stockCritico', label: 'Stock crit.', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
     { key: 'stock', label: 'Stock', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
     { key: 'proveedor', label: 'Proveedor', render: v => v || '-' },
-    { key: 'estadoInventario', label: 'Estado inv.', render: v => v || '-' },
+    { key: 'estadoInventario', label: 'Estado inventario', required: true, render: v => v || '-' },
     { key: 'estadoOperacional', label: 'Estado operativo', required: true, render: v => <Badge tone={estadoTone(v)}>{v || 'Sin evaluar'}</Badge> },
     { key: 'estado', label: 'Estado', render: v => (
       <Badge tone={estadoTone(v)}>{v}</Badge>

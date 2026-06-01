@@ -124,12 +124,30 @@ export const Textarea = ({ value, onChange, placeholder, rows = 3, error }) => (
 )
 
 export const FormDivider = ({ label }) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '6px 0 18px' }}>
-    <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-    <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-3)' }}>{label}</span>
-    <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+  <div style={{ margin: '4px 0 16px', paddingBottom: 9, borderBottom: '1px solid var(--border)' }}>
+    <div style={{ fontSize: 15, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0, color: 'var(--text-1)', lineHeight: 1.2 }}>{label}</div>
   </div>
 )
+
+export const FormSection = ({ title, children, tone = 'default' }) => {
+  const tones = {
+    default: 'oklch(0.985 0.003 240)',
+    inventory: 'oklch(0.98 0.004 155)',
+    price: 'oklch(0.982 0.004 75)',
+  }
+  return (
+    <section style={{
+      margin: '18px 0',
+      padding: '18px 20px 2px',
+      border: '1px solid var(--border)',
+      borderRadius: 10,
+      background: tones[tone] || tones.default,
+    }}>
+      <FormDivider label={title} />
+      {children}
+    </section>
+  )
+}
 
 export const DetailRow = ({ label, value, mono }) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '9px 0', borderBottom: '1px solid var(--border)' }}>
