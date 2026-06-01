@@ -12,7 +12,7 @@ export function computeEstadoOperacional(p) {
   if (estadoInventario.includes('transito')) return 'En transito'
   if (!p.codigoInterno || !p.nombre || !p.categoria || !p.proveedor) return 'Incompleto'
   if (p.stock === 0) return 'Sin stock'
-  if ((p.stockCritico ?? 0) > 0 && p.stock <= p.stockCritico) return 'Stock critico'
+  if ((p.stockCritico ?? 0) > 0 && p.stock <= p.stockCritico) return 'Stock crítico'
   return 'Disponible'
 }
 
@@ -65,14 +65,14 @@ export async function validateProductoClasificacion(prisma, { categoriaId, subca
 
   if (categoriaId) {
     const categoria = await prisma.categoria.findFirst({ where: { id: categoriaId, activo: true } })
-    if (!categoria) return { status: 404, error: 'Categoria no encontrada' }
+    if (!categoria) return { status: 404, error: 'Categoría no encontrada' }
   }
 
   if (subcategoriaId) {
     const subcategoria = await prisma.subcategoria.findFirst({ where: { id: subcategoriaId, activo: true } })
-    if (!subcategoria) return { status: 404, error: 'Subcategoria no encontrada' }
+    if (!subcategoria) return { status: 404, error: 'Subcategoría no encontrada' }
     if (subcategoria.categoriaId !== categoriaId) {
-      return { status: 400, error: 'Subcategoria no pertenece a la categoria' }
+      return { status: 400, error: 'Subcategoría no pertenece a la categoría' }
     }
   }
 
@@ -85,7 +85,7 @@ export async function syncProductoCategoriaText(prisma, data) {
 
   if (data.categoriaId) {
     const categoria = await prisma.categoria.findFirst({ where: { id: data.categoriaId, activo: true } })
-    if (!categoria) return { status: 404, error: 'Categoria no encontrada' }
+    if (!categoria) return { status: 404, error: 'Categoría no encontrada' }
     data.categoria = categoria.nombre
     return null
   }

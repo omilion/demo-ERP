@@ -11,7 +11,7 @@ import { downloadFromBackend } from '../../utils/csv'
 
 const TABS = [
   { id: 'all', label: 'Todos' },
-  { id: 'true', label: 'Stock critico' },
+  { id: 'true', label: 'Stock crítico' },
 ]
 
 const UNIT_OPTIONS = ['Unidad', 'Unidades', 'Mts', 'Mts2', 'Litros', 'Kg', 'Rollos', 'Cajas']
@@ -90,7 +90,7 @@ export default function BodegaTallerPage() {
   }
 
   const cols = [
-    { key: 'categoriaNombre', label: 'Categoria', render: v => v ? <Badge tone="gray">{v}</Badge> : '-' },
+    { key: 'categoriaNombre', label: 'Categoría', render: v => v ? <Badge tone="gray">{v}</Badge> : '-' },
     { key: 'codigoBarra', label: 'Cod Barra', render: v => mono(v) },
     { key: 'codigoInterno', label: 'Cod Interno', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: 'var(--green-700)' }}>{v}</span> },
     { key: 'nombre', label: 'Nombre', wrap: true, render: v => <span style={{ fontSize: 13 }}>{v}</span> },
@@ -99,8 +99,8 @@ export default function BodegaTallerPage() {
       const tone = Number(v || 0) <= 0 ? 'red' : Number(v || 0) <= Number(row.stockCritico || 0) ? 'amber' : 'green'
       return <Badge tone={tone}><span style={{ fontFamily: "'DM Mono', monospace" }}>{Number(v || 0).toFixed(2)}</span></Badge>
     } },
-    { key: 'stockCritico', label: 'Stock Critico', align: 'right', render: v => mono(Number(v || 0).toFixed(2)) },
-    { key: 'subcategoriaNombre', label: 'Subcategoria', render: v => v || '-' },
+    { key: 'stockCritico', label: 'Stock crítico', align: 'right', render: v => mono(Number(v || 0).toFixed(2)) },
+    { key: 'subcategoriaNombre', label: 'Subcategoría', render: v => v || '-' },
     { key: 'unidadMedida', label: 'Unid. Medida', render: v => v ? <Badge tone="neutral">{v}</Badge> : '-' },
     { key: 'sucursalNombre', label: 'Sucursal', render: v => v || '-' },
     { key: 'precio', label: 'Precio', align: 'right', render: v => mono(fmt(v)) },
@@ -124,9 +124,9 @@ export default function BodegaTallerPage() {
         </>}
       />
       <div className="kpi-strip">
-        <KpiCard label="Total materiales" value={total} icon="box" sublabel="Catalogo taller" />
-        <KpiCard label="En pagina" value={items.length} icon="list" sublabel={`Pagina ${page} de ${pages}`} />
-        <KpiCard label="Stock critico" value={criticos} icon="alertTriangle" tone="amber" sublabel="En esta vista" />
+        <KpiCard label="Total materiales" value={total} icon="box" sublabel="Catálogo taller" />
+        <KpiCard label="En página" value={items.length} icon="list" sublabel={`Página ${page} de ${pages}`} />
+        <KpiCard label="Stock crítico" value={criticos} icon="alertTriangle" tone="amber" sublabel="En esta vista" />
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
@@ -134,11 +134,11 @@ export default function BodegaTallerPage() {
           <Tabs tabs={TABS} active={tab} onChange={t => { setTab(t); setPage(1) }} />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
             <select value={categoriaId} onChange={e => { setCategoriaId(e.target.value); setSubcategoriaId(''); setPage(1) }} style={selectStyle}>
-              <option value="">Todas las categorias</option>
+              <option value="">Todas las categorías</option>
               {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
             <select value={subcategoriaId} onChange={e => { setSubcategoriaId(e.target.value); setPage(1) }} disabled={!categoriaId} style={selectStyle}>
-              <option value="">Todas las subcategorias</option>
+              <option value="">Todas las subcategorías</option>
               {subcategorias.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
             </select>
             <select value={sucursalId} onChange={e => { setSucursalId(e.target.value); setPage(1) }} style={selectStyle}>
@@ -146,9 +146,9 @@ export default function BodegaTallerPage() {
               {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
             </select>
             <input value={proveedor} onChange={e => { setProveedor(e.target.value); setPage(1) }} placeholder="Proveedor" style={miniInput} />
-            <input value={codigoInterno} onChange={e => { setCodigoInterno(e.target.value); setPage(1) }} placeholder="Cod interno" style={miniInput} />
-            <input value={codigoBarra} onChange={e => { setCodigoBarra(e.target.value); setPage(1) }} placeholder="Cod barra" style={miniInput} />
-            <SearchBar placeholder="Buscar codigo, nombre o proveedor" value={search} onChange={setSearch} style={{ width: 280 }} />
+            <input value={codigoInterno} onChange={e => { setCodigoInterno(e.target.value); setPage(1) }} placeholder="Cód. interno" style={miniInput} />
+            <input value={codigoBarra} onChange={e => { setCodigoBarra(e.target.value); setPage(1) }} placeholder="Cód. barra" style={miniInput} />
+            <SearchBar placeholder="Buscar código, nombre o proveedor" value={search} onChange={setSearch} style={{ width: 280 }} />
             <Btn variant="secondary" size="sm" onClick={clearFilters}>Limpiar</Btn>
           </div>
         </div>
@@ -215,17 +215,17 @@ function MaterialModal({ title, onClose, onSave, initial, saving, categorias = [
       <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 20, width: 680, maxWidth: '94vw', maxHeight: '92vh', overflowY: 'auto' }}>
         <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 16 }}>{title}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <FormField label="Codigo interno" required><Input value={form.codigoInterno} onChange={v => setForm(f => ({ ...f, codigoInterno: v }))} /></FormField>
-          <FormField label="Codigo barra"><Input value={form.codigoBarra} onChange={v => setForm(f => ({ ...f, codigoBarra: v }))} /></FormField>
+          <FormField label="Código interno" required><Input value={form.codigoInterno} onChange={v => setForm(f => ({ ...f, codigoInterno: v }))} /></FormField>
+          <FormField label="Código barra"><Input value={form.codigoBarra} onChange={v => setForm(f => ({ ...f, codigoBarra: v }))} /></FormField>
           <FormField label="Nombre" required><Input value={form.nombre} onChange={v => setForm(f => ({ ...f, nombre: v }))} /></FormField>
           <FormField label="Unidad medida">
             <Select value={form.unidadMedida} onChange={v => setForm(f => ({ ...f, unidadMedida: v }))} options={unitOptions.map(u => ({ value: u, label: u }))} />
           </FormField>
-          <FormField label="Categoria">
-            <Select value={form.categoriaId} onChange={v => setForm(f => ({ ...f, categoriaId: v, subcategoriaId: '' }))} options={[{ value: '', label: 'Sin categoria' }, ...categorias.map(c => ({ value: String(c.id), label: c.nombre }))]} />
+          <FormField label="Categoría">
+            <Select value={form.categoriaId} onChange={v => setForm(f => ({ ...f, categoriaId: v, subcategoriaId: '' }))} options={[{ value: '', label: 'Sin categoría' }, ...categorias.map(c => ({ value: String(c.id), label: c.nombre }))]} />
           </FormField>
-          <FormField label="Subcategoria">
-            <Select value={form.subcategoriaId} onChange={v => setForm(f => ({ ...f, subcategoriaId: v }))} disabled={!form.categoriaId || !subcategorias.length} options={[{ value: '', label: 'Sin subcategoria' }, ...subcategorias.map(s => ({ value: String(s.id), label: s.nombre }))]} />
+          <FormField label="Subcategoría">
+            <Select value={form.subcategoriaId} onChange={v => setForm(f => ({ ...f, subcategoriaId: v }))} disabled={!form.categoriaId || !subcategorias.length} options={[{ value: '', label: 'Sin subcategoría' }, ...subcategorias.map(s => ({ value: String(s.id), label: s.nombre }))]} />
           </FormField>
           <FormField label="Proveedor">
             <Select value={form.proveedorId} onChange={v => setForm(f => ({ ...f, proveedorId: v }))} options={[{ value: '', label: 'Sin proveedor' }, ...proveedores.map(p => ({ value: String(p.id), label: p.nombre || p.razonSocial || `Proveedor #${p.id}` }))]} />
@@ -234,7 +234,7 @@ function MaterialModal({ title, onClose, onSave, initial, saving, categorias = [
             <Select value={form.sucursalId} onChange={v => setForm(f => ({ ...f, sucursalId: v }))} options={[{ value: '', label: 'Sin sucursal' }, ...sucursales.map(s => ({ value: String(s.id), label: s.nombre }))]} />
           </FormField>
           <FormField label="Stock"><Input type="number" value={form.stock} onChange={v => setForm(f => ({ ...f, stock: v }))} /></FormField>
-          <FormField label="Stock critico"><Input type="number" value={form.stockCritico} onChange={v => setForm(f => ({ ...f, stockCritico: v }))} /></FormField>
+          <FormField label="Stock crítico"><Input type="number" value={form.stockCritico} onChange={v => setForm(f => ({ ...f, stockCritico: v }))} /></FormField>
           <FormField label="Precio"><Input type="number" value={form.precio} onChange={v => setForm(f => ({ ...f, precio: v }))} /></FormField>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>

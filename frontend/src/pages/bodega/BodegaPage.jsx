@@ -12,7 +12,7 @@ import { can } from '../../utils/permissions'
 import { ColumnSelector, useColumnPreferences } from '../../components/ColumnSelector'
 
 const estadoInventarioOptions = ['', 'Inventariado', 'Transitorio', 'Activo', 'Descontinuado', 'En transito', 'Reserva']
-const estadoOperativoOptions = ['', 'Disponible', 'Stock critico', 'Sin stock', 'Incompleto', 'Descontinuado', 'Transitorio', 'En transito', 'Reserva']
+const estadoOperativoOptions = ['', 'Disponible', 'Stock crítico', 'Sin stock', 'Incompleto', 'Descontinuado', 'Transitorio', 'En transito', 'Reserva']
 
 function money(value) {
   return '$' + Number(value || 0).toLocaleString('es-CL')
@@ -101,12 +101,12 @@ export default function BodegaPage() {
     { key: 'codigoBarra', label: 'Cod. Barra', render: v => mono(v) },
     { key: 'visibleWeb', label: 'Web', render: v => <Badge tone={v ? 'green' : 'gray'}>{v ? 'Si' : 'No'}</Badge> },
     { key: 'nombre', label: 'Nombre', wrap: true },
-    { key: 'categoria', label: 'Categoria', render: v => v ? <Badge tone="gray">{v}</Badge> : '-' },
-    { key: 'subcategoria', label: 'Subcategoria', render: (_, row) => row.subcategoria?.nombre || '-' },
+    { key: 'categoria', label: 'Categoría', render: v => v ? <Badge tone="gray">{v}</Badge> : '-' },
+    { key: 'subcategoria', label: 'Subcategoría', render: (_, row) => row.subcategoria?.nombre || '-' },
     { key: 'porcDesc', label: 'Desc.', align: 'right', render: v => `${Number(v || 0).toLocaleString('es-CL')}%` },
     { key: 'precioLista', label: 'P. costo/lista', align: 'right', render: v => mono(money(v)) },
     { key: 'precioWeb', label: 'P. venta/web', align: 'right', render: (v, row) => mono(money(v ?? row.precioLista)) },
-    { key: 'precioMarco', label: 'P. licitacion', align: 'right', render: v => mono(money(v)) },
+    { key: 'precioMarco', label: 'P. licitación', align: 'right', render: v => mono(money(v)) },
     { key: 'stockCritico', label: 'Stock crit.', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
     { key: 'stock', label: 'Stock', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
     { key: 'proveedor', label: 'Proveedor', render: v => v || '-' },
@@ -147,8 +147,8 @@ export default function BodegaPage() {
 
       <div className="kpi-strip">
         <KpiCard label="Total productos" value={totalEnBodega} icon="package" sublabel={bodegaParam} />
-        <KpiCard label="Stock critico" value={criticos} icon="alertTriangle" tone="amber" sublabel="Stock igual o bajo minimo" />
-        <KpiCard label="Sin stock" value={sinStock} icon="x" tone="red" sublabel="Requiere reposicion" />
+        <KpiCard label="Stock crítico" value={criticos} icon="alertTriangle" tone="amber" sublabel="Stock igual o bajo mínimo" />
+        <KpiCard label="Sin stock" value={sinStock} icon="x" tone="red" sublabel="Requiere reposición" />
         <KpiCard label="Valor inventario" value={'$' + Math.round(valorInventario / 1_000_000 * 10) / 10 + 'M'} icon="dollarSign" sublabel="Costo/lista valorizado" />
       </div>
 
@@ -161,7 +161,7 @@ export default function BodegaPage() {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
             <select value={filter} onChange={e => setFilter(e.target.value)} style={selectStyle}>
               <option value="all">Todos los estados</option>
-              <option value="critico">Solo criticos</option>
+              <option value="critico">Solo críticos</option>
               <option value="sin-stock">Sin stock</option>
             </select>
             <select value={visibleWeb} onChange={e => setVisibleWeb(e.target.value)} style={selectStyle}>
@@ -170,11 +170,11 @@ export default function BodegaPage() {
               <option value="false">Web: no</option>
             </select>
             <select value={categoriaId} onChange={e => { setCategoriaId(e.target.value); setSubcategoriaId('') }} style={selectStyle}>
-              <option value="">Todas las categorias</option>
+              <option value="">Todas las categorías</option>
               {categoriasApi.map(c => <option key={c.id || c.nombre} value={c.id}>{c.nombre}</option>)}
             </select>
             <select value={subcategoriaId} onChange={e => setSubcategoriaId(e.target.value)} style={selectStyle} disabled={!subcategorias.length}>
-              <option value="">Todas las subcategorias</option>
+              <option value="">Todas las subcategorías</option>
               {subcategorias.map(sc => <option key={sc.id} value={sc.id}>{sc.nombre}</option>)}
             </select>
             <select value={estadoInventario} onChange={e => setEstadoInventario(e.target.value)} style={selectStyle}>
@@ -186,9 +186,9 @@ export default function BodegaPage() {
               {estadoOperativoOptions.filter(Boolean).map(v => <option key={v} value={v}>{v}</option>)}
             </select>
             <input value={proveedor} onChange={e => setProveedor(e.target.value)} placeholder="Proveedor" style={miniInput} />
-            <input value={ubicacion} onChange={e => setUbicacion(e.target.value)} placeholder="Ubicacion" style={miniInput} />
+            <input value={ubicacion} onChange={e => setUbicacion(e.target.value)} placeholder="Ubicación" style={miniInput} />
             <input value={idMarco} onChange={e => setIdMarco(e.target.value)} placeholder="ID Marco" style={miniInput} />
-            <SearchBar placeholder="Buscar codigo, barra o producto..." value={search} onChange={setSearch} style={{ width: 260 }} />
+            <SearchBar placeholder="Buscar código, barra o producto..." value={search} onChange={setSearch} style={{ width: 260 }} />
           </div>
         </div>
         {totalEnBodega > LIMIT && !debouncedSearch && (

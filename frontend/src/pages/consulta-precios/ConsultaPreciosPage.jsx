@@ -11,12 +11,12 @@ import { can } from '../../utils/permissions'
 
 const SEARCH_MODES = [
   { id: 'general', label: 'Todos' },
-  { id: 'codigoBarra', label: 'Codigo barra' },
-  { id: 'codigoInterno', label: 'Codigo interno' },
+  { id: 'codigoBarra', label: 'Código barra' },
+  { id: 'codigoInterno', label: 'Código interno' },
   { id: 'idMarco', label: 'ID Marco' },
   { id: 'nombre', label: 'Nombre producto' },
   { id: 'proveedor', label: 'Proveedor' },
-  { id: 'categoria', label: 'Categoria' },
+  { id: 'categoria', label: 'Categoría' },
 ]
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('es-CL')
@@ -117,7 +117,7 @@ export default function ConsultaPreciosPage() {
     const raw = precioDrafts[row.id] ?? row.precioLista
     const precioLista = Number(raw)
     if (!Number.isFinite(precioLista) || precioLista < 0) {
-      alert('Precio costo invalido')
+      alert('Precio costo inválido')
       return
     }
     updateProducto.mutate(
@@ -143,8 +143,8 @@ export default function ConsultaPreciosPage() {
     { key: 'idMarco', label: 'ID Marco', render: v => mono(v) },
     { key: 'codigoBarra', label: 'Cod barra', render: v => mono(v) },
     { key: 'nombre', label: 'Nombre', wrap: true },
-    { key: 'consultaPrecios', label: 'Categoria', render: v => v?.categoriaNombre ? <Badge tone="gray">{v.categoriaNombre}</Badge> : '-' },
-    { key: 'consultaPrecios', label: 'Subcategoria', render: v => v?.subcategoriaNombre || '-' },
+    { key: 'consultaPrecios', label: 'Categoría', render: v => v?.categoriaNombre ? <Badge tone="gray">{v.categoriaNombre}</Badge> : '-' },
+    { key: 'consultaPrecios', label: 'Subcategoría', render: v => v?.subcategoriaNombre || '-' },
     { key: 'consultaPrecios', label: 'Proveedor', render: v => v?.proveedorNombre || '-' },
     ...(canReadCosto ? [{ key: 'precioLista', label: 'Precio Costo', align: 'right', render: (v, row) => canEditPrecio
       ? (
@@ -175,7 +175,7 @@ export default function ConsultaPreciosPage() {
     { key: 'consultaPrecios', label: 'Normal sala + IVA', align: 'right', render: v => price(v?.precioNormalSalaVentaIva) },
     { key: 'consultaPrecios', label: 'Con descuento', align: 'right', render: v => price(v?.precioConDescuento) },
     { key: 'consultaPrecios', label: 'Conv. Marco', align: 'right', render: v => price(v?.precioConvMarco) },
-    { key: 'consultaPrecios', label: 'Licitacion', align: 'right', render: v => price(v?.precioLicitacion) },
+    { key: 'consultaPrecios', label: 'Licitación', align: 'right', render: v => price(v?.precioLicitacion) },
     { key: 'stock', label: 'Stock', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
   ]
 
@@ -194,7 +194,7 @@ export default function ConsultaPreciosPage() {
       <div className="kpi-strip">
         <KpiCard label="Resultados" value={total} icon="tag" sublabel={`${items.length.toLocaleString('es-CL')} visibles`} />
         <KpiCard label="Stock visible" value={totalStock} icon="package" sublabel={bodega || 'Todas las bodegas'} />
-        <KpiCard label="Con descuento" value={conDescuento} icon="dollarSign" tone="blue" sublabel="Categoria o producto" />
+        <KpiCard label="Con descuento" value={conDescuento} icon="dollarSign" tone="blue" sublabel="Categoría o producto" />
         <KpiCard label="Sin stock" value={sinStock} icon="alertTriangle" tone={sinStock > 0 ? 'amber' : 'neutral'} sublabel="En resultados visibles" />
       </div>
 
@@ -225,11 +225,11 @@ export default function ConsultaPreciosPage() {
             ) : mode === 'categoria' ? (
               <>
                 <select value={categoriaId} onChange={e => { setCategoriaId(e.target.value); setSubcategoriaId(''); setPage(1) }} style={{ ...selectStyle, minWidth: 220 }}>
-                  <option value="">Categoria</option>
+                  <option value="">Categoría</option>
                   {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </select>
                 <select value={subcategoriaId} onChange={e => { setSubcategoriaId(e.target.value); setPage(1) }} style={{ ...selectStyle, minWidth: 220 }} disabled={!subcategorias.length}>
-                  <option value="">Subcategoria</option>
+                  <option value="">Subcategoría</option>
                   {subcategorias.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                 </select>
               </>

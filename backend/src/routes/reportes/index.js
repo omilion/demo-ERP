@@ -17,7 +17,7 @@ const VENTA_DIRECTA_TIPOS = ['Venta sala', 'Venta directa', 'Venta Sala', 'Venta
 function buildDateRange(desde, hasta) {
   const gte = desde ? parseDate(desde) : null
   const lte = hasta ? parseDate(hasta, true) : null
-  if ((desde && !gte) || (hasta && !lte)) return { error: 'Rango de fechas invalido' }
+  if ((desde && !gte) || (hasta && !lte)) return { error: 'Rango de fechas inválido' }
   return { gte, lte }
 }
 
@@ -105,7 +105,7 @@ async function buildProductosExportWhere(fastify, query = {}) {
   if (destacadoWeb === 'true') where.destacadoWeb = true
   if (categoriaId) {
     const parsedCategoriaId = Number.parseInt(categoriaId, 10)
-    if (Number.isNaN(parsedCategoriaId)) return { error: 'categoriaId invalido' }
+    if (Number.isNaN(parsedCategoriaId)) return { error: 'categoriaId inválido' }
     const selectedCategoria = await fastify.prisma.categoria.findFirst({
       where: { id: parsedCategoriaId, activo: true },
       select: { nombre: true },
@@ -123,13 +123,13 @@ async function buildProductosExportWhere(fastify, query = {}) {
   } else if (categoria) where.categoria = { contains: categoria, mode: 'insensitive' }
   if (subcategoriaId) {
     const parsedSubcategoriaId = Number.parseInt(subcategoriaId, 10)
-    if (Number.isNaN(parsedSubcategoriaId)) return { error: 'subcategoriaId invalido' }
+    if (Number.isNaN(parsedSubcategoriaId)) return { error: 'subcategoriaId inválido' }
     where.subcategoriaId = parsedSubcategoriaId
   }
   else if (subcategoria) where.subcategoria = { is: { nombre: { contains: subcategoria, mode: 'insensitive' } } }
   if (proveedorId) {
     const parsedProveedorId = Number.parseInt(proveedorId, 10)
-    if (Number.isNaN(parsedProveedorId)) return { error: 'proveedorId invalido' }
+    if (Number.isNaN(parsedProveedorId)) return { error: 'proveedorId inválido' }
     where.proveedorId = parsedProveedorId
   } else if (proveedor) where.proveedor = { contains: proveedor, mode: 'insensitive' }
   if (idMarco) where.idMarco = { contains: idMarco, mode: 'insensitive' }
@@ -178,7 +178,7 @@ async function buildProductosExport(fastify, query = {}) {
 
 async function buildPreciosExport(fastify, query = {}) {
   const providerFilterId = query.proveedorId ? Number.parseInt(query.proveedorId, 10) : null
-  if (query.proveedorId && Number.isNaN(providerFilterId)) return { error: 'proveedorId invalido' }
+  if (query.proveedorId && Number.isNaN(providerFilterId)) return { error: 'proveedorId inválido' }
   const whereQuery = { ...query }
   delete whereQuery.proveedorId
   const built = await buildProductosExportWhere(fastify, whereQuery)
@@ -200,7 +200,7 @@ async function buildPreciosExport(fastify, query = {}) {
     productos.map(p => ({ ...p, estado: computeEstado(p), subcategoriaNombre: p.subcategoria?.nombre || '' })),
   )
   return productosConPrecios
-    .filter(p => query.estado === 'critico' ? p.estado === 'CrÃ­tico' : true)
+    .filter(p => query.estado === 'critico' ? p.estado === 'Crítico' : true)
     .filter(p => query.nombre ? matchesNormalizedContains(p.nombre, query.nombre) : true)
     .filter(p => providerFilterId ? matchesProveedorLegacy(p, proveedorFilter || { id: providerFilterId }) : true)
     .map(p => {
@@ -781,20 +781,20 @@ export default async function reportesRoutes(fastify) {
       { key: 'codigoBarra', label: 'Cod Barra' },
       { key: 'visibleWebTexto', label: 'Mostrar Web' },
       { key: 'nombre', label: 'Nombre' },
-      { key: 'categoriaExport', label: 'Categoria' },
-      { key: 'subcategoriaNombre', label: 'Subcategoria' },
+      { key: 'categoriaExport', label: 'Categoría' },
+      { key: 'subcategoriaNombre', label: 'Subcategoría' },
       { key: 'porcDesc', label: 'Descuento' },
       { key: 'precioLista', label: 'Precio Costo' },
       { key: 'precioVentaSalaIva', label: 'Precio venta + IVA' },
       { key: 'precioConDescuento', label: 'Precio con descuento' },
       { key: 'precioConvenioMarco', label: 'Precio Conv. Marco' },
-      { key: 'precioLicitacion', label: 'PrecioLicitacion' },
+      { key: 'precioLicitacion', label: 'Precio Licitación' },
       { key: 'stockCritico', label: 'Stock Critico' },
       { key: 'stock', label: 'Stock' },
       { key: 'estadoInventario', label: 'Estado Inventario' },
       { key: 'proveedorExport', label: 'Proveedor' },
       { key: 'unidadMedida', label: 'Unidad' },
-      { key: 'ubicacion', label: 'Ubicacion' },
+      { key: 'ubicacion', label: 'Ubicación' },
       { key: 'estado', label: 'Estado Stock' },
     ])
     return sendCsv(reply, `productos_${new Date().toISOString().slice(0, 10)}.csv`, csv)
@@ -843,7 +843,7 @@ export default async function reportesRoutes(fastify) {
       { key: 'comuna', label: 'Comuna' },
       { key: 'porcVentaSala', label: 'Porcentaje Venta Sala' },
       { key: 'porcMarco', label: 'Porcentaje Convenio Marco' },
-      { key: 'porcLicitacion', label: 'Porcentaje Licitacion' },
+      { key: 'porcLicitacion', label: 'Porcentaje Licitación' },
     ])
     return sendCsv(reply, `proveedores_${new Date().toISOString().slice(0, 10)}.csv`, csv)
   })
@@ -1122,14 +1122,14 @@ export default async function reportesRoutes(fastify) {
       filter.stockCritico ? filterStockCriticoItems(rawItems) : rawItems,
     )
     const csv = rowsToCsv(items, [
-      { key: 'categoriaNombre', label: 'Categoria' },
+      { key: 'categoriaNombre', label: 'Categoría' },
       { key: 'codigoBarra', label: 'Cod Barra' },
       { key: 'codigoInterno', label: 'Cod Interno' },
       { key: 'nombre', label: 'Nombre' },
       { key: 'proveedorNombre', label: 'Proveedor' },
       { key: 'stock', label: 'Stock' },
       { key: 'stockCritico', label: 'Stock Critico' },
-      { key: 'subcategoriaNombre', label: 'Subcategoria' },
+      { key: 'subcategoriaNombre', label: 'Subcategoría' },
       { key: 'unidadMedida', label: 'Unid. Medida' },
       { key: 'sucursalNombre', label: 'Sucursal' },
       { key: 'precio', label: 'Precio' },

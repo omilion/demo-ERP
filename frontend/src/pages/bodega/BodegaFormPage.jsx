@@ -92,7 +92,7 @@ function ImageUploadField({ label, value, onUploaded, size = 'chica', append = f
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 10 }}>
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)' }}>{label}</div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>JPG, PNG o WEBP. Maximo 4 MB.</div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>JPG, PNG o WEBP. Máximo 4 MB.</div>
         </div>
         <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 34, padding: '7px 12px', borderRadius: 7, background: 'var(--green-700)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: upload.isPending ? 'default' : 'pointer', opacity: upload.isPending ? 0.6 : 1 }}>
           {upload.isPending ? 'Subiendo...' : append ? 'Agregar imagen' : 'Subir imagen'}
@@ -168,11 +168,11 @@ export default function BodegaFormPage() {
   const subcategorias = selectedCategoria?.subcategorias || []
   const categoriaOptions = categoriasApi.length
     ? [
-        { value: '', label: 'Sin categoria' },
+        { value: '', label: 'Sin categoría' },
         ...categoriasApi.map(c => ({ value: String(c.id), label: c.nombre })),
       ]
     : [
-        { value: '', label: data.cat || 'Sin categoria' },
+        { value: '', label: data.cat || 'Sin categoría' },
         ...['Espumas','Viscoelastico','Telas','Maderas','Colchones','Fibras','Accesorios','Latex','Bases','Protectores'].map(v => ({ value: v, label: v })),
       ]
 
@@ -277,12 +277,12 @@ export default function BodegaFormPage() {
         <Textarea value={data.descripcion} onChange={v => set('descripcion', v)} rows={2} />
       </FormField>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <FormField label="Subcategoria">
+        <FormField label="Subcategoría">
           <Select
             value={data.subcategoriaId}
             onChange={v => set('subcategoriaId', v)}
             disabled={!subcategorias.length}
-            options={[{ value: '', label: 'Sin subcategoria' }, ...subcategorias.map(sc => ({ value: String(sc.id), label: sc.nombre }))]}
+            options={[{ value: '', label: 'Sin subcategoría' }, ...subcategorias.map(sc => ({ value: String(sc.id), label: sc.nombre }))]}
           />
         </FormField>
         <FormField label="Proveedor habitual">
@@ -339,7 +339,7 @@ export default function BodegaFormPage() {
 
       </FormSection>
 
-      <FormSection title="Imagenes del producto">
+      <FormSection title="Imágenes del producto">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <ImageUploadField
           label="Miniatura"
@@ -357,7 +357,7 @@ export default function BodegaFormPage() {
         />
       </div>
       <ImageUploadField
-        label="Galeria"
+        label="Galería"
         value={data.fotosGaleria}
         onUploaded={(url, append) => setUploadedImage('fotosGaleria', url, append)}
         size="grande"
@@ -392,7 +392,7 @@ export default function BodegaFormPage() {
               {data.fotoUrlGrande && <img src={data.fotoUrlGrande} alt="" style={{ marginTop: 8, maxWidth: 200, maxHeight: 200, borderRadius: 6, border: '1px solid var(--border)' }} onError={e => { e.currentTarget.style.display = 'none' }} />}
             </FormField>
           </div>
-          <FormField label="Galeria" hint="Una URL por linea. Se publica junto a la foto principal.">
+          <FormField label="Galería" hint="Una URL por línea. Se publica junto a la foto principal.">
             <Textarea value={data.fotosGaleria} onChange={v => set('fotosGaleria', v)} rows={3} placeholder="/uploads/fotos_grandes/producto-2.jpeg" />
             {data.fotosGaleria && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
