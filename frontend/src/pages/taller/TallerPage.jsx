@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Icon, Badge, KpiCard, PageHeader, Btn, SearchBar, Tabs, Pager } from '../../components/shared'
+import { Icon, Badge, KpiCard, PageHeader, Btn, SearchBar, Tabs, Pager, Table } from '../../components/shared'
+import { ColumnSelector, useColumnPreferences } from '../../components/ColumnSelector'
 import { useOdts, useOdt, useOdtEstado, useAddBitacora, useDeleteBitacora, useAnularOdt, useCerrarOdt, useOdtOperarios, useOdtCargaOperarios } from '../../api/odts'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
@@ -14,6 +15,21 @@ const ESTADO_TONE = {
   'Control calidad': 'amber',
   Terminada:   'green',
   Entregada:   'green',
+}
+
+function estadoOperativoOdt(estado) {
+  if (['Terminada', 'Entregada'].includes(estado)) return 'Listo'
+  if (estado === 'En proceso') return 'En proceso'
+  if (estado === 'Anulada') return 'Anulada'
+  return 'Pendiente'
+}
+
+function estadoOperativoTone(estado) {
+  const mapped = estadoOperativoOdt(estado)
+  if (mapped === 'Listo') return 'green'
+  if (mapped === 'En proceso') return 'blue'
+  if (mapped === 'Anulada') return 'red'
+  return 'amber'
 }
 
 const TALLER_TABS = [
@@ -33,6 +49,8 @@ const TAB_PARAMS = {
 
 const getErrorMessage = err => err?.response?.data?.error || err?.message || 'No se pudo completar la accion'
 
+// Kept temporarily as reference while the taller UX is migrated from cards to list.
+// eslint-disable-next-line no-unused-vars
 const OdtCard = ({ odt, onSelect }) => {
   const [hov, setHov] = useState(false)
   const isPrioritaria = odt.estado === 'Prioritaria'
@@ -192,13 +210,10 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onCloseOdt, onAnularOd
   const handleImprimir = () => window.print()
 
   const estadoActions = [
-    { from: ['Pendiente'], to: 'Asignada', label: 'Marcar Asignada', tone: 'blue' },
     { from: ['Pendiente', 'Asignada'], to: 'En proceso', label: 'Iniciar trabajo', tone: 'blue' },
-    { from: ['Pendiente', 'Asignada', 'En proceso'], to: 'Prioritaria', label: 'Marcar Prioritaria', tone: 'red' },
     { from: ['Prioritaria'], to: 'En proceso', label: 'Volver a En proceso', tone: 'blue' },
-    { from: ['En proceso', 'Prioritaria'], to: 'Control calidad', label: 'Enviar a control', tone: 'amber' },
-    { from: ['Pendiente', 'Asignada', 'En proceso', 'Prioritaria', 'Control calidad'], to: 'Terminada', label: 'Marcar Terminada', tone: 'green' },
-    { from: ['Terminada'], to: 'Entregada', label: 'Marcar Entregada', tone: 'green' },
+    { from: ['En proceso', 'Prioritaria'], to: 'Control calidad', label: 'Dejar pendiente', tone: 'amber' },
+    { from: ['Pendiente', 'Asignada', 'En proceso', 'Prioritaria', 'Control calidad'], to: 'Terminada', label: 'Marcar lista', tone: 'green' },
     { from: ['Terminada'], to: 'Pendiente', label: 'Reabrir ODT', tone: 'amber' },
     { from: ['Entregada'], to: 'Terminada', label: 'Reabrir entrega', tone: 'amber' },
   ]
@@ -224,7 +239,7 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onCloseOdt, onAnularOd
             {o.prioridad && o.prioridad !== 'normal' && (
               <Badge tone={o.prioridad === 'urgente' ? 'red' : 'amber'}>{o.prioridad}</Badge>
             )}
-            <Badge tone={ESTADO_TONE[o.estado]}>{o.estado}</Badge>
+            <Badge tone={estadoOperativoTone(o.estado)}>{estadoOperativoOdt(o.estado)}</Badge>
           </div>
           <button onClick={onClose} style={{ color: 'var(--text-3)', padding: 4 }}><Icon name="x" size={18} /></button>
         </div>
@@ -316,7 +331,7 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onCloseOdt, onAnularOd
             {canWrite && <Btn variant="primary" icon="edit" onClick={onEdit}>Editar ODT</Btn>}
             <Btn variant="ghost" icon="printer" onClick={handleImprimir}>Imprimir</Btn>
           </div>
-          {canWrite && canCloseOdt && <Btn variant="ghost" icon="checkCircle" onClick={() => onCloseOdt(o, 'Terminada')} disabled={lifecyclePending} style={{ color: 'var(--green-700)' }}>Cerrar ODT</Btn>}
+          {canWrite && canCloseOdt && <Btn variant="ghost" icon="checkCircle" onClick={() => onCloseOdt(o, 'Terminada')} disabled={lifecyclePending} style={{ color: 'var(--green-700)' }}>Marcar lista</Btn>}
           {canWrite && canReopenOdt && <Btn variant="ghost" icon="refreshCw" onClick={() => onCloseOdt(o, 'Pendiente')} disabled={lifecyclePending} style={{ color: 'var(--amber)' }}>Reabrir ODT</Btn>}
           {canDelete && canAnularOdt && <Btn variant="ghost" icon="xCircle" onClick={() => onAnularOdt(o)} disabled={lifecyclePending} style={{ color: 'var(--red)' }}>Anular ODT</Btn>}
         </div>
@@ -342,7 +357,7 @@ export default function TallerPage() {
   const [search, setSearch]         = useState(initialSearch)
   const [debouncedSearch, setDeb]   = useState(initialSearch)
   const [pageState, setPageState]   = useState({ key: '', page: 1 })
-  const [estadoFilter, setEst]      = useState(initialPendiente ? 'Pendiente' : initialPrioridad === 'urgente' || initialPrioridad === 'alta' ? 'Prioritaria' : 'all')
+  const [estadoFilter, setEst]      = useState(initialPendiente ? 'Pendiente' : initialPrioridad === 'urgente' || initialPrioridad === 'alta' ? 'Pendiente' : 'all')
   const [operarioFilter, setOperarioFilter] = useState('all')
   const [fechaCampo, setFechaCampo] = useState(initialFechaCampo)
   const [fechaDesde, setFechaDesde] = useState(initialFechaDesde)
@@ -362,7 +377,7 @@ export default function TallerPage() {
   }, [search])
 
   const filterParams = { ...TAB_PARAMS[tab] }
-  if (estadoFilter !== 'all') filterParams.estado = estadoFilter
+  if (estadoFilter !== 'all') filterParams.estado = estadoFilter === 'Listo' ? 'Terminada' : estadoFilter
   if (estadoFilter === 'Anulada') filterParams.includeEliminados = 'true'
   if (operarioFilter !== 'all') filterParams.operarioId = operarioFilter
   if (debouncedSearch) filterParams.search = debouncedSearch
@@ -387,6 +402,30 @@ export default function TallerPage() {
   const enControl    = stats['Control calidad'] ?? 0
   const pendientes   = stats['Pendiente'] ?? 0
   const terminadas   = (stats['Terminada'] ?? 0) + (stats['Entregada'] ?? 0)
+  const fmtDate = d => d ? new Date(d).toLocaleDateString('es-CL') : '-'
+  const responsableDe = odt => odt.operario
+    ? `${odt.operario.nombres || ''} ${odt.operario.apellidoPaterno || ''}`.trim()
+    : ''
+  const odtColumns = [
+    { key: 'id', label: 'ODT', required: true, render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>#{v}</span> },
+    { key: 'nInterno', label: 'N interno', render: v => v || '-' },
+    { key: 'clienteNombre', label: 'Cliente', required: true, render: v => v || '-' },
+    { key: 'descripcion', label: 'Trabajo', render: v => <span title={v}>{v || '-'}</span> },
+    { key: 'tipo', label: 'Taller', render: v => v || '-' },
+    { key: 'estado', label: 'Estado', required: true, render: v => <Badge tone={estadoOperativoTone(v)}>{estadoOperativoOdt(v)}</Badge> },
+    { key: 'prioridad', label: 'Prioridad', render: v => <Badge tone={v === 'urgente' ? 'red' : v === 'alta' ? 'amber' : 'gray'}>{v || 'normal'}</Badge> },
+    { key: 'responsable', label: 'Responsable', render: (_, row) => responsableDe(row) || '-' },
+    { key: 'createdAt', label: 'Creada', render: v => fmtDate(v) },
+    { key: 'plazo', label: 'Plazo', render: (v, row) => (
+      <span style={{ color: v && new Date(v) < new Date() && !['Terminada', 'Entregada'].includes(row.estado) ? 'var(--red)' : 'inherit' }}>
+        {fmtDate(v)}
+      </span>
+    ) },
+    { key: '_acc', label: '', required: true, render: (_, row) => (
+      <Btn variant="ghost" size="sm" icon="eye" onClick={e => { e.stopPropagation(); setSelected(row) }}>Ver</Btn>
+    ) },
+  ]
+  const { selected: selectedColumns, setSelected: setSelectedColumns, reset: resetColumns, visibleColumns, required: requiredColumns } = useColumnPreferences('taller-odts', odtColumns, user)
 
   function handleEstadoChange(id, estado) {
     cambiarEstado.mutate({ id, estado }, {
@@ -448,18 +487,19 @@ export default function TallerPage() {
         subtitle={`${total.toLocaleString('es-CL')} ODTs en total`}
         breadcrumb={['Inicio', 'Taller', 'ODTs']}
         actions={<>
+          <ColumnSelector columns={odtColumns} selected={selectedColumns} onChange={setSelectedColumns} onReset={resetColumns} required={requiredColumns} />
           <Btn variant="secondary" icon="download" size="sm" onClick={handleExport}>Exportar</Btn>
           {canWriteTaller && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/taller/nueva')}>Nueva ODT</Btn>}
         </>}
       />
 
       <div className="kpi-strip">
-        <KpiCard label="Prioritarias" value={isLoading ? '...' : prioritarias.toLocaleString('es-CL')} icon="zap" tone={prioritarias > 0 ? 'red' : 'neutral'} sublabel="Urgencia maxima" onClick={() => setEst('Prioritaria')} />
+        <KpiCard label="Pendientes criticas" value={isLoading ? '...' : prioritarias.toLocaleString('es-CL')} icon="zap" tone={prioritarias > 0 ? 'red' : 'neutral'} sublabel="Prioridad urgente" onClick={() => setEst('Pendiente')} />
         <KpiCard label="En Proceso"   value={isLoading ? '...' : enProceso.toLocaleString('es-CL')}    icon="tool"  tone="blue"   sublabel="Trabajos activos"   onClick={() => setEst('En proceso')} />
-        <KpiCard label="Asignadas"    value={isLoading ? '...' : asignadas.toLocaleString('es-CL')}    icon="user"  tone="blue"   sublabel="Con responsable"    onClick={() => setEst('Asignada')} />
+        <KpiCard label="Asignadas"    value={isLoading ? '...' : asignadas.toLocaleString('es-CL')}    icon="user"  tone="blue"   sublabel="Con responsable"    onClick={() => setEst('Pendiente')} />
         <KpiCard label="Pendientes"   value={isLoading ? '...' : pendientes.toLocaleString('es-CL')}   icon="clock" tone="amber"  sublabel="Por iniciar"       onClick={() => setEst('Pendiente')} />
-        <KpiCard label="Control"      value={isLoading ? '...' : enControl.toLocaleString('es-CL')}    icon="search" tone="amber" sublabel="Revision calidad"   onClick={() => setEst('Control calidad')} />
-        <KpiCard label="Cerradas"     value={isLoading ? '...' : terminadas.toLocaleString('es-CL')}   icon="checkCircle" tone="neutral" sublabel="Terminadas/entregadas" onClick={() => setEst('Terminada')} />
+        <KpiCard label="Control"      value={isLoading ? '...' : enControl.toLocaleString('es-CL')}    icon="search" tone="amber" sublabel="Pendiente de cierre"   onClick={() => setEst('Pendiente')} />
+        <KpiCard label="Listas"       value={isLoading ? '...' : terminadas.toLocaleString('es-CL')}   icon="checkCircle" tone="neutral" sublabel="Terminadas/entregadas" onClick={() => setEst('Listo')} />
       </div>
 
       {(cargaOperarios.items || []).length > 0 && (
@@ -524,13 +564,9 @@ export default function TallerPage() {
                 style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff', cursor: 'pointer' }}
               >
                 <option value="all">Todos los estados</option>
-                <option value="Prioritaria">Prioritarias</option>
-                <option value="En proceso">En proceso</option>
-                <option value="Asignada">Asignadas</option>
                 <option value="Pendiente">Pendientes</option>
-                <option value="Control calidad">Control calidad</option>
-                <option value="Terminada">Terminadas</option>
-                <option value="Entregada">Entregadas</option>
+                <option value="En proceso">En proceso</option>
+                <option value="Listo">Listas</option>
                 <option value="Anulada">Anuladas</option>
               </select>
               <select
@@ -586,18 +622,18 @@ export default function TallerPage() {
         </div>
 
 
-        <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
+        <div style={{ padding: 16 }}>
           {isLoading ? (
-            <div style={{ gridColumn: '1/-1', padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>
+            <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>
               Cargando ODTs...
             </div>
           ) : odts.length === 0 ? (
-            <div style={{ gridColumn: '1/-1', padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>
+            <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>
               <Icon name="info" size={24} color="var(--border)" />
               <p style={{ marginTop: 12 }}>Sin ODTs con ese criterio</p>
             </div>
           ) : (
-            odts.map(o => <OdtCard key={o.id} odt={o} onSelect={setSelected} />)
+            <Table columns={visibleColumns} rows={odts} onRowClick={setSelected} />
           )}
         </div>
         <Pager page={page} pages={pages} total={total} limit={LIMIT} shown={odts.length} onChange={setPagerPage} disabled={isLoading} />

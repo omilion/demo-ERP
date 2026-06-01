@@ -10,7 +10,17 @@ import { useHistorialMateriales } from '../../api/historialMateriales'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 
-const ESTADOS_ODT = ['Pendiente', 'Asignada', 'En proceso', 'Control calidad', 'Terminada', 'Entregada', 'Prioritaria']
+const ESTADOS_ODT = [
+  { value: 'Pendiente', label: 'Pendiente' },
+  { value: 'En proceso', label: 'En proceso' },
+  { value: 'Terminada', label: 'Listo' },
+]
+
+function normalizeOdtFormEstado(estado) {
+  if (['Terminada', 'Entregada'].includes(estado)) return 'Terminada'
+  if (estado === 'En proceso') return 'En proceso'
+  return 'Pendiente'
+}
 
 export default function TallerFormPage() {
   const navigate = useNavigate()
@@ -36,7 +46,7 @@ export default function TallerFormPage() {
       set('clienteNombre', found.clienteNombre ?? '')
       set('descripcion', found.descripcion ?? '')
       set('obsGeneral', found.obsGeneral ?? '')
-      set('estado', found.estado || 'Pendiente')
+      set('estado', normalizeOdtFormEstado(found.estado))
       set('prioridad', found.prioridad || 'normal')
       set('plazo', found.plazo ? new Date(found.plazo).toISOString().slice(0, 10) : '')
       set('fechaIngreso', found.fechaIngreso ? new Date(found.fechaIngreso).toISOString().slice(0, 10) : '')
@@ -93,7 +103,7 @@ export default function TallerFormPage() {
       onSave={handleSave}
       saving={createOdt.isPending || updateOdt.isPending}
     >
-      <FormDivider label="Trabajo" />
+      <FormDivider label="Resumen ODT" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
         <FormField label="Orden vinculada" required error={errors.ordenId}>
           <Input type="number" value={data.ordenId} onChange={v => set('ordenId', v)} placeholder="ID de venta/orden" error={errors.ordenId} />
@@ -115,15 +125,18 @@ export default function TallerFormPage() {
           <Select value={data.operarioId} onChange={v => set('operarioId', v)} options={operarioOptions} />
         </FormField>
       </div>
+      <FormDivider label="Cliente / venta origen" />
       <FormField label="Cliente">
         <Input value={data.clienteNombre} onChange={v => set('clienteNombre', v)} placeholder="Nombre del cliente" />
       </FormField>
+      <FormDivider label="Trabajo solicitado" />
       <FormField label="Descripción del trabajo" required error={errors.descripcion}>
         <Textarea value={data.descripcion} onChange={v => set('descripcion', v)} placeholder="Detalle del trabajo a realizar" rows={3} error={errors.descripcion} />
       </FormField>
       <FormField label="Obs OT / observacion general">
         <Textarea value={data.obsGeneral} onChange={v => set('obsGeneral', v)} placeholder="Observaciones internas de produccion" rows={3} />
       </FormField>
+      <FormDivider label="Produccion y fechas" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
         <FormField label="Fecha ingreso">
           <Input type="date" value={data.fechaIngreso} onChange={v => set('fechaIngreso', v)} />

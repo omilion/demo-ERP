@@ -1,5 +1,5 @@
 import { can } from '../../middleware/rbac.js'
-import { computeEstado, normalizeProductoFotos, sanitizeProductoCosto } from './helpers.js'
+import { computeEstado, computeEstadoOperacional, normalizeProductoFotos, sanitizeProductoCosto } from './helpers.js'
 
 export default async function getProducto(fastify) {
   fastify.get('/:id', {
@@ -13,6 +13,6 @@ export default async function getProducto(fastify) {
     })
     if (!p) return reply.code(404).send({ error: 'Producto no encontrado' })
     const canReadCosto = can(request.user?.role, 'bodega', 'read', request.user?.permisosExtra)
-    return sanitizeProductoCosto(normalizeProductoFotos({ ...p, estado: computeEstado(p) }), canReadCosto)
+    return sanitizeProductoCosto(normalizeProductoFotos({ ...p, estado: computeEstado(p), estadoOperacional: computeEstadoOperacional(p) }), canReadCosto)
   })
 }

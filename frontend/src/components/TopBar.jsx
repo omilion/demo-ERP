@@ -10,35 +10,36 @@ const NAV_GROUPS = [
     { label: 'Ventas', route: '/ventas', module: 'ventas' },
     { label: 'Matriz Ventas', route: '/matriz-ventas', module: 'ventas' },
     { label: 'OC Online / Venta Web', route: '/ordenes-compra', module: 'ventas' },
-    { label: 'Licitaciones', route: '/licitaciones', module: 'licitaciones' },
-    { label: 'Reporteria Gerencial', route: '/reportes/gerenciales', module: 'reportes' },
-    { label: 'Reportes Licitaciones', route: '/reportes/licitaciones', module: 'licitaciones' },
     { label: 'CRM', route: '/crm', module: 'ventas' },
+    { label: 'Clientes', route: '/clientes', module: 'clientes' },
+    { label: 'Reporteria Gerencial', route: '/reportes/gerenciales', module: 'reportes' },
   ] },
   { label: 'Bodega', items: [
-    { label: 'Inventario', route: '/bodega', module: 'catalogo' },
+    { label: 'Inventario', route: '/bodega', module: 'bodega' },
     { label: 'Consulta Precios', route: '/consulta-precios', module: 'catalogo' },
     { label: 'Ingreso Mercaderia', route: '/stock-ingresos', module: 'bodega' },
+    { label: 'Bodega Taller', route: '/bodega-taller', module: 'taller' },
     { label: 'Despachos', route: '/despachos', module: 'despacho' },
     { label: 'Proveedores', route: '/proveedores', module: 'proveedores' },
-    { label: 'Pagos Proveedores', route: '/pagos-proveedores', module: 'proveedores' },
-  ] },
-  { label: 'Taller', items: [
-    { label: 'ODTs', route: '/taller', module: 'taller' },
-    { label: 'Pasar a Taller', route: '/pasar-taller', module: 'taller', permission: 'write' },
-    { label: 'Bodega Taller', route: '/bodega-taller', module: 'taller' },
-    { label: 'Bitacora', route: '/bitacora-taller', module: 'taller' },
-    { label: 'Historial Materiales', route: '/historial-materiales', module: 'taller' },
   ] },
   { label: 'Caja', items: [
     { label: 'Movimientos', route: '/caja', module: 'caja' },
     { label: 'Cobranza', route: '/cobranza', module: 'cobranza' },
-  ] },
-  { label: 'Clientes', items: [
-    { label: 'Clientes', route: '/clientes', module: 'clientes' },
+    { label: 'Pagos Proveedores', route: '/pagos-proveedores', module: 'proveedores' },
   ] },
   { label: 'RRHH', items: [
     { label: 'Trabajadores', route: '/rrhh', module: 'rrhh' },
+  ] },
+  { label: 'Licitaciones', items: [
+    { label: 'Licitaciones', route: '/licitaciones', module: 'licitaciones' },
+    { label: 'Convenio Marco', route: '/licitaciones?tipo=convenio', module: 'licitaciones' },
+    { label: 'Reportes Licitaciones', route: '/reportes/licitaciones', module: 'licitaciones' },
+  ] },
+  { label: 'Taller', items: [
+    { label: 'ODTs', route: '/taller', module: 'taller' },
+    { label: 'Pasar a Taller', route: '/pasar-taller', module: 'taller', permission: 'write' },
+    { label: 'Bitacora', route: '/bitacora-taller', module: 'taller' },
+    { label: 'Historial Materiales', route: '/historial-materiales', module: 'taller' },
   ] },
   { label: 'Admin', items: [
     { label: 'Usuarios', route: '/usuarios', roles: ['admin'] },
@@ -192,7 +193,7 @@ export function TopBar() {
   return (
     <header style={{ background: 'var(--green-900)', position: 'sticky', top: 0, zIndex: 100, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
       <div className="topbar-inner">
-        <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flexShrink: 0 }}>
+        <div onClick={() => navigate('/dashboard')} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flexShrink: 0 }}>
           <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--green-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ color: '#fff', fontWeight: 800, fontSize: 14, fontFamily: "'DM Sans', sans-serif" }}>P</span>
           </div>
@@ -201,15 +202,15 @@ export function TopBar() {
         </div>
 
         <nav className="topbar-nav">
-          <button onClick={() => navigate('/')} style={{
+          <button onClick={() => navigate('/dashboard')} style={{
             padding: '6px 12px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
-            color: location.pathname === '/' ? '#fff' : 'rgba(255,255,255,0.78)',
-            fontWeight: location.pathname === '/' ? 600 : 400,
-            background: location.pathname === '/' ? 'rgba(255,255,255,0.18)' : 'transparent',
+            color: location.pathname === '/dashboard' || location.pathname === '/' ? '#fff' : 'rgba(255,255,255,0.78)',
+            fontWeight: location.pathname === '/dashboard' || location.pathname === '/' ? 600 : 400,
+            background: location.pathname === '/dashboard' || location.pathname === '/' ? 'rgba(255,255,255,0.18)' : 'transparent',
             transition: 'background 0.15s',
           }}
-            onMouseEnter={e => location.pathname !== '/' && (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
-            onMouseLeave={e => location.pathname !== '/' && (e.currentTarget.style.background = 'transparent')}
+            onMouseEnter={e => !['/', '/dashboard'].includes(location.pathname) && (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
+            onMouseLeave={e => !['/', '/dashboard'].includes(location.pathname) && (e.currentTarget.style.background = 'transparent')}
           >
             Dashboard
           </button>

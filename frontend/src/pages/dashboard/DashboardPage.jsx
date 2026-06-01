@@ -63,6 +63,7 @@ export default function DashboardPage() {
   const { user } = useAuthStore()
   const role = user?.role || 'admin'
   const canReadVentas = can(user, 'ventas')
+  const canReadBodega = can(user, 'bodega')
   const canReadCatalogo = can(user, 'catalogo')
   const canReadTaller = can(user, 'taller')
   const canReadDespacho = can(user, 'despacho')
@@ -76,7 +77,7 @@ export default function DashboardPage() {
   const canWriteProveedores = can(user, 'proveedores', 'write')
   const show = {
     ventas: canReadVentas,
-    bodega: canReadCatalogo,
+    bodega: canReadBodega,
     taller: canReadTaller,
     cobranza: canReadVentas || canReadCaja || canReadProveedores,
     admin: role === 'admin',
@@ -103,7 +104,7 @@ export default function DashboardPage() {
   return (
     <main className="page page-wide">
       <PageHeader
-        title="Panel de Control"
+        title="Inicio operativo"
         subtitle={`${fecha} · ${hora} · Sucursal 5 Oriente`}
         breadcrumb={['Inicio', 'Dashboard']}
         actions={

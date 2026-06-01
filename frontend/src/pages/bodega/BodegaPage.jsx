@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs } from '../../components/shared'
 import { useDeleteProducto, useProductos } from '../../api/productos'
 import { useCategorias } from '../../api/categorias'
@@ -9,8 +9,10 @@ import api from '../../api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import { ColumnSelector, useColumnPreferences } from '../../components/ColumnSelector'
 
 const estadoInventarioOptions = ['', 'Inventariado', 'Activo', 'Descontinuado', 'En transito', 'Reserva']
+const estadoOperativoOptions = ['', 'Disponible', 'Stock critico', 'Sin stock', 'Incompleto', 'Descontinuado', 'En transito', 'Reserva']
 
 function money(value) {
   return '$' + Number(value || 0).toLocaleString('es-CL')
@@ -20,8 +22,17 @@ function mono(value, fallback = '-') {
   return <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--text-2)' }}>{value || fallback}</span>
 }
 
+function estadoTone(value) {
+  const normalized = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  if (normalized.includes('sin stock') || normalized.includes('descontinu')) return 'red'
+  if (normalized.includes('critico') || normalized.includes('incompleto') || normalized.includes('transito') || normalized.includes('reserva')) return 'amber'
+  if (normalized.includes('disponible') || normalized.includes('normal') || normalized.includes('activo')) return 'green'
+  return 'gray'
+}
+
 export default function BodegaPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { user } = useAuthStore()
   const canWriteCatalogo = can(user, 'catalogo', 'write')
   const canDeleteCatalogo = can(user, 'catalogo', 'delete')
@@ -29,16 +40,17 @@ export default function BodegaPage() {
   const qc = useQueryClient()
   const deleteProducto = useDeleteProducto()
   const { data: categoriasApi = [] } = useCategorias()
-  const [tab, setTab] = useState('inventario')
+  const [tab, setTab] = useState(searchParams.get('tab') === 'taller' ? 'taller' : 'inventario')
   const [importing, setImporting] = useState(false)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [filter, setFilter] = useState('all')
+  const [filter, setFilter] = useState(searchParams.get('filtro') === 'critico' ? 'critico' : searchParams.get('filtro') === 'sin-stock' ? 'sin-stock' : 'all')
   const [proveedor, setProveedor] = useState('')
   const [categoriaId, setCategoriaId] = useState('')
   const [subcategoriaId, setSubcategoriaId] = useState('')
   const [visibleWeb, setVisibleWeb] = useState('all')
   const [estadoInventario, setEstadoInventario] = useState('')
+  const [estadoOperativo, setEstadoOperativo] = useState('')
   const [ubicacion, setUbicacion] = useState('')
   const [idMarco, setIdMarco] = useState('')
   const debounceRef = useRef(null)
@@ -64,7 +76,9 @@ export default function BodegaPage() {
 
   const { data: result = { items: [], total: 0, limit: 500 }, isLoading } = useProductos(queryParams)
 
-  const productos = result.items ?? []
+  const productos = estadoOperativo
+    ? (result.items ?? []).filter(p => p.estadoOperacional === estadoOperativo)
+    : (result.items ?? [])
   const totalEnBodega = result.total ?? 0
   const LIMIT = result.limit ?? 500
   const selectedCategoria = categoriasApi.find(c => String(c.id) === String(categoriaId))
@@ -97,10 +111,11 @@ export default function BodegaPage() {
     { key: 'stock', label: 'Stock', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
     { key: 'proveedor', label: 'Proveedor', render: v => v || '-' },
     { key: 'estadoInventario', label: 'Estado inv.', render: v => v || '-' },
+    { key: 'estadoOperacional', label: 'Estado operativo', required: true, render: v => <Badge tone={estadoTone(v)}>{v || 'Sin evaluar'}</Badge> },
     { key: 'estado', label: 'Estado', render: v => (
-      <Badge tone={v === 'Sin stock' ? 'red' : v === 'Crítico' ? 'amber' : 'green'}>{v}</Badge>
+      <Badge tone={estadoTone(v)}>{v}</Badge>
     )},
-    { key: '_acc', label: '', render: (_, row) => (
+    { key: '_acc', label: '', required: true, render: (_, row) => (
       <div style={{ display: 'flex', gap: 4 }}>
         {canWriteCatalogo && <button onClick={e => { e.stopPropagation(); navigate('/bodega/' + row.id + '/editar') }} style={actionBtn}>Editar</button>}
         {canWriteBodega && <button onClick={e => { e.stopPropagation(); navigate('/bodega/' + row.id + '/editar#movimientos') }} style={{ ...actionBtn, color: 'var(--blue, #2563eb)' }} title="Ver movimientos de stock">Movs</button>}
@@ -109,7 +124,9 @@ export default function BodegaPage() {
     )},
   ]
 
-  const criticos = productos.filter(p => p.estado === 'Crítico').length
+  const { selected, setSelected, reset, visibleColumns, required } = useColumnPreferences(`bodega-${tab}`, cols, user)
+
+  const criticos = productos.filter(p => estadoTone(p.estado) === 'amber').length
   const sinStock = productos.filter(p => p.estado === 'Sin stock').length
 
   return (
@@ -123,6 +140,7 @@ export default function BodegaPage() {
             onClick={() => downloadFromBackend('/reportes/export/productos', `productos_${new Date().toISOString().slice(0, 10)}.csv`, queryParams)}
           >Exportar Excel</Btn>
           {canWriteBodega && <Btn variant="secondary" icon="upload" size="sm" onClick={() => setImporting(true)}>Importar</Btn>}
+          <ColumnSelector columns={cols} selected={selected} onChange={setSelected} onReset={reset} required={required} />
           {canWriteCatalogo && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/bodega/nuevo')}>Crear nuevo</Btn>}
         </>}
       />
@@ -163,6 +181,10 @@ export default function BodegaPage() {
               <option value="">Estado inventario</option>
               {estadoInventarioOptions.filter(Boolean).map(v => <option key={v} value={v}>{v}</option>)}
             </select>
+            <select value={estadoOperativo} onChange={e => setEstadoOperativo(e.target.value)} style={selectStyle}>
+              <option value="">Estado operativo</option>
+              {estadoOperativoOptions.filter(Boolean).map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
             <input value={proveedor} onChange={e => setProveedor(e.target.value)} placeholder="Proveedor" style={miniInput} />
             <input value={ubicacion} onChange={e => setUbicacion(e.target.value)} placeholder="Ubicacion" style={miniInput} />
             <input value={idMarco} onChange={e => setIdMarco(e.target.value)} placeholder="ID Marco" style={miniInput} />
@@ -177,7 +199,7 @@ export default function BodegaPage() {
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando productos...</div>
           : <Table
-              columns={cols}
+              columns={visibleColumns}
               rows={productos}
               emptyMessage="No hay productos con ese criterio"
               onRowDoubleClick={canWriteCatalogo ? row => navigate('/bodega/' + row.id + '/editar') : undefined}
