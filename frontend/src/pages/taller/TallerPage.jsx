@@ -32,6 +32,10 @@ function estadoOperativoTone(estado) {
   return 'amber'
 }
 
+function odtNumeroOperativo(odt) {
+  return odt?.nInterno || odt?.orden?.nInterno || odt?.id
+}
+
 const TALLER_TABS = [
   { id: 'all',          label: 'Todos' },
   { id: 'Espumas',      label: 'Espumas' },
@@ -73,7 +77,7 @@ const OdtCard = ({ odt, onSelect }) => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 600, color: 'var(--green-700)' }}>
-            ODT #{odt.id}
+            ODT #{odtNumeroOperativo(odt)}
           </span>
           {odt.nInterno && (
             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-3)' }}>
@@ -235,7 +239,7 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onCloseOdt, onAnularOd
       >
         <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <span style={{ fontWeight: 700, fontSize: 16 }}>ODT #{o.id}</span>
+            <span style={{ fontWeight: 700, fontSize: 16 }}>ODT #{odtNumeroOperativo(o)}</span>
             {o.prioridad && o.prioridad !== 'normal' && (
               <Badge tone={o.prioridad === 'urgente' ? 'red' : 'amber'}>{o.prioridad}</Badge>
             )}
@@ -407,7 +411,7 @@ export default function TallerPage() {
     ? `${odt.operario.nombres || ''} ${odt.operario.apellidoPaterno || ''}`.trim()
     : ''
   const odtColumns = [
-    { key: 'id', label: 'ODT', required: true, render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>#{v}</span> },
+    { key: 'id', label: 'ODT', required: true, render: (_, row) => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>#{odtNumeroOperativo(row)}</span> },
     { key: 'nInterno', label: 'N interno', render: v => v || '-' },
     { key: 'clienteNombre', label: 'Cliente', required: true, render: v => v || '-' },
     { key: 'descripcion', label: 'Trabajo', render: v => <span title={v}>{v || '-'}</span> },
@@ -439,10 +443,11 @@ export default function TallerPage() {
   function handleCloseOdt(odt, estado) {
     const isReopen = estado === 'Pendiente'
     const action = isReopen ? 'reabrir' : 'cerrar'
+    const odtNumero = odtNumeroOperativo(odt)
     const detail = isReopen
       ? 'La ODT volvera a Pendiente y quedara disponible para trabajo operativo.'
       : 'La ODT pasara a Terminada y se registrara fecha de termino si aun no existe.'
-    if (!confirm(`¿Confirmas ${action} la ODT #${odt.id}?\n\n${detail}`)) return
+    if (!confirm(`¿Confirmas ${action} la ODT #${odtNumero}?\n\n${detail}`)) return
     if (isReopen) {
       cambiarEstado.mutate(
         { id: odt.id, estado },
@@ -463,10 +468,11 @@ export default function TallerPage() {
   }
 
   function handleAnularOdt(odt) {
-    const razon = prompt(`Motivo para anular la ODT #${odt.id}`)
+    const odtNumero = odtNumeroOperativo(odt)
+    const razon = prompt(`Motivo para anular la ODT #${odtNumero}`)
     if (razon == null) return
     if (!razon.trim()) { alert('Debes indicar un motivo para anular la ODT.'); return }
-    if (!confirm(`¿Confirmas anular la ODT #${odt.id}?\n\nEsta accion la sacara del flujo operativo y conservara trazabilidad en bitacora.`)) return
+    if (!confirm(`¿Confirmas anular la ODT #${odtNumero}?\n\nEsta accion la sacara del flujo operativo y conservara trazabilidad en bitacora.`)) return
     anularOdt.mutate(
       { id: odt.id, razon: razon.trim() },
       {
