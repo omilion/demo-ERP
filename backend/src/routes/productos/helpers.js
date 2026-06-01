@@ -4,6 +4,17 @@ export function computeEstado(p) {
   return 'Normal'
 }
 
+export function computeEstadoOperacional(p) {
+  const estadoInventario = String(p.estadoInventario || '').trim().toLowerCase()
+  if (estadoInventario.includes('descontinu')) return 'Descontinuado'
+  if (estadoInventario.includes('reserva')) return 'Reserva'
+  if (estadoInventario.includes('transito')) return 'En transito'
+  if (!p.codigoInterno || !p.nombre || !p.categoria || !p.proveedor) return 'Incompleto'
+  if (p.stock === 0) return 'Sin stock'
+  if ((p.stockCritico ?? 0) > 0 && p.stock <= p.stockCritico) return 'Stock critico'
+  return 'Disponible'
+}
+
 const LEGACY_FOTO_PREFIXES = [
   ['/uploads/productos/chicas/', '/uploads/fotos_chicas/'],
   ['/uploads/productos/grandes/', '/uploads/fotos_grandes/'],

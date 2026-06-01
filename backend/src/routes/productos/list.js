@@ -1,5 +1,5 @@
 import { can } from '../../middleware/rbac.js'
-import { computeEstado, normalizeProductoFotos, sanitizeProductoCosto } from './helpers.js'
+import { computeEstado, computeEstadoOperacional, normalizeProductoFotos, sanitizeProductoCosto } from './helpers.js'
 import { attachConsultaPreciosData } from './pricing.js'
 
 function normalizeSearchText(value) {
@@ -154,7 +154,7 @@ export default async function listProductos(fastify) {
     ])
     let items = await attachConsultaPreciosData(
       fastify.prisma,
-      productos.map(p => normalizeProductoFotos({ ...p, estado: computeEstado(p) })),
+      productos.map(p => normalizeProductoFotos({ ...p, estado: computeEstado(p), estadoOperacional: computeEstadoOperacional(p) })),
     )
     if (estado === 'critico') items = items.filter(p => p.estado === 'Crítico').slice(0, LIMIT)
     if (filterNombreInMemory) items = items.filter(p => matchesNormalizedContains(p.nombre, nombre))

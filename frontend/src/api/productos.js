@@ -75,3 +75,9 @@ export const useAddMovimiento = () => {
     },
   })
 }
+
+export const useUploadProductoImagen = () =>
+  useMutation({
+    mutationFn: ({ dataUrl, size = 'chica' }) =>
+      api.post('/productos/upload-imagen', { data: dataUrl, size }).then(r => r.data),
+  })

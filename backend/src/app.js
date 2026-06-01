@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import { fileURLToPath } from 'node:url'
 import Fastify from 'fastify'
 import corsPlugin from './plugins/cors.js'
 import cookiePlugin from './plugins/cookie.js'
@@ -112,7 +113,7 @@ export function buildApp(opts = {}) {
   return app
 }
 
-const __filename = new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1')
+const __filename = fileURLToPath(import.meta.url)
 if (process.argv[1] && process.argv[1].replace(/\\/g, '/') === __filename.replace(/\\/g, '/')) {
   const app = buildApp()
   try {

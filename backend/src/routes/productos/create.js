@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { can } from '../../middleware/rbac.js'
-import { computeEstado, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos, sanitizeProductoCosto, syncProductoCategoriaText, validateProductoClasificacion } from './helpers.js'
+import { computeEstado, computeEstadoOperacional, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos, sanitizeProductoCosto, syncProductoCategoriaText, validateProductoClasificacion } from './helpers.js'
 
 const FotoUrlSchema = z.string().refine(isProductoFotoUrl, {
   message: 'fotoUrl debe ser URL o ruta /uploads valida',
@@ -73,6 +73,6 @@ export default async function createProducto(fastify) {
     if (clasificacionError) return reply.code(clasificacionError.status).send({ error: clasificacionError.error })
     const p = await fastify.prisma.producto.create({ data })
     const canReadCosto = can(request.user?.role, 'bodega', 'read', request.user?.permisosExtra)
-    return reply.code(201).send(sanitizeProductoCosto(normalizeProductoFotos({ ...p, estado: computeEstado(p) }), canReadCosto))
+    return reply.code(201).send(sanitizeProductoCosto(normalizeProductoFotos({ ...p, estado: computeEstado(p), estadoOperacional: computeEstadoOperacional(p) }), canReadCosto))
   })
 }

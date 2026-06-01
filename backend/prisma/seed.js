@@ -124,16 +124,27 @@ async function main() {
     { clienteRut: '14987654-3', tipo: 'Normal', estado: 'Activa', estadoPago: 'No pagada', estadoEntrega: 'Entregada', abono: 200000, facturado: 456780, guias: 11610, licitacion: null, creadorNombre: 'Marcelo', total: 456780 },
   ]
 
-  for (const o of ORDENES_SEED) {
+  for (const [index, o] of ORDENES_SEED.entries()) {
+    const nInterno = 15001 + index
     const clienteId = clienteMap[o.clienteRut]
     const existing = await prisma.orden.findFirst({ where: { clienteId, creadorNombre: o.creadorNombre, facturado: o.facturado } })
-    if (!existing && firstProducto) {
+    if (existing) {
+      await prisma.orden.update({
+        where: { id: existing.id },
+        data: {
+          sucursalId: existing.sucursalId ?? 1,
+          nInterno: existing.nInterno ?? nInterno,
+        },
+      })
+    } else if (firstProducto) {
       await prisma.orden.create({
         data: {
+          nInterno,
           tipo: o.tipo,
           estado: o.estado,
           estadoPago: o.estadoPago,
           estadoEntrega: o.estadoEntrega,
+          sucursalId: 1,
           clienteId,
           userId: adminUser.id,
           abono: o.abono,

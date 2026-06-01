@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { can } from '../../middleware/rbac.js'
-import { computeEstado, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos, sanitizeProductoCosto, syncProductoCategoriaText, validateProductoClasificacion } from './helpers.js'
+import { computeEstado, computeEstadoOperacional, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos, sanitizeProductoCosto, syncProductoCategoriaText, validateProductoClasificacion } from './helpers.js'
 
 const FotoUrlSchema = z.string().refine(isProductoFotoUrl, {
   message: 'fotoUrl debe ser URL o ruta /uploads valida',
@@ -107,6 +107,6 @@ export default async function updateProducto(fastify) {
       ] : []),
     ])
     const canReadCosto = can(request.user?.role, 'bodega', 'read', request.user?.permisosExtra)
-    return sanitizeProductoCosto(normalizeProductoFotos({ ...p, estado: computeEstado(p) }), canReadCosto)
+    return sanitizeProductoCosto(normalizeProductoFotos({ ...p, estado: computeEstado(p), estadoOperacional: computeEstadoOperacional(p) }), canReadCosto)
   })
 }

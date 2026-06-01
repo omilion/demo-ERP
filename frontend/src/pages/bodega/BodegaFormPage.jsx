@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../components/forms/index'
-import { useProducto, useUpdateProducto, useCreateProducto, useHistorialPrecios, useMovimientos, useAddMovimiento } from '../../api/productos'
+import { useProducto, useUpdateProducto, useCreateProducto, useHistorialPrecios, useMovimientos, useAddMovimiento, useUploadProductoImagen } from '../../api/productos'
 import { useCategorias } from '../../api/categorias'
 
 function PrecioHistorial({ historial }) {
@@ -46,6 +46,58 @@ function PrecioHistorial({ historial }) {
         </table>
       </div>
     </>
+  )
+}
+
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(reader.error || new Error('No se pudo leer la imagen'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function ImageUploadField({ label, value, onUploaded, size = 'chica', append = false, previewSize = 120 }) {
+  const upload = useUploadProductoImagen()
+
+  const handleFile = async event => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      const dataUrl = await readAsDataUrl(file)
+      const uploaded = await upload.mutateAsync({ dataUrl, size })
+      onUploaded(uploaded.url, append)
+      event.target.value = ''
+    } catch (error) {
+      alert(error?.response?.data?.error || error.message || 'No se pudo subir la imagen')
+    }
+  }
+
+  const previews = append
+    ? String(value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+    : (value ? [value] : [])
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, background: 'var(--bg)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)' }}>{label}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>JPG, PNG o WEBP. Maximo 4 MB.</div>
+        </div>
+        <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 34, padding: '7px 12px', borderRadius: 7, background: 'var(--green-700)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: upload.isPending ? 'default' : 'pointer', opacity: upload.isPending ? 0.6 : 1 }}>
+          {upload.isPending ? 'Subiendo...' : append ? 'Agregar imagen' : 'Subir imagen'}
+          <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFile} disabled={upload.isPending} style={{ display: 'none' }} />
+        </label>
+      </div>
+      {previews.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {previews.slice(0, append ? 8 : 1).map((url, idx) => (
+            <img key={`${url}-${idx}`} src={url} alt="" style={{ width: previewSize, height: previewSize, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }} onError={e => { e.currentTarget.style.display = 'none' }} />
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -122,6 +174,15 @@ export default function BodegaFormPage() {
     set('subcategoriaId', '')
   }
 
+  const setUploadedImage = (field, url, append = false) => {
+    if (append) {
+      const current = data[field] ? `${data[field]}\n` : ''
+      set(field, `${current}${url}`)
+      return
+    }
+    set(field, url)
+  }
+
   const handleSave = () => {
     if (!validate({ nombre: { required: true }, cod: { required: true } })) return
     const payload = {
@@ -184,7 +245,7 @@ export default function BodegaFormPage() {
       onSave={handleSave}
       saving={saving}
     >
-      <FormDivider label="Identificación" />
+      <FormDivider label="Datos del producto" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
         <FormField label="Código" required error={errors.cod}>
           <Input value={data.cod} onChange={v => set('cod', v)} placeholder="ESP-001" error={errors.cod} disabled={isEdit} />
@@ -236,8 +297,8 @@ export default function BodegaFormPage() {
         </FormField>
       </div>
 
-      <FormDivider label="Stock y Precio" />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14 }}>
+      <FormDivider label="Inventario" />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <FormField label="Stock actual" hint="Unidades">
           <Input value={data.stock} onChange={v => set('stock', v)} type="number" placeholder="0" disabled={isEdit} />
           {isEdit && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Para cambiar stock use movimientos de bodega.</div>}
@@ -245,6 +306,10 @@ export default function BodegaFormPage() {
         <FormField label="Stock mínimo" hint="Alerta bajo">
           <Input value={data.minimo} onChange={v => set('minimo', v)} type="number" placeholder="0" />
         </FormField>
+      </div>
+
+      <FormDivider label="Precios" />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <FormField label="Precio lista">
           <Input value={data.precio} onChange={v => set('precio', v)} type="number" prefix="$" placeholder="0" />
         </FormField>
@@ -252,12 +317,40 @@ export default function BodegaFormPage() {
           <Input value={data.precioMarco} onChange={v => set('precioMarco', v)} type="number" prefix="$" placeholder="0" />
         </FormField>
       </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
       <FormField label="Descuento (%)" hint="Equivalente a descuento legacy">
         <Input value={data.porcDesc} onChange={v => set('porcDesc', v)} type="number" placeholder="0" />
       </FormField>
       <FormField label="ID Convenio Marco" hint="Código del rubro/línea en CM">
         <Input value={data.idMarco} onChange={v => set('idMarco', v)} placeholder="123456" />
       </FormField>
+      </div>
+
+      <FormDivider label="Imagenes del producto" />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <ImageUploadField
+          label="Miniatura"
+          value={data.fotoUrl}
+          onUploaded={(url, append) => setUploadedImage('fotoUrl', url, append)}
+          size="chica"
+          previewSize={112}
+        />
+        <ImageUploadField
+          label="Foto principal"
+          value={data.fotoUrlGrande}
+          onUploaded={(url, append) => setUploadedImage('fotoUrlGrande', url, append)}
+          size="grande"
+          previewSize={160}
+        />
+      </div>
+      <ImageUploadField
+        label="Galeria"
+        value={data.fotosGaleria}
+        onUploaded={(url, append) => setUploadedImage('fotosGaleria', url, append)}
+        size="grande"
+        append
+        previewSize={72}
+      />
 
       <FormDivider label="Tienda Web" />
       <div style={{ display: 'flex', gap: 24, marginBottom: 8 }}>
@@ -272,6 +365,8 @@ export default function BodegaFormPage() {
       </div>
       {data.visibleWeb && (
         <>
+          {data.__legacyUrlEditor && (
+          <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <FormField label="Foto (URL miniatura)" hint="JPG/PNG público">
               <Input value={data.fotoUrl} onChange={v => set('fotoUrl', v)} placeholder="/uploads/productos/chicas/123-1.jpeg" />
@@ -292,6 +387,8 @@ export default function BodegaFormPage() {
               </div>
             )}
           </FormField>
+          </>
+          )}
           <FormField label="Descripción web" hint="Texto largo para tienda">
             <Textarea value={data.descripcionWeb} onChange={v => set('descripcionWeb', v)} rows={3} />
           </FormField>
