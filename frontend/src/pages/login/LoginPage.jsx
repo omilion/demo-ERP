@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
 import api from '../../api/client'
+import plastimarLogo from '../../assets/plastimar-logo.webp'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -30,9 +31,7 @@ export default function LoginPage() {
     <div style={s.wrap}>
       <div style={s.card}>
         <div style={s.brand}>
-          <div style={s.logo}>P</div>
-          <h1 style={s.title}>Plastimar</h1>
-          <p style={s.sub}>Sisgestion 3.0</p>
+          <img src={plastimarLogo} alt="Plastimar Sisgestion 3.0" style={s.logo} />
         </div>
         <form onSubmit={handleSubmit} style={s.form}>
           <label style={s.label}>
@@ -56,12 +55,10 @@ export default function LoginPage() {
 }
 
 const s = {
-  wrap:  { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' },
+  wrap:  { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--green-900)' },
   card:  { width: 360, background: '#fff', borderRadius: 14, padding: 40, boxShadow: 'var(--shadow-md)' },
   brand: { textAlign: 'center', marginBottom: 32 },
-  logo:  { width: 44, height: 44, borderRadius: 12, background: 'var(--green-800)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, margin: '0 auto 12px' },
-  title: { fontSize: 20, fontWeight: 700, color: 'var(--text-1)' },
-  sub:   { fontSize: 12, color: 'var(--text-3)', marginTop: 2 },
+  logo:  { width: 230, maxWidth: '100%', height: 'auto', display: 'block', margin: '0 auto' },
   form:  { display: 'flex', flexDirection: 'column', gap: 14 },
   label: { display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, fontWeight: 500, color: 'var(--text-2)' },
   input: { padding: '11px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, minHeight: 44, fontFamily: 'inherit', color: 'var(--text-1)' },

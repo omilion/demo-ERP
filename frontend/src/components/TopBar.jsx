@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/auth'
 import { Icon } from './shared'
 import api from '../api/client'
 import { can, canAny, getUserRole, hasRole } from '../utils/permissions'
+import plastimarLogo from '../assets/plastimar-logo.webp'
 
 const NAV_GROUPS = [
   { label: 'Ventas', items: [
@@ -194,12 +195,8 @@ export function TopBar() {
   return (
     <header style={{ background: 'var(--green-900)', position: 'sticky', top: 0, zIndex: 100, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
       <div className="topbar-inner">
-        <div onClick={() => navigate('/dashboard')} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flexShrink: 0 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--green-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ color: '#fff', fontWeight: 800, fontSize: 14, fontFamily: "'DM Sans', sans-serif" }}>P</span>
-          </div>
-          <span className="topbar-brand-name" style={{ color: '#fff', fontWeight: 700, fontSize: 15, letterSpacing: 0 }}>PLASTIMAR</span>
-          <span className="topbar-brand-suffix" style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>ERP</span>
+        <div onClick={() => navigate('/dashboard')} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
+          <img src={plastimarLogo} alt="Plastimar Sisgestion 3.0" className="topbar-brand-logo" style={{ display: 'block', width: 132, height: 'auto' }} />
         </div>
 
         <nav className="topbar-nav">
