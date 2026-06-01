@@ -8,6 +8,7 @@ import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../u
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import { ColumnSelector, useColumnPreferences } from '../../components/ColumnSelector'
 
 const SEARCH_MODES = [
   { id: 'general', label: 'Todos' },
@@ -143,9 +144,9 @@ export default function ConsultaPreciosPage() {
     { key: 'idMarco', label: 'ID Marco', render: v => mono(v) },
     { key: 'codigoBarra', label: 'Cod barra', render: v => mono(v) },
     { key: 'nombre', label: 'Nombre', wrap: true },
-    { key: 'consultaPrecios', label: 'Categoría', render: v => v?.categoriaNombre ? <Badge tone="gray">{v.categoriaNombre}</Badge> : '-' },
-    { key: 'consultaPrecios', label: 'Subcategoría', render: v => v?.subcategoriaNombre || '-' },
-    { key: 'consultaPrecios', label: 'Proveedor', render: v => v?.proveedorNombre || '-' },
+    { key: 'categoriaPrecio', label: 'Categoría', render: (_, row) => row.consultaPrecios?.categoriaNombre ? <Badge tone="gray">{row.consultaPrecios.categoriaNombre}</Badge> : '-' },
+    { key: 'subcategoriaPrecio', label: 'Subcategoría', render: (_, row) => row.consultaPrecios?.subcategoriaNombre || '-' },
+    { key: 'proveedorPrecio', label: 'Proveedor', render: (_, row) => row.consultaPrecios?.proveedorNombre || '-' },
     ...(canReadCosto ? [{ key: 'precioLista', label: 'Precio Costo', align: 'right', render: (v, row) => canEditPrecio
       ? (
         <div style={priceEditStyle} onClick={e => e.stopPropagation()}>
@@ -170,14 +171,15 @@ export default function ConsultaPreciosPage() {
         </div>
       )
       : price(v) }] : []),
-    { key: 'consultaPrecios', label: 'Desc cat.', align: 'right', render: v => mono(pct(v?.porcDescCategoria)) },
-    { key: 'consultaPrecios', label: 'Desc prod.', align: 'right', render: v => mono(pct(v?.porcDescProducto)) },
-    { key: 'consultaPrecios', label: 'Normal sala + IVA', align: 'right', render: v => price(v?.precioNormalSalaVentaIva) },
-    { key: 'consultaPrecios', label: 'Con descuento', align: 'right', render: v => price(v?.precioConDescuento) },
-    { key: 'consultaPrecios', label: 'Conv. Marco', align: 'right', render: v => price(v?.precioConvMarco) },
-    { key: 'consultaPrecios', label: 'Licitación', align: 'right', render: v => price(v?.precioLicitacion) },
+    { key: 'descCategoria', label: 'Desc cat.', align: 'right', render: (_, row) => mono(pct(row.consultaPrecios?.porcDescCategoria)) },
+    { key: 'descProducto', label: 'Desc prod.', align: 'right', render: (_, row) => mono(pct(row.consultaPrecios?.porcDescProducto)) },
+    { key: 'precioNormalSalaIva', label: 'Normal sala + IVA', align: 'right', render: (_, row) => price(row.consultaPrecios?.precioNormalSalaVentaIva) },
+    { key: 'precioConDescuento', label: 'Con descuento', align: 'right', render: (_, row) => price(row.consultaPrecios?.precioConDescuento) },
+    { key: 'precioConvenioMarco', label: 'Conv. Marco', align: 'right', render: (_, row) => price(row.consultaPrecios?.precioConvMarco) },
+    { key: 'precioLicitacion', label: 'Licitación', align: 'right', render: (_, row) => price(row.consultaPrecios?.precioLicitacion) },
     { key: 'stock', label: 'Stock', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
   ]
+  const { selected, setSelected, reset, visibleColumns, required } = useColumnPreferences('consulta-precios', cols, user)
 
   return (
     <main className="page page-wide">
@@ -188,6 +190,7 @@ export default function ConsultaPreciosPage() {
         actions={<>
           <Btn variant="secondary" icon="download" size="sm" onClick={exportarPrecios}>Exportar Excel</Btn>
           <Btn variant="secondary" icon="printer" size="sm" onClick={() => window.print()}>PDF/Imprimir</Btn>
+          <ColumnSelector columns={cols} selected={selected} onChange={setSelected} onReset={reset} required={required} />
         </>}
       />
 
@@ -256,13 +259,14 @@ export default function ConsultaPreciosPage() {
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando productos...</div>
           : <Table
-              columns={cols}
+              columns={visibleColumns}
               rows={items}
               emptyMessage="No hay productos con ese criterio"
               onRowDoubleClick={canEditPrecio ? row => navigate('/bodega/' + row.id + '/editar') : undefined}
               autoFocus
               ariaLabel="Consulta de precios de productos"
               getRowKey={row => row.id}
+              columnPrefs={false}
             />
         }
         <Pager
