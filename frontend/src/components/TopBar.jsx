@@ -172,6 +172,7 @@ export function TopBar() {
   const userRef = useRef()
   const clock = useClock()
   const role = getUserRole(user)
+  const dashboardActive = location.pathname === '/' || location.pathname === '/dashboard' || location.pathname.startsWith('/dashboard/')
   const visibleGroups = NAV_GROUPS
     .map(group => ({ ...group, items: group.items.filter(item => canUseNavItem(user, item)) }))
     .filter(group => group.items.length > 0)
@@ -204,13 +205,13 @@ export function TopBar() {
         <nav className="topbar-nav">
           <button onClick={() => navigate('/dashboard')} style={{
             padding: '6px 12px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
-            color: location.pathname === '/dashboard' || location.pathname === '/' ? '#fff' : 'rgba(255,255,255,0.78)',
-            fontWeight: location.pathname === '/dashboard' || location.pathname === '/' ? 600 : 400,
-            background: location.pathname === '/dashboard' || location.pathname === '/' ? 'rgba(255,255,255,0.18)' : 'transparent',
+            color: dashboardActive ? '#fff' : 'rgba(255,255,255,0.78)',
+            fontWeight: dashboardActive ? 600 : 400,
+            background: dashboardActive ? 'rgba(255,255,255,0.18)' : 'transparent',
             transition: 'background 0.15s',
           }}
-            onMouseEnter={e => !['/', '/dashboard'].includes(location.pathname) && (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
-            onMouseLeave={e => !['/', '/dashboard'].includes(location.pathname) && (e.currentTarget.style.background = 'transparent')}
+            onMouseEnter={e => !dashboardActive && (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
+            onMouseLeave={e => !dashboardActive && (e.currentTarget.style.background = 'transparent')}
           >
             Dashboard
           </button>

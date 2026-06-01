@@ -3,7 +3,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { Shell } from './components/Shell'
 import { OdtLegacyRedirect, VentaLegacyRedirect } from './components/LegacyRedirects'
 import LoginPage from './pages/login/LoginPage'
-import DashboardPage from './pages/dashboard/DashboardPage'
+import DashboardPage, { DashboardOperativoPage } from './pages/dashboard/DashboardPage'
 import VentasPage from './pages/ventas/VentasPage'
 import VentasFormPage from './pages/ventas/VentasFormPage'
 import VentaPrintPage from './pages/ventas/VentaPrintPage'
@@ -64,6 +64,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
+      { path: 'dashboard/operativo', element: <DashboardOperativoPage /> },
       { path: 'ventas', element: protect(<VentasPage />, { module: 'ventas' }) },
       { path: 'ventas/:id', element: protect(<VentaLegacyRedirect />, { module: 'ventas' }) },
       { path: 'ventas/nueva', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
