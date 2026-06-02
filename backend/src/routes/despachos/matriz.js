@@ -135,6 +135,32 @@ async function buildDocumentoCondition(prisma, value, kind) {
   return ids.length ? { id: { in: ids } } : falseCondition()
 }
 
+function roundOne(value) {
+  return Math.round(value * 10) / 10
+}
+
+function buildPackingResumen(items = []) {
+  const total = items.reduce((sum, item) => sum + Number(item.cantidad || 0), 0)
+  const entregados = items.reduce((sum, item) => sum + Number(item.nEntregados || 0), 0)
+  const pendientes = Math.max(0, total - entregados)
+  const pct = total > 0 ? Math.round((entregados / total) * 100) : 0
+  const estado = total === 0 || entregados === 0
+    ? 'Pendiente'
+    : entregados >= total ? 'Completo' : 'Parcial'
+
+  return { total, entregados, pendientes, pct, estado }
+}
+
+function buildDespachoDias(despacho = {}) {
+  const start = despacho.fechaInterno || despacho.createdAt
+  const end = despacho.fechaEntrega
+  if (!start || !end) return null
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) return null
+  return roundOne((endDate.getTime() - startDate.getTime()) / 864e5)
+}
+
 function applyTipoVenta(where, tipoVenta) {
   const tipo = cleanText(tipoVenta)
   if (!tipo) return
@@ -295,6 +321,7 @@ function mapOrderRows(ordenes, { odtsByOrden, cotizByOrden, clientesById }) {
     const facturado = Number(orden.facturado || 0)
     const odts = odtsByOrden[orden.id] || []
     const cotizaciones = cotizByOrden[orden.id] || []
+    const packing = buildPackingResumen(orden.items || [])
     return {
       id: orden.id,
       ordenId: orden.id,
@@ -321,6 +348,7 @@ function mapOrderRows(ordenes, { odtsByOrden, cotizByOrden, clientesById }) {
         cantidad: item.cantidad,
         entregados: item.nEntregados,
       })),
+      packing,
       odts,
       odtCount: odts.length,
       guias: (orden.guiasDespacho || []).map(guia => ({
@@ -352,6 +380,7 @@ function mapOrderRows(ordenes, { odtsByOrden, cotizByOrden, clientesById }) {
         comuna: d.comuna,
         parcial: d.parcial,
         tieneMulta: d.tieneMulta,
+        tiempoDespachoDias: buildDespachoDias(d),
       })),
       despachoCount: (orden.despachos || []).length,
       direccion: despachoPrincipal?.direccion || sucursal?.direccion || null,
@@ -444,6 +473,7 @@ function rowsForCsv(items) {
     ...row,
     fechaCreacion: row.fechaCreacion ? new Date(row.fechaCreacion).toISOString().slice(0, 10) : '',
     detalleProductos: row.itemsDetalle.map(item => `${item.codigo || ''} ${item.nombre || ''} (${item.entregados || 0}/${item.cantidad || 0})`.trim()).join(' | '),
+    packingTexto: row.packing ? `${row.packing.entregados}/${row.packing.total} (${row.packing.estado})` : '',
     odtsTexto: row.odts.map(odt => `#${odt.id} ${odt.estado || ''}`.trim()).join(' | '),
     guiasTexto: row.guias.map(guia => `${guia.nGuia}${guia.fechaGuia ? ` ${new Date(guia.fechaGuia).toISOString().slice(0, 10)}` : ''}`).join(' | '),
     documentosTexto: row.documentos.map(doc => `${doc.tipoDocumento || doc.documento || ''} ${doc.nDoc || doc.numeroNCInterna || ''}`.trim()).join(' | '),
@@ -480,6 +510,7 @@ export function registerDespachoMatrizRoutes(fastify) {
       { key: 'estadoPago', label: 'Estado Pago' },
       { key: 'estadoEntrega', label: 'Estado Entrega' },
       { key: 'detalleProductos', label: 'Detalle Productos' },
+      { key: 'packingTexto', label: 'Packing' },
       { key: 'odtsTexto', label: 'ODTs' },
       { key: 'guiasTexto', label: 'Guias Despacho' },
       { key: 'documentosTexto', label: 'Documentos' },

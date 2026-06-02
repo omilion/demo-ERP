@@ -67,7 +67,7 @@ jobs:
         env:
           JWT_ACCESS_SECRET: ci-access-secret
           JWT_REFRESH_SECRET: ci-refresh-secret
-        run: npm test -- staging-smoke.test.js app.test.js rrhh-helpers.test.js despachos-traceability.test.js odt-consumos.test.js odt-item-workflow.test.js odt-operations.test.js pasar-taller.test.js
+        run: npm test -- staging-smoke.test.js app.test.js rrhh-helpers.test.js despachos-traceability.test.js despachos.test.js odt-costeo.test.js odt-list-helpers.test.js odt-consumos.test.js odt-item-workflow.test.js odt-operations.test.js pasar-taller.test.js
 
       - name: Install frontend deps
         working-directory: frontend

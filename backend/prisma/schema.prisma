@@ -447,6 +447,8 @@ model Orden {
   guiasDespacho      GuiaDespacho[]
   movimientosBodega  MovimientoBodega[]
   movimientosCaja    MovimientoCaja[]
+  packingBultos      PackingBulto[]
+  packingEventos     PackingEvento[]
   clienteSucursal    ClienteSucursal? @relation(fields: [clienteSucursalId], references: [id], onDelete: SetNull)
 
   @@index([nInterno])
@@ -472,6 +474,7 @@ model OrdenItem {
   userMod         String?   @map("user_mod")
   fecham          DateTime?
   orden           Orden     @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  packingEventos  PackingEvento[]
 
   @@index([ordenId])
   @@map("orden_items")
@@ -1165,6 +1168,9 @@ model Despacho {
   createdAt    DateTime  @default(now()) @map("created_at")
   orden        Orden?    @relation(fields: [ordenId], references: [id], onDelete: SetNull)
   odt          Odt?      @relation(fields: [odtId], references: [id], onDelete: SetNull)
+  packingBultos  PackingBulto[]
+  packingEventos PackingEvento[]
+  trackingEventos DespachoTrackingEvento[]
 
   @@index([ordenId])
   @@index([odtId])
@@ -1174,6 +1180,70 @@ model Despacho {
 }
 
 // ── RRHH ─────────────────────────────────────────────────────────────
+
+model DespachoTrackingEvento {
+  id          Int      @id @default(autoincrement())
+  despachoId  Int      @map("despacho_id")
+  estado      String
+  transporte  String?
+  ubicacion   String?
+  observacion String?
+  fechaEvento DateTime @default(now()) @map("fecha_evento")
+  usuario     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  despacho    Despacho @relation(fields: [despachoId], references: [id], onDelete: Cascade)
+
+  @@index([despachoId, fechaEvento])
+  @@index([estado])
+  @@map("despacho_tracking_eventos")
+  @@schema("bodega")
+}
+
+model PackingBulto {
+  id          Int      @id @default(autoincrement())
+  ordenId     Int      @map("orden_id")
+  despachoId  Int?     @map("despacho_id")
+  numero      String
+  estado      String   @default("Preparado")
+  observacion String?
+  usuario     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  orden       Orden    @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  despacho    Despacho? @relation(fields: [despachoId], references: [id], onDelete: SetNull)
+  eventos     PackingEvento[]
+
+  @@unique([ordenId, numero])
+  @@index([despachoId])
+  @@map("packing_bultos")
+  @@schema("bodega")
+}
+
+model PackingEvento {
+  id               Int      @id @default(autoincrement())
+  ordenId          Int      @map("orden_id")
+  ordenItemId      Int      @map("orden_item_id")
+  despachoId       Int?     @map("despacho_id")
+  bultoId          Int?     @map("bulto_id")
+  cantidadAnterior Int      @map("cantidad_anterior")
+  cantidadNueva    Int      @map("cantidad_nueva")
+  delta            Int
+  accion           String   @default("ajuste")
+  observacion      String?
+  usuario          String?
+  createdAt        DateTime @default(now()) @map("created_at")
+  orden            Orden    @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  ordenItem        OrdenItem @relation(fields: [ordenItemId], references: [id], onDelete: Cascade)
+  despacho         Despacho? @relation(fields: [despachoId], references: [id], onDelete: SetNull)
+  bulto            PackingBulto? @relation(fields: [bultoId], references: [id], onDelete: SetNull)
+
+  @@index([ordenId, createdAt])
+  @@index([ordenItemId, createdAt])
+  @@index([despachoId])
+  @@index([bultoId])
+  @@map("packing_eventos")
+  @@schema("bodega")
+}
 
 model Trabajador {
   id                 Int           @id @default(autoincrement())

@@ -4,7 +4,9 @@ import {
   ODT_ESTADOS_ABIERTOS,
   ODT_ESTADOS_ACTUALES,
   applyOdtStateSideEffects,
+  buildOdtTiempoMetrics,
   attachOperarios,
+  diffHours,
   buildOdtUpdateBitacoraEntries,
   buildOperarioCargaItems,
   isOpenOdtEstado,
@@ -57,6 +59,40 @@ describe('ODT operation helpers', () => {
 
     expect(applyOdtStateSideEffects({ estado: 'Asignada' }, {}, NOW)).toEqual({
       estado: 'Asignada',
+    })
+  })
+
+  it('computes basic ODT timing metrics without mutating the ODT', () => {
+    expect(diffHours('2026-05-23T08:00:00.000Z', '2026-05-23T10:30:00.000Z')).toBe(2.5)
+    expect(diffHours('bad-date', NOW)).toBeNull()
+
+    expect(buildOdtTiempoMetrics({
+      estado: 'En proceso',
+      createdAt: '2026-05-23T08:00:00.000Z',
+      fechaInicio: '2026-05-23T09:00:00.000Z',
+      plazo: '2026-05-23T11:00:00.000Z',
+    }, NOW)).toEqual({
+      produccionHoras: 3,
+      esperaHoras: 1,
+      cicloHoras: 4,
+      atrasoHoras: 1,
+      atrasoDias: 0,
+      enAtraso: true,
+    })
+
+    expect(buildOdtTiempoMetrics({
+      estado: 'Terminada',
+      createdAt: '2026-05-22T08:00:00.000Z',
+      fechaInicio: '2026-05-22T09:00:00.000Z',
+      fechaTermino: '2026-05-22T17:30:00.000Z',
+      plazo: '2026-05-22T16:30:00.000Z',
+    }, NOW)).toEqual({
+      produccionHoras: 8.5,
+      esperaHoras: 1,
+      cicloHoras: 9.5,
+      atrasoHoras: 1,
+      atrasoDias: 0,
+      enAtraso: false,
     })
   })
 

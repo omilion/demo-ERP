@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
+import { DndContext, DragOverlay, PointerSensor, pointerWithin, rectIntersection, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon, Badge, KpiCard, PageHeader, Btn, SearchBar, Tabs, Pager, Table } from '../../components/shared'
 import { ColumnSelector, useColumnPreferences } from '../../components/ColumnSelector'
-import { useOdts, useOdt, useOdtEstado, useAddBitacora, useDeleteBitacora, useAnularOdt, useCerrarOdt, useOdtOperarios, useOdtCargaOperarios } from '../../api/odts'
+import { useOdts, useOdtKanban, useOdt, useOdtEstado, useAddBitacora, useDeleteBitacora, useAnularOdt, useCerrarOdt, useOdtOperarios, useOdtCargaOperarios, useOdtProductividad } from '../../api/odts'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can, ventaPath } from '../../utils/permissions'
@@ -52,6 +53,44 @@ const TAB_PARAMS = {
 }
 
 const getErrorMessage = err => err?.response?.data?.error || err?.message || 'No se pudo completar la accion'
+
+const KANBAN_COLUMNS = [
+  { id: 'Prioritaria', label: 'Criticas', tone: 'red' },
+  { id: 'Pendiente', label: 'Pendientes', tone: 'amber' },
+  { id: 'Asignada', label: 'Asignadas', tone: 'blue' },
+  { id: 'En proceso', label: 'En proceso', tone: 'blue' },
+  { id: 'Control calidad', label: 'Control', tone: 'amber' },
+  { id: 'Terminada', label: 'Listas', tone: 'green', states: ['Terminada', 'Entregada'] },
+]
+
+const NEXT_ESTADO = {
+  Prioritaria: 'En proceso',
+  Pendiente: 'Asignada',
+  Asignada: 'En proceso',
+  'En proceso': 'Control calidad',
+  'Control calidad': 'Terminada',
+}
+
+function kanbanColumnId(odt) {
+  if (odt.estado === 'Entregada') return 'Terminada'
+  return odt.estado
+}
+
+function formatDuration(hours) {
+  if (hours == null) return '-'
+  if (hours < 24) return `${hours.toLocaleString('es-CL', { maximumFractionDigits: 1 })} h`
+  return `${(hours / 24).toLocaleString('es-CL', { maximumFractionDigits: 1 })} d`
+}
+
+function fmtMoney(value) {
+  if (value == null) return '-'
+  return '$' + Math.round(Number(value || 0)).toLocaleString('es-CL')
+}
+
+function formatAtraso(tiempos) {
+  if (!tiempos?.atrasoHoras) return '-'
+  return formatDuration(tiempos.atrasoHoras)
+}
 
 // Kept temporarily as reference while the taller UX is migrated from cards to list.
 // eslint-disable-next-line no-unused-vars
@@ -200,6 +239,316 @@ function BitacoraSection({ odtId, entries = [], canWrite, canDelete }) {
   )
 }
 
+function kanbanDropEstado(columnId) {
+  return columnId === 'Terminada' ? 'Terminada' : columnId
+}
+
+function OdtKanbanCardContent({ odt, canWrite, pending, onEstadoChange, isDragging = false }) {
+  const responsable = odt.operario
+    ? `${odt.operario.nombres || ''} ${odt.operario.apellidoPaterno || ''}`.trim()
+    : ''
+  const nextEstado = NEXT_ESTADO[odt.estado]
+  const overdue = odt.tiempos?.enAtraso
+
+  return (
+    <div style={{
+      textAlign: 'left',
+      background: '#fff',
+      border: `1px solid ${overdue ? 'var(--red)' : 'var(--border)'}`,
+      borderRadius: 8,
+      padding: 10,
+      cursor: canWrite ? 'grab' : 'pointer',
+      boxShadow: isDragging ? '0 10px 26px oklch(0 0 0 / 0.18)' : 'var(--shadow-sm)',
+      opacity: isDragging ? 0.94 : 1,
+      userSelect: 'none',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start', marginBottom: 7 }}>
+        <div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--green-700)', fontWeight: 700 }}>
+            ODT #{odtNumeroOperativo(odt)}
+          </div>
+          {odt.nInterno && <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: 'var(--text-3)' }}>N {odt.nInterno}</div>}
+        </div>
+        <Badge tone={ESTADO_TONE[odt.estado] || 'gray'}>{odt.estado}</Badge>
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', lineHeight: 1.25, marginBottom: 5 }}>
+        {odt.clienteNombre || '-'}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-2)', lineHeight: 1.35, marginBottom: 8, minHeight: 30 }}>
+        {(odt.descripcion || '-').slice(0, 110)}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: 10.5, color: 'var(--text-3)', marginBottom: 8 }}>
+        <span><Icon name="user" size={11} /> {responsable || '-'}</span>
+        <span style={{ color: overdue ? 'var(--red)' : 'var(--text-3)' }}><Icon name="clock" size={11} /> {formatAtraso(odt.tiempos)}</span>
+        <span><Icon name="tool" size={11} /> {formatDuration(odt.tiempos?.produccionHoras)}</span>
+        <span><Icon name="dollarSign" size={11} /> {fmtMoney(odt.costeo?.costoTotal)}</span>
+        <span><Icon name="calendar" size={11} /> {odt.plazo ? new Date(odt.plazo).toLocaleDateString('es-CL') : '-'}</span>
+        <span><Icon name="barChart2" size={11} /> {odt.costeo?.unidadesPorHora ?? '-'} u/h</span>
+      </div>
+      {canWrite && nextEstado && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={event => {
+              event.stopPropagation()
+              if (pending) return
+              onEstadoChange(odt.id, nextEstado)
+            }}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                event.stopPropagation()
+                if (pending) return
+                onEstadoChange(odt.id, nextEstado)
+              }
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              border: '1px solid var(--green-100)',
+              color: 'var(--green-700)',
+              borderRadius: 6,
+              padding: '4px 7px',
+              fontSize: 11,
+              fontWeight: 700,
+              opacity: pending ? 0.55 : 1,
+              cursor: pending ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {nextEstado} <Icon name="arrowRight" size={11} />
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DraggableOdtCard({ odt, canWrite, pending, onSelect, onEstadoChange }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: String(odt.id),
+    data: { odt },
+    disabled: !canWrite || pending,
+  })
+  const dragListeners = listeners ?? {}
+  const downRef = useRef({ x: 0, y: 0, t: 0 })
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...dragListeners}
+      role="button"
+      tabIndex={0}
+      onPointerDown={event => {
+        downRef.current = { x: event.clientX, y: event.clientY, t: Date.now() }
+        dragListeners.onPointerDown?.(event)
+      }}
+      onPointerUp={event => {
+        const down = downRef.current
+        const dx = Math.abs(event.clientX - down.x)
+        const dy = Math.abs(event.clientY - down.y)
+        if (dx < 5 && dy < 5 && Date.now() - down.t < 300) onSelect(odt)
+      }}
+      onKeyDown={event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onSelect(odt)
+        }
+      }}
+      style={{
+        transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+        touchAction: canWrite ? 'none' : 'auto',
+        opacity: isDragging ? 0.35 : 1,
+      }}
+    >
+      <OdtKanbanCardContent odt={odt} canWrite={canWrite} pending={pending} onEstadoChange={onEstadoChange} isDragging={isDragging} />
+    </div>
+  )
+}
+
+function KanbanColumn({ column, items, canWrite, pending, onSelect, onEstadoChange }) {
+  const { setNodeRef, isOver } = useDroppable({ id: column.id })
+
+  return (
+    <div ref={setNodeRef} style={{ border: `1px solid ${isOver ? 'var(--green-600)' : 'var(--border)'}`, borderRadius: 8, background: isOver ? 'var(--green-50)' : 'oklch(0.985 0.002 220)', minHeight: 420, display: 'flex', flexDirection: 'column', transition: 'border-color 0.15s, background 0.15s' }}>
+      <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#fff', borderRadius: '8px 8px 0 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Badge tone={column.tone}>{column.label}</Badge>
+        </div>
+        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--text-3)' }}>{items.length}</span>
+      </div>
+      <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 9, flex: 1 }}>
+        {items.length === 0 ? (
+          <div style={{ color: 'var(--text-3)', fontSize: 12, padding: '18px 8px', textAlign: 'center', border: isOver ? '1px dashed var(--green-600)' : '1px dashed transparent', borderRadius: 8 }}>Sin ODTs</div>
+        ) : items.map(odt => (
+          <DraggableOdtCard
+            key={odt.id}
+            odt={odt}
+            canWrite={canWrite}
+            pending={pending}
+            onSelect={onSelect}
+            onEstadoChange={onEstadoChange}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function KanbanBoard({ odts, canWrite, pending, onSelect, onEstadoChange, onEstadoDrop }) {
+  const [activeId, setActiveId] = useState(null)
+  const grouped = KANBAN_COLUMNS.reduce((acc, column) => ({ ...acc, [column.id]: [] }), {})
+  for (const odt of odts) {
+    const columnId = kanbanColumnId(odt)
+    if (grouped[columnId]) grouped[columnId].push(odt)
+  }
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
+  const activeOdt = activeId ? odts.find(odt => String(odt.id) === String(activeId)) : null
+
+  function handleDragEnd({ active, over }) {
+    setActiveId(null)
+    if (!over || !canWrite || pending) return
+    const odt = active.data.current?.odt || odts.find(item => String(item.id) === String(active.id))
+    if (!odt) return
+    const targetColumn = String(over.id)
+    if (!KANBAN_COLUMNS.some(column => column.id === targetColumn)) return
+    if (kanbanColumnId(odt) === targetColumn) return
+    onEstadoDrop(odt, kanbanDropEstado(targetColumn))
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={(args) => {
+        const pointerCollisions = pointerWithin(args)
+        return pointerCollisions.length > 0 ? pointerCollisions : rectIntersection(args)
+      }}
+      onDragStart={({ active }) => setActiveId(active.id)}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => setActiveId(null)}
+    >
+      <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(220px, 1fr))', gap: 12, minWidth: 1360 }}>
+          {KANBAN_COLUMNS.map(column => (
+            <KanbanColumn
+              key={column.id}
+              column={column}
+              items={grouped[column.id]}
+              canWrite={canWrite}
+              pending={pending}
+              onSelect={onSelect}
+              onEstadoChange={onEstadoChange}
+            />
+          ))}
+        </div>
+      </div>
+      <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.18,0.67,0.6,1.22)' }}>
+        {activeOdt && (
+          <OdtKanbanCardContent
+            odt={activeOdt}
+            canWrite={canWrite}
+            pending={pending}
+            onEstadoChange={onEstadoChange}
+            isDragging
+          />
+        )}
+      </DragOverlay>
+    </DndContext>
+  )
+}
+
+function OdtCosteoPanel({ costeo }) {
+  if (!costeo) return null
+  const alertas = []
+  if (costeo.alertas?.materialesSinPrecio) alertas.push(`${costeo.alertas.materialesSinPrecio} material(es) sin precio`)
+  if (costeo.alertas?.manoObraSinSueldo) alertas.push('Responsable sin sueldo liquido')
+  if (costeo.alertas?.sinHorasProduccion) alertas.push('Sin horas de produccion')
+
+  return (
+    <div style={{ marginTop: 12, padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Costeo estimado</div>
+        {alertas.length > 0 && <Badge tone="amber">Datos incompletos</Badge>}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        {[
+          ['Materiales', fmtMoney(costeo.costoMateriales)],
+          ['Mano obra', fmtMoney(costeo.costoManoObra)],
+          ['Total costo', fmtMoney(costeo.costoTotal)],
+          ['Costo unit.', fmtMoney(costeo.costoPorUnidad)],
+          ['Unid./hora', costeo.unidadesPorHora == null ? '-' : `${costeo.unidadesPorHora}`],
+          ['Margen est.', fmtMoney(costeo.margenEstimado)],
+        ].map(([label, value]) => (
+          <div key={label} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px' }}>
+            <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 3 }}>{label}</div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>{value}</div>
+          </div>
+        ))}
+      </div>
+      {alertas.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 9 }}>
+          {alertas.map(alerta => <Badge key={alerta} tone="amber">{alerta}</Badge>)}
+        </div>
+      )}
+      {(costeo.materiales || []).length > 0 && (
+        <div style={{ marginTop: 10, maxHeight: 138, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {(costeo.materiales || []).slice(0, 8).map((material, index) => (
+            <div key={`${material.codigoInterno || material.nombre}-${index}`} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, fontSize: 11, alignItems: 'center', padding: '5px 0', borderTop: index ? '1px dashed var(--border)' : 'none' }}>
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{material.nombre || material.codigoInterno || '-'}</span>
+              <span style={{ color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>{material.cantidad} {material.unidad || ''}</span>
+              <span style={{ fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>{fmtMoney(material.costo)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProductividadPanel({ items = [], totalOdts = 0, onSelectOperario }) {
+  if (!items.length) return null
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)', padding: 16, marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Productividad reciente</div>
+          <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 2 }}>{totalOdts.toLocaleString('es-CL')} ODTs cerradas en el rango</div>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(238px, 1fr))', gap: 10 }}>
+        {items.slice(0, 6).map(item => (
+          <button
+            key={item.operarioId || 'sin-responsable'}
+            type="button"
+            onClick={() => item.operarioId && onSelectOperario?.(String(item.operarioId))}
+            style={{
+              textAlign: 'left',
+              border: '1px solid var(--border)',
+              background: 'var(--bg)',
+              borderRadius: 8,
+              padding: '10px 12px',
+              cursor: item.operarioId ? 'pointer' : 'default',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start', marginBottom: 7 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>{item.responsable}</span>
+              <Badge tone={item.alertas?.materialesSinPrecio || item.alertas?.manoObraSinSueldo ? 'amber' : 'green'}>{item.odts} ODT</Badge>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: 11 }}>
+              <span style={{ color: 'var(--text-3)' }}>Unidades <b style={{ color: 'var(--text-1)' }}>{item.unidades}</b></span>
+              <span style={{ color: 'var(--text-3)' }}>Unid./h <b style={{ color: 'var(--text-1)' }}>{item.unidadesPorHora ?? '-'}</b></span>
+              <span style={{ color: 'var(--text-3)' }}>Costo <b style={{ color: 'var(--text-1)' }}>{fmtMoney(item.costoTotal)}</b></span>
+              <span style={{ color: 'var(--text-3)' }}>Margen <b style={{ color: item.margenEstimado < 0 ? 'var(--red)' : 'var(--green-700)' }}>{fmtMoney(item.margenEstimado)}</b></span>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function OdtModal({ odt, onClose, onEdit, onEstadoChange, onCloseOdt, onAnularOdt, canWrite, canDelete, lifecyclePending }) {
   const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
@@ -292,6 +641,9 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onCloseOdt, onAnularOd
               ['Plazo',        fmtDate(o.plazo)],
               ['Inicio',       fmtDate(o.fechaInicio)],
               ['Termino',      fmtDate(o.fechaTermino)],
+              ['Tiempo prod.',  formatDuration(o.tiempos?.produccionHoras)],
+              ['Ciclo',         formatDuration(o.tiempos?.cicloHoras)],
+              ['Atraso',        formatAtraso(o.tiempos)],
             ].map(([l, v], i) => (
               <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>{l}</div>
@@ -299,6 +651,8 @@ function OdtModal({ odt, onClose, onEdit, onEstadoChange, onCloseOdt, onAnularOd
               </div>
             ))}
           </div>
+
+          <OdtCosteoPanel costeo={o.costeo} />
 
           {/* Estado transitions */}
           {canWrite && available.length > 0 && (
@@ -367,12 +721,19 @@ export default function TallerPage() {
   const [fechaDesde, setFechaDesde] = useState(initialFechaDesde)
   const [fechaHasta, setFechaHasta] = useState(initialFechaHasta)
   const [selected, setSelected]     = useState(null)
+  const [viewMode, setViewMode]     = useState('kanban')
   const debRef = useRef(null)
   const cambiarEstado = useOdtEstado()
   const cerrarOdt = useCerrarOdt()
   const anularOdt = useAnularOdt()
   const { data: operariosMeta = { items: [] } } = useOdtOperarios()
   const { data: cargaOperarios = { items: [] } } = useOdtCargaOperarios()
+  const productividadParams = {}
+  if (fechaDesde) productividadParams.fechaDesde = fechaDesde
+  if (fechaHasta) productividadParams.fechaHasta = fechaHasta
+  if (tab !== 'all') productividadParams.tipo = tab
+  if (operarioFilter !== 'all') productividadParams.operarioId = operarioFilter
+  const { data: productividad = { items: [], totalOdts: 0 } } = useOdtProductividad(productividadParams)
 
   useEffect(() => {
     clearTimeout(debRef.current)
@@ -381,7 +742,8 @@ export default function TallerPage() {
   }, [search])
 
   const filterParams = { ...TAB_PARAMS[tab] }
-  if (estadoFilter !== 'all') filterParams.estado = estadoFilter === 'Listo' ? 'Terminada' : estadoFilter
+  if (estadoFilter === 'Listo') filterParams.estados = 'Terminada,Entregada'
+  else if (estadoFilter !== 'all') filterParams.estado = estadoFilter
   if (estadoFilter === 'Anulada') filterParams.includeEliminados = 'true'
   if (operarioFilter !== 'all') filterParams.operarioId = operarioFilter
   if (debouncedSearch) filterParams.search = debouncedSearch
@@ -394,7 +756,9 @@ export default function TallerPage() {
   const apiParams = { ...filterParams, page: String(page) }
 
   const { data: odtResult = { items: [], total: 0, limit: 100, stats: {} }, isLoading } = useOdts(apiParams)
+  const { data: kanbanResult = { items: [], total: 0, limit: 1000, stats: {} }, isLoading: kanbanLoading } = useOdtKanban(filterParams, viewMode === 'kanban')
   const odts  = odtResult.items ?? []
+  const kanbanOdts = kanbanResult.items ?? []
   const total = odtResult.total ?? 0
   const LIMIT = odtResult.limit ?? 100
   const pages = odtResult.pages ?? Math.max(1, Math.ceil(total / LIMIT))
@@ -425,6 +789,17 @@ export default function TallerPage() {
         {fmtDate(v)}
       </span>
     ) },
+    { key: 'tiempos', label: 'Tiempo prod.', render: (_, row) => formatDuration(row.tiempos?.produccionHoras) },
+    { key: 'costeo', label: 'Costo est.', render: (_, row) => (
+      <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: row.costeo?.alertas?.materialesSinPrecio || row.costeo?.alertas?.manoObraSinSueldo ? 'var(--amber)' : 'var(--text-1)' }}>
+        {fmtMoney(row.costeo?.costoTotal)}
+      </span>
+    ) },
+    { key: 'atraso', label: 'Atraso', render: (_, row) => (
+      <span style={{ color: row.tiempos?.enAtraso ? 'var(--red)' : 'var(--text-3)', fontWeight: row.tiempos?.enAtraso ? 700 : 500 }}>
+        {formatAtraso(row.tiempos)}
+      </span>
+    ) },
     { key: '_acc', label: '', required: true, render: (_, row) => (
       <Btn variant="ghost" size="sm" icon="eye" onClick={e => { e.stopPropagation(); setSelected(row) }}>Ver</Btn>
     ) },
@@ -438,6 +813,15 @@ export default function TallerPage() {
       },
       onError: err => alert(getErrorMessage(err)),
     })
+  }
+
+  function handleKanbanDrop(odt, estado) {
+    if (!canWriteTaller || cambiarEstado.isPending) return
+    const current = odt.estado || 'Sin estado'
+    if (current === estado) return
+    const odtNumero = odtNumeroOperativo(odt)
+    if (!confirm(`Confirmas mover la ODT #${odtNumero} de ${current} a ${estado}?`)) return
+    handleEstadoChange(odt.id, estado)
   }
 
   function handleCloseOdt(odt, estado) {
@@ -493,7 +877,10 @@ export default function TallerPage() {
         subtitle={`${total.toLocaleString('es-CL')} ODTs en total`}
         breadcrumb={['Inicio', 'Taller', 'ODTs']}
         actions={<>
-          <ColumnSelector columns={odtColumns} selected={selectedColumns} onChange={setSelectedColumns} onReset={resetColumns} required={requiredColumns} />
+          <Btn variant="secondary" icon={viewMode === 'kanban' ? 'list' : 'grid'} size="sm" onClick={() => setViewMode(viewMode === 'kanban' ? 'tabla' : 'kanban')}>
+            {viewMode === 'kanban' ? 'Tabla' : 'Kanban'}
+          </Btn>
+          {viewMode === 'tabla' && <ColumnSelector columns={odtColumns} selected={selectedColumns} onChange={setSelectedColumns} onReset={resetColumns} required={requiredColumns} />}
           <Btn variant="secondary" icon="download" size="sm" onClick={handleExport}>Exportar</Btn>
           {canWriteTaller && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/taller/nueva')}>Nueva ODT</Btn>}
         </>}
@@ -502,9 +889,9 @@ export default function TallerPage() {
       <div className="kpi-strip">
         <KpiCard label="Pendientes criticas" value={isLoading ? '...' : prioritarias.toLocaleString('es-CL')} icon="zap" tone={prioritarias > 0 ? 'red' : 'neutral'} sublabel="Prioridad urgente" onClick={() => setEst('Pendiente')} />
         <KpiCard label="En Proceso"   value={isLoading ? '...' : enProceso.toLocaleString('es-CL')}    icon="tool"  tone="blue"   sublabel="Trabajos activos"   onClick={() => setEst('En proceso')} />
-        <KpiCard label="Asignadas"    value={isLoading ? '...' : asignadas.toLocaleString('es-CL')}    icon="user"  tone="blue"   sublabel="Con responsable"    onClick={() => setEst('Pendiente')} />
+        <KpiCard label="Asignadas"    value={isLoading ? '...' : asignadas.toLocaleString('es-CL')}    icon="user"  tone="blue"   sublabel="Con responsable"    onClick={() => setEst('Asignada')} />
         <KpiCard label="Pendientes"   value={isLoading ? '...' : pendientes.toLocaleString('es-CL')}   icon="clock" tone="amber"  sublabel="Por iniciar"       onClick={() => setEst('Pendiente')} />
-        <KpiCard label="Control"      value={isLoading ? '...' : enControl.toLocaleString('es-CL')}    icon="search" tone="amber" sublabel="Pendiente de cierre"   onClick={() => setEst('Pendiente')} />
+        <KpiCard label="Control"      value={isLoading ? '...' : enControl.toLocaleString('es-CL')}    icon="search" tone="amber" sublabel="Pendiente de cierre"   onClick={() => setEst('Control calidad')} />
         <KpiCard label="Listas"       value={isLoading ? '...' : terminadas.toLocaleString('es-CL')}   icon="checkCircle" tone="neutral" sublabel="Terminadas/entregadas" onClick={() => setEst('Listo')} />
       </div>
 
@@ -559,6 +946,12 @@ export default function TallerPage() {
         </div>
       )}
 
+      <ProductividadPanel
+        items={productividad.items || []}
+        totalOdts={productividad.totalOdts || 0}
+        onSelectOperario={setOperarioFilter}
+      />
+
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
         <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -570,8 +963,11 @@ export default function TallerPage() {
                 style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff', cursor: 'pointer' }}
               >
                 <option value="all">Todos los estados</option>
+                <option value="Prioritaria">Prioritarias</option>
                 <option value="Pendiente">Pendientes</option>
+                <option value="Asignada">Asignadas</option>
                 <option value="En proceso">En proceso</option>
+                <option value="Control calidad">Control calidad</option>
                 <option value="Listo">Listas</option>
                 <option value="Anulada">Anuladas</option>
               </select>
@@ -629,20 +1025,34 @@ export default function TallerPage() {
 
 
         <div style={{ padding: 16 }}>
-          {isLoading ? (
+          {viewMode === 'kanban' && kanbanResult.truncated && (
+            <div style={{ marginBottom: 12, padding: '9px 12px', border: '1px solid var(--amber-bg)', borderRadius: 8, background: 'var(--amber-bg)', color: 'oklch(0.42 0.12 68)', fontSize: 12, fontWeight: 600 }}>
+              Mostrando {kanbanOdts.length.toLocaleString('es-CL')} de {kanbanResult.total.toLocaleString('es-CL')} ODTs. Ajusta filtros para acotar.
+            </div>
+          )}
+          {(viewMode === 'kanban' ? kanbanLoading : isLoading) ? (
             <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>
               Cargando ODTs...
             </div>
-          ) : odts.length === 0 ? (
+          ) : (viewMode === 'kanban' ? kanbanOdts : odts).length === 0 ? (
             <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>
               <Icon name="info" size={24} color="var(--border)" />
               <p style={{ marginTop: 12 }}>Sin ODTs con ese criterio</p>
             </div>
+          ) : viewMode === 'kanban' ? (
+            <KanbanBoard
+              odts={kanbanOdts}
+              canWrite={canWriteTaller}
+              pending={cambiarEstado.isPending}
+              onSelect={setSelected}
+              onEstadoChange={handleEstadoChange}
+              onEstadoDrop={handleKanbanDrop}
+            />
           ) : (
             <Table columns={visibleColumns} rows={odts} onRowClick={setSelected} columnPrefs={false} />
           )}
         </div>
-        <Pager page={page} pages={pages} total={total} limit={LIMIT} shown={odts.length} onChange={setPagerPage} disabled={isLoading} />
+        {viewMode === 'tabla' && <Pager page={page} pages={pages} total={total} limit={LIMIT} shown={odts.length} onChange={setPagerPage} disabled={isLoading} />}
       </div>
 
       {selected && (

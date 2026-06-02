@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest'
 import {
   applyDespachoEstadoFilter,
   buildClienteOrdenFilter,
+  buildDespachoTiempoMetrics,
   buildOrdenEntregaSyncFromDespacho,
   buildOrdenEntregaSyncFromGuia,
   buildGuideWhereForDespacho,
+  buildPackingEventRows,
+  buildTrackingEventData,
+  normalizeTrackingEstado,
+  parsePackingReferenceId,
+  buildPackingUpdatePlan,
   resolveDispatchTraceability,
   validateDispatchFilterCoherence,
 } from '../src/routes/despachos/index.js'
@@ -352,6 +358,140 @@ describe('dispatch list filters', () => {
     expect(applyDespachoEstadoFilter(invalid, 'cerrada')).toEqual({
       status: 400,
       error: 'estado debe ser pendiente, entregada, parcial o multa',
+    })
+  })
+})
+
+describe('packing and dispatch timing helpers', () => {
+  it('builds a validated packing update plan for order items', () => {
+    const orderItems = [
+      { id: 1, cantidad: 3, nEntregados: 0 },
+      { id: 2, cantidad: 2, nEntregados: 1 },
+    ]
+
+    expect(buildPackingUpdatePlan(orderItems, [
+      { itemId: 1, nEntregados: '2' },
+      { id: 2, nEntregados: 2 },
+    ])).toEqual({
+      updates: [
+        { id: 1, nEntregados: 2, cantidadAnterior: 0, delta: 2 },
+        { id: 2, nEntregados: 2, cantidadAnterior: 1, delta: 1 },
+      ],
+    })
+
+    expect(buildPackingUpdatePlan(orderItems, [{ itemId: 3, nEntregados: 1 }])).toEqual({
+      error: 'Item 3 no pertenece a la orden',
+    })
+    expect(buildPackingUpdatePlan(orderItems, [{ itemId: 1, nEntregados: 4 }])).toEqual({
+      error: 'nEntregados supera la cantidad del item 1',
+    })
+    expect(buildPackingUpdatePlan(orderItems, [
+      { itemId: 1, nEntregados: 1 },
+      { itemId: 1, nEntregados: 2 },
+    ])).toEqual({
+      error: 'itemId duplicado: 1',
+    })
+  })
+
+  it('builds traceable packing event rows only for changed quantities', () => {
+    expect(buildPackingEventRows({
+      ordenId: 9,
+      despachoId: 4,
+      bultoId: 2,
+      usuario: 'Admin',
+      observacion: 'Bulto QA',
+      updates: [
+        { id: 1, nEntregados: 2, cantidadAnterior: 0, delta: 2 },
+        { id: 2, nEntregados: 1, cantidadAnterior: 1, delta: 0 },
+        { id: 3, nEntregados: 0, cantidadAnterior: 2, delta: -2 },
+      ],
+    })).toEqual([
+      {
+        ordenId: 9,
+        ordenItemId: 1,
+        despachoId: 4,
+        bultoId: 2,
+        cantidadAnterior: 0,
+        cantidadNueva: 2,
+        delta: 2,
+        accion: 'entrega',
+        observacion: 'Bulto QA',
+        usuario: 'Admin',
+      },
+      {
+        ordenId: 9,
+        ordenItemId: 3,
+        despachoId: 4,
+        bultoId: 2,
+        cantidadAnterior: 2,
+        cantidadNueva: 0,
+        delta: -2,
+        accion: 'correccion',
+        observacion: 'Bulto QA',
+        usuario: 'Admin',
+      },
+    ])
+  })
+
+  it('validates optional packing reference ids when they are present', () => {
+    expect(parsePackingReferenceId(null, 'despachoId')).toEqual({ id: null })
+    expect(parsePackingReferenceId('', 'despachoId')).toEqual({ id: null })
+    expect(parsePackingReferenceId('12', 'despachoId')).toEqual({ id: 12 })
+    expect(parsePackingReferenceId('abc', 'bultoId')).toEqual({ error: 'bultoId invalido' })
+  })
+
+  it('computes basic dispatch timing metrics', () => {
+    expect(buildDespachoTiempoMetrics({
+      fechaInterno: '2026-05-20T08:00:00.000Z',
+      fechaEntrega: '2026-05-22T14:00:00.000Z',
+    })).toEqual({
+      despachoHoras: 54,
+      despachoDias: 2.3,
+      pendiente: false,
+    })
+
+    expect(buildDespachoTiempoMetrics({
+      createdAt: '2026-05-20T08:00:00.000Z',
+      fechaEntrega: null,
+      eliminado: false,
+    }, new Date('2026-05-21T08:00:00.000Z'))).toEqual({
+      despachoHoras: 24,
+      despachoDias: 1,
+      pendiente: true,
+    })
+  })
+})
+
+describe('dispatch tracking helpers', () => {
+  it('normalizes known logistics tracking states', () => {
+    expect(normalizeTrackingEstado(' en ruta ')).toBe('En ruta')
+    expect(normalizeTrackingEstado('ENTREGADO')).toBe('Entregado')
+    expect(normalizeTrackingEstado('otro')).toBeNull()
+  })
+
+  it('builds tracking event data with a canonical state and user label', () => {
+    expect(buildTrackingEventData({
+      estado: 'incidencia',
+      transporte: '  Chilexpress  ',
+      ubicacion: '  Valparaiso  ',
+      observacion: '  Cliente ausente  ',
+      fechaEvento: '2026-06-02T10:15:00.000Z',
+    }, { nombre: 'Admin QA' })).toEqual({
+      data: {
+        estado: 'Incidencia',
+        transporte: 'Chilexpress',
+        ubicacion: 'Valparaiso',
+        observacion: 'Cliente ausente',
+        fechaEvento: new Date('2026-06-02T10:15:00.000Z'),
+        usuario: 'Admin QA',
+      },
+    })
+
+    expect(buildTrackingEventData({ estado: 'sin estado' })).toEqual({
+      error: 'estado tracking invalido',
+    })
+    expect(buildTrackingEventData({ estado: 'Preparado', fechaEvento: 'bad-date' })).toEqual({
+      error: 'fechaEvento invalida',
     })
   })
 })

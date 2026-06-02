@@ -49,6 +49,56 @@ export function isOpenOdtEstado(estado) {
   return ODT_ESTADOS_ABIERTOS.includes(estado)
 }
 
+function toValidDate(value) {
+  if (!value) return null
+  const date = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function roundHours(value) {
+  return Math.round(value * 10) / 10
+}
+
+export function diffHours(start, end) {
+  const startDate = toValidDate(start)
+  const endDate = toValidDate(end)
+  if (!startDate || !endDate || endDate < startDate) return null
+  return roundHours((endDate.getTime() - startDate.getTime()) / 36e5)
+}
+
+export function isPrismaMissingTable(error) {
+  return error?.code === 'P2021'
+}
+
+export function buildOdtTiempoMetrics(odt = {}, now = new Date()) {
+  const nowDate = toValidDate(now) || new Date()
+  const createdAt = toValidDate(odt.createdAt)
+  const fechaInicio = toValidDate(odt.fechaInicio)
+  const fechaTermino = toValidDate(odt.fechaTermino)
+  const plazo = toValidDate(odt.plazo)
+  const open = isOpenOdtEstado(odt.estado)
+  const terminal = isTerminalOdtEstado(odt.estado)
+  const productionEnd = fechaTermino || (open && fechaInicio ? nowDate : null)
+  const cycleEnd = fechaTermino || (open && createdAt ? nowDate : null)
+  const atrasoEnd = fechaTermino || (open ? nowDate : null)
+  const atrasoHoras = plazo && atrasoEnd && atrasoEnd > plazo ? diffHours(plazo, atrasoEnd) : 0
+
+  return {
+    produccionHoras: diffHours(fechaInicio, productionEnd),
+    esperaHoras: diffHours(createdAt, fechaInicio),
+    cicloHoras: diffHours(createdAt, cycleEnd),
+    atrasoHoras,
+    atrasoDias: atrasoHoras ? roundHours(atrasoHoras / 24) : 0,
+    enAtraso: atrasoHoras > 0 && !terminal,
+  }
+}
+
+export function attachOdtMetrics(odts, now = new Date()) {
+  const list = Array.isArray(odts) ? odts : [odts]
+  const enriched = list.map(odt => ({ ...odt, tiempos: buildOdtTiempoMetrics(odt, now) }))
+  return Array.isArray(odts) ? enriched : enriched[0]
+}
+
 export function applyOdtStateSideEffects(data, current = {}, now = new Date()) {
   const next = { ...data }
   if (next.estado === 'En proceso' && !current.fechaInicio && next.fechaInicio === undefined) {
@@ -68,10 +118,15 @@ export function applyOdtStateSideEffects(data, current = {}, now = new Date()) {
 
 export async function validateOperario(prisma, operarioId) {
   if (operarioId === undefined || operarioId === null) return null
-  const trabajador = await prisma.trabajador.findFirst({
-    where: { id: operarioId, estado: true },
-    select: { id: true, nombres: true, apellidoPaterno: true, apellidoMaterno: true, cargo: true, empresa: true },
-  })
+  let trabajador = null
+  try {
+    trabajador = await prisma.trabajador.findFirst({
+      where: { id: operarioId, estado: true },
+      select: { id: true, nombres: true, apellidoPaterno: true, apellidoMaterno: true, cargo: true, empresa: true },
+    })
+  } catch (error) {
+    if (!isPrismaMissingTable(error)) throw error
+  }
   return trabajador || { error: 'Operario no encontrado o inactivo' }
 }
 
@@ -79,10 +134,15 @@ export async function attachOperarios(prisma, odts) {
   const list = Array.isArray(odts) ? odts : [odts]
   const ids = [...new Set(list.map(o => o?.operarioId).filter(Boolean))]
   if (!ids.length) return Array.isArray(odts) ? list : { ...odts, operario: null }
-  const trabajadores = await prisma.trabajador.findMany({
-    where: { id: { in: ids } },
-    select: { id: true, nombres: true, apellidoPaterno: true, apellidoMaterno: true, cargo: true, empresa: true, estado: true },
-  })
+  let trabajadores = []
+  try {
+    trabajadores = await prisma.trabajador.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, nombres: true, apellidoPaterno: true, apellidoMaterno: true, cargo: true, empresa: true, estado: true },
+    })
+  } catch (error) {
+    if (!isPrismaMissingTable(error)) throw error
+  }
   const map = Object.fromEntries(trabajadores.map(t => [t.id, t]))
   const enriched = list.map(o => ({ ...o, operario: o.operarioId ? (map[o.operarioId] || null) : null }))
   return Array.isArray(odts) ? enriched : enriched[0]

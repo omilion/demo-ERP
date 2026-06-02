@@ -28,6 +28,77 @@ export default async function rrhhRoutes(fastify) {
       return normalizeCargoList(rows)
     })
 
+    f.get('/operativo', {
+      preHandler: [f.authenticate, f.rbac('rrhh', 'read')],
+    }, async (request) => {
+      const now = new Date()
+      const dias = parseOperativoDias(request.query?.dias)
+      const hoy = startOfDay(now)
+      const hasta = addDays(hoy, dias)
+      const trabajadorWhere = buildTrabajadorWhere({
+        empresa: request.query?.empresa,
+        cargo: request.query?.cargo,
+        estado: 'true',
+      })
+      const trabajadorRelationWhere = { estado: true }
+      if (trabajadorWhere.empresa) trabajadorRelationWhere.empresa = trabajadorWhere.empresa
+      if (trabajadorWhere.cargo) trabajadorRelationWhere.cargo = trabajadorWhere.cargo
+
+      try {
+        const [trabajadores, contratosPorVencer, licenciasActivas, vacacionesProgramadas] = await Promise.all([
+          f.prisma.trabajador.findMany({
+            where: trabajadorWhere,
+            orderBy: [{ apellidoPaterno: 'asc' }, { nombres: 'asc' }],
+            take: 1000,
+            select: trabajadorOperativoSelect,
+          }),
+          f.prisma.contrato.findMany({
+            where: {
+              estado: true,
+              termino: { gte: hoy, lte: hasta },
+              trabajador: trabajadorRelationWhere,
+            },
+            orderBy: { termino: 'asc' },
+            take: 30,
+            include: { trabajador: { select: trabajadorOperativoSelect } },
+          }),
+          f.prisma.licencia.findMany({
+            where: {
+              estado: true,
+              inicio: { lte: hoy },
+              termino: { gte: hoy },
+              trabajador: trabajadorRelationWhere,
+            },
+            orderBy: { termino: 'asc' },
+            take: 30,
+            include: { trabajador: { select: trabajadorOperativoSelect } },
+          }),
+          f.prisma.vacacion.findMany({
+            where: {
+              estado: true,
+              fechaTermino: { gte: hoy },
+              fechaInicio: { lte: hasta },
+              trabajador: trabajadorRelationWhere,
+            },
+            orderBy: { fechaInicio: 'asc' },
+            take: 30,
+            include: { trabajador: { select: trabajadorOperativoSelect } },
+          }),
+        ])
+        return buildRrhhOperativoSummary({
+          trabajadores,
+          contratosPorVencer,
+          licenciasActivas,
+          vacacionesProgramadas,
+          now,
+          dias,
+        })
+      } catch (error) {
+        if (!isPrismaMissingRrhhTable(error)) throw error
+        return { ...buildRrhhOperativoSummary({ now, dias }), rrhhSchemaDisponible: false }
+      }
+    })
+
     f.get('/trabajadores/:id', {
       preHandler: [f.authenticate, f.rbac('rrhh', 'read')],
     }, async (request, reply) => {
@@ -287,6 +358,130 @@ const toInt = v => (v == null || v === '' ? null : parseInt(v, 10))
 const toFloat = v => (v == null || v === '' ? null : parseFloat(v))
 const toBool = v => v === true || v === '1' || v === 1 || v === 'true'
 const queryText = v => (v == null ? '' : String(v).trim())
+const trabajadorOperativoSelect = {
+  id: true,
+  empresa: true,
+  nombres: true,
+  apellidoPaterno: true,
+  apellidoMaterno: true,
+  rut: true,
+  cargo: true,
+  fechaIngreso: true,
+  fechaTermino: true,
+  tipoContrato: true,
+  sueldoLiquido: true,
+  estado: true,
+}
+
+function startOfDay(date) {
+  const copy = new Date(date)
+  copy.setHours(0, 0, 0, 0)
+  return copy
+}
+
+function addDays(date, days) {
+  const copy = new Date(date)
+  copy.setDate(copy.getDate() + days)
+  return copy
+}
+
+function blank(value) {
+  return queryText(value) === ''
+}
+
+function trabajadorNombre(t = {}) {
+  return [t.nombres, t.apellidoPaterno, t.apellidoMaterno].filter(Boolean).join(' ').trim() || `Trabajador #${t.id}`
+}
+
+function trabajadorOperativoMini(t = {}) {
+  return {
+    id: t.id,
+    nombre: trabajadorNombre(t),
+    rut: t.rut || null,
+    empresa: t.empresa || null,
+    cargo: t.cargo || null,
+  }
+}
+
+function normalizeOperativoItem(item = {}, extra = {}) {
+  return {
+    id: item.id,
+    trabajador: trabajadorOperativoMini(item.trabajador || item),
+    ...extra,
+  }
+}
+
+export function parseOperativoDias(value) {
+  const parsed = parseInt(value, 10)
+  if (!Number.isFinite(parsed) || parsed < 1) return 30
+  return Math.min(parsed, 180)
+}
+
+export function isPrismaMissingRrhhTable(error) {
+  const text = `${error?.message || ''} ${error?.meta?.modelName || ''} ${error?.meta?.table || ''}`
+  return error?.code === 'P2021' || /relation .* does not exist|table .* does not exist|does not exist/i.test(text)
+}
+
+export function buildRrhhOperativoSummary({
+  trabajadores = [],
+  contratosPorVencer = [],
+  licenciasActivas = [],
+  vacacionesProgramadas = [],
+  now = new Date(),
+  dias = 30,
+} = {}) {
+  const activos = trabajadores.filter(t => t?.estado !== false)
+  const sinSueldo = activos.filter(t => blank(t.sueldoLiquido))
+  const sinCargo = activos.filter(t => blank(t.cargo))
+  const sinFechaIngreso = activos.filter(t => blank(t.fechaIngreso))
+  const porCargo = new Map()
+
+  for (const trabajador of activos) {
+    const cargo = queryText(trabajador.cargo) || 'Sin cargo'
+    porCargo.set(cargo, (porCargo.get(cargo) || 0) + 1)
+  }
+
+  return {
+    generadoEn: now,
+    dias,
+    rrhhSchemaDisponible: true,
+    totalActivos: activos.length,
+    alertas: {
+      sinSueldo: sinSueldo.length,
+      sinCargo: sinCargo.length,
+      sinFechaIngreso: sinFechaIngreso.length,
+      contratosPorVencer: contratosPorVencer.length,
+      licenciasActivas: licenciasActivas.length,
+      vacacionesProgramadas: vacacionesProgramadas.length,
+    },
+    dotacionPorCargo: [...porCargo.entries()]
+      .map(([cargo, total]) => ({ cargo, total }))
+      .sort((a, b) => b.total - a.total || a.cargo.localeCompare(b.cargo)),
+    sinSueldo: sinSueldo.slice(0, 12).map(trabajadorOperativoMini),
+    sinCargo: sinCargo.slice(0, 12).map(trabajadorOperativoMini),
+    sinFechaIngreso: sinFechaIngreso.slice(0, 12).map(trabajadorOperativoMini),
+    contratosPorVencer: contratosPorVencer.map(item => normalizeOperativoItem(item, {
+      contrato: item.contrato || null,
+      plazo: item.plazo || null,
+      inicio: item.inicio || null,
+      termino: item.termino || null,
+    })),
+    licenciasActivas: licenciasActivas.map(item => normalizeOperativoItem(item, {
+      tipo: item.tipo || null,
+      reposo: item.reposo || null,
+      inicio: item.inicio || null,
+      termino: item.termino || null,
+      dias: item.dias || null,
+    })),
+    vacacionesProgramadas: vacacionesProgramadas.map(item => normalizeOperativoItem(item, {
+      periodo: item.periodo || null,
+      fechaInicio: item.fechaInicio || null,
+      fechaTermino: item.fechaTermino || null,
+      dias: item.dias || null,
+      saldo: item.saldo || null,
+    })),
+  }
+}
 
 export function buildTrabajadorWhere(query = {}) {
   const where = {}

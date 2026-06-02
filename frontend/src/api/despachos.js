@@ -32,6 +32,24 @@ export const useDespacho = (id) =>
     enabled: !!id,
   })
 
+export const useDespachoPacking = (ordenId, enabled = true) =>
+  useQuery({
+    queryKey: ['despachos', 'packing', ordenId],
+    queryFn: () => api.get(`/despachos/ordenes/${ordenId}/packing`).then(r => r.data),
+    enabled: enabled && !!ordenId,
+    placeholderData: { items: [], bultos: [], eventos: [] },
+    staleTime: 30_000,
+  })
+
+export const useDespachoTracking = (despachoId, enabled = true) =>
+  useQuery({
+    queryKey: ['despachos', 'tracking', despachoId],
+    queryFn: () => api.get(`/despachos/${despachoId}/tracking`).then(r => r.data),
+    enabled: enabled && !!despachoId,
+    placeholderData: { latest: null, eventos: [] },
+    staleTime: 30_000,
+  })
+
 export const useCreateDespacho = () => {
   const qc = useQueryClient()
   return useMutation({
@@ -45,6 +63,34 @@ export const useUpdateDespacho = () => {
   return useMutation({
     mutationFn: ({ id, data }) => api.put(`/despachos/${id}`, data).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['despachos'] }),
+  })
+}
+
+export const useCreateDespachoTrackingEvento = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ despachoId, ...data }) => api.post(`/despachos/${despachoId}/tracking`, data).then(r => r.data),
+    onSuccess: (_, { despachoId }) => {
+      qc.invalidateQueries({ queryKey: ['despachos'] })
+      qc.invalidateQueries({ queryKey: ['despachos', despachoId] })
+      qc.invalidateQueries({ queryKey: ['despachos', 'tracking', despachoId] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+    },
+  })
+}
+
+export const useUpdateDespachoPacking = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ordenId, ...data }) => api.put(`/despachos/ordenes/${ordenId}/packing`, data).then(r => r.data),
+    onSuccess: (_, { ordenId }) => {
+      qc.invalidateQueries({ queryKey: ['despachos'] })
+      qc.invalidateQueries({ queryKey: ['despachos', 'packing', ordenId] })
+      qc.invalidateQueries({ queryKey: ['guias'] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+    },
   })
 }
 

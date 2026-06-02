@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, Pager, SearchBar, Table, Tabs } from '../../components/shared'
-import { useDespachoMatriz, useDespachos, useGuias, useCreateDespacho, useUpdateDespacho, useDeleteDespacho, useCreateGuia, useUpdateGuia, useDeleteGuia } from '../../api/despachos'
+import { useDespachoMatriz, useDespachos, useGuias, useDespachoPacking, useDespachoTracking, useCreateDespacho, useUpdateDespacho, useCreateDespachoTrackingEvento, useUpdateDespachoPacking, useDeleteDespacho, useCreateGuia, useUpdateGuia, useDeleteGuia } from '../../api/despachos'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can, odtPath, ventaPath } from '../../utils/permissions'
@@ -12,6 +12,7 @@ const TABS = [
   { id: 'guias', label: 'Guias' },
 ]
 
+const TRACKING_ESTADOS = ['Preparado', 'En ruta', 'Entregado', 'Incidencia', 'Reprogramado', 'Retenido', 'Devuelto']
 const ESTADO_PAGO_OPTS = ['', 'No pagada', 'Pagada', 'Parcial']
 const ESTADO_ENTREGA_OPTS = ['', 'Pendiente entrega', 'En despacho', 'Entregada', 'Parcial']
 const TIPO_VENTA_OPTS = [
@@ -42,6 +43,33 @@ const emptyDespacho = {
 
 const fmt = n => '$' + Math.round(Number(n || 0)).toLocaleString('es-CL')
 const dateFmt = value => value ? new Date(value).toLocaleDateString('es-CL') : '-'
+const numberFmt = value => Number(value || 0).toLocaleString('es-CL')
+
+function packingResumen(row) {
+  if (row?.packing) return row.packing
+  const items = row?.itemsDetalle || []
+  const total = items.reduce((sum, item) => sum + Number(item.cantidad || 0), 0)
+  const entregados = items.reduce((sum, item) => sum + Number(item.entregados || 0), 0)
+  const pendientes = Math.max(0, total - entregados)
+  const pct = total > 0 ? Math.round((entregados / total) * 100) : 0
+  const estado = total === 0 || entregados === 0
+    ? 'Pendiente'
+    : entregados >= total ? 'Completo' : 'Parcial'
+  return { total, entregados, pendientes, pct, estado }
+}
+
+function formatDays(value) {
+  if (value == null) return '-'
+  return `${Number(value).toLocaleString('es-CL', { maximumFractionDigits: 1 })} d`
+}
+
+function trackingTone(estado) {
+  if (estado === 'Entregado') return 'green'
+  if (estado === 'Incidencia' || estado === 'Devuelto') return 'red'
+  if (estado === 'En ruta' || estado === 'Preparado') return 'blue'
+  if (estado === 'Reprogramado' || estado === 'Retenido') return 'amber'
+  return 'gray'
+}
 
 export default function DespachosPage() {
   const navigate = useNavigate()
@@ -76,6 +104,8 @@ export default function DespachosPage() {
   const [hasta, setHasta] = useState('')
   const [creating, setCreating] = useState(null)
   const [editing, setEditing] = useState(null)
+  const [packing, setPacking] = useState(null)
+  const [tracking, setTracking] = useState(null)
   const [creatingGuia, setCreatingGuia] = useState(null)
   const [editingGuia, setEditingGuia] = useState(null)
 
@@ -139,6 +169,8 @@ export default function DespachosPage() {
   const guias = useGuias(tab === 'guias' ? guiaParams : {})
   const createMut = useCreateDespacho()
   const updateMut = useUpdateDespacho()
+  const updatePackingMut = useUpdateDespachoPacking()
+  const createTrackingMut = useCreateDespachoTrackingEvento()
   const delMut = useDeleteDespacho()
   const createGuiaMut = useCreateGuia()
   const updateGuiaMut = useUpdateGuia()
@@ -179,6 +211,7 @@ export default function DespachosPage() {
     { key: 'estadoPago', label: 'Pago', render: v => v ? <Badge tone={v === 'Pagada' ? 'green' : v === 'Parcial' ? 'amber' : 'red'}>{v}</Badge> : '-' },
     { key: 'estadoEntrega', label: 'Entrega', render: v => v ? <Badge tone={toneEntrega(v)}>{v}</Badge> : '-' },
     { key: 'itemsDetalle', label: 'Detalle', wrap: true, render: value => <DetalleProductos items={value || []} /> },
+    { key: 'packing', label: 'Packing', render: (_, row) => <PackingProgress row={row} /> },
     { key: 'odts', label: 'ODTs', render: value => <InlineList items={(value || []).map(odt => `#${odt.id} ${odt.estado || ''}`)} /> },
     { key: 'guias', label: 'Guias', render: (value, row) => {
       const list = (value || []).map(g => g.nGuia)
@@ -197,6 +230,15 @@ export default function DespachosPage() {
         <button onClick={e => { e.stopPropagation(); navigate(ventaPath(row.ordenId, user)) }} style={btnSm('var(--green-700)')}>Ver</button>
         {row.odtCount > 0 && <button onClick={e => { e.stopPropagation(); navigate(`/odt?ordenId=${row.ordenId}`) }} style={btnSm('var(--amber)')}>ODT</button>}
         {row.nInterno && <button onClick={e => { e.stopPropagation(); navigate(`/caja?nInterno=${row.nInterno}`) }} style={btnSm('var(--text-2)')}>Pagos</button>}
+        {canWriteDespacho && (
+          <button
+            onClick={e => {
+              e.stopPropagation()
+              setPacking(row)
+            }}
+            style={btnSm('var(--green-700)')}
+          >Packing</button>
+        )}
         {canWriteDespacho && (
           <button
             onClick={e => {
@@ -228,6 +270,11 @@ export default function DespachosPage() {
 
   const colsDespacho = [
     { key: 'fechaEntrega', label: 'Fecha entrega', render: dateFmt },
+    { key: 'tiempos', label: 'Dias despacho', render: (_, row) => (
+      <span style={{ fontFamily: "'DM Mono', monospace", color: row.tiempos?.pendiente ? 'var(--amber)' : 'var(--text-2)', fontWeight: row.tiempos?.pendiente ? 700 : 500 }}>
+        {formatDays(row.tiempos?.despachoDias)}
+      </span>
+    ) },
     { key: 'interno', label: 'N interno', render: v => <Mono strong>{v || '-'}</Mono> },
     { key: 'ordenId', label: 'Orden', render: v => v ? <button onClick={(e) => { e.stopPropagation(); navigate(ventaPath(v, user)) }} style={linkButton('var(--blue)')}>#{v}</button> : '-' },
     { key: 'odtId', label: 'ODT', render: renderOdtLink },
@@ -239,14 +286,16 @@ export default function DespachosPage() {
     { key: 'comuna', label: 'Comuna' },
     { key: 'montoEnvio', label: 'Envio', align: 'right', render: v => <Mono>{fmt(v)}</Mono> },
     { key: 'parcial', label: 'Estado', render: (v, r) => (
-      <div style={{ display: 'flex', gap: 4 }}>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         {v && <Badge tone="amber">Parcial</Badge>}
         {r.tieneMulta && <Badge tone="red">Multa</Badge>}
         {!v && !r.tieneMulta && <Badge tone={r.fechaEntrega ? 'green' : 'gray'}>{r.fechaEntrega ? 'Entregado' : 'Pendiente'}</Badge>}
+        {r.tracking?.estado && <Badge tone={trackingTone(r.tracking.estado)}>{r.tracking.estado}</Badge>}
       </div>
     ) },
     { key: '_acc', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={(e) => { e.stopPropagation(); setTracking(row) }} style={linkButton('var(--blue)')}>Track</button>
         {canWriteDespacho && <button onClick={(e) => { e.stopPropagation(); setEditing(row) }} style={linkButton('var(--green-700)')}>Editar</button>}
         {canDeleteDespacho && <button onClick={(e) => { e.stopPropagation(); solicitarEliminacion('despacho', row.id, delMut) }} style={linkButton('var(--red)')}>Borrar</button>}
       </div>
@@ -380,7 +429,7 @@ export default function DespachosPage() {
         {ordenIdParam && <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)' }}><Badge tone="blue">Orden #{ordenIdParam}</Badge></div>}
         {currentLoading
           ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={columns} rows={rows} emptyMessage={tab === 'matriz' ? 'Sin ventas para despacho' : 'Sin registros'} keyboard ariaLabel="Despachos" getRowKey={(row, index) => row.id || row.ordenId || row.numeroGuia || index} />
+          : <Table key={tab} columns={columns} rows={rows} emptyMessage={tab === 'matriz' ? 'Sin ventas para despacho' : 'Sin registros'} keyboard ariaLabel="Despachos" columnPrefsKey={`despachos-${tab}`} getRowKey={(row, index) => row.id || row.ordenId || row.numeroGuia || index} />
         }
         <Pager page={page} pages={pages} total={total} limit={limit} shown={rows.length} onChange={setPage} disabled={currentLoading} />
       </div>
@@ -403,6 +452,29 @@ export default function DespachosPage() {
           onSave={(data) => updateMut.mutate({ id: editing.id, data }, { onSuccess: () => setEditing(null), onError: showError })}
         />
       )}
+      {packing && (
+        <PackingModal
+          row={packing}
+          saving={updatePackingMut.isPending}
+          onClose={() => setPacking(null)}
+          onSave={(payload) => updatePackingMut.mutate(
+            { ordenId: packing.ordenId, ...payload },
+            { onSuccess: () => setPacking(null), onError: showError }
+          )}
+        />
+      )}
+      {tracking && (
+        <DespachoTrackingModal
+          row={tracking}
+          canWrite={canWriteDespacho}
+          saving={createTrackingMut.isPending}
+          onClose={() => setTracking(null)}
+          onSave={(payload) => createTrackingMut.mutate(
+            { despachoId: tracking.id, ...payload },
+            { onError: showError }
+          )}
+        />
+      )}
       {creatingGuia && (
         <GuiaModal
           title="Nueva guia"
@@ -422,6 +494,280 @@ export default function DespachosPage() {
         />
       )}
     </main>
+  )
+}
+
+function PackingProgress({ row }) {
+  const resumen = packingResumen(row)
+  const tone = resumen.estado === 'Completo' ? 'green' : resumen.estado === 'Parcial' ? 'amber' : 'gray'
+  return (
+    <div style={{ minWidth: 120 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+        <Badge tone={tone}>{resumen.estado}</Badge>
+        <Mono strong>{resumen.pct}%</Mono>
+      </div>
+      <div style={{ height: 5, borderRadius: 999, background: 'oklch(0.92 0.003 220)', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${Math.min(100, resumen.pct)}%`, background: resumen.estado === 'Completo' ? 'var(--green-600)' : 'var(--amber)' }} />
+      </div>
+      <div style={{ marginTop: 4, fontSize: 10.5, color: 'var(--text-3)' }}>
+        {numberFmt(resumen.entregados)}/{numberFmt(resumen.total)} entregados
+      </div>
+    </div>
+  )
+}
+
+function PackingModal({ row, saving, onClose, onSave }) {
+  const { data: trace = { items: [], bultos: [], eventos: [] }, isLoading } = useDespachoPacking(row.ordenId)
+  const defaultDespachoId = row.despachos?.[0]?.id ? String(row.despachos[0].id) : ''
+  const [despachoId, setDespachoId] = useState(defaultDespachoId)
+  const [bultoNumero, setBultoNumero] = useState('')
+  const [observacion, setObservacion] = useState('')
+  const [drafts, setDrafts] = useState({})
+  const sourceLines = trace.items?.length
+    ? trace.items.map(item => ({
+      ...item,
+      codigo: item.codigoInterno,
+      entregados: item.nEntregados,
+    }))
+    : (row.itemsDetalle || [])
+  const lines = sourceLines.map(line => ({
+    ...line,
+    entregadosDraft: drafts[line.id] ?? String(line.entregados ?? 0),
+  }))
+
+  const setLine = (id, value) => setDrafts(prev => ({ ...prev, [id]: value }))
+
+  const completeLine = line => setLine(line.id, String(line.cantidad || 0))
+  const clearLine = line => setLine(line.id, '0')
+  const resumen = packingResumen({
+    itemsDetalle: lines.map(line => ({
+      ...line,
+      entregados: Math.max(0, Number.parseInt(line.entregadosDraft || '0', 10) || 0),
+    })),
+  })
+
+  const save = () => {
+    const items = lines.map(line => {
+      const parsed = Math.max(0, Number.parseInt(line.entregadosDraft || '0', 10) || 0)
+      return { itemId: line.id, nEntregados: Math.min(parsed, Number(line.cantidad || 0)) }
+    })
+    onSave({
+      despachoId: despachoId || undefined,
+      bultoNumero: bultoNumero.trim() || undefined,
+      observacion: observacion.trim() || undefined,
+      items,
+    })
+  }
+
+  return (
+    <Modal title={`Packing venta #${row.nInterno || row.ordenId}`} onClose={onClose}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>{row.clienteNombre || '-'}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>Orden #{row.ordenId}</div>
+        </div>
+        <PackingProgress row={{ itemsDetalle: lines.map(line => ({ ...line, entregados: Number.parseInt(line.entregadosDraft || '0', 10) || 0 })) }} />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(130px, 0.8fr) minmax(150px, 1fr) minmax(180px, 1.5fr)', gap: 10, marginBottom: 12 }}>
+        <Field label="Despacho">
+          <select value={despachoId} onChange={event => setDespachoId(event.target.value)} style={input}>
+            <option value="">Sin despacho asociado</option>
+            {(row.despachos || []).map(despacho => (
+              <option key={despacho.id} value={String(despacho.id)}>
+                #{despacho.id} {despacho.tipoDespacho || ''} {despacho.transporte || ''}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Bulto">
+          <input value={bultoNumero} onChange={event => setBultoNumero(event.target.value)} placeholder="Ej: B1" style={input} />
+        </Field>
+        <Field label="Observacion">
+          <input value={observacion} onChange={event => setObservacion(event.target.value)} placeholder="Nota del ajuste" style={input} />
+        </Field>
+      </div>
+
+      {!lines.length ? (
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 8 }}>
+          Sin lineas de venta para packing
+        </div>
+      ) : (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: 'var(--bg)' }}>
+                {['Producto', 'Cant.', 'Entregados', 'Pendiente', ''].map((h, i) => (
+                  <th key={h} style={{ padding: '8px 10px', textAlign: i >= 1 && i <= 3 ? 'right' : 'left', fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map(line => {
+                const cantidad = Number(line.cantidad || 0)
+                const entregados = Math.min(Math.max(0, Number.parseInt(line.entregadosDraft || '0', 10) || 0), cantidad)
+                const pendiente = Math.max(0, cantidad - entregados)
+                return (
+                  <tr key={line.id} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ padding: '8px 10px' }}>
+                      <div style={{ fontWeight: 600 }}>{line.nombre || 'Producto'}</div>
+                      <Mono muted>{line.codigo || `Item #${line.id}`}</Mono>
+                    </td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}><Mono strong>{cantidad}</Mono></td>
+                    <td style={{ padding: '5px 10px', textAlign: 'right' }}>
+                      <input
+                        type="number"
+                        min="0"
+                        max={cantidad}
+                        value={line.entregadosDraft}
+                        onChange={event => setLine(line.id, event.target.value)}
+                        style={{ width: 78, padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono', monospace", textAlign: 'right' }}
+                      />
+                    </td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', color: pendiente > 0 ? 'var(--amber)' : 'var(--green-600)', fontWeight: 700 }}>
+                      <Mono strong>{pendiente}</Mono>
+                    </td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                        <button type="button" onClick={() => completeLine(line)} style={btnSm('var(--green-700)')}>Completar</button>
+                        <button type="button" onClick={() => clearLine(line)} style={btnSm('var(--text-2)')}>Cero</button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 12 }}>
+        <Badge tone={resumen.estado === 'Completo' ? 'green' : resumen.estado === 'Parcial' ? 'amber' : 'gray'}>
+          {resumen.entregados}/{resumen.total}
+        </Badge>
+        <Footer saving={saving} onClose={onClose} onSave={save} />
+      </div>
+
+      <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Trazabilidad packing</div>
+          {isLoading && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Cargando...</span>}
+        </div>
+        {(trace.bultos || []).length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+            {(trace.bultos || []).slice(0, 8).map(bulto => (
+              <Badge key={bulto.id} tone="blue">{bulto.numero} - {bulto.estado}</Badge>
+            ))}
+          </div>
+        )}
+        {(trace.eventos || []).length === 0 ? (
+          <div style={{ color: 'var(--text-3)', fontSize: 12 }}>Sin eventos registrados todavia.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
+            {(trace.eventos || []).slice(0, 10).map(evento => (
+              <div key={evento.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--bg)' }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>{evento.ordenItem?.nombre || `Item #${evento.ordenItemId}`}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                    {evento.usuario || 'Sistema'} - {new Date(evento.createdAt).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    {evento.bulto?.numero ? ` - Bulto ${evento.bulto.numero}` : ''}
+                  </div>
+                  {evento.observacion && <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 2 }}>{evento.observacion}</div>}
+                </div>
+                <Mono strong>{evento.cantidadAnterior} -&gt; {evento.cantidadNueva}</Mono>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
+function DespachoTrackingModal({ row, canWrite, saving, onClose, onSave }) {
+  const { data: trace = { latest: null, eventos: [] }, isLoading } = useDespachoTracking(row.id)
+  const latest = trace.latest || row.tracking
+  const [form, setForm] = useState({
+    estado: latest?.estado || 'Preparado',
+    transporte: latest?.transporte || row.transporte || '',
+    ubicacion: latest?.ubicacion || '',
+    fechaEvento: '',
+    observacion: '',
+  })
+  const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
+  const save = () => {
+    onSave({
+      estado: form.estado,
+      transporte: form.transporte.trim() || undefined,
+      ubicacion: form.ubicacion.trim() || undefined,
+      fechaEvento: form.fechaEvento || undefined,
+      observacion: form.observacion.trim() || undefined,
+    })
+    setForm(prev => ({ ...prev, observacion: '', fechaEvento: '' }))
+  }
+
+  return (
+    <Modal title={`Tracking despacho #${row.id}`} onClose={onClose}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>{row.interno ? `Interno ${row.interno}` : `Orden #${row.ordenId || '-'}`}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{row.tipoDespacho || 'Despacho'} {row.transporte ? `- ${row.transporte}` : ''}</div>
+        </div>
+        <Badge tone={trackingTone(latest?.estado)}>{latest?.estado || 'Sin tracking'}</Badge>
+      </div>
+
+      {canWrite && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 0.8fr) minmax(150px, 1fr) minmax(140px, 1fr)', gap: 10, marginBottom: 10 }}>
+          <Field label="Estado">
+            <select value={form.estado} onChange={event => set('estado', event.target.value)} style={input}>
+              {TRACKING_ESTADOS.map(estado => <option key={estado} value={estado}>{estado}</option>)}
+            </select>
+          </Field>
+          <Field label="Transporte">
+            <input value={form.transporte} onChange={event => set('transporte', event.target.value)} style={input} />
+          </Field>
+          <Field label="Fecha evento">
+            <input type="datetime-local" value={form.fechaEvento} onChange={event => set('fechaEvento', event.target.value)} style={input} />
+          </Field>
+          <Field label="Ubicacion">
+            <input value={form.ubicacion} onChange={event => set('ubicacion', event.target.value)} style={input} />
+          </Field>
+          <div style={{ gridColumn: 'span 2' }}>
+            <Field label="Observacion">
+              <input value={form.observacion} onChange={event => set('observacion', event.target.value)} placeholder="Detalle operativo" style={input} />
+            </Field>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: canWrite ? 'space-between' : 'flex-end', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        {isLoading && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Cargando...</span>}
+        {canWrite && <Footer saving={saving} onClose={onClose} onSave={save} />}
+      </div>
+
+      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+        {(trace.eventos || []).length === 0 ? (
+          <div style={{ color: 'var(--text-3)', fontSize: 12 }}>Sin eventos logisticos registrados.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, maxHeight: 280, overflowY: 'auto' }}>
+            {(trace.eventos || []).map(evento => (
+              <div key={evento.id} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 10, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--bg)' }}>
+                <Badge tone={trackingTone(evento.estado)}>{evento.estado}</Badge>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>{evento.ubicacion || evento.transporte || 'Evento logistico'}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                    {evento.usuario || 'Sistema'} - {new Date(evento.fechaEvento).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    {evento.transporte ? ` - ${evento.transporte}` : ''}
+                  </div>
+                  {evento.observacion && <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 2 }}>{evento.observacion}</div>}
+                </div>
+                <Mono muted>#{evento.id}</Mono>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
   )
 }
 

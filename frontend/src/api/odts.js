@@ -9,6 +9,15 @@ export const useOdts = (params = {}) =>
     placeholderData: { items: [], total: 0, limit: 100 },
   })
 
+export const useOdtKanban = (params = {}, enabled = true) =>
+  useQuery({
+    queryKey: ['odts', 'kanban', params],
+    queryFn: () => api.get('/odts/kanban', { params }).then(r => r.data),
+    enabled,
+    staleTime: 30_000,
+    placeholderData: { items: [], total: 0, limit: 1000, stats: {}, estados: [] },
+  })
+
 export const useOdtOperarios = (params = {}) =>
   useQuery({
     queryKey: ['odts', 'operarios', params],
@@ -22,6 +31,14 @@ export const useOdtCargaOperarios = () =>
     queryKey: ['odts', 'carga-operarios'],
     queryFn: () => api.get('/odts/meta/carga-operarios').then(r => r.data),
     placeholderData: { items: [], estados: [] },
+    staleTime: 60_000,
+  })
+
+export const useOdtProductividad = (params = {}) =>
+  useQuery({
+    queryKey: ['odts', 'productividad', params],
+    queryFn: () => api.get('/odts/meta/productividad', { params }).then(r => r.data),
+    placeholderData: { items: [], totalOdts: 0, limit: 500 },
     staleTime: 60_000,
   })
 
@@ -62,6 +79,7 @@ export const useOdtEstado = () => {
     mutationFn: ({ id, estado }) => api.put(`/odts/${id}`, { estado }).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['odts'] })
+      qc.invalidateQueries({ queryKey: ['odts', 'kanban'] })
       qc.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })

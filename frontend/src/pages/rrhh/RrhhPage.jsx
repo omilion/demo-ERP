@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
 import {
   useTrabajadores, useTrabajador, useCreateTrabajador, useUpdateTrabajador, useDeleteTrabajador,
-  useRrhhCargos, useResumenRRHH,
+  useRrhhCargos, useRrhhOperativo, useResumenRRHH,
 } from '../../api/rrhh'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
@@ -282,6 +282,114 @@ function TrabajadorFormModal({ trabajador, onClose }) {
 }
 
 // ── Main Page ───────────────────────────────────────────────────────────
+function OperativoList({ title, items = [], emptyText, renderMeta, onTrabajadorClick }) {
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>{title}</div>
+        <Badge tone={items.length ? 'amber' : 'green'}>{items.length}</Badge>
+      </div>
+      {items.length === 0 ? (
+        <div style={{ padding: '14px 10px', border: '1px dashed var(--border)', borderRadius: 8, color: 'var(--text-3)', fontSize: 12, textAlign: 'center' }}>{emptyText}</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {items.slice(0, 5).map(item => {
+            const trabajador = item.trabajador || item
+            return (
+              <button
+                key={`${title}-${item.id || trabajador.id}`}
+                type="button"
+                onClick={() => trabajador?.id && onTrabajadorClick?.(trabajador)}
+                style={{
+                  width: '100%',
+                  display: 'grid',
+                  gridTemplateColumns: '1fr auto',
+                  gap: 10,
+                  alignItems: 'center',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  background: '#fff',
+                  padding: '8px 10px',
+                  cursor: trabajador?.id ? 'pointer' : 'default',
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{trabajador?.nombre || fullName(trabajador) || '-'}</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{trabajador?.cargo || 'Sin cargo'} - {trabajador?.empresa || '-'}</div>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-2)', fontFamily: "'DM Mono', monospace", whiteSpace: 'nowrap' }}>{renderMeta?.(item)}</div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RrhhOperativoPanel({ data, onCargoClick, onTrabajadorClick }) {
+  const alertas = data?.alertas || {}
+  const incompletos = [
+    ...(data?.sinSueldo || []).map(item => ({ ...item, motivo: 'Sin sueldo' })),
+    ...(data?.sinCargo || []).map(item => ({ ...item, motivo: 'Sin cargo' })),
+    ...(data?.sinFechaIngreso || []).map(item => ({ ...item, motivo: 'Sin ingreso' })),
+  ]
+  const datosIncompletos = (alertas.sinSueldo || 0) + (alertas.sinCargo || 0) + (alertas.sinFechaIngreso || 0)
+  const eventos = [
+    { label: 'Contratos vencen', value: alertas.contratosPorVencer || 0, tone: alertas.contratosPorVencer ? 'amber' : 'neutral', icon: 'fileText' },
+    { label: 'Licencias activas', value: alertas.licenciasActivas || 0, tone: alertas.licenciasActivas ? 'amber' : 'neutral', icon: 'calendar' },
+    { label: 'Vacaciones', value: alertas.vacacionesProgramadas || 0, tone: alertas.vacacionesProgramadas ? 'blue' : 'neutral', icon: 'clock' },
+    { label: 'Datos incompletos', value: datosIncompletos, tone: datosIncompletos ? 'red' : 'neutral', icon: 'alertTriangle' },
+  ]
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)', padding: 16, marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)' }}>Operativo RRHH</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{(data?.totalActivos || 0).toLocaleString('es-CL')} activos - ventana {data?.dias || 30} dias</div>
+        </div>
+        {data?.rrhhSchemaDisponible === false && <Badge tone="amber">Schema pendiente</Badge>}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginBottom: 14 }}>
+        {eventos.map(item => (
+          <div key={item.label} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '9px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: item.tone === 'red' ? 'var(--red)' : item.tone === 'amber' ? 'var(--amber)' : 'var(--green-600)' }}><Icon name={item.icon} size={15} /></span>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>{item.value}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{item.label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, alignItems: 'start' }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 8 }}>Dotacion por cargo</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {(data?.dotacionPorCargo || []).slice(0, 7).map(item => (
+              <button
+                key={item.cargo}
+                type="button"
+                onClick={() => item.cargo !== 'Sin cargo' && onCargoClick?.(item.cargo)}
+                style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg)', padding: '7px 9px', cursor: item.cargo !== 'Sin cargo' ? 'pointer' : 'default', textAlign: 'left' }}
+              >
+                <span style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.cargo}</span>
+                <Badge tone="gray">{item.total}</Badge>
+              </button>
+            ))}
+          </div>
+        </div>
+        <OperativoList title="Contratos por vencer" items={data?.contratosPorVencer || []} emptyText="Sin vencimientos" renderMeta={item => fmtDate(item.termino)} onTrabajadorClick={onTrabajadorClick} />
+        <OperativoList title="Ausencias" items={[...(data?.licenciasActivas || []), ...(data?.vacacionesProgramadas || [])]} emptyText="Sin ausencias" renderMeta={item => fmtDate(item.termino || item.fechaInicio)} onTrabajadorClick={onTrabajadorClick} />
+        <OperativoList title="Datos incompletos" items={incompletos} emptyText="Datos base OK" renderMeta={item => item.motivo} onTrabajadorClick={onTrabajadorClick} />
+      </div>
+    </div>
+  )
+}
+
 export default function RrhhPage() {
   const { user } = useAuthStore()
   const canWriteRrhh = can(user, 'rrhh', 'write')
@@ -309,10 +417,26 @@ export default function RrhhPage() {
   const { data: result = { items: [], total: 0 }, isLoading } = useTrabajadores(params)
   const { data: cargosResult = [] } = useRrhhCargos(empresa ? { empresa } : {})
   const { data: resumen } = useResumenRRHH(empresa)
+  const operativoParams = { dias: 30 }
+  if (empresa) operativoParams.empresa = empresa
+  if (cargo) operativoParams.cargo = cargo
+  const { data: operativo = { alertas: {}, dotacionPorCargo: [], totalActivos: 0 } } = useRrhhOperativo(operativoParams)
   const trabajadores = result.items ?? []
   const total = result.total ?? 0
   const cargoSource = Array.isArray(cargosResult) ? cargosResult : (cargosResult.items ?? [])
   const cargos = [...new Set(cargoSource.map(c => typeof c === 'string' ? c : (c.cargo || c.nombre || c.name)).filter(Boolean))]
+  const selectOperativoTrabajador = trabajador => {
+    if (!trabajador?.id) return
+    setSelected({
+      id: trabajador.id,
+      nombres: trabajador.nombre || trabajador.nombres || '',
+      apellidoPaterno: trabajador.apellidoPaterno || '',
+      apellidoMaterno: trabajador.apellidoMaterno || '',
+      rut: trabajador.rut || '',
+      empresa: trabajador.empresa || '',
+      cargo: trabajador.cargo || '',
+    })
+  }
 
   const cols = [
     {
@@ -350,6 +474,12 @@ export default function RrhhPage() {
         <KpiCard label="Allegro" value={allegroCount} icon="warehouse" tone="warning" sublabel="Filial" />
         <KpiCard label="Mostrando" value={trabajadores.length} icon="filter" sublabel={debounced ? `Filtro: ${debounced}` : 'Sin filtro'} />
       </div>
+
+      <RrhhOperativoPanel
+        data={operativo}
+        onCargoClick={setCargo}
+        onTrabajadorClick={selectOperativoTrabajador}
+      />
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>

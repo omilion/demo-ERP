@@ -43,6 +43,30 @@ const GuiaCreate = z.object({
 
 const GuiaUpdate = GuiaCreate.partial()
 
+const PackingUpdate = z.object({
+  despachoId: optionalId,
+  bultoId: optionalId,
+  bultoNumero: z.string().optional().nullable(),
+  bultoEstado: z.string().optional().nullable(),
+  bultoObservacion: z.string().optional().nullable(),
+  observacion: z.string().optional().nullable(),
+  items: z.array(z.object({
+    id: optionalId,
+    itemId: optionalId,
+    nEntregados: z.union([z.number().int(), z.string()]),
+  })).min(1),
+})
+
+const TrackingEventoCreate = z.object({
+  estado: z.string().min(1),
+  transporte: z.string().optional().nullable(),
+  ubicacion: z.string().optional().nullable(),
+  observacion: z.string().optional().nullable(),
+  fechaEvento: z.string().optional().nullable(),
+})
+
+export const TRACKING_ESTADOS = ['Preparado', 'En ruta', 'Entregado', 'Incidencia', 'Reprogramado', 'Retenido', 'Devuelto']
+
 function hasValue(value) {
   return value !== undefined && value !== null && value !== ''
 }
@@ -441,6 +465,209 @@ function formatDate(value) {
   return value ? new Date(value).toISOString().slice(0, 10) : ''
 }
 
+function toValidDate(value) {
+  if (!value) return null
+  const date = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function roundOne(value) {
+  return Math.round(value * 10) / 10
+}
+
+function diffHours(start, end) {
+  const startDate = toValidDate(start)
+  const endDate = toValidDate(end)
+  if (!startDate || !endDate || endDate < startDate) return null
+  return roundOne((endDate.getTime() - startDate.getTime()) / 36e5)
+}
+
+export function buildDespachoTiempoMetrics(despacho = {}, now = new Date()) {
+  const start = toValidDate(despacho.fechaInterno) || toValidDate(despacho.createdAt)
+  const end = toValidDate(despacho.fechaEntrega) || (despacho.eliminado ? null : toValidDate(now))
+  const despachoHoras = diffHours(start, end)
+  return {
+    despachoHoras,
+    despachoDias: despachoHoras == null ? null : roundOne(despachoHoras / 24),
+    pendiente: !despacho.fechaEntrega && !despacho.eliminado,
+  }
+}
+
+function attachDespachoMetrics(items, now = new Date()) {
+  const list = Array.isArray(items) ? items : [items]
+  const enriched = list.map(item => ({ ...item, tiempos: buildDespachoTiempoMetrics(item, now) }))
+  return Array.isArray(items) ? enriched : enriched[0]
+}
+
+const TRACKING_EVENT_SELECT = {
+  id: true,
+  despachoId: true,
+  estado: true,
+  transporte: true,
+  ubicacion: true,
+  observacion: true,
+  fechaEvento: true,
+  usuario: true,
+  createdAt: true,
+}
+
+export function normalizeTrackingEstado(value) {
+  const text = cleanText(value)
+  if (!text) return null
+  const lower = text.toLocaleLowerCase('es-CL')
+  return TRACKING_ESTADOS.find(estado => estado.toLocaleLowerCase('es-CL') === lower) || null
+}
+
+export function buildTrackingEventData(input = {}, user = null, now = new Date()) {
+  const estado = normalizeTrackingEstado(input.estado)
+  if (!estado) return { error: 'estado tracking invalido' }
+  const fechaEvento = hasValue(input.fechaEvento) ? parseDate(input.fechaEvento) : now
+  if (hasValue(input.fechaEvento) && !fechaEvento) return { error: 'fechaEvento invalida' }
+  return {
+    data: {
+      estado,
+      transporte: cleanText(input.transporte),
+      ubicacion: cleanText(input.ubicacion),
+      observacion: cleanText(input.observacion),
+      fechaEvento,
+      usuario: userLabel(user),
+    },
+  }
+}
+
+async function buildDespachoTrackingTrace(prisma, despachoId) {
+  const eventos = await prisma.despachoTrackingEvento.findMany({
+    where: { despachoId },
+    select: TRACKING_EVENT_SELECT,
+    orderBy: [{ fechaEvento: 'desc' }, { id: 'desc' }],
+    take: 80,
+  })
+  return { latest: eventos[0] || null, eventos }
+}
+
+async function attachLatestDespachoTracking(prisma, items) {
+  if (!items) return items
+  const list = Array.isArray(items) ? items : [items]
+  const ids = list.map(item => item?.id).filter(Boolean)
+  if (!ids.length) return Array.isArray(items) ? list : list[0]
+  const eventos = await prisma.despachoTrackingEvento.findMany({
+    where: { despachoId: { in: ids } },
+    select: TRACKING_EVENT_SELECT,
+    orderBy: [{ fechaEvento: 'desc' }, { id: 'desc' }],
+  })
+  const latestByDespacho = new Map()
+  for (const evento of eventos) {
+    if (!latestByDespacho.has(evento.despachoId)) latestByDespacho.set(evento.despachoId, evento)
+  }
+  const enriched = list.map(item => ({ ...item, tracking: latestByDespacho.get(item.id) || null }))
+  return Array.isArray(items) ? enriched : enriched[0]
+}
+
+function parsePackingQuantity(value) {
+  const parsed = parseOptionalInt(value)
+  return parsed != null && parsed >= 0 ? parsed : null
+}
+
+export function parsePackingReferenceId(value, field) {
+  if (!hasValue(value)) return { id: null }
+  const id = parsePositiveInt(value)
+  return id ? { id } : { error: `${field} invalido` }
+}
+
+export function buildPackingUpdatePlan(orderItems = [], requestedItems = []) {
+  const byId = new Map(orderItems.map(item => [item.id, item]))
+  const seen = new Set()
+  const updates = []
+
+  for (const requested of requestedItems) {
+    const itemId = parsePositiveInt(hasValue(requested.itemId) ? requested.itemId : requested.id)
+    if (!itemId) return { error: 'itemId invalido' }
+    if (seen.has(itemId)) return { error: `itemId duplicado: ${itemId}` }
+    seen.add(itemId)
+
+    const current = byId.get(itemId)
+    if (!current) return { error: `Item ${itemId} no pertenece a la orden` }
+
+    const nEntregados = parsePackingQuantity(requested.nEntregados)
+    if (nEntregados == null) return { error: 'nEntregados invalido' }
+    if (nEntregados > Number(current.cantidad || 0)) {
+      return { error: `nEntregados supera la cantidad del item ${itemId}` }
+    }
+
+    const cantidadAnterior = Number(current.nEntregados || 0)
+    updates.push({
+      id: itemId,
+      nEntregados,
+      cantidadAnterior,
+      delta: nEntregados - cantidadAnterior,
+    })
+  }
+
+  return { updates }
+}
+
+export function buildPackingEventRows({ ordenId, updates = [], despachoId = null, bultoId = null, usuario = null, observacion = null } = {}) {
+  return updates
+    .filter(update => Number(update.delta || 0) !== 0)
+    .map(update => ({
+      ordenId,
+      ordenItemId: update.id,
+      despachoId,
+      bultoId,
+      cantidadAnterior: update.cantidadAnterior,
+      cantidadNueva: update.nEntregados,
+      delta: update.delta,
+      accion: update.delta > 0 ? 'entrega' : 'correccion',
+      observacion,
+      usuario,
+    }))
+}
+
+const PACKING_EVENT_SELECT = {
+  id: true,
+  ordenId: true,
+  ordenItemId: true,
+  despachoId: true,
+  bultoId: true,
+  cantidadAnterior: true,
+  cantidadNueva: true,
+  delta: true,
+  accion: true,
+  observacion: true,
+  usuario: true,
+  createdAt: true,
+  ordenItem: {
+    select: { id: true, codigoInterno: true, nombre: true, cantidad: true },
+  },
+  bulto: {
+    select: { id: true, numero: true, estado: true },
+  },
+  despacho: {
+    select: { id: true, tipoDespacho: true, transporte: true, fechaEntrega: true },
+  },
+}
+
+async function buildPackingTrace(prisma, ordenId) {
+  const [items, bultos, eventos] = await Promise.all([
+    prisma.ordenItem.findMany({
+      where: { ordenId, eliminado: false },
+      select: { id: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true },
+      orderBy: { id: 'asc' },
+    }),
+    prisma.packingBulto.findMany({
+      where: { ordenId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    }),
+    prisma.packingEvento.findMany({
+      where: { ordenId },
+      select: PACKING_EVENT_SELECT,
+      orderBy: { createdAt: 'desc' },
+      take: 80,
+    }),
+  ])
+  return { items, bultos, eventos }
+}
+
 export default async function despachosRoutes(fastify) {
   registerDespachoMatrizRoutes(fastify)
 
@@ -461,7 +688,8 @@ export default async function despachosRoutes(fastify) {
       fastify.prisma.despacho.count({ where: { ...where, parcial: true } }),
       fastify.prisma.despacho.count({ where: { ...where, tieneMulta: true } }),
     ])
-    return { items, total, limit: LIST_LIMIT, stats: { parciales, multas } }
+    const enriched = await attachLatestDespachoTracking(fastify.prisma, attachDespachoMetrics(items))
+    return { items: enriched, total, limit: LIST_LIMIT, stats: { parciales, multas } }
   })
 
   fastify.get('/export/registros', {
@@ -473,9 +701,26 @@ export default async function despachosRoutes(fastify) {
       where: listWhere.where,
       orderBy: { fechaEntrega: 'desc' },
     })
-    const csv = rowsToCsv(items.map(row => ({ ...row, fechaEntrega: formatDate(row.fechaEntrega), fechaInterno: formatDate(row.fechaInterno), fecham: formatDate(row.fecham) })), [
+    const trackedItems = await attachLatestDespachoTracking(fastify.prisma, items)
+    const csv = rowsToCsv(trackedItems.map(row => {
+      const tiempos = buildDespachoTiempoMetrics(row)
+      return {
+        ...row,
+        tiempoDespachoDias: tiempos.despachoDias ?? '',
+        trackingEstado: row.tracking?.estado || '',
+        trackingFecha: formatDate(row.tracking?.fechaEvento),
+        trackingUbicacion: row.tracking?.ubicacion || '',
+        fechaEntrega: formatDate(row.fechaEntrega),
+        fechaInterno: formatDate(row.fechaInterno),
+        fecham: formatDate(row.fecham),
+      }
+    }), [
       { key: 'fechaEntrega', label: 'Fecha Entrega' },
       { key: 'fechaInterno', label: 'Fecha Interno' },
+      { key: 'tiempoDespachoDias', label: 'Dias Despacho' },
+      { key: 'trackingEstado', label: 'Tracking Estado' },
+      { key: 'trackingFecha', label: 'Tracking Fecha' },
+      { key: 'trackingUbicacion', label: 'Tracking Ubicacion' },
       { key: 'ordenId', label: 'Orden' },
       { key: 'interno', label: 'N Interno' },
       { key: 'odtId', label: 'ODT' },
@@ -509,7 +754,186 @@ export default async function despachosRoutes(fastify) {
     const guias = await fastify.prisma.guiaDespacho.findMany({
       where: { ...buildGuideWhereForDespacho(d), eliminado: false },
     })
-    return { ...d, guias }
+    const tracked = await attachLatestDespachoTracking(fastify.prisma, attachDespachoMetrics(d))
+    return { ...tracked, guias }
+  })
+
+  fastify.get('/ordenes/:ordenId/packing', {
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
+  }, async (request, reply) => {
+    const ordenId = parsePositiveInt(request.params.ordenId)
+    if (!ordenId) return reply.code(400).send({ error: 'ordenId invalido' })
+    const orden = await fastify.prisma.orden.findFirst({
+      where: { id: ordenId, eliminada: false },
+      select: { id: true, sucursalId: true, nInterno: true },
+    })
+    if (!orden) return reply.code(404).send({ error: 'Orden no encontrada' })
+    if (!userCanAccessOrden(request.user, orden)) return reply.code(403).send({ error: 'Forbidden' })
+    return { orden, ...(await buildPackingTrace(fastify.prisma, ordenId)) }
+  })
+
+  fastify.put('/ordenes/:ordenId/packing', {
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
+  }, async (request, reply) => {
+    const ordenId = parsePositiveInt(request.params.ordenId)
+    if (!ordenId) return reply.code(400).send({ error: 'ordenId invalido' })
+    const parsed = PackingUpdate.safeParse(request.body || {})
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
+
+    const orden = await fastify.prisma.orden.findFirst({
+      where: { id: ordenId, eliminada: false },
+      select: {
+        id: true,
+        sucursalId: true,
+        items: {
+          where: { eliminado: false },
+          select: { id: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true },
+          orderBy: { id: 'asc' },
+        },
+      },
+    })
+    if (!orden) return reply.code(404).send({ error: 'Orden no encontrada' })
+    if (!userCanAccessOrden(request.user, orden)) return reply.code(403).send({ error: 'Forbidden' })
+
+    const plan = buildPackingUpdatePlan(orden.items, parsed.data.items)
+    if (plan.error) return reply.code(400).send({ error: plan.error })
+    const despachoRef = parsePackingReferenceId(parsed.data.despachoId, 'despachoId')
+    if (despachoRef.error) return reply.code(400).send({ error: despachoRef.error })
+    const bultoRef = parsePackingReferenceId(parsed.data.bultoId, 'bultoId')
+    if (bultoRef.error) return reply.code(400).send({ error: bultoRef.error })
+    const despachoId = despachoRef.id
+    const bultoId = bultoRef.id
+    const bultoNumero = cleanText(parsed.data.bultoNumero)
+    const bultoEstado = cleanText(parsed.data.bultoEstado) || 'Preparado'
+    const bultoObservacion = cleanText(parsed.data.bultoObservacion)
+    const observacion = cleanText(parsed.data.observacion)
+    const usuario = userLabel(request.user)
+
+    if (despachoId) {
+      const despacho = await fastify.prisma.despacho.findFirst({
+        where: { id: despachoId, ordenId, eliminado: false },
+        select: { id: true },
+      })
+      if (!despacho) return reply.code(400).send({ error: 'Despacho no pertenece a la orden' })
+    }
+    if (bultoId) {
+      const existingBulto = await fastify.prisma.packingBulto.findFirst({
+        where: { id: bultoId, ordenId },
+        select: { id: true },
+      })
+      if (!existingBulto) return reply.code(400).send({ error: 'Bulto no pertenece a la orden' })
+    }
+
+    return fastify.prisma.$transaction(async (tx) => {
+      let bulto = null
+      if (bultoId) {
+        const bultoUpdate = {}
+        if (despachoId !== null) bultoUpdate.despachoId = despachoId
+        if (parsed.data.bultoEstado !== undefined) bultoUpdate.estado = bultoEstado
+        if (parsed.data.bultoObservacion !== undefined) bultoUpdate.observacion = bultoObservacion
+        if (Object.keys(bultoUpdate).length) {
+          bulto = await tx.packingBulto.update({
+            where: { id: bultoId },
+            data: bultoUpdate,
+          })
+        } else {
+          bulto = await tx.packingBulto.findUnique({ where: { id: bultoId } })
+        }
+      } else if (bultoNumero) {
+        bulto = await tx.packingBulto.upsert({
+          where: { ordenId_numero: { ordenId, numero: bultoNumero } },
+          create: {
+            ordenId,
+            despachoId: despachoId || null,
+            numero: bultoNumero,
+            estado: bultoEstado,
+            observacion: bultoObservacion,
+            usuario,
+          },
+          update: {
+            despachoId: despachoId || undefined,
+            estado: bultoEstado,
+            observacion: parsed.data.bultoObservacion !== undefined ? bultoObservacion : undefined,
+          },
+        })
+      }
+
+      for (const update of plan.updates) {
+        await tx.ordenItem.update({
+          where: { id: update.id },
+          data: { nEntregados: update.nEntregados },
+        })
+      }
+      const eventos = buildPackingEventRows({
+        ordenId,
+        updates: plan.updates,
+        despachoId: despachoId || null,
+        bultoId: bulto?.id || null,
+        usuario,
+        observacion,
+      })
+      if (eventos.length) await tx.packingEvento.createMany({ data: eventos })
+      const updatedOrden = await recalculateOrdenEntrega(tx, ordenId)
+      const trace = await buildPackingTrace(tx, ordenId)
+      return {
+        ordenId,
+        estadoEntrega: updatedOrden.estadoEntrega,
+        ...trace,
+      }
+    })
+  })
+
+  fastify.get('/:id/tracking', {
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
+  }, async (request, reply) => {
+    const id = parsePositiveInt(request.params.id)
+    if (!id) return reply.code(400).send({ error: 'ID invalido' })
+    const despacho = await fastify.prisma.despacho.findFirst({
+      where: withOrdenSucursalScope(request.user, { id, eliminado: false }),
+    })
+    if (!despacho) return reply.code(404).send({ error: 'no encontrado' })
+    const trace = await buildDespachoTrackingTrace(fastify.prisma, id)
+    return {
+      despacho: { ...attachDespachoMetrics(despacho), tracking: trace.latest },
+      ...trace,
+    }
+  })
+
+  fastify.post('/:id/tracking', {
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
+  }, async (request, reply) => {
+    const id = parsePositiveInt(request.params.id)
+    if (!id) return reply.code(400).send({ error: 'ID invalido' })
+    const parsed = TrackingEventoCreate.safeParse(request.body || {})
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
+    const despacho = await fastify.prisma.despacho.findFirst({
+      where: withOrdenSucursalScope(request.user, { id, eliminado: false }),
+    })
+    if (!despacho) return reply.code(404).send({ error: 'no encontrado' })
+    const built = buildTrackingEventData(parsed.data, request.user)
+    if (built.error) return reply.code(400).send({ error: built.error })
+
+    return fastify.prisma.$transaction(async (tx) => {
+      const evento = await tx.despachoTrackingEvento.create({
+        data: { despachoId: id, ...built.data },
+        select: TRACKING_EVENT_SELECT,
+      })
+      const despachoUpdate = {}
+      if (built.data.transporte) despachoUpdate.transporte = built.data.transporte
+      if (built.data.estado === 'Entregado' && !despacho.fechaEntrega) despachoUpdate.fechaEntrega = built.data.fechaEvento
+      const updatedDespacho = Object.keys(despachoUpdate).length
+        ? await tx.despacho.update({ where: { id }, data: despachoUpdate })
+        : despacho
+      if (updatedDespacho.ordenId && built.data.estado === 'Entregado') {
+        await recalculateOrdenEntrega(tx, updatedDespacho.ordenId)
+      }
+      const trace = await buildDespachoTrackingTrace(tx, id)
+      return {
+        evento,
+        despacho: { ...attachDespachoMetrics(updatedDespacho), tracking: trace.latest },
+        ...trace,
+      }
+    })
   })
 
   fastify.post('/', {

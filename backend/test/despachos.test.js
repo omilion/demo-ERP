@@ -263,6 +263,82 @@ describe('despachos legacy matrix parity', () => {
     }
   })
 
+  it('records logistics tracking events and syncs delivered state', async () => {
+    const fixture = await createFixture(app)
+    try {
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/api/despachos',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { ordenId: fixture.orden.id, tipoDespacho: 'Despacho tracking', transporte: 'Inicial' },
+      })
+      expect(createRes.statusCode).toBe(200)
+      const despacho = JSON.parse(createRes.body)
+
+      const invalid = await app.inject({
+        method: 'POST',
+        url: `/api/despachos/${despacho.id}/tracking`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { estado: 'Sin estado' },
+      })
+      expect(invalid.statusCode).toBe(400)
+
+      const enRuta = await app.inject({
+        method: 'POST',
+        url: `/api/despachos/${despacho.id}/tracking`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          estado: 'en ruta',
+          transporte: 'Transportista QA',
+          ubicacion: 'Valparaiso',
+          observacion: 'Carga retirada',
+          fechaEvento: '2026-06-02T10:00:00.000Z',
+        },
+      })
+      expect(enRuta.statusCode).toBe(200)
+      expect(JSON.parse(enRuta.body).evento).toMatchObject({
+        despachoId: despacho.id,
+        estado: 'En ruta',
+        transporte: 'Transportista QA',
+        ubicacion: 'Valparaiso',
+        usuario: 'Test admin',
+      })
+
+      const list = await app.inject({
+        method: 'GET',
+        url: `/api/despachos?ordenId=${fixture.orden.id}`,
+        headers: { authorization: `Bearer ${adminToken}` },
+      })
+      expect(list.statusCode).toBe(200)
+      expect(JSON.parse(list.body).items[0]).toMatchObject({
+        id: despacho.id,
+        transporte: 'Transportista QA',
+        tracking: { estado: 'En ruta', ubicacion: 'Valparaiso' },
+      })
+
+      const delivered = await app.inject({
+        method: 'POST',
+        url: `/api/despachos/${despacho.id}/tracking`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { estado: 'Entregado', fechaEvento: '2026-06-02T12:00:00.000Z' },
+      })
+      expect(delivered.statusCode).toBe(200)
+      expect(JSON.parse(delivered.body).latest.estado).toBe('Entregado')
+
+      const trace = await app.inject({
+        method: 'GET',
+        url: `/api/despachos/${despacho.id}/tracking`,
+        headers: { authorization: `Bearer ${adminToken}` },
+      })
+      expect(trace.statusCode).toBe(200)
+      expect(JSON.parse(trace.body).eventos.map(evento => evento.estado)).toEqual(['Entregado', 'En ruta'])
+      const order = await app.prisma.orden.findUnique({ where: { id: fixture.orden.id } })
+      expect(order.estadoEntrega).toBe('Entregada')
+    } finally {
+      await cleanupFixture(app, fixture)
+    }
+  })
+
   it('recalculates both orders when a despacho is moved to another sale', async () => {
     const fixtureA = await createFixture(app)
     const fixtureB = await createFixture(app)

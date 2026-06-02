@@ -18,6 +18,24 @@ export const useRrhhCargos = (params = {}) =>
     staleTime: 5 * 60_000,
   })
 
+export const useRrhhOperativo = (params = {}) =>
+  useQuery({
+    queryKey: ['rrhh', 'operativo', params],
+    queryFn: () => api.get('/rrhh/operativo', { params }).then(r => r.data),
+    placeholderData: {
+      totalActivos: 0,
+      alertas: {},
+      dotacionPorCargo: [],
+      sinSueldo: [],
+      sinCargo: [],
+      sinFechaIngreso: [],
+      contratosPorVencer: [],
+      licenciasActivas: [],
+      vacacionesProgramadas: [],
+    },
+    staleTime: 60_000,
+  })
+
 export const useTrabajador = (id) =>
   useQuery({
     queryKey: ['rrhh', 'trabajadores', id],
