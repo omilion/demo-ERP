@@ -47,6 +47,7 @@ const NAV_GROUPS = [
     { label: 'Accesos', route: '/accesos', roles: ['admin'] },
     { label: 'Configuracion', route: '/config', roles: ['admin'] },
     { label: 'Reglas de Descuento', route: '/descuentos', requirements: [{ module: 'descuentos', permission: 'write' }] },
+    { label: 'Reglas de Comision', route: '/admin/comisiones', roles: ['admin'] },
     { label: 'Integridad', route: '/admin/integridad', roles: ['admin'] },
     { label: 'Saneamiento Legacy', route: '/admin/saneamiento-legacy', roles: ['admin'] },
     { label: 'Auditoria', route: '/admin/auditoria', roles: ['admin'] },

@@ -88,3 +88,43 @@ export function useHistoricoOrdenes(params = {}) {
     staleTime: 30_000,
   })
 }
+
+export function useComisionesMeta() {
+  return useQuery({
+    queryKey: ['admin', 'comisiones', 'meta'],
+    queryFn: () => api.get('/admin/comisiones/meta').then(r => r.data),
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useComisionReglas(params = {}) {
+  return useQuery({
+    queryKey: ['admin', 'comisiones', 'reglas', params],
+    queryFn: () => api.get('/admin/comisiones/reglas', { params }).then(r => r.data),
+    placeholderData: [],
+  })
+}
+
+export function useCreateComisionRegla() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data) => api.post('/admin/comisiones/reglas', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'comisiones'] }),
+  })
+}
+
+export function useUpdateComisionRegla() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }) => api.put(`/admin/comisiones/reglas/${id}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'comisiones'] }),
+  })
+}
+
+export function useDeleteComisionRegla() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/admin/comisiones/reglas/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'comisiones'] }),
+  })
+}

@@ -47,6 +47,7 @@ import IntegridadPage from './pages/admin/IntegridadPage'
 import AuditoriaPage from './pages/admin/AuditoriaPage'
 import HistoricoPage from './pages/admin/HistoricoPage'
 import SaneamientoLegacyPage from './pages/admin/SaneamientoLegacyPage'
+import ComisionesPage from './pages/admin/ComisionesPage'
 
 const ALL = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
 
@@ -114,6 +115,7 @@ export const router = createBrowserRouter([
       { path: 'rrhh', element: protect(<RrhhPage />, { module: 'rrhh' }) },
       { path: 'rrhh/:id', element: protect(<TrabajadorDetallePage />, { module: 'rrhh' }) },
       { path: 'admin/integridad', element: <ProtectedRoute allowedRoles={['admin']}><IntegridadPage /></ProtectedRoute> },
+      { path: 'admin/comisiones', element: <ProtectedRoute allowedRoles={['admin']}><ComisionesPage /></ProtectedRoute> },
       { path: 'admin/auditoria',  element: <ProtectedRoute allowedRoles={['admin']}><AuditoriaPage /></ProtectedRoute> },
       { path: 'admin/historico',  element: <ProtectedRoute allowedRoles={['admin']}><HistoricoPage /></ProtectedRoute> },
       { path: 'admin/saneamiento-legacy', element: <ProtectedRoute allowedRoles={['admin']}><SaneamientoLegacyPage /></ProtectedRoute> },
