@@ -11,6 +11,7 @@ import { buildCobranzaHistoricoScopeWhere, mergeCobranzaWhere } from '../cobranz
 import { attachConsultaPreciosData } from '../productos/pricing.js'
 import { buildProveedorWhere, proveedorOrderBy } from '../proveedores/helpers.js'
 import { buildBodegaTallerWhere, enrichBodegaTallerItems, filterStockCriticoItems } from '../bodega-taller/helpers.js'
+import { registerComisionesReportRoutes } from './comisiones.js'
 
 const VENTA_DIRECTA_TIPOS = ['Venta sala', 'Venta directa', 'Venta Sala', 'Venta Directa', 'Normal']
 
@@ -794,6 +795,8 @@ function buildGerencialExportRows(reportes = {}, query = {}) {
 }
 
 export default async function reportesRoutes(fastify) {
+  registerComisionesReportRoutes(fastify)
+
   fastify.get('/gerencial/ventas', {
     preHandler: [fastify.authenticate, fastify.rbac('cobranza', 'read')],
   }, async (request, reply) => {
