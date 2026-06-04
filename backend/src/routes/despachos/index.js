@@ -62,6 +62,10 @@ const TrackingEventoCreate = z.object({
   transporte: z.string().optional().nullable(),
   ubicacion: z.string().optional().nullable(),
   observacion: z.string().optional().nullable(),
+  tipoIncidente: z.string().optional().nullable(),
+  accionTomada: z.string().optional().nullable(),
+  responsable: z.string().optional().nullable(),
+  fechaCompromiso: z.string().optional().nullable(),
   fechaEvento: z.string().optional().nullable(),
 })
 
@@ -87,6 +91,10 @@ function canViewEliminados(user) {
 
 function wantsEliminados(value) {
   return value === true || value === 'true'
+}
+
+function wantsTrue(value) {
+  return value === true || value === 'true' || value === '1' || value === 1
 }
 
 function withOrdenSucursalScope(user, where = {}) {
@@ -386,7 +394,7 @@ export function applyDespachoEstadoFilter(where, estado) {
 }
 
 async function buildDespachoListWhere(prisma, user, query = {}) {
-  const { desde, hasta, ordenId, odtId, nInterno, interno, origenTipo, origenId, tipo, contacto, transporte, region, comuna, cliente, estado, parcial, tieneMulta, search, includeEliminados } = query
+  const { desde, hasta, ordenId, odtId, nInterno, interno, origenTipo, origenId, tipo, contacto, transporte, region, comuna, cliente, estado, parcial, tieneMulta, conIncidencia, search, includeEliminados } = query
   const includeDeleted = wantsEliminados(includeEliminados)
   if (includeDeleted && !canViewEliminados(user)) {
     return { status: 403, error: 'No tiene permiso para ver despachos eliminados' }
@@ -415,6 +423,7 @@ async function buildDespachoListWhere(prisma, user, query = {}) {
   if (estadoError) return estadoError
   if (parcial === 'true') where.parcial = true
   if (tieneMulta === 'true') where.tieneMulta = true
+  if (wantsTrue(conIncidencia)) where.trackingEventos = { some: { estado: 'Incidencia' } }
   const clienteFilter = buildClienteOrdenFilter(cliente)
   if (clienteFilter) where.AND = [...(where.AND || []), clienteFilter]
   if (search) {
@@ -506,6 +515,10 @@ const TRACKING_EVENT_SELECT = {
   transporte: true,
   ubicacion: true,
   observacion: true,
+  tipoIncidente: true,
+  accionTomada: true,
+  responsable: true,
+  fechaCompromiso: true,
   fechaEvento: true,
   usuario: true,
   createdAt: true,
@@ -523,12 +536,25 @@ export function buildTrackingEventData(input = {}, user = null, now = new Date()
   if (!estado) return { error: 'estado tracking invalido' }
   const fechaEvento = hasValue(input.fechaEvento) ? parseDate(input.fechaEvento) : now
   if (hasValue(input.fechaEvento) && !fechaEvento) return { error: 'fechaEvento invalida' }
+  const hasIncidentDetail = ['tipoIncidente', 'accionTomada', 'responsable', 'fechaCompromiso'].some(field => hasValue(input[field]))
+  if (estado !== 'Incidencia' && hasIncidentDetail) {
+    return { error: 'campos de incidencia solo aplican a estado Incidencia' }
+  }
+  const incidentData = {}
+  if (estado === 'Incidencia') {
+    incidentData.tipoIncidente = cleanText(input.tipoIncidente)
+    incidentData.accionTomada = cleanText(input.accionTomada)
+    incidentData.responsable = cleanText(input.responsable)
+    incidentData.fechaCompromiso = hasValue(input.fechaCompromiso) ? parseDate(input.fechaCompromiso) : null
+    if (hasValue(input.fechaCompromiso) && !incidentData.fechaCompromiso) return { error: 'fechaCompromiso invalida' }
+  }
   return {
     data: {
       estado,
       transporte: cleanText(input.transporte),
       ubicacion: cleanText(input.ubicacion),
       observacion: cleanText(input.observacion),
+      ...incidentData,
       fechaEvento,
       usuario: userLabel(user),
     },
@@ -542,7 +568,7 @@ async function buildDespachoTrackingTrace(prisma, despachoId) {
     orderBy: [{ fechaEvento: 'desc' }, { id: 'desc' }],
     take: 80,
   })
-  return { latest: eventos[0] || null, eventos }
+  return { latest: eventos[0] || null, latestIncidencia: eventos.find(evento => evento.estado === 'Incidencia') || null, eventos }
 }
 
 async function attachLatestDespachoTracking(prisma, items) {
@@ -556,10 +582,14 @@ async function attachLatestDespachoTracking(prisma, items) {
     orderBy: [{ fechaEvento: 'desc' }, { id: 'desc' }],
   })
   const latestByDespacho = new Map()
+  const latestIncidenciaByDespacho = new Map()
   for (const evento of eventos) {
     if (!latestByDespacho.has(evento.despachoId)) latestByDespacho.set(evento.despachoId, evento)
+    if (evento.estado === 'Incidencia' && !latestIncidenciaByDespacho.has(evento.despachoId)) {
+      latestIncidenciaByDespacho.set(evento.despachoId, evento)
+    }
   }
-  const enriched = list.map(item => ({ ...item, tracking: latestByDespacho.get(item.id) || null }))
+  const enriched = list.map(item => ({ ...item, tracking: latestByDespacho.get(item.id) || null, incidencia: latestIncidenciaByDespacho.get(item.id) || null }))
   return Array.isArray(items) ? enriched : enriched[0]
 }
 
@@ -710,6 +740,10 @@ export default async function despachosRoutes(fastify) {
         trackingEstado: row.tracking?.estado || '',
         trackingFecha: formatDate(row.tracking?.fechaEvento),
         trackingUbicacion: row.tracking?.ubicacion || '',
+        incidenciaTipo: row.incidencia?.tipoIncidente || '',
+        incidenciaAccion: row.incidencia?.accionTomada || '',
+        incidenciaResponsable: row.incidencia?.responsable || '',
+        incidenciaFechaCompromiso: formatDate(row.incidencia?.fechaCompromiso),
         fechaEntrega: formatDate(row.fechaEntrega),
         fechaInterno: formatDate(row.fechaInterno),
         fecham: formatDate(row.fecham),
@@ -721,6 +755,10 @@ export default async function despachosRoutes(fastify) {
       { key: 'trackingEstado', label: 'Tracking Estado' },
       { key: 'trackingFecha', label: 'Tracking Fecha' },
       { key: 'trackingUbicacion', label: 'Tracking Ubicacion' },
+      { key: 'incidenciaTipo', label: 'Incidencia Tipo' },
+      { key: 'incidenciaAccion', label: 'Incidencia Accion' },
+      { key: 'incidenciaResponsable', label: 'Incidencia Responsable' },
+      { key: 'incidenciaFechaCompromiso', label: 'Incidencia Fecha Compromiso' },
       { key: 'ordenId', label: 'Orden' },
       { key: 'interno', label: 'N Interno' },
       { key: 'odtId', label: 'ODT' },

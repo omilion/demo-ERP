@@ -3,9 +3,60 @@ import { resolveOdtForWrite, resolveOrdenForWrite } from '../relation-guards.js'
 import { can } from '../../middleware/rbac.js'
 
 const TIPOS = ['ingreso', 'egreso', 'ajuste']
+const MOTIVO_CATEGORIAS = [
+  ['merma', 'Merma'],
+  ['perdida', 'Perdida'],
+  ['dano', 'Dano'],
+  ['error inventario', 'Error inventario'],
+  ['otro', 'Otro'],
+]
 
 function hasValue(value) {
   return value !== undefined && value !== null && value !== ''
+}
+
+function cleanText(value) {
+  if (!hasValue(value)) return null
+  const text = String(value).trim()
+  return text || null
+}
+
+function normalizeForMatch(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function normalizeMotivoCategoria(value) {
+  const normalized = normalizeForMatch(value)
+  if (!normalized) return null
+  const found = MOTIVO_CATEGORIAS.find(([key]) => key === normalized)
+  return found?.[1] || null
+}
+
+export function buildMovimientoMotivo({ tipo, cantidad, stockActual, motivo, motivoCategoria } = {}) {
+  const detail = cleanText(motivo)
+  if (!detail) return { error: 'motivo requerido' }
+  const categoria = normalizeMotivoCategoria(motivoCategoria)
+  if (hasValue(motivoCategoria) && !categoria) {
+    return { error: 'motivoCategoria invalido' }
+  }
+  if (!categoria) return { motivo: detail }
+
+  const isReduction = tipo === 'egreso' || (tipo === 'ajuste' && Number(cantidad) < Number(stockActual || 0))
+  if (!isReduction) {
+    return { error: 'motivoCategoria solo aplica a egreso o ajuste de disminucion' }
+  }
+
+  const normalizedDetail = normalizeForMatch(detail)
+  const normalizedCategoria = normalizeForMatch(categoria)
+  if (normalizedDetail === normalizedCategoria || normalizedDetail.startsWith(`${normalizedCategoria}:`) || normalizedDetail.startsWith(`${normalizedCategoria} -`)) {
+    return { motivo: detail }
+  }
+  return { motivo: `${categoria}: ${detail}` }
 }
 
 function parseOptionalPositiveInt(value, field) {
@@ -76,7 +127,7 @@ export default async function movimientosProductoRoutes(fastify) {
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
-    const { tipo, cantidad, motivo } = request.body || {}
+    const { tipo, cantidad, motivo, motivoCategoria } = request.body || {}
     if (!TIPOS.includes(tipo)) return reply.code(400).send({ error: 'tipo debe ser ingreso, egreso o ajuste' })
     if (tipo === 'ajuste' && !can(request.user?.role, 'bodega', 'delete', request.user?.permisosExtra)) {
       return reply.code(403).send({ error: 'Forbidden' })
@@ -86,9 +137,16 @@ export default async function movimientosProductoRoutes(fastify) {
     if (tipo === 'ajuste' ? qty < 0 : qty <= 0) {
       return reply.code(400).send({ error: 'cantidad invalida' })
     }
-    if (!motivo || !String(motivo).trim()) return reply.code(400).send({ error: 'motivo requerido' })
     const prod = await fastify.prisma.producto.findUnique({ where: { id } })
     if (!prod) return reply.code(404).send({ error: 'Producto no encontrado' })
+    const builtMotivo = buildMovimientoMotivo({
+      tipo,
+      cantidad: qty,
+      stockActual: prod.stock,
+      motivo,
+      motivoCategoria,
+    })
+    if (builtMotivo.error) return reply.code(400).send({ error: builtMotivo.error })
 
     const traceability = await resolveTraceability(fastify.prisma, request.body || {}, { user: request.user })
     if (traceability.error) return reply.code(traceability.status || 400).send({ error: traceability.error })
@@ -111,7 +169,7 @@ export default async function movimientosProductoRoutes(fastify) {
           productoId: id,
           tipo,
           cantidad: delta,
-          motivo: String(motivo).trim(),
+          motivo: builtMotivo.motivo,
           userId,
           ...traceability,
         },

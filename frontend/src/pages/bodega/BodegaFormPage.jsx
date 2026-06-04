@@ -14,6 +14,8 @@ const ESTADO_INVENTARIO_OPTIONS = [
   'Reserva',
 ]
 
+const MOTIVO_CATEGORIA_OPTIONS = ['', 'Merma', 'Perdida', 'Dano', 'Error inventario', 'Otro']
+
 function PrecioHistorial({ historial }) {
   if (!historial.length) return null
 
@@ -432,18 +434,32 @@ function MovimientosSection({ productoId, stockActual }) {
   const [tipo, setTipo] = useState('ingreso')
   const [cantidad, setCantidad] = useState('')
   const [motivo, setMotivo] = useState('')
+  const [motivoCategoria, setMotivoCategoria] = useState('')
+
+  const cantidadNumero = parseInt(cantidad, 10)
+  const esDisminucion = tipo === 'egreso' || (tipo === 'ajuste' && !isNaN(cantidadNumero) && cantidadNumero < Number(stockActual || 0))
+
+  useEffect(() => {
+    if (!esDisminucion && motivoCategoria) setMotivoCategoria('')
+  }, [esDisminucion, motivoCategoria])
 
   const submit = () => {
     const c = parseInt(cantidad, 10)
     if (isNaN(c)) { alert('Cantidad inválida'); return }
     if (!motivo.trim()) { alert('Motivo requerido'); return }
-    addMov.mutate({ productoId, tipo, cantidad: c, motivo: motivo.trim() }, {
-      onSuccess: () => { setCantidad(''); setMotivo('') },
+    const requiereCategoria = tipo === 'egreso' || (tipo === 'ajuste' && c < Number(stockActual || 0))
+    if (requiereCategoria && !motivoCategoria) { alert('Motivo operacional requerido'); return }
+    addMov.mutate({ productoId, tipo, cantidad: c, motivo: motivo.trim(), motivoCategoria: requiereCategoria ? motivoCategoria : undefined }, {
+      onSuccess: () => { setCantidad(''); setMotivo(''); setMotivoCategoria('') },
       onError: e => alert(e.response?.data?.error || 'Error'),
     })
   }
 
   const fmtDate = iso => new Date(iso).toLocaleString('es-CL', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const parseMotivo = motivoTexto => {
+    const match = String(motivoTexto || '').match(/^(Merma|Perdida|Dano|Error inventario|Otro):\s*(.*)$/i)
+    return match ? { categoria: match[1], detalle: match[2] || '' } : { categoria: '', detalle: motivoTexto }
+  }
 
   return (
     <>
@@ -452,15 +468,18 @@ function MovimientosSection({ productoId, stockActual }) {
         Stock actual: <b style={{ color: 'var(--text-1)', fontFamily: "'DM Mono', monospace" }}>{stockActual}</b>
         {' · '}Ingreso suma · Egreso resta · Ajuste fija stock al valor indicado
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '120px 110px 1fr auto', gap: 8, marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginBottom: 12, alignItems: 'start' }}>
         <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}>
           <option value="ingreso">Ingreso</option>
           <option value="egreso">Egreso</option>
           <option value="ajuste">Ajuste</option>
         </select>
         <Input value={cantidad} onChange={setCantidad} type="number" placeholder="0" />
+        <select value={motivoCategoria} onChange={e => setMotivoCategoria(e.target.value)} disabled={!esDisminucion} style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, background: esDisminucion ? '#fff' : 'var(--bg)', color: esDisminucion ? 'var(--text-1)' : 'var(--text-3)' }}>
+          {MOTIVO_CATEGORIA_OPTIONS.map(value => <option key={value} value={value}>{value || 'Motivo operacional'}</option>)}
+        </select>
         <Input value={motivo} onChange={setMotivo} placeholder="Motivo (obligatorio)" />
-        <button onClick={submit} disabled={addMov.isPending} style={{ padding: '7px 14px', borderRadius: 6, border: 'none', background: 'var(--green-700)', color: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+        <button onClick={submit} disabled={addMov.isPending} style={{ width: '100%', padding: '7px 14px', borderRadius: 6, border: 'none', background: 'var(--green-700)', color: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
           {addMov.isPending ? '…' : 'Aplicar'}
         </button>
       </div>
@@ -475,14 +494,20 @@ function MovimientosSection({ productoId, stockActual }) {
               </tr>
             </thead>
             <tbody>
-              {movs.map((m, i) => (
-                <tr key={m.id} style={{ borderBottom: i < movs.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                  <td style={{ padding: '8px 14px', color: 'var(--text-2)', fontFamily: "'DM Mono', monospace" }}>{fmtDate(m.createdAt)}</td>
-                  <td style={{ padding: '8px 14px', textTransform: 'capitalize' }}>{m.tipo}</td>
-                  <td style={{ padding: '8px 14px', fontFamily: "'DM Mono', monospace", fontWeight: 600, color: m.cantidad >= 0 ? 'var(--green-700)' : 'var(--red)' }}>{m.cantidad > 0 ? '+' : ''}{m.cantidad}</td>
-                  <td style={{ padding: '8px 14px', color: 'var(--text-2)' }}>{m.motivo}</td>
-                </tr>
-              ))}
+              {movs.map((m, i) => {
+                const motivoInfo = parseMotivo(m.motivo)
+                return (
+                  <tr key={m.id} style={{ borderBottom: i < movs.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    <td style={{ padding: '8px 14px', color: 'var(--text-2)', fontFamily: "'DM Mono', monospace" }}>{fmtDate(m.createdAt)}</td>
+                    <td style={{ padding: '8px 14px', textTransform: 'capitalize' }}>{m.tipo}</td>
+                    <td style={{ padding: '8px 14px', fontFamily: "'DM Mono', monospace", fontWeight: 600, color: m.cantidad >= 0 ? 'var(--green-700)' : 'var(--red)' }}>{m.cantidad > 0 ? '+' : ''}{m.cantidad}</td>
+                    <td style={{ padding: '8px 14px', color: 'var(--text-2)' }}>
+                      {motivoInfo.categoria && <span style={{ display: 'inline-block', marginRight: 6, padding: '2px 6px', borderRadius: 999, background: 'oklch(0.95 0.03 30)', color: 'var(--red)', fontSize: 10.5, fontWeight: 700 }}>{motivoInfo.categoria}</span>}
+                      {motivoInfo.detalle}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

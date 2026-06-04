@@ -339,6 +339,112 @@ describe('despachos legacy matrix parity', () => {
     }
   })
 
+  it('records structured incident fields and filters dispatches with incidents', async () => {
+    const fixtureA = await createFixture(app)
+    const fixtureB = await createFixture(app)
+    try {
+      const createA = await app.inject({
+        method: 'POST',
+        url: '/api/despachos',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { ordenId: fixtureA.orden.id, tipoDespacho: 'Despacho con incidencia' },
+      })
+      const createB = await app.inject({
+        method: 'POST',
+        url: '/api/despachos',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { ordenId: fixtureB.orden.id, tipoDespacho: 'Despacho normal' },
+      })
+      expect(createA.statusCode).toBe(200)
+      expect(createB.statusCode).toBe(200)
+      const despachoA = JSON.parse(createA.body)
+      const despachoB = JSON.parse(createB.body)
+
+      const legacyIncident = await app.inject({
+        method: 'POST',
+        url: `/api/despachos/${despachoA.id}/tracking`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { estado: 'Incidencia', observacion: 'Falta responsable' },
+      })
+      expect(legacyIncident.statusCode).toBe(200)
+      expect(JSON.parse(legacyIncident.body).evento).toMatchObject({
+        estado: 'Incidencia',
+        observacion: 'Falta responsable',
+      })
+
+      const incident = await app.inject({
+        method: 'POST',
+        url: `/api/despachos/${despachoA.id}/tracking`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          estado: 'Incidencia',
+          tipoIncidente: 'Producto faltante',
+          accionTomada: 'Preparar reposicion',
+          responsable: 'Bodega',
+          fechaCompromiso: '2026-06-05T09:00:00.000Z',
+          observacion: 'Falta una almohada',
+        },
+      })
+      expect(incident.statusCode).toBe(200)
+      expect(JSON.parse(incident.body).evento).toMatchObject({
+        despachoId: despachoA.id,
+        estado: 'Incidencia',
+        tipoIncidente: 'Producto faltante',
+        accionTomada: 'Preparar reposicion',
+        responsable: 'Bodega',
+      })
+
+      const normalTrack = await app.inject({
+        method: 'POST',
+        url: `/api/despachos/${despachoB.id}/tracking`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { estado: 'Preparado' },
+      })
+      expect(normalTrack.statusCode).toBe(200)
+
+      const list = await app.inject({
+        method: 'GET',
+        url: '/api/despachos?conIncidencia=true',
+        headers: { authorization: `Bearer ${adminToken}` },
+      })
+      expect(list.statusCode).toBe(200)
+      const items = JSON.parse(list.body).items
+      expect(items.some(item => item.id === despachoA.id)).toBe(true)
+      expect(items.some(item => item.id === despachoB.id)).toBe(false)
+      expect(items.find(item => item.id === despachoA.id).incidencia).toMatchObject({
+        tipoIncidente: 'Producto faltante',
+        accionTomada: 'Preparar reposicion',
+        responsable: 'Bodega',
+      })
+
+      const trace = await app.inject({
+        method: 'GET',
+        url: `/api/despachos/${despachoA.id}/tracking`,
+        headers: { authorization: `Bearer ${adminToken}` },
+      })
+      expect(trace.statusCode).toBe(200)
+      expect(JSON.parse(trace.body).latestIncidencia).toMatchObject({
+        tipoIncidente: 'Producto faltante',
+        accionTomada: 'Preparar reposicion',
+      })
+      const order = await app.prisma.orden.findUnique({ where: { id: fixtureA.orden.id } })
+      expect(order.estadoEntrega).toBe('Pendiente entrega')
+
+      const exportRes = await app.inject({
+        method: 'GET',
+        url: '/api/despachos/export/registros?conIncidencia=true',
+        headers: { authorization: `Bearer ${adminToken}` },
+      })
+      expect(exportRes.statusCode).toBe(200)
+      expect(exportRes.body).toContain('Incidencia Tipo')
+      expect(exportRes.body).toContain('Producto faltante')
+      expect(exportRes.body).toContain('Preparar reposicion')
+    } finally {
+      await cleanupFixture(app, fixtureA)
+      await cleanupFixture(app, fixtureB)
+    }
+  })
+
   it('recalculates both orders when a despacho is moved to another sale', async () => {
     const fixtureA = await createFixture(app)
     const fixtureB = await createFixture(app)

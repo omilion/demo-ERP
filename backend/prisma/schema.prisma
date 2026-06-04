@@ -1253,19 +1253,24 @@ model Despacho {
 // ── RRHH ─────────────────────────────────────────────────────────────
 
 model DespachoTrackingEvento {
-  id          Int      @id @default(autoincrement())
-  despachoId  Int      @map("despacho_id")
-  estado      String
-  transporte  String?
-  ubicacion   String?
-  observacion String?
-  fechaEvento DateTime @default(now()) @map("fecha_evento")
-  usuario     String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  despacho    Despacho @relation(fields: [despachoId], references: [id], onDelete: Cascade)
+  id              Int      @id @default(autoincrement())
+  despachoId      Int      @map("despacho_id")
+  estado          String
+  transporte      String?
+  ubicacion       String?
+  observacion     String?
+  tipoIncidente   String?  @map("tipo_incidente")
+  accionTomada    String?  @map("accion_tomada")
+  responsable     String?
+  fechaCompromiso DateTime? @map("fecha_compromiso")
+  fechaEvento     DateTime @default(now()) @map("fecha_evento")
+  usuario         String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  despacho        Despacho @relation(fields: [despachoId], references: [id], onDelete: Cascade)
 
   @@index([despachoId, fechaEvento])
   @@index([estado])
+  @@index([estado, fechaCompromiso])
   @@map("despacho_tracking_eventos")
   @@schema("bodega")
 }

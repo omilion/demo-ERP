@@ -419,6 +419,62 @@ describe('Bodega product safeguards', () => {
     expect(reloaded.stock).toBe(3)
   })
 
+  it('records merma and perdida categories as auditable stock movements', async () => {
+    const producto = await app.prisma.producto.create({
+      data: {
+        codigoInterno: testCode(),
+        nombre: 'Producto Merma',
+        bodega: 'Inventario',
+        stock: 5,
+        stockCritico: 1,
+        precioLista: 1000,
+      },
+    })
+
+    try {
+      const merma = await app.inject({
+        method: 'POST',
+        url: `/api/productos/${producto.id}/movimientos`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          tipo: 'egreso',
+          cantidad: 2,
+          motivoCategoria: 'Merma',
+          motivo: 'recorte inutilizable',
+        },
+      })
+      expect(merma.statusCode).toBe(201)
+      const mermaBody = JSON.parse(merma.body)
+      expect(mermaBody.stockFinal).toBe(3)
+      expect(mermaBody.movimiento).toMatchObject({
+        tipo: 'egreso',
+        cantidad: -2,
+        motivo: 'Merma: recorte inutilizable',
+        origenTipo: 'manual',
+      })
+
+      const ingresoConCategoria = await app.inject({
+        method: 'POST',
+        url: `/api/productos/${producto.id}/movimientos`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          tipo: 'ingreso',
+          cantidad: 1,
+          motivoCategoria: 'Perdida',
+          motivo: 'no corresponde a ingreso',
+        },
+      })
+      expect(ingresoConCategoria.statusCode).toBe(400)
+      expect(JSON.parse(ingresoConCategoria.body).error).toBe('motivoCategoria solo aplica a egreso o ajuste de disminucion')
+
+      const final = await app.prisma.producto.findUnique({ where: { id: producto.id } })
+      expect(final.stock).toBe(3)
+    } finally {
+      await app.prisma.movimientoBodega.deleteMany({ where: { productoId: producto.id } })
+      await app.prisma.producto.deleteMany({ where: { id: producto.id } })
+    }
+  })
+
   it('does not allow soft delete or reactivation through generic update', async () => {
     const producto = await app.prisma.producto.create({
       data: {

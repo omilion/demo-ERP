@@ -67,8 +67,8 @@ export const useMovimientos = (productoId) =>
 export const useAddMovimiento = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ productoId, tipo, cantidad, motivo }) =>
-      api.post(`/productos/${productoId}/movimientos`, { tipo, cantidad, motivo }).then(r => r.data),
+    mutationFn: ({ productoId, tipo, cantidad, motivo, motivoCategoria }) =>
+      api.post(`/productos/${productoId}/movimientos`, { tipo, cantidad, motivo, motivoCategoria }).then(r => r.data),
     onSuccess: (_, { productoId }) => {
       qc.invalidateQueries({ queryKey: ['movimientos', productoId] })
       qc.invalidateQueries({ queryKey: ['productos'] })

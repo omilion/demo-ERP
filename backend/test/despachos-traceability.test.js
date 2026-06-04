@@ -475,6 +475,10 @@ describe('dispatch tracking helpers', () => {
       transporte: '  Chilexpress  ',
       ubicacion: '  Valparaiso  ',
       observacion: '  Cliente ausente  ',
+      tipoIncidente: ' Cliente ausente ',
+      accionTomada: ' Se reagenda entrega ',
+      responsable: ' Logistica ',
+      fechaCompromiso: '2026-06-03T10:15:00.000Z',
       fechaEvento: '2026-06-02T10:15:00.000Z',
     }, { nombre: 'Admin QA' })).toEqual({
       data: {
@@ -482,6 +486,10 @@ describe('dispatch tracking helpers', () => {
         transporte: 'Chilexpress',
         ubicacion: 'Valparaiso',
         observacion: 'Cliente ausente',
+        tipoIncidente: 'Cliente ausente',
+        accionTomada: 'Se reagenda entrega',
+        responsable: 'Logistica',
+        fechaCompromiso: new Date('2026-06-03T10:15:00.000Z'),
         fechaEvento: new Date('2026-06-02T10:15:00.000Z'),
         usuario: 'Admin QA',
       },
@@ -492,6 +500,19 @@ describe('dispatch tracking helpers', () => {
     })
     expect(buildTrackingEventData({ estado: 'Preparado', fechaEvento: 'bad-date' })).toEqual({
       error: 'fechaEvento invalida',
+    })
+    expect(buildTrackingEventData({ estado: 'Incidencia', observacion: 'Sin responsable' })).toMatchObject({
+      data: {
+        estado: 'Incidencia',
+        observacion: 'Sin responsable',
+        tipoIncidente: null,
+        accionTomada: null,
+        responsable: null,
+        fechaCompromiso: null,
+      },
+    })
+    expect(buildTrackingEventData({ estado: 'Preparado', tipoIncidente: 'Retraso' })).toEqual({
+      error: 'campos de incidencia solo aplican a estado Incidencia',
     })
   })
 })

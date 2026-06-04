@@ -13,6 +13,7 @@ const TABS = [
 ]
 
 const TRACKING_ESTADOS = ['Preparado', 'En ruta', 'Entregado', 'Incidencia', 'Reprogramado', 'Retenido', 'Devuelto']
+const INCIDENT_TYPES = ['Retraso', 'Cliente ausente', 'Direccion incorrecta', 'Producto faltante', 'Producto danado', 'Transporte', 'Documentacion', 'Otro']
 const ESTADO_PAGO_OPTS = ['', 'No pagada', 'Pagada', 'Parcial']
 const ESTADO_ENTREGA_OPTS = ['', 'Pendiente entrega', 'En despacho', 'Entregada', 'Parcial']
 const TIPO_VENTA_OPTS = [
@@ -99,6 +100,7 @@ export default function DespachosPage() {
   const [tipoVenta, setTipoVenta] = useState('')
   const [estadoLogistico, setEstadoLogistico] = useState('')
   const [ventasHoy, setVentasHoy] = useState(false)
+  const [conIncidencia, setConIncidencia] = useState(false)
   const [includeEliminados, setIncludeEliminados] = useState(false)
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
@@ -148,6 +150,7 @@ export default function DespachosPage() {
   if (comuna) registroParams.comuna = comuna
   if (cliente) registroParams.cliente = cliente
   if (estadoLogistico) registroParams.estado = estadoLogistico
+  if (conIncidencia) registroParams.conIncidencia = 'true'
   if (ordenIdParam) registroParams.ordenId = ordenIdParam
   if (canDeleteDespacho && includeEliminados) registroParams.includeEliminados = 'true'
   registroParams.page = String(page)
@@ -291,6 +294,7 @@ export default function DespachosPage() {
         {r.tieneMulta && <Badge tone="red">Multa</Badge>}
         {!v && !r.tieneMulta && <Badge tone={r.fechaEntrega ? 'green' : 'gray'}>{r.fechaEntrega ? 'Entregado' : 'Pendiente'}</Badge>}
         {r.tracking?.estado && <Badge tone={trackingTone(r.tracking.estado)}>{r.tracking.estado}</Badge>}
+        {r.incidencia && <Badge tone="red">{r.incidencia.tipoIncidente || 'Incidencia'}</Badge>}
       </div>
     ) },
     { key: '_acc', label: '', render: (_, row) => (
@@ -346,7 +350,7 @@ export default function DespachosPage() {
     setRut(''); setCliente(''); setOc(''); setIdLicitacion(''); setGuia('')
     setNc(''); setNd(''); setRegion(''); setComuna(''); setCiudad('')
     setEstadoPago(''); setEstadoEntrega(''); setTipoVenta(''); setEstadoLogistico('')
-    setVentasHoy(false); setIncludeEliminados(false); setPage(1)
+    setVentasHoy(false); setConIncidencia(false); setIncludeEliminados(false); setPage(1)
     if (ordenIdParam || odtIdParam) setSearchParams({})
   }
 
@@ -416,6 +420,9 @@ export default function DespachosPage() {
           <FilterField label="Ciudad"><input value={ciudad} onChange={e => setFilter(setCiudad)(e.target.value)} style={inputFilter} /></FilterField>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
             <label style={checkLabel}><input type="checkbox" checked={ventasHoy} onChange={e => { setVentasHoy(e.target.checked); setPage(1) }} /> Ventas hoy</label>
+            {tab === 'registros' && (
+              <label style={checkLabel}><input type="checkbox" checked={conIncidencia} onChange={e => { setConIncidencia(e.target.checked); setPage(1) }} /> Con incidencia</label>
+            )}
             {canDeleteDespacho && tab !== 'matriz' && (
               <label style={checkLabel}><input type="checkbox" checked={includeEliminados} onChange={e => { setIncludeEliminados(e.target.checked); setPage(1) }} /> Ver eliminados</label>
             )}
@@ -693,17 +700,29 @@ function DespachoTrackingModal({ row, canWrite, saving, onClose, onSave }) {
     ubicacion: latest?.ubicacion || '',
     fechaEvento: '',
     observacion: '',
+    tipoIncidente: '',
+    accionTomada: '',
+    responsable: '',
+    fechaCompromiso: '',
   })
   const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
   const save = () => {
-    onSave({
+    const esIncidencia = form.estado === 'Incidencia'
+    const payload = {
       estado: form.estado,
       transporte: form.transporte.trim() || undefined,
       ubicacion: form.ubicacion.trim() || undefined,
       fechaEvento: form.fechaEvento || undefined,
       observacion: form.observacion.trim() || undefined,
-    })
-    setForm(prev => ({ ...prev, observacion: '', fechaEvento: '' }))
+    }
+    if (esIncidencia) {
+      payload.tipoIncidente = form.tipoIncidente.trim() || undefined
+      payload.accionTomada = form.accionTomada.trim() || undefined
+      payload.responsable = form.responsable.trim() || undefined
+      payload.fechaCompromiso = form.fechaCompromiso || undefined
+    }
+    onSave(payload)
+    setForm(prev => ({ ...prev, observacion: '', fechaEvento: '', tipoIncidente: '', accionTomada: '', responsable: '', fechaCompromiso: '' }))
   }
 
   return (
@@ -717,7 +736,7 @@ function DespachoTrackingModal({ row, canWrite, saving, onClose, onSave }) {
       </div>
 
       {canWrite && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 0.8fr) minmax(150px, 1fr) minmax(140px, 1fr)', gap: 10, marginBottom: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 10 }}>
           <Field label="Estado">
             <select value={form.estado} onChange={event => set('estado', event.target.value)} style={input}>
               {TRACKING_ESTADOS.map(estado => <option key={estado} value={estado}>{estado}</option>)}
@@ -732,11 +751,32 @@ function DespachoTrackingModal({ row, canWrite, saving, onClose, onSave }) {
           <Field label="Ubicacion">
             <input value={form.ubicacion} onChange={event => set('ubicacion', event.target.value)} style={input} />
           </Field>
-          <div style={{ gridColumn: 'span 2' }}>
+          <div style={{ gridColumn: '1 / -1' }}>
             <Field label="Observacion">
               <input value={form.observacion} onChange={event => set('observacion', event.target.value)} placeholder="Detalle operativo" style={input} />
             </Field>
           </div>
+          {form.estado === 'Incidencia' && (
+            <>
+              <Field label="Tipo incidente">
+                <select value={form.tipoIncidente} onChange={event => set('tipoIncidente', event.target.value)} style={input}>
+                  <option value="">Seleccionar</option>
+                  {INCIDENT_TYPES.map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}
+                </select>
+              </Field>
+              <Field label="Responsable">
+                <input value={form.responsable} onChange={event => set('responsable', event.target.value)} style={input} />
+              </Field>
+              <Field label="Fecha compromiso">
+                <input type="datetime-local" value={form.fechaCompromiso} onChange={event => set('fechaCompromiso', event.target.value)} style={input} />
+              </Field>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <Field label="Accion tomada">
+                  <input value={form.accionTomada} onChange={event => set('accionTomada', event.target.value)} style={input} />
+                </Field>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -760,6 +800,14 @@ function DespachoTrackingModal({ row, canWrite, saving, onClose, onSave }) {
                     {evento.transporte ? ` - ${evento.transporte}` : ''}
                   </div>
                   {evento.observacion && <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 2 }}>{evento.observacion}</div>}
+                  {evento.estado === 'Incidencia' && (evento.tipoIncidente || evento.accionTomada || evento.responsable || evento.fechaCompromiso) && (
+                    <div style={{ marginTop: 5, display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11, color: 'var(--text-2)' }}>
+                      {evento.tipoIncidente && <Badge tone="red">{evento.tipoIncidente}</Badge>}
+                      {evento.responsable && <span>Resp. {evento.responsable}</span>}
+                      {evento.fechaCompromiso && <span>Compromiso {new Date(evento.fechaCompromiso).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>}
+                      {evento.accionTomada && <span>Accion: {evento.accionTomada}</span>}
+                    </div>
+                  )}
                 </div>
                 <Mono muted>#{evento.id}</Mono>
               </div>
