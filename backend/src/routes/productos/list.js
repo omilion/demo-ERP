@@ -118,12 +118,6 @@ export default async function listProductos(fastify) {
     if (codigoBarra) where.codigoBarra = { equals: codigoBarra, mode: 'insensitive' }
     if (codigoInterno) where.codigoInterno = { contains: codigoInterno, mode: 'insensitive' }
     const filterNombreInMemory = Boolean(nombre)
-    // estado computado: 'sin-stock' | 'critico' | 'normal'
-    if (estado === 'sin-stock') where.stock = 0
-    else if (estado === 'critico') {
-      where.stock = { gt: 0 }
-      where.stockCritico = { gt: 0 }
-    }
     if (search) andFilters.push({
       OR: [
         { nombre: { contains: search, mode: 'insensitive' } },
@@ -136,13 +130,20 @@ export default async function listProductos(fastify) {
       ],
     })
     if (andFilters.length) where.AND = andFilters
+    const statsWhere = JSON.parse(JSON.stringify(where))
+    // estado computado: 'sin-stock' | 'critico' | 'normal'
+    if (estado === 'sin-stock') where.stock = 0
+    else if (estado === 'critico') {
+      where.stock = { gt: 0 }
+      where.stockCritico = { gt: 0 }
+    }
     const LIMIT = 500
     const sortByNombre = sort === 'nombre'
     // Prisma no compara columnas en where; acotamos y filtramos la comparacion final en memoria.
     const fetchInMemory = estado === 'critico' || filterNombreInMemory
     const fetchTake = fetchInMemory ? 5000 : LIMIT
     const skip = fetchInMemory ? 0 : (parsedPage - 1) * LIMIT
-    const [productos, total] = await Promise.all([
+    const [productos, total, statsRows] = await Promise.all([
       fastify.prisma.producto.findMany({
         where,
         orderBy: sortByNombre ? [{ nombre: 'asc' }] : [{ stock: 'desc' }, { nombre: 'asc' }],
@@ -151,6 +152,10 @@ export default async function listProductos(fastify) {
         include: { subcategoria: true },
       }),
       fastify.prisma.producto.count({ where }),
+      fastify.prisma.producto.findMany({
+        where: statsWhere,
+        select: { stock: true, stockCritico: true, precioLista: true },
+      }),
     ])
     let items = await attachConsultaPreciosData(
       fastify.prisma,
@@ -169,9 +174,19 @@ export default async function listProductos(fastify) {
     if (filterNombreInMemory) items = items.slice((parsedPage - 1) * LIMIT, parsedPage * LIMIT)
     const canReadCosto = can(request.user?.role, 'bodega', 'read', request.user?.permisosExtra)
     items = items.map(item => sanitizeProductoCosto(item, canReadCosto))
+    const stats = statsRows.reduce((acc, p) => {
+      const stock = Number(p.stock || 0)
+      const stockCritico = Number(p.stockCritico || 0)
+      acc.total += 1
+      if (stock === 0) acc.sinStock += 1
+      if (stock > 0 && stockCritico > 0 && stock <= stockCritico) acc.critico += 1
+      acc.valorInventario += Number(p.precioLista || 0) * stock
+      return acc
+    }, { total: 0, critico: 0, sinStock: 0, valorInventario: 0 })
     return {
       items,
       total: responseTotal,
+      stats: canReadCosto ? stats : { ...stats, valorInventario: null },
       limit: LIMIT,
       page: parsedPage,
       pages: Math.max(1, Math.ceil(responseTotal / LIMIT)),

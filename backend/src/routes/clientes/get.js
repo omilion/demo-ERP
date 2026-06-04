@@ -34,7 +34,7 @@ export default async function getCliente(fastify) {
       estadoPago: o.estadoPago, estadoEntrega: o.estadoEntrega,
       licitacion: o.licitacion, createdAt: o.createdAt,
       creadorNombre: o.creadorNombre, abono: o.abono,
-      total: computeTotal(o.items, o.descuentoPct, o.cargos),
+      total: computeTotal(o.items, o.descuentoPct, o.cargos, o.descuentoMonto),
     }))
 
     // Fetch ODTs linked to any of this client's ventas

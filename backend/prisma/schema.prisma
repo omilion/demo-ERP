@@ -428,7 +428,10 @@ model Orden {
   emailCliente       String?        @map("email_cliente")
   userId             Int            @map("user_id")
   sucursalId         Int?           @map("sucursal_id")
-  descuentoPct       Float          @default(0) @map("descuento_pct")
+  descuentoPct         Float          @default(0) @map("descuento_pct")
+  descuentoSolicitudId Int?           @unique @map("descuento_solicitud_id")
+  descuentoMonto       Float?         @map("descuento_monto")
+  descuentoSnapshot    Json?          @map("descuento_snapshot")
   abono              Float          @default(0)
   facturado          Float?
   guias              Int?
@@ -450,6 +453,7 @@ model Orden {
   packingBultos      PackingBulto[]
   packingEventos     PackingEvento[]
   clienteSucursal    ClienteSucursal? @relation(fields: [clienteSucursalId], references: [id], onDelete: SetNull)
+  descuentoSolicitud DescuentoSolicitud? @relation("OrdenDescuentoSolicitud", fields: [descuentoSolicitudId], references: [id], onDelete: SetNull)
 
   @@index([nInterno])
   @@index([clienteSucursalId])
@@ -539,8 +543,12 @@ model CotizacionLicitacion {
   ordenId       Int?                       @map("orden_id")
   sucursalId    Int?                       @map("sucursal_id")
   referencia    String?
-  descuentoPct  Float                      @default(0) @map("descuento_pct")
-  items         CotizacionLicitacionItem[]
+  descuentoPct         Float                      @default(0) @map("descuento_pct")
+  descuentoSolicitudId Int?                       @unique @map("descuento_solicitud_id")
+  descuentoMonto       Float?                     @map("descuento_monto")
+  descuentoSnapshot    Json?                      @map("descuento_snapshot")
+  items                CotizacionLicitacionItem[]
+  descuentoSolicitud   DescuentoSolicitud?        @relation("CotizacionDescuentoSolicitud", fields: [descuentoSolicitudId], references: [id], onDelete: SetNull)
 
   @@index([idLicitacion])
   @@index([rutCliente])
@@ -661,6 +669,69 @@ model DescuentoPorcMarco {
   activo Boolean @default(true)
 
   @@map("descuentos_porc_marco")
+  @@schema("ventas")
+}
+
+model DescuentoRegla {
+  id                 Int                  @id @default(autoincrement())
+  codigo             String
+  version            Int                  @default(1)
+  nombre             String
+  descripcion        String?
+  alcance            String               @default("ventas")
+  tipoDescuento      String               @default("porcentaje") @map("tipo_descuento")
+  prioridad          Int                  @default(100)
+  condiciones        Json?
+  efecto             Json?
+  porcentajeMax      Float?               @map("porcentaje_max")
+  montoMax           Float?               @map("monto_max")
+  requiereAprobacion Boolean              @default(false) @map("requiere_aprobacion")
+  vigenteDesde       DateTime?            @map("vigente_desde")
+  vigenteHasta       DateTime?            @map("vigente_hasta")
+  activo             Boolean              @default(true)
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  solicitudes        DescuentoSolicitud[]
+
+  @@unique([codigo, version])
+  @@index([codigo, activo])
+  @@index([activo, prioridad])
+  @@index([alcance, activo])
+  @@index([vigenteDesde, vigenteHasta])
+  @@map("descuento_reglas")
+  @@schema("ventas")
+}
+
+model DescuentoSolicitud {
+  id                       Int                  @id @default(autoincrement())
+  reglaId                  Int?                 @map("regla_id")
+  estado                   String               @default("pendiente")
+  origenTipo               String?              @map("origen_tipo")
+  solicitanteId            Int?                 @map("solicitante_id")
+  solicitanteNombre        String?              @map("solicitante_nombre")
+  aprobadorId              Int?                 @map("aprobador_id")
+  aprobadorNombre          String?              @map("aprobador_nombre")
+  descuentoPctSolicitado   Float?               @map("descuento_pct_solicitado")
+  descuentoPctAprobado     Float?               @map("descuento_pct_aprobado")
+  descuentoMontoSolicitado Float?               @map("descuento_monto_solicitado")
+  descuentoMontoAprobado   Float?               @map("descuento_monto_aprobado")
+  subtotalBase             Float?               @map("subtotal_base")
+  motivo                   String?
+  comentarioResolucion     String?              @map("comentario_resolucion")
+  contextoSnapshot         Json?                @map("contexto_snapshot")
+  resultadoSnapshot        Json?                @map("resultado_snapshot")
+  createdAt                DateTime             @default(now()) @map("created_at")
+  updatedAt                DateTime             @updatedAt @map("updated_at")
+  resueltoAt               DateTime?            @map("resuelto_at")
+  regla                    DescuentoRegla?      @relation(fields: [reglaId], references: [id], onDelete: SetNull)
+  orden                    Orden?               @relation("OrdenDescuentoSolicitud")
+  cotizacion               CotizacionLicitacion?  @relation("CotizacionDescuentoSolicitud")
+
+  @@index([reglaId])
+  @@index([estado, createdAt])
+  @@index([solicitanteId, createdAt])
+  @@index([aprobadorId, resueltoAt])
+  @@map("descuento_solicitudes")
   @@schema("ventas")
 }
 

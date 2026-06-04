@@ -5,6 +5,7 @@ import {
   normalizeProductoFotoUrl,
   normalizeProductoFotos,
 } from '../src/routes/productos/helpers.js'
+import { computeTotal } from '../src/routes/ventas/helpers.js'
 
 describe('admin JSON serialization helpers', () => {
   it('converts BigInt values recursively', () => {
@@ -48,5 +49,18 @@ describe('producto foto URL helpers', () => {
     expect(isProductoFotoUrl('/uploads/fotos_grandes/a.jpg')).toBe(true)
     expect(isProductoFotoUrl('https://example.com/a.jpg')).toBe(true)
     expect(isProductoFotoUrl('/otra/ruta/a.jpg')).toBe(false)
+  })
+})
+
+describe('ventas total helpers', () => {
+  it('mantiene descuentoPct legacy y prioriza descuentoMonto congelado', () => {
+    const items = [
+      { cantidad: 2, precioUnitario: 10000 },
+      { cantidad: 1, precioUnitario: 5000 },
+    ]
+    const cargos = [{ valor: 2000 }]
+
+    expect(computeTotal(items, 10, cargos)).toBe(24300)
+    expect(computeTotal(items, 10, cargos, 1000)).toBe(26000)
   })
 })

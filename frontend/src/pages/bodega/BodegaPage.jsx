@@ -80,10 +80,11 @@ export default function BodegaPage() {
     ? (result.items ?? []).filter(p => p.estadoOperacional === estadoOperativo)
     : (result.items ?? [])
   const totalEnBodega = result.total ?? 0
+  const kpiStats = result.stats ?? { total: totalEnBodega, critico: 0, sinStock: 0, valorInventario: 0 }
   const LIMIT = result.limit ?? 500
   const selectedCategoria = categoriasApi.find(c => String(c.id) === String(categoriaId))
   const subcategorias = selectedCategoria?.subcategorias || []
-  const valorInventario = productos.reduce((sum, p) => sum + Number(p.precioLista || 0) * Number(p.stock || 0), 0)
+  const valorInventario = kpiStats.valorInventario == null ? null : Number(kpiStats.valorInventario || 0)
 
   const handleDelete = (row) => {
     if (!window.confirm(`Eliminar producto ${row.codigoInterno}?`)) return
@@ -126,8 +127,16 @@ export default function BodegaPage() {
 
   const { selected, setSelected, reset, visibleColumns, required } = useColumnPreferences(`bodega-${tab}`, cols, user)
 
-  const criticos = productos.filter(p => estadoTone(p.estado) === 'amber').length
-  const sinStock = productos.filter(p => p.estado === 'Sin stock').length
+  const resetEstadoFilters = () => {
+    setFilter('all')
+    setEstadoOperativo('')
+  }
+
+  const criticos = kpiStats.critico ?? 0
+  const sinStock = kpiStats.sinStock ?? 0
+  const valorInventarioLabel = valorInventario == null
+    ? 'Sin acceso'
+    : '$' + Math.round(valorInventario / 1_000_000 * 10) / 10 + 'M'
 
   return (
     <main className="page page-wide">
@@ -146,10 +155,10 @@ export default function BodegaPage() {
       />
 
       <div className="kpi-strip">
-        <KpiCard label="Total productos" value={totalEnBodega} icon="package" sublabel={bodegaParam} />
-        <KpiCard label="Stock crítico" value={criticos} icon="alertTriangle" tone="amber" sublabel="Stock igual o bajo mínimo" />
-        <KpiCard label="Sin stock" value={sinStock} icon="x" tone="red" sublabel="Requiere reposición" />
-        <KpiCard label="Valor inventario" value={'$' + Math.round(valorInventario / 1_000_000 * 10) / 10 + 'M'} icon="dollarSign" sublabel="Costo/lista valorizado" />
+        <KpiCard label="Total productos" value={kpiStats.total ?? totalEnBodega} icon="package" sublabel={`${bodegaParam} · limpiar filtro estado`} onClick={resetEstadoFilters} />
+        <KpiCard label="Stock crítico" value={criticos} icon="alertTriangle" tone="amber" sublabel="Stock bajo mínimo" onClick={() => { setFilter('critico'); setEstadoOperativo('') }} />
+        <KpiCard label="Sin stock" value={sinStock} icon="x" tone="red" sublabel="Requiere reposición" onClick={() => { setFilter('sin-stock'); setEstadoOperativo('') }} />
+        <KpiCard label="Valor inventario" value={valorInventarioLabel} icon="dollarSign" sublabel="Costo/lista valorizado" onClick={resetEstadoFilters} />
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>

@@ -214,7 +214,7 @@ export default async function ventaCargosRoutes(fastify) {
           data: { eliminado: false, estadoDoc: 'Activa', userMod: usuario, fecham: fecha },
         })
         const abono = await getActiveNonReferentialPayments(tx, id)
-        const total = computeTotal(orden.items, orden.descuentoPct, orden.cargos)
+        const total = computeTotal(orden.items, orden.descuentoPct, orden.cargos, orden.descuentoMonto)
         const estadoPago = abono <= 0 ? 'No pagada' : abono >= total ? 'Pagada' : 'Parcial'
         const updated = await tx.orden.update({
           where: { id },

@@ -47,7 +47,7 @@ function addMetric(bucket, key, amount, count = 1) {
 }
 
 function totalOrden(orden) {
-  return computeTotal(orden.items || [], orden.descuentoPct, orden.cargos || [])
+  return computeTotal(orden.items || [], orden.descuentoPct, orden.cargos || [], orden.descuentoMonto)
 }
 
 function totalLicitacion(licitacion) {
@@ -910,7 +910,7 @@ export default async function reportesRoutes(fastify) {
       orderBy: { createdAt: 'desc' },
     })
     const rows = ventas.map(o => {
-      const total = computeTotal(o.items || [], o.descuentoPct, o.cargos || [])
+      const total = computeTotal(o.items || [], o.descuentoPct, o.cargos || [], o.descuentoMonto)
       return {
         ...o,
         total,
@@ -999,7 +999,7 @@ export default async function reportesRoutes(fastify) {
     for (const pago of pagos) (pagosMap[pago.ordenId] ||= []).push(pago)
 
     const rows = withClientes.map(o => {
-      const total = computeTotal(o.items || [], o.descuentoPct, o.cargos || [])
+      const total = computeTotal(o.items || [], o.descuentoPct, o.cargos || [], o.descuentoMonto)
       const saldo = Math.max(0, total - Number(o.abono || 0))
       const pagosOrden = pagosMap[o.id] || []
       const documentosReferenciales = pagosOrden

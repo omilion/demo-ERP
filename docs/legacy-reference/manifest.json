@@ -1,0 +1,1026 @@
+[
+  {
+    "index": 0,
+    "label": "Login",
+    "href": "/",
+    "url": "http://127.0.0.1:8088/",
+    "file": "screenshots/00-login.png",
+    "status": "captured"
+  },
+  {
+    "index": 1,
+    "label": "Menu principal",
+    "href": "menu.php",
+    "url": "http://127.0.0.1:8088/menu.php",
+    "file": "screenshots/01-menu-principal.png",
+    "status": "captured"
+  },
+  {
+    "index": 2,
+    "label": "Perfil Plastimar",
+    "href": "menu.php?pag=perfil/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=perfil/index",
+    "source": "menu_top.php",
+    "file": "screenshots/02-perfil-plastimar.png",
+    "status": "captured"
+  },
+  {
+    "index": 3,
+    "label": "Editar Usuarios",
+    "href": "menu.php?pag=usuarios/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=usuarios/index",
+    "source": "menu_top.php",
+    "file": "screenshots/03-editar-usuarios.png",
+    "status": "captured"
+  },
+  {
+    "index": 4,
+    "label": "Editar Categorias",
+    "href": "menu.php?pag=categorias/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=categorias/index",
+    "source": "menu_top.php",
+    "file": "screenshots/04-editar-categorias.png",
+    "status": "captured"
+  },
+  {
+    "index": 5,
+    "label": "Editar Sub-Categorias",
+    "href": "menu.php?pag=subcategorias/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=subcategorias/index",
+    "source": "menu_top.php",
+    "file": "screenshots/05-editar-sub-categorias.png",
+    "status": "captured"
+  },
+  {
+    "index": 6,
+    "label": "Editar Categorias bodega taller",
+    "href": "menu.php?pag=categorias_bodega_taller/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=categorias_bodega_taller/index",
+    "source": "menu_top.php",
+    "file": "screenshots/06-editar-categorias-bodega-taller.png",
+    "status": "captured"
+  },
+  {
+    "index": 7,
+    "label": "Editar Sub-Categorias bodega taller",
+    "href": "menu.php?pag=subcategorias_bodega_taller/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=subcategorias_bodega_taller/index",
+    "source": "menu_top.php",
+    "file": "screenshots/07-editar-sub-categorias-bodega-taller.png",
+    "status": "captured"
+  },
+  {
+    "index": 8,
+    "label": "Editar Proveedores",
+    "href": "menu.php?pag=proveedores/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=proveedores/index",
+    "source": "menu_top.php",
+    "file": "screenshots/08-editar-proveedores.png",
+    "status": "captured"
+  },
+  {
+    "index": 9,
+    "label": "Editar % Carga por transporte",
+    "href": "menu.php?pag=cargo_transporte/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=cargo_transporte/index",
+    "source": "menu_top.php",
+    "file": "screenshots/09-editar-carga-por-transporte.png",
+    "status": "captured"
+  },
+  {
+    "index": 10,
+    "label": "Editar % desc. para ventas",
+    "href": "menu.php?pag=descuentos_porc/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=descuentos_porc/index",
+    "source": "menu_top.php",
+    "file": "screenshots/10-editar-desc-para-ventas.png",
+    "status": "captured"
+  },
+  {
+    "index": 11,
+    "label": "Editar % desc. Convenio Marco",
+    "href": "menu.php?pag=descuentos_marco/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=descuentos_marco/index",
+    "source": "menu_top.php",
+    "file": "screenshots/11-editar-desc-convenio-marco.png",
+    "status": "captured"
+  },
+  {
+    "index": 12,
+    "label": "Editar nombres gastos",
+    "href": "menu.php?pag=gastos/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=gastos/index",
+    "source": "menu_top.php",
+    "file": "screenshots/12-editar-nombres-gastos.png",
+    "status": "captured"
+  },
+  {
+    "index": 13,
+    "label": "Movimientos hoy",
+    "href": "menu.php?pag=caja/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=caja/index",
+    "source": "menu_top.php",
+    "file": "screenshots/13-movimientos-hoy.png",
+    "status": "captured"
+  },
+  {
+    "index": 14,
+    "label": "Buscar por fecha",
+    "href": "menu.php?pag=caja/buscar_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=caja/buscar_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/14-buscar-por-fecha.png",
+    "status": "captured"
+  },
+  {
+    "index": 15,
+    "label": "Buscar Documento y número",
+    "href": "menu.php?pag=caja/buscar_documento",
+    "url": "http://127.0.0.1:8088/menu.php?pag=caja/buscar_documento",
+    "source": "menu_top.php",
+    "file": "screenshots/15-buscar-documento-y-numero.png",
+    "status": "captured"
+  },
+  {
+    "index": 16,
+    "label": "Buscar por Número Interno",
+    "href": "menu.php?pag=caja/buscar_ninterno",
+    "url": "http://127.0.0.1:8088/menu.php?pag=caja/buscar_ninterno",
+    "source": "menu_top.php",
+    "file": "screenshots/16-buscar-por-numero-interno.png",
+    "status": "captured"
+  },
+  {
+    "index": 17,
+    "label": "Buscar por Tipo de Venta",
+    "href": "menu.php?pag=caja/buscar_tipo_venta",
+    "url": "http://127.0.0.1:8088/menu.php?pag=caja/buscar_tipo_venta",
+    "source": "menu_top.php",
+    "file": "screenshots/17-buscar-por-tipo-de-venta.png",
+    "status": "captured"
+  },
+  {
+    "index": 18,
+    "label": "Ingreso",
+    "href": "menu.php?pag=caja/ingreso/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=caja/ingreso/index",
+    "source": "menu_top.php",
+    "file": "screenshots/18-ingreso.png",
+    "status": "captured"
+  },
+  {
+    "index": 19,
+    "label": "Egreso",
+    "href": "menu.php?pag=caja/egreso/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=caja/egreso/index",
+    "source": "menu_top.php",
+    "file": "screenshots/19-egreso.png",
+    "status": "captured"
+  },
+  {
+    "index": 20,
+    "label": "Cerrar caja",
+    "href": "menu.php?pag=caja/cierre_caja/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=caja/cierre_caja/index",
+    "source": "menu_top.php",
+    "file": "screenshots/20-cerrar-caja.png",
+    "status": "captured"
+  },
+  {
+    "index": 21,
+    "label": "Boletas",
+    "href": "menu.php?pag=caja/index2",
+    "url": "http://127.0.0.1:8088/menu.php?pag=caja/index2",
+    "source": "menu_top.php",
+    "file": "screenshots/21-boletas.png",
+    "status": "captured"
+  },
+  {
+    "index": 22,
+    "label": "Nueva Venta",
+    "href": "menu.php?pag=venta_directa/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=venta_directa/index",
+    "source": "menu_top.php",
+    "file": "screenshots/22-nueva-venta.png",
+    "status": "captured"
+  },
+  {
+    "index": 23,
+    "label": "Buscar por Número de Venta",
+    "href": "menu.php?pag=venta_directa/buscar_numero",
+    "url": "http://127.0.0.1:8088/menu.php?pag=venta_directa/buscar_numero",
+    "source": "menu_top.php",
+    "file": "screenshots/23-buscar-por-numero-de-venta.png",
+    "status": "captured"
+  },
+  {
+    "index": 24,
+    "label": "Buscar por Fechas",
+    "href": "menu.php?pag=matriz_ventas/buscar_tipo_venta&tipo=Venta sala",
+    "url": "http://127.0.0.1:8088/menu.php?pag=matriz_ventas/buscar_tipo_venta&tipo=Venta%20sala",
+    "source": "menu_top.php",
+    "file": "screenshots/24-buscar-por-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 25,
+    "label": "Buscar por Número de Venta",
+    "href": "menu.php?pag=venta_web/buscar_numero",
+    "url": "http://127.0.0.1:8088/menu.php?pag=venta_web/buscar_numero",
+    "source": "menu_top.php",
+    "file": "screenshots/25-buscar-por-numero-de-venta.png",
+    "status": "captured"
+  },
+  {
+    "index": 26,
+    "label": "Buscar por Orden Compra",
+    "href": "menu.php?pag=matriz_ventas/buscar_oc",
+    "url": "http://127.0.0.1:8088/menu.php?pag=matriz_ventas/buscar_oc",
+    "source": "menu_top.php",
+    "file": "screenshots/26-buscar-por-orden-compra.png",
+    "status": "captured"
+  },
+  {
+    "index": 27,
+    "label": "Buscar por Fechas",
+    "href": "menu.php?pag=matriz_ventas/buscar_tipo_venta&tipo=Venta Web",
+    "url": "http://127.0.0.1:8088/menu.php?pag=matriz_ventas/buscar_tipo_venta&tipo=Venta%20Web",
+    "source": "menu_top.php",
+    "file": "screenshots/27-buscar-por-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 28,
+    "label": "Nueva Cotización de Licitación",
+    "href": "menu.php?pag=cotizar_licitacion/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=cotizar_licitacion/index",
+    "source": "menu_top.php",
+    "file": "screenshots/28-nueva-cotizacion-de-licitacion.png",
+    "status": "captured"
+  },
+  {
+    "index": 29,
+    "label": "Pendientes",
+    "href": "menu.php?pag=reportes_licitaciones/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=reportes_licitaciones/index",
+    "source": "menu_top.php",
+    "file": "screenshots/29-pendientes.png",
+    "status": "captured"
+  },
+  {
+    "index": 30,
+    "label": "Buscar por ID Licitación",
+    "href": "menu.php?pag=reportes_licitaciones/buscar_id",
+    "url": "http://127.0.0.1:8088/menu.php?pag=reportes_licitaciones/buscar_id",
+    "source": "menu_top.php",
+    "file": "screenshots/30-buscar-por-id-licitacion.png",
+    "status": "captured"
+  },
+  {
+    "index": 31,
+    "label": "Buscar Licitaciones por Fechas",
+    "href": "menu.php?pag=reportes_licitaciones/buscar_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=reportes_licitaciones/buscar_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/31-buscar-licitaciones-por-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 32,
+    "label": "Buscar Licitaciones por Estados y Fechas",
+    "href": "menu.php?pag=reportes_licitaciones/buscar_estados_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=reportes_licitaciones/buscar_estados_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/32-buscar-licitaciones-por-estados-y-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 33,
+    "label": "Nueva Venta Convenio Marco",
+    "href": "menu.php?pag=convenio_marco/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=convenio_marco/index",
+    "source": "menu_top.php",
+    "file": "screenshots/33-nueva-venta-convenio-marco.png",
+    "status": "captured"
+  },
+  {
+    "index": 34,
+    "label": "Buscar por Número de Venta",
+    "href": "menu.php?pag=convenio_marco/buscar_numero",
+    "url": "http://127.0.0.1:8088/menu.php?pag=convenio_marco/buscar_numero",
+    "source": "menu_top.php",
+    "file": "screenshots/34-buscar-por-numero-de-venta.png",
+    "status": "captured"
+  },
+  {
+    "index": 35,
+    "label": "Buscar por Fechas",
+    "href": "menu.php?pag=matriz_ventas/buscar_tipo_venta&tipo=Convenio Marco",
+    "url": "http://127.0.0.1:8088/menu.php?pag=matriz_ventas/buscar_tipo_venta&tipo=Convenio%20Marco",
+    "source": "menu_top.php",
+    "file": "screenshots/35-buscar-por-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 36,
+    "label": "Listado completo productos",
+    "href": "menu.php?pag=precios/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=precios/index",
+    "source": "menu_top.php",
+    "file": "screenshots/36-listado-completo-productos.png",
+    "status": "captured"
+  },
+  {
+    "index": 37,
+    "label": "Búsqueda por código Barra",
+    "href": "menu.php?pag=precios/buscar_codigobarra",
+    "url": "http://127.0.0.1:8088/menu.php?pag=precios/buscar_codigobarra",
+    "source": "menu_top.php",
+    "file": "screenshots/37-busqueda-por-codigo-barra.png",
+    "status": "captured"
+  },
+  {
+    "index": 38,
+    "label": "Búsqueda por código Interno",
+    "href": "menu.php?pag=precios/buscar_codigo_interno",
+    "url": "http://127.0.0.1:8088/menu.php?pag=precios/buscar_codigo_interno",
+    "source": "menu_top.php",
+    "file": "screenshots/38-busqueda-por-codigo-interno.png",
+    "status": "captured"
+  },
+  {
+    "index": 39,
+    "label": "Búsqueda por Nombre Producto",
+    "href": "menu.php?pag=precios/buscar_nombre",
+    "url": "http://127.0.0.1:8088/menu.php?pag=precios/buscar_nombre",
+    "source": "menu_top.php",
+    "file": "screenshots/39-busqueda-por-nombre-producto.png",
+    "status": "captured"
+  },
+  {
+    "index": 40,
+    "label": "Búsqueda por Categoria / Subcategoria",
+    "href": "menu.php?pag=precios/buscar_categoria",
+    "url": "http://127.0.0.1:8088/menu.php?pag=precios/buscar_categoria",
+    "source": "menu_top.php",
+    "file": "screenshots/40-busqueda-por-categoria-subcategoria.png",
+    "status": "captured"
+  },
+  {
+    "index": 41,
+    "label": "Búsqueda por Proveedor",
+    "href": "menu.php?pag=precios/buscar_proveedor",
+    "url": "http://127.0.0.1:8088/menu.php?pag=precios/buscar_proveedor",
+    "source": "menu_top.php",
+    "file": "screenshots/41-busqueda-por-proveedor.png",
+    "status": "captured"
+  },
+  {
+    "index": 42,
+    "label": "Menú Cobranza",
+    "href": "menu.php?pag=cobranza/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=cobranza/index",
+    "source": "menu_top.php",
+    "file": "screenshots/42-menu-cobranza.png",
+    "status": "captured"
+  },
+  {
+    "index": 43,
+    "label": "Nueva Boleta o Factura Proveedor",
+    "href": "menu.php?pag=cobranza/nuevo",
+    "url": "http://127.0.0.1:8088/menu.php?pag=cobranza/nuevo",
+    "source": "menu_top.php",
+    "file": "screenshots/43-nueva-boleta-o-factura-proveedor.png",
+    "status": "captured"
+  },
+  {
+    "index": 44,
+    "label": "Número Boleta o Factura Proveedor",
+    "href": "menu.php?pag=cobranza/buscar_numero",
+    "url": "http://127.0.0.1:8088/menu.php?pag=cobranza/buscar_numero",
+    "source": "menu_top.php",
+    "file": "screenshots/44-numero-boleta-o-factura-proveedor.png",
+    "status": "captured"
+  },
+  {
+    "index": 45,
+    "label": "Entre Fechas Proveedor",
+    "href": "menu.php?pag=cobranza/buscar_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=cobranza/buscar_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/45-entre-fechas-proveedor.png",
+    "status": "captured"
+  },
+  {
+    "index": 46,
+    "label": "Boleta o Factura entre Fechas Proveedor",
+    "href": "menu.php?pag=cobranza/buscar_documento_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=cobranza/buscar_documento_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/46-boleta-o-factura-entre-fechas-proveedor.png",
+    "status": "captured"
+  },
+  {
+    "index": 47,
+    "label": "Proveedor entre Fechas",
+    "href": "menu.php?pag=cobranza/buscar_proveedor_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=cobranza/buscar_proveedor_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/47-proveedor-entre-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 48,
+    "label": "Facturas no pagadas ( )",
+    "href": "menu.php?pag=cobranza/lista_padre&no_pagada_factura=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=cobranza/lista_padre&no_pagada_factura=si",
+    "source": "menu_top.php",
+    "file": "screenshots/48-facturas-no-pagadas.png",
+    "status": "captured"
+  },
+  {
+    "index": 49,
+    "label": "Boletas no pagadas ( )",
+    "href": "menu.php?pag=cobranza/lista_padre&no_pagada_boleta=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=cobranza/lista_padre&no_pagada_boleta=si",
+    "source": "menu_top.php",
+    "file": "screenshots/49-boletas-no-pagadas.png",
+    "status": "captured"
+  },
+  {
+    "index": 50,
+    "label": "Todo el listado",
+    "href": "menu.php?pag=clientes/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=clientes/index",
+    "source": "menu_top.php",
+    "file": "screenshots/50-todo-el-listado.png",
+    "status": "captured"
+  },
+  {
+    "index": 51,
+    "label": "Buscar por nombre",
+    "href": "menu.php?pag=clientes/buscar_nombre",
+    "url": "http://127.0.0.1:8088/menu.php?pag=clientes/buscar_nombre",
+    "source": "menu_top.php",
+    "file": "screenshots/51-buscar-por-nombre.png",
+    "status": "captured"
+  },
+  {
+    "index": 52,
+    "label": "Buscar por E-Mail",
+    "href": "menu.php?pag=clientes/buscar_email",
+    "url": "http://127.0.0.1:8088/menu.php?pag=clientes/buscar_email",
+    "source": "menu_top.php",
+    "file": "screenshots/52-buscar-por-e-mail.png",
+    "status": "captured"
+  },
+  {
+    "index": 53,
+    "label": "Mantención productos",
+    "href": "menu.php?pag=bodega/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega/index",
+    "source": "menu_top.php",
+    "file": "screenshots/53-mantencion-productos.png",
+    "status": "captured"
+  },
+  {
+    "index": 54,
+    "label": "Búsqueda por código Barra",
+    "href": "menu.php?pag=bodega/buscar_codigobarra",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega/buscar_codigobarra",
+    "source": "menu_top.php",
+    "file": "screenshots/54-busqueda-por-codigo-barra.png",
+    "status": "captured"
+  },
+  {
+    "index": 55,
+    "label": "Búsqueda por código Interno",
+    "href": "menu.php?pag=bodega/buscar_codigo_interno",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega/buscar_codigo_interno",
+    "source": "menu_top.php",
+    "file": "screenshots/55-busqueda-por-codigo-interno.png",
+    "status": "captured"
+  },
+  {
+    "index": 56,
+    "label": "Búsqueda por Nombre Producto",
+    "href": "menu.php?pag=bodega/buscar_nombre",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega/buscar_nombre",
+    "source": "menu_top.php",
+    "file": "screenshots/56-busqueda-por-nombre-producto.png",
+    "status": "captured"
+  },
+  {
+    "index": 57,
+    "label": "Búsqueda por Categoria / Subcategoria",
+    "href": "menu.php?pag=bodega/buscar_categoria",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega/buscar_categoria",
+    "source": "menu_top.php",
+    "file": "screenshots/57-busqueda-por-categoria-subcategoria.png",
+    "status": "captured"
+  },
+  {
+    "index": 58,
+    "label": "Búsqueda por Proveedor",
+    "href": "menu.php?pag=bodega/buscar_proveedor",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega/buscar_proveedor",
+    "source": "menu_top.php",
+    "file": "screenshots/58-busqueda-por-proveedor.png",
+    "status": "captured"
+  },
+  {
+    "index": 59,
+    "label": "Stock Crítico o en 0",
+    "href": "menu.php?pag=bodega/index&stock_critico=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega/index&stock_critico=si",
+    "source": "menu_top.php",
+    "file": "screenshots/59-stock-critico-o-en-0.png",
+    "status": "captured"
+  },
+  {
+    "index": 60,
+    "label": "Códigos de barra repetidos",
+    "href": "menu.php?pag=bodega/index&barra_repetido=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega/index&barra_repetido=si",
+    "source": "menu_top.php",
+    "file": "screenshots/60-codigos-de-barra-repetidos.png",
+    "status": "captured"
+  },
+  {
+    "index": 61,
+    "label": "Códigos Internos repetidos",
+    "href": "menu.php?pag=bodega/index&interno_repetido=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega/index&interno_repetido=si",
+    "source": "menu_top.php",
+    "file": "screenshots/61-codigos-internos-repetidos.png",
+    "status": "captured"
+  },
+  {
+    "index": 62,
+    "label": "Sin Código Barra",
+    "href": "menu.php?pag=bodega/index&sin_codigo_barra=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega/index&sin_codigo_barra=si",
+    "source": "menu_top.php",
+    "file": "screenshots/62-sin-codigo-barra.png",
+    "status": "captured"
+  },
+  {
+    "index": 63,
+    "label": "Sin Código Interno",
+    "href": "menu.php?pag=bodega/index&sin_codigo_interno=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega/index&sin_codigo_interno=si",
+    "source": "menu_top.php",
+    "file": "screenshots/63-sin-codigo-interno.png",
+    "status": "captured"
+  },
+  {
+    "index": 64,
+    "label": "Sin Categoría",
+    "href": "menu.php?pag=bodega/index&sin_categoria=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega/index&sin_categoria=si",
+    "source": "menu_top.php",
+    "file": "screenshots/64-sin-categoria.png",
+    "status": "captured"
+  },
+  {
+    "index": 65,
+    "label": "Sin Proveedor",
+    "href": "menu.php?pag=bodega/index&sin_proveedor=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega/index&sin_proveedor=si",
+    "source": "menu_top.php",
+    "file": "screenshots/65-sin-proveedor.png",
+    "status": "captured"
+  },
+  {
+    "index": 66,
+    "label": "Mantención productos",
+    "href": "menu.php?pag=bodega_taller/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega_taller/index",
+    "source": "menu_top.php",
+    "file": "screenshots/66-mantencion-productos.png",
+    "status": "captured"
+  },
+  {
+    "index": 67,
+    "label": "Búsqueda por código Barra",
+    "href": "menu.php?pag=bodega_taller/buscar_codigobarra",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega_taller/buscar_codigobarra",
+    "source": "menu_top.php",
+    "file": "screenshots/67-busqueda-por-codigo-barra.png",
+    "status": "captured"
+  },
+  {
+    "index": 68,
+    "label": "Búsqueda por código Interno",
+    "href": "menu.php?pag=bodega_taller/buscar_codigo_interno",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega_taller/buscar_codigo_interno",
+    "source": "menu_top.php",
+    "file": "screenshots/68-busqueda-por-codigo-interno.png",
+    "status": "captured"
+  },
+  {
+    "index": 69,
+    "label": "Búsqueda por Nombre Producto",
+    "href": "menu.php?pag=bodega_taller/buscar_nombre",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega_taller/buscar_nombre",
+    "source": "menu_top.php",
+    "file": "screenshots/69-busqueda-por-nombre-producto.png",
+    "status": "captured"
+  },
+  {
+    "index": 70,
+    "label": "Búsqueda por Categoria / Subcategoria",
+    "href": "menu.php?pag=bodega_taller/buscar_categoria",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega_taller/buscar_categoria",
+    "source": "menu_top.php",
+    "file": "screenshots/70-busqueda-por-categoria-subcategoria.png",
+    "status": "captured"
+  },
+  {
+    "index": 71,
+    "label": "Búsqueda por Proveedor",
+    "href": "menu.php?pag=bodega_taller/buscar_proveedor",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega_taller/buscar_proveedor",
+    "source": "menu_top.php",
+    "file": "screenshots/71-busqueda-por-proveedor.png",
+    "status": "captured"
+  },
+  {
+    "index": 72,
+    "label": "Stock Crítico o en 0",
+    "href": "menu.php?pag=bodega_taller/index&stock_critico=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega_taller/index&stock_critico=si",
+    "source": "menu_top.php",
+    "file": "screenshots/72-stock-critico-o-en-0.png",
+    "status": "captured"
+  },
+  {
+    "index": 73,
+    "label": "Códigos de barra repetidos",
+    "href": "menu.php?pag=bodega_taller/index&barra_repetido=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega_taller/index&barra_repetido=si",
+    "source": "menu_top.php",
+    "file": "screenshots/73-codigos-de-barra-repetidos.png",
+    "status": "captured"
+  },
+  {
+    "index": 74,
+    "label": "Códigos Internos repetidos",
+    "href": "menu.php?pag=bodega_taller/index&interno_repetido=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega_taller/index&interno_repetido=si",
+    "source": "menu_top.php",
+    "file": "screenshots/74-codigos-internos-repetidos.png",
+    "status": "captured"
+  },
+  {
+    "index": 75,
+    "label": "Sin Código Barra",
+    "href": "menu.php?pag=bodega_taller/index&sin_codigo_barra=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega_taller/index&sin_codigo_barra=si",
+    "source": "menu_top.php",
+    "file": "screenshots/75-sin-codigo-barra.png",
+    "status": "captured"
+  },
+  {
+    "index": 76,
+    "label": "Sin Código Interno",
+    "href": "menu.php?pag=bodega_taller/index&sin_codigo_interno=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega_taller/index&sin_codigo_interno=si",
+    "source": "menu_top.php",
+    "file": "screenshots/76-sin-codigo-interno.png",
+    "status": "captured"
+  },
+  {
+    "index": 77,
+    "label": "Sin Categoría",
+    "href": "menu.php?pag=bodega_taller/index&sin_categoria=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega_taller/index&sin_categoria=si",
+    "source": "menu_top.php",
+    "file": "screenshots/77-sin-categoria.png",
+    "status": "captured"
+  },
+  {
+    "index": 78,
+    "label": "Sin Proveedor",
+    "href": "menu.php?pag=bodega_taller/index&sin_proveedor=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega_taller/index&sin_proveedor=si",
+    "source": "menu_top.php",
+    "file": "screenshots/78-sin-proveedor.png",
+    "status": "captured"
+  },
+  {
+    "index": 79,
+    "label": "OT Prioridad Alta",
+    "href": "menu.php?pag=taller/index&prioridad=alta",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller/index&prioridad=alta",
+    "source": "menu_top.php",
+    "file": "screenshots/79-ot-prioridad-alta.png",
+    "status": "captured"
+  },
+  {
+    "index": 80,
+    "label": "OT Pendientes",
+    "href": "menu.php?pag=taller/index&pendiente=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller/index&pendiente=si",
+    "source": "menu_top.php",
+    "file": "screenshots/80-ot-pendientes.png",
+    "status": "captured"
+  },
+  {
+    "index": 81,
+    "label": "Búsqueda por N° OT",
+    "href": "menu.php?pag=taller/buscar_ninterno",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller/buscar_ninterno",
+    "source": "menu_top.php",
+    "file": "screenshots/81-busqueda-por-n-ot.png",
+    "status": "captured"
+  },
+  {
+    "index": 82,
+    "label": "Búsqueda Fechas",
+    "href": "menu.php?pag=taller/buscar_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller/buscar_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/82-busqueda-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 83,
+    "label": "Búsqueda Taller entre Fechas",
+    "href": "menu.php?pag=taller/buscar_taller_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller/buscar_taller_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/83-busqueda-taller-entre-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 84,
+    "label": "OT Prioridad Alta",
+    "href": "menu.php?pag=taller_espumas/index&prioridad=alta",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_espumas/index&prioridad=alta",
+    "source": "menu_top.php",
+    "file": "screenshots/84-ot-prioridad-alta.png",
+    "status": "captured"
+  },
+  {
+    "index": 85,
+    "label": "OT Pendientes",
+    "href": "menu.php?pag=taller_espumas/index&pendiente=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_espumas/index&pendiente=si",
+    "source": "menu_top.php",
+    "file": "screenshots/85-ot-pendientes.png",
+    "status": "captured"
+  },
+  {
+    "index": 86,
+    "label": "Búsqueda por N° OT",
+    "href": "menu.php?pag=taller_espumas/buscar_ninterno",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_espumas/buscar_ninterno",
+    "source": "menu_top.php",
+    "file": "screenshots/86-busqueda-por-n-ot.png",
+    "status": "captured"
+  },
+  {
+    "index": 87,
+    "label": "Búsqueda Fechas",
+    "href": "menu.php?pag=taller_espumas/buscar_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_espumas/buscar_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/87-busqueda-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 88,
+    "label": "Buscador productos",
+    "href": "menu.php?pag=bodega/buscador/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bodega/buscador/index",
+    "source": "menu_top.php",
+    "file": "screenshots/88-buscador-productos.png",
+    "status": "captured"
+  },
+  {
+    "index": 89,
+    "label": "Inventario Telas",
+    "href": "menu.php?pag=taller_historial_materiales/telas/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_historial_materiales/telas/index",
+    "source": "menu_top.php",
+    "file": "screenshots/89-inventario-telas.png",
+    "status": "captured"
+  },
+  {
+    "index": 90,
+    "label": "OT Prioridad Alta",
+    "href": "menu.php?pag=taller_confecciones/index&prioridad=alta",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_confecciones/index&prioridad=alta",
+    "source": "menu_top.php",
+    "file": "screenshots/90-ot-prioridad-alta.png",
+    "status": "captured"
+  },
+  {
+    "index": 91,
+    "label": "OT Pendientes",
+    "href": "menu.php?pag=taller_confecciones/index&pendiente=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_confecciones/index&pendiente=si",
+    "source": "menu_top.php",
+    "file": "screenshots/91-ot-pendientes.png",
+    "status": "captured"
+  },
+  {
+    "index": 92,
+    "label": "Búsqueda por N° OT",
+    "href": "menu.php?pag=taller_confecciones/buscar_ninterno",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_confecciones/buscar_ninterno",
+    "source": "menu_top.php",
+    "file": "screenshots/92-busqueda-por-n-ot.png",
+    "status": "captured"
+  },
+  {
+    "index": 93,
+    "label": "Búsqueda Fechas",
+    "href": "menu.php?pag=taller_confecciones/buscar_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_confecciones/buscar_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/93-busqueda-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 94,
+    "label": "OT Prioridad Alta",
+    "href": "menu.php?pag=taller_externo/index&prioridad=alta",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_externo/index&prioridad=alta",
+    "source": "menu_top.php",
+    "file": "screenshots/94-ot-prioridad-alta.png",
+    "status": "captured"
+  },
+  {
+    "index": 95,
+    "label": "OT Pendientes",
+    "href": "menu.php?pag=taller_externo/index&pendiente=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_externo/index&pendiente=si",
+    "source": "menu_top.php",
+    "file": "screenshots/95-ot-pendientes.png",
+    "status": "captured"
+  },
+  {
+    "index": 96,
+    "label": "Búsqueda por N° OT",
+    "href": "menu.php?pag=taller_externo/buscar_ninterno",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_externo/buscar_ninterno",
+    "source": "menu_top.php",
+    "file": "screenshots/96-busqueda-por-n-ot.png",
+    "status": "captured"
+  },
+  {
+    "index": 97,
+    "label": "Búsqueda Fechas",
+    "href": "menu.php?pag=taller_externo/buscar_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_externo/buscar_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/97-busqueda-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 98,
+    "label": "Nueva bitácora",
+    "href": "menu.php?pag=bitacora_taller/nuevo",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bitacora_taller/nuevo",
+    "source": "menu_top.php",
+    "file": "screenshots/98-nueva-bitacora.png",
+    "status": "captured"
+  },
+  {
+    "index": 99,
+    "label": "Buscar por Fechas",
+    "href": "menu.php?pag=bitacora_taller/buscar_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bitacora_taller/buscar_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/99-buscar-por-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 100,
+    "label": "Buscar por operario entre Fechas",
+    "href": "menu.php?pag=bitacora_taller/buscar_operario_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=bitacora_taller/buscar_operario_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/100-buscar-por-operario-entre-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 101,
+    "label": "Buscar por Fechas",
+    "href": "menu.php?pag=taller_historial_materiales/buscar_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_historial_materiales/buscar_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/101-buscar-por-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 102,
+    "label": "Buscar Operario entre Fechas",
+    "href": "menu.php?pag=taller_historial_materiales/buscar_operario_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_historial_materiales/buscar_operario_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/102-buscar-operario-entre-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 103,
+    "label": "Buscar Taller entre Fechas",
+    "href": "menu.php?pag=taller_historial_materiales/buscar_taller_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=taller_historial_materiales/buscar_taller_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/103-buscar-taller-entre-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 104,
+    "label": "Menú Ingreso Mercadería",
+    "href": "menu.php?pag=facturas_bodega/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=facturas_bodega/index",
+    "source": "menu_top.php",
+    "file": "screenshots/104-menu-ingreso-mercaderia.png",
+    "status": "captured"
+  },
+  {
+    "index": 105,
+    "label": "Nueva Boleta o Factura",
+    "href": "menu.php?pag=facturas_bodega/nuevo",
+    "url": "http://127.0.0.1:8088/menu.php?pag=facturas_bodega/nuevo",
+    "source": "menu_top.php",
+    "file": "screenshots/105-nueva-boleta-o-factura.png",
+    "status": "captured"
+  },
+  {
+    "index": 106,
+    "label": "Número Boleta o Factura",
+    "href": "menu.php?pag=facturas_bodega/buscar_numero",
+    "url": "http://127.0.0.1:8088/menu.php?pag=facturas_bodega/buscar_numero",
+    "source": "menu_top.php",
+    "file": "screenshots/106-numero-boleta-o-factura.png",
+    "status": "captured"
+  },
+  {
+    "index": 107,
+    "label": "Entre Fechas",
+    "href": "menu.php?pag=facturas_bodega/buscar_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=facturas_bodega/buscar_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/107-entre-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 108,
+    "label": "Boleta o Factura entre Fechas",
+    "href": "menu.php?pag=facturas_bodega/buscar_documento_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=facturas_bodega/buscar_documento_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/108-boleta-o-factura-entre-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 109,
+    "label": "Proveedor entre Fechas",
+    "href": "menu.php?pag=facturas_bodega/buscar_proveedor_fechas",
+    "url": "http://127.0.0.1:8088/menu.php?pag=facturas_bodega/buscar_proveedor_fechas",
+    "source": "menu_top.php",
+    "file": "screenshots/109-proveedor-entre-fechas.png",
+    "status": "captured"
+  },
+  {
+    "index": 110,
+    "label": "MATRIZ VENTAS",
+    "href": "menu.php?pag=matriz_ventas/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=matriz_ventas/index",
+    "source": "home.php",
+    "file": "screenshots/110-matriz-ventas.png",
+    "status": "captured"
+  },
+  {
+    "index": 111,
+    "label": "Ventas No pagadas",
+    "href": "menu.php?pag=matriz_ventas/index&no_pagada=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=matriz_ventas/index&no_pagada=si",
+    "source": "home.php",
+    "file": "screenshots/111-ventas-no-pagadas.png",
+    "status": "captured"
+  },
+  {
+    "index": 112,
+    "label": "Ventas Pendientes entrega",
+    "href": "menu.php?pag=matriz_ventas/index&pendiente_entrega=si",
+    "url": "http://127.0.0.1:8088/menu.php?pag=matriz_ventas/index&pendiente_entrega=si",
+    "source": "home.php",
+    "file": "screenshots/112-ventas-pendientes-entrega.png",
+    "status": "captured"
+  },
+  {
+    "index": 113,
+    "label": "CONSULTA PRECIOS",
+    "href": "menu.php?pag=consulta_precios/index",
+    "url": "http://127.0.0.1:8088/menu.php?pag=consulta_precios/index",
+    "source": "home.php",
+    "file": "screenshots/113-consulta-precios.png",
+    "status": "captured"
+  }
+]

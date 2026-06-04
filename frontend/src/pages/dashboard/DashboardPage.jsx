@@ -531,7 +531,7 @@ export function DashboardOperativoPage() {
 
         {show.admin && (
           <SectionCard title="Administración" icon="settings">
-            <ActionRow icon="tag" label="Descuentos / Mant. Precios" onClick={() => navigate('/descuentos')} />
+            <ActionRow icon="tag" label="Reglas de Descuento" onClick={() => navigate('/descuentos')} />
             <ActionRow icon="users" label="Usuarios" onClick={() => navigate('/usuarios')} />
             <ActionRow icon="lock" label="Accesos" onClick={() => navigate('/accesos')} />
             <ActionRow icon="settings" label="Configuración" onClick={() => navigate('/config')} />

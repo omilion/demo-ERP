@@ -4,6 +4,18 @@ import { useVenta } from '../../api/ventas'
 
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 const fmtDate = d => d ? new Date(d).toLocaleDateString('es-CL') : '—'
+const discountAmount = (base, pct, frozenAmount) => {
+  const frozen = Number(frozenAmount || 0)
+  if (frozen > 0) return Math.min(Math.round(frozen), Math.round(Number(base || 0)))
+  return Math.round(Number(base || 0) * (Number(pct || 0) / 100))
+}
+
+function discountLabel(venta, pct) {
+  const snapshot = venta.descuentoSnapshot || {}
+  const name = snapshot.reglaNombre || snapshot.nombre || null
+  const label = name ? `Descuento ${name}` : 'Descuento'
+  return Number(pct || 0) > 0 ? `${label} (${pct}%)` : label
+}
 
 function normalizeItem(it) {
   const cantidad = Number(it.cantidad) || 0
@@ -37,7 +49,8 @@ export default function VentaPrintPage() {
   const subtotal = items.reduce((s, i) => s + i.subtotal, 0)
   const cargosTotal = (venta.cargos || []).reduce((s, c) => s + Number(c.valor || 0), 0)
   const totalBase = subtotal + cargosTotal
-  const descMonto = Math.round(totalBase * ((venta.descuentoPct || 0) / 100))
+  const descuentoPct = Number(venta.descuentoSnapshot?.porcentaje ?? venta.descuentoPct ?? 0)
+  const descMonto = discountAmount(totalBase, descuentoPct, venta.descuentoMonto)
   const total = totalBase - descMonto
 
   return (
@@ -104,8 +117,8 @@ export default function VentaPrintPage() {
             {cargosTotal > 0 && (
               <tr><td style={{ padding: '4px 12px', color: '#555' }}>Cargos transporte</td><td style={{ padding: '4px 12px', textAlign: 'right', fontFamily: 'monospace' }}>{fmt(cargosTotal)}</td></tr>
             )}
-            {(venta.descuentoPct || 0) > 0 && (
-              <tr><td style={{ padding: '4px 12px', color: '#555' }}>Descuento ({venta.descuentoPct}%)</td><td style={{ padding: '4px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#a00' }}>-{fmt(descMonto)}</td></tr>
+            {descMonto > 0 && (
+              <tr><td style={{ padding: '4px 12px', color: '#555' }}>{discountLabel(venta, descuentoPct)}</td><td style={{ padding: '4px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#a00' }}>-{fmt(descMonto)}</td></tr>
             )}
             <tr style={{ borderTop: '2px solid #111' }}><td style={{ padding: '6px 12px', fontWeight: 700 }}>Total</td><td style={{ padding: '6px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, fontSize: 15 }}>{fmt(total)}</td></tr>
             {(venta.abono || 0) > 0 && (

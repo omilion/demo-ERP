@@ -1,7 +1,9 @@
-export function computeTotal(items, descuentoPct = 0, cargos = []) {
+export function computeTotal(items, descuentoPct = 0, cargos = [], descuentoMonto = null) {
   const subtotal = items.reduce((s, i) => s + i.cantidad * i.precioUnitario, 0)
   const cargosTotal = (cargos || []).reduce((s, c) => s + Number(c.valor || 0), 0)
   const base = subtotal + cargosTotal
+  const frozenDiscount = Number(descuentoMonto || 0)
+  if (Number.isFinite(frozenDiscount) && frozenDiscount > 0) return Math.max(0, base - frozenDiscount)
   return base - computeDiscountAmount(base, descuentoPct)
 }
 

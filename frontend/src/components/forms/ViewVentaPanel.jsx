@@ -7,6 +7,18 @@ import { useVenta, useDeleteVenta } from '../../api/ventas'
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
 const discountAmount = (subtotal, pct) => Math.round(Number(subtotal || 0) * Number(pct || 0) / 100)
+const resolvedDiscountAmount = (subtotal, pct, frozenAmount) => {
+  const frozen = Number(frozenAmount || 0)
+  if (frozen > 0) return Math.min(Math.round(frozen), Math.round(Number(subtotal || 0)))
+  return discountAmount(subtotal, pct)
+}
+
+function discountLabel(venta, pct) {
+  const snapshot = venta.descuentoSnapshot || {}
+  const name = snapshot.reglaNombre || snapshot.nombre || null
+  const label = name ? `Descuento ${name}` : 'Descuento'
+  return Number(pct || 0) > 0 ? `${label} (${pct}%)` : label
+}
 
 function normalizeText(value) {
   return String(value || '')
@@ -61,11 +73,11 @@ function TabDetalle({ v }) {
   const total = v.total || 0
   const abono = v.abono || 0
   const saldo = total - abono
-  const descuento = v.descuentoPct || 0
+  const descuento = Number(v.descuentoSnapshot?.porcentaje ?? v.descuentoPct ?? 0)
   const subtotal = items.reduce((s, i) => s + (i.precioUnitario * i.cantidad), 0)
   const cargosTotal = (v.cargos || []).reduce((s, c) => s + Number(c.valor || 0), 0)
   const totalBase = subtotal + cargosTotal
-  const descuentoMonto = discountAmount(totalBase, descuento)
+  const descuentoMonto = resolvedDiscountAmount(totalBase, descuento, v.descuentoMonto)
 
   return (
     <>
@@ -142,7 +154,7 @@ function TabDetalle({ v }) {
       {/* Resumen financiero */}
       <FormDivider label="Resumen financiero" />
       <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 14 }}>
-        {items.length > 0 && subtotal !== total && descuento > 0 && (
+        {items.length > 0 && subtotal !== total && descuentoMonto > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 16px', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
             <span style={{ color: 'var(--text-2)' }}>Subtotal</span>
             <span style={{ fontFamily: "'DM Mono',monospace" }}>{fmt(subtotal)}</span>
@@ -154,9 +166,9 @@ function TabDetalle({ v }) {
             <span style={{ fontFamily: "'DM Mono',monospace" }}>{fmt(cargosTotal)}</span>
           </div>
         )}
-        {descuento > 0 && (
+        {descuentoMonto > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 16px', fontSize: 13, borderBottom: '1px solid var(--border)', color: 'var(--green-600)' }}>
-            <span>Descuento ({descuento}%)</span>
+            <span>{discountLabel(v, descuento)}</span>
             <span style={{ fontFamily: "'DM Mono',monospace" }}>-{fmt(descuentoMonto)}</span>
           </div>
         )}

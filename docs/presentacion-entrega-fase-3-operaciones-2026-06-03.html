@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SisGestion 3.0 - Entrega Fase 3 Operaciones Plastimar</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --ink: #111827;
+      --muted: #526070;
+      --line: #dbe3ea;
+      --soft: #f6f8fb;
+      --panel: #ffffff;
+      --deep: #102033;
+      --green: #147247;
+      --green-2: #0f5138;
+      --blue: #1d4ed8;
+      --amber: #b45309;
+      --red: #b42318;
+      --violet: #6d28d9;
+      --cyan: #0e7490;
+      --yellow: #fff632;
+      --shadow: 0 18px 55px rgba(17, 24, 39, .10);
+    }
+
+    * { box-sizing: border-box; }
+    html {
+      scroll-snap-type: y mandatory;
+      scroll-behavior: smooth;
+      background: #e7edf2;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body { margin: 0; }
+    h1, h2, h3, p { margin: 0; }
+    h1, h2, h3 { letter-spacing: 0; line-height: 1; }
+    p { color: var(--muted); line-height: 1.45; }
+    code {
+      background: #eef2ff;
+      color: #3730a3;
+      border-radius: 5px;
+      padding: 2px 5px;
+      font-size: .92em;
+    }
+    .deck { width: 100%; }
+    .slide {
+      min-height: 100vh;
+      scroll-snap-align: start;
+      display: flex;
+      align-items: stretch;
+      background:
+        linear-gradient(112deg, rgba(20, 114, 71, .07), rgba(29, 78, 216, .05) 42%, rgba(180, 83, 9, .05)),
+        var(--soft);
+      border-bottom: 1px solid var(--line);
+    }
+    .slide-inner {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: clamp(28px, 4vw, 58px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 24px;
+    }
+    .hero {
+      min-height: 100vh;
+      background:
+        linear-gradient(100deg, rgba(16, 32, 51, .96), rgba(16, 32, 51, .78)),
+        linear-gradient(135deg, #102033, #0f5138 52%, #1d4ed8);
+      color: #fff;
+    }
+    .hero .slide-inner {
+      min-height: 100vh;
+      justify-content: space-between;
+    }
+    .eyebrow {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      gap: 8px;
+      min-height: 30px;
+      padding: 7px 10px;
+      border: 1px solid rgba(255, 255, 255, .24);
+      border-radius: 7px;
+      color: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .slide:not(.hero) .eyebrow {
+      color: var(--deep);
+      border-color: var(--line);
+      background: #fff;
+    }
+    .hero h1 {
+      max-width: 1100px;
+      margin: 34px 0 18px;
+      font-size: clamp(44px, 7vw, 92px);
+      line-height: .95;
+    }
+    h2 {
+      max-width: 1120px;
+      font-size: clamp(34px, 4.4vw, 62px);
+      line-height: 1;
+    }
+    h3 {
+      margin: 0 0 10px;
+      font-size: 19px;
+      line-height: 1.2;
+    }
+    .hero p {
+      color: rgba(255, 255, 255, .82);
+      max-width: 890px;
+      font-size: clamp(18px, 1.8vw, 26px);
+    }
+    .lead {
+      max-width: 1060px;
+      color: var(--muted);
+      font-size: clamp(18px, 1.9vw, 27px);
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      color: rgba(255, 255, 255, .76);
+      font-size: 13px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 5px 10px;
+      border-radius: 7px;
+      background: rgba(255, 255, 255, .12);
+      border: 1px solid rgba(255, 255, 255, .18);
+      font-weight: 700;
+    }
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+    .cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      min-width: 0;
+    }
+    .panel.flat { box-shadow: none; }
+    .panel p, .panel li {
+      font-size: 15px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+    .metric {
+      min-height: 118px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .metric strong {
+      color: var(--deep);
+      font-size: clamp(30px, 4vw, 52px);
+      line-height: 1;
+    }
+    .metric span {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.35;
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      min-height: 25px;
+      padding: 4px 9px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .ok { color: #0f5138; background: #dff4e9; }
+    .partial { color: #8a4a00; background: #fff2d5; }
+    .pending { color: #921b1b; background: #ffe4e2; }
+    .info { color: #1d4ed8; background: #dbeafe; }
+    .violet { color: #5b21b6; background: #ede9fe; }
+    .cyan { color: #0e7490; background: #cffafe; }
+    .status-row {
+      display: grid;
+      grid-template-columns: 1fr 1.4fr auto;
+      gap: 14px;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .status-row:last-child { border-bottom: 0; }
+    .status-row strong { font-size: 15px; }
+    .status-row span { color: var(--muted); font-size: 14px; line-height: 1.35; }
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(150px, 1fr));
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+    .phase {
+      min-height: 135px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-top: 5px solid var(--line);
+      border-radius: 8px;
+      padding: 13px;
+    }
+    .phase.done { border-top-color: var(--blue); }
+    .phase.active { border-top-color: var(--green); }
+    .phase.partial { border-top-color: var(--amber); }
+    .phase.later { opacity: .82; }
+    .phase b { display: block; font-size: 13px; margin-bottom: 8px; }
+    .phase span { display: block; color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .note {
+      border-left: 5px solid var(--green);
+      padding: 12px 14px;
+      background: #edf8f1;
+      border-radius: 0 8px 8px 0;
+      color: var(--green-2);
+      font-size: 15px;
+      line-height: 1.45;
+    }
+    .warning { border-left-color: var(--amber); background: #fff7e8; color: #7c3f00; }
+    .risk { border-left-color: var(--red); background: #fff0ef; color: #7a1a13; }
+    .blue-note { border-left-color: var(--blue); background: #eff6ff; color: #1e3a8a; }
+    .split {
+      display: grid;
+      grid-template-columns: .9fr 1.1fr;
+      gap: 22px;
+      align-items: start;
+    }
+    .mermaid-wrap {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      overflow: auto;
+    }
+    .mermaid {
+      min-width: 960px;
+      font-family: inherit;
+    }
+    .checklist {
+      columns: 2;
+      column-gap: 28px;
+      margin: 0;
+      padding-left: 18px;
+    }
+    .checklist li {
+      break-inside: avoid;
+      margin-bottom: 10px;
+    }
+    .module-card {
+      display: grid;
+      gap: 10px;
+      min-height: 170px;
+      align-content: start;
+    }
+    .module-card .tag { margin-bottom: 3px; }
+    .small-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .mini {
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 13px;
+      min-height: 105px;
+    }
+    .mini b {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: var(--deep);
+    }
+    .mini span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .footer-mark {
+      position: fixed;
+      right: 18px;
+      bottom: 14px;
+      z-index: 20;
+      color: rgba(17, 24, 39, .34);
+      font-size: 12px;
+      font-weight: 800;
+      pointer-events: none;
+    }
+
+    @media (max-width: 1000px) {
+      html { scroll-snap-type: none; }
+      .cols-2, .cols-3, .cols-4, .cols-5, .split, .small-grid {
+        grid-template-columns: 1fr;
+      }
+      .status-row {
+        grid-template-columns: 1fr;
+        gap: 5px;
+      }
+      .timeline { grid-template-columns: 1fr; overflow-x: visible; }
+      .checklist { columns: 1; }
+      .mermaid { min-width: 760px; }
+    }
+
+    @media print {
+      html { scroll-snap-type: none; background: #fff; }
+      .slide { min-height: 100vh; page-break-after: always; }
+      .panel, .mermaid-wrap { box-shadow: none; break-inside: avoid; }
+      .footer-mark { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck">
+    <section class="slide hero">
+      <div class="slide-inner">
+        <div>
+          <span class="eyebrow">Entrega ejecutiva &middot; Fase 3</span>
+          <h1>SisGestion 3.0<br />Operaciones Plastimar</h1>
+          <p>Entrega de Fase 3 basada en el PDF original: produccion/ODT, despacho/logistica y RRHH operativo, incorporando el pulido completo de Fase 2 para facilitar la adopcion del nuevo ERP.</p>
+        </div>
+        <div class="meta">
+          <span class="pill">Plastimar</span>
+          <span class="pill">Hazlo Mejor</span>
+          <span class="pill">03 de junio de 2026</span>
+          <span class="pill">Cierre funcional guiado</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <span class="eyebrow">Resumen ejecutivo</span>
+        <h2>La Fase 3 queda cerrada como bloque operacional usable.</h2>
+        <p class="lead">El foco deja de ser solo tener pantallas y pasa a operar el ciclo diario: venta vinculada a ODT, avance de taller, consumo de materiales, packing por linea, despacho con seguimiento, costeo productivo y RRHH conectado a responsables.</p>
+        <div class="grid cols-4">
+          <div class="panel metric"><strong>3</strong><span>frentes del PDF cubiertos: produccion, logistica y RRHH operativo.</span></div>
+          <div class="panel metric"><strong>15</strong><span>sprints operacionales documentados entre diagnostico, cierre base y refinamientos.</span></div>
+          <div class="panel metric"><strong>87/87</strong><span>tests focalizados OK en el cierre extendido de Kanban, packing, costeo y RRHH.</span></div>
+          <div class="panel metric"><strong>48</strong><span>SPR de remediacion legacy cerrados para suavizar adopcion desde el sistema anterior.</span></div>
+        </div>
+        <div class="note">Fase 3 ya no queda como promesa de desarrollo: queda presentada como flujo operacional con evidencia tecnica y puntos de validacion funcional acotados.</div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <span class="eyebrow">PDF base</span>
+        <h2>Alcance de Fase 3 segun la propuesta original.</h2>
+        <div class="grid cols-2">
+          <div class="panel">
+            <h3>Compromiso Fase 3 del PDF</h3>
+            <div class="status-row"><strong>Produccion / ODT</strong><span>Ordenes de trabajo, estados, responsable, avance, materiales, bitacora y control de produccion.</span><span class="tag ok">Cerrado</span></div>
+            <div class="status-row"><strong>Despacho / Logistica</strong><span>Despachos, guias, entrega parcial/total, filtros logisticos, packing y seguimiento.</span><span class="tag ok">Cerrado</span></div>
+            <div class="status-row"><strong>RRHH operativo</strong><span>Trabajadores, cargos, responsables asignables, disponibilidad operativa y datos para costeo.</span><span class="tag ok">Cerrado</span></div>
+          </div>
+          <div class="panel">
+            <h3>Decision de alcance</h3>
+            <div class="status-row"><strong>App movil operario</strong><span>Diferida a backlog futuro. Se reemplaza en esta entrega por Kanban, acciones rapidas y tablero de productividad.</span><span class="tag partial">Diferida</span></div>
+            <div class="status-row"><strong>Costeo y productividad</strong><span>No estaba como minimo inicial, pero se avanzo para entregar lectura operacional y margen estimado por ODT.</span><span class="tag cyan">Extra</span></div>
+            <div class="status-row"><strong>Tracking logistico</strong><span>Se agrego historial de eventos por despacho para no depender solo de guias o estado final.</span><span class="tag cyan">Extra</span></div>
+          </div>
+        </div>
+        <div class="note warning">Nota de nomenclatura: el PDF llama Fase 3 al bloque Operaciones. Esa es la referencia usada aqui, separada de sprints tecnicos puntuales que antes se nombraron como fase.</div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <span class="eyebrow">Base previa</span>
+        <h2>El pulido de Fase 2 se adelanto en paralelo a Fase 3.</h2>
+        <div class="split">
+          <div class="panel">
+            <h3>Lo que se estabilizo en Fase 2</h3>
+            <ul class="checklist">
+              <li>Productos, bodega, ventas, clientes, CRM, caja, proveedores y reportes con rutas modernas.</li>
+              <li>48 SPR legacy cerrados, aprobados o reemplazados tecnicamente.</li>
+              <li>Baseline visual: 114 capturas legacy y 47 vistas actuales para comparar sin perder funciones.</li>
+              <li>Frontend validado con lint y build, con menus, filtros, tablas y permisos mas consistentes.</li>
+              <li>RBAC, auditoria, integridad, historico y saneamiento legacy preservados como controles transversales.</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3>Por que importa para la entrega</h3>
+            <div class="small-grid">
+              <div class="mini"><b>Adopcion mas suave</b><span>El usuario encuentra equivalentes modernos de los accesos y filtros que usaba en el ERP anterior.</span></div>
+              <div class="mini"><b>Menos deuda visual</b><span>La revision deja de depender de explicar diferencias pantalla por pantalla.</span></div>
+              <div class="mini"><b>Menos riesgo de corte</b><span>Los flujos de Fase 3 aterrizan sobre ventas, productos, clientes y bodega ya reconciliados.</span></div>
+              <div class="mini"><b>Mejor validacion</b><span>Las observaciones ahora se pueden registrar por modulo y no como fallas ambiguas del sistema completo.</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="note blue-note">Lectura ejecutiva: el pulido de Fase 2 no fue cosmetico; se trabajo en paralelo a Fase 3 como una capa de compatibilidad operacional para que la transicion al nuevo ERP sea mas suave.</div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <span class="eyebrow">Flujo operacional</span>
+        <h2>El ciclo diario queda conectado desde venta hasta entrega.</h2>
+        <div class="mermaid-wrap">
+          <pre class="mermaid">
+flowchart LR
+  classDef master fill:#DCFCE7,stroke:#16A34A,color:#111827,stroke-width:1px
+  classDef op fill:#DBEAFE,stroke:#2563EB,color:#111827,stroke-width:1px
+  classDef prod fill:#EDE9FE,stroke:#7C3AED,color:#111827,stroke-width:1px
+  classDef log fill:#FEF3C7,stroke:#D97706,color:#111827,stroke-width:1px
+  classDef control fill:#FCE7F3,stroke:#DB2777,color:#111827,stroke-width:1px
+  classDef guard fill:#FEE2E2,stroke:#DC2626,color:#111827,stroke-width:1px
+
+  C["Cliente canonico<br/>sucursal y contacto"]:::master
+  V["Venta / Orden<br/>items reales"]:::op
+  ODT["ODT<br/>responsable, plazo, estado"]:::prod
+  K["Kanban taller<br/>prioridad y avance"]:::prod
+  T["Item / taller<br/>inicio, pausa, listo"]:::prod
+  M["Consumo materiales<br/>producto, tela, bodega taller"]:::prod
+  COST["Costeo ODT<br/>materiales, mano de obra, margen"]:::control
+  PACK["Packing por linea<br/>bultos y eventos"]:::log
+  DES["Despacho<br/>parcial o completo"]:::log
+  GUIA["Guia<br/>vinculada a venta/ODT"]:::log
+  TRACK["Tracking logistico<br/>timeline, ubicacion, estado"]:::log
+  RRHH["RRHH operativo<br/>trabajadores, cargos, alertas"]:::control
+  AUD["Auditoria e integridad<br/>sin movimientos sueltos"]:::guard
+
+  C --> V
+  V --> ODT
+  ODT --> K
+  K --> T
+  T --> M
+  M --> COST
+  RRHH --> ODT
+  RRHH --> COST
+  V --> PACK
+  PACK --> DES
+  DES --> GUIA
+  DES --> TRACK
+  ODT --> DES
+  V --> AUD
+  ODT --> AUD
+  PACK --> AUD
+  TRACK --> AUD
+          </pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <span class="eyebrow">Produccion</span>
+        <h2>ODT queda como nucleo operativo de taller.</h2>
+        <div class="grid cols-3">
+          <div class="panel module-card">
+            <span class="tag violet">Kanban</span>
+            <h3>Vista de produccion diaria</h3>
+            <p>Columnas Criticas, Pendientes, Asignadas, En proceso, Control y Listas, con tarjetas que muestran cliente, responsable, plazo, atraso, tiempo y costo estimado.</p>
+          </div>
+          <div class="panel module-card">
+            <span class="tag ok">Workflow</span>
+            <h3>Estados trazables</h3>
+            <p>Transiciones operativas de ODT e item/taller, fechas automaticas de inicio/cierre y bitacora automatica por cambio de estado.</p>
+          </div>
+          <div class="panel module-card">
+            <span class="tag cyan">Materiales</span>
+            <h3>Consumo desde ODT</h3>
+            <p>Consumo transaccional de producto, material de taller o tela, con rechazo por stock insuficiente e historial asociado a la ODT.</p>
+          </div>
+          <div class="panel module-card">
+            <span class="tag info">Responsables</span>
+            <h3>Carga por operario</h3>
+            <p>Responsables activos desde RRHH, filtros por responsable/estado y panel de productividad para detectar carga, atrasos y cuellos de botella.</p>
+          </div>
+          <div class="panel module-card">
+            <span class="tag ok">Costeo</span>
+            <h3>Rentabilidad estimada</h3>
+            <p>Costo de materiales, mano de obra estimada, costo por unidad, unidades por hora y margen estimado cuando la ODT se vincula a venta.</p>
+          </div>
+          <div class="panel module-card">
+            <span class="tag partial">Riesgo</span>
+            <h3>Dato historico incompleto</h3>
+            <p>Si una ODT antigua no tiene fechas, sueldo o precio de material, la metrica se marca como incompleta en vez de forzar una conclusion falsa.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <span class="eyebrow">Logistica</span>
+        <h2>Despacho pasa de estado final a seguimiento operacional.</h2>
+        <div class="split">
+          <div class="panel">
+            <h3>Entrega por producto</h3>
+            <div class="status-row"><strong>Packing por linea</strong><span>Actualizacion por lote de productos entregados contra la cantidad vendida.</span><span class="tag ok">OK</span></div>
+            <div class="status-row"><strong>Bultos</strong><span>Registro de bulto, despacho asociado, observacion y usuario que ajusta.</span><span class="tag ok">OK</span></div>
+            <div class="status-row"><strong>Historial</strong><span>Eventos de delta para responder que se preparo, en que bulto y quien lo hizo.</span><span class="tag ok">OK</span></div>
+            <div class="status-row"><strong>Sin exceso</strong><span>Validacion de cantidades negativas, duplicadas o superiores a la venta.</span><span class="tag ok">OK</span></div>
+          </div>
+          <div class="panel">
+            <h3>Seguimiento logistico</h3>
+            <div class="status-row"><strong>Timeline</strong><span>Eventos por despacho con estado, transporte, ubicacion, observacion, fecha y usuario.</span><span class="tag ok">OK</span></div>
+            <div class="status-row"><strong>Estados</strong><span>Ultimo tracking visible en lista y export CSV.</span><span class="tag ok">OK</span></div>
+            <div class="status-row"><strong>Entrega final</strong><span>Evento Entregado sincroniza fecha de entrega y recalcula estado de la venta.</span><span class="tag ok">OK</span></div>
+            <div class="status-row"><strong>Mejora futura</strong><span>Integracion transportistas, geolocalizacion, firma/foto y codigos de barra quedan fuera del cierre.</span><span class="tag partial">Backlog</span></div>
+          </div>
+        </div>
+        <div class="mermaid-wrap">
+          <pre class="mermaid">
+flowchart LR
+  V["Venta con items"] --> P["Packing por linea"]
+  P --> B["Bulto / evento"]
+  B --> D["Despacho"]
+  D --> T["Tracking"]
+  T --> E["Entregado"]
+  E --> S["Venta recalculada<br/>Parcial / Entregada"]
+          </pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <span class="eyebrow">RRHH operativo</span>
+        <h2>RRHH alimenta asignacion, alertas y costeo.</h2>
+        <div class="grid cols-3">
+          <div class="panel module-card">
+            <span class="tag info">Trabajadores</span>
+            <h3>Fuente de responsables</h3>
+            <p>Trabajadores activos disponibles para asignar ODT, con filtros por cargo, empresa y activo.</p>
+          </div>
+          <div class="panel module-card">
+            <span class="tag ok">Cargos</span>
+            <h3>Operacion filtrable</h3>
+            <p>Endpoint de cargos activos y filtro de trabajadores por cargo para encontrar responsables operativos sin depender de texto libre.</p>
+          </div>
+          <div class="panel module-card">
+            <span class="tag violet">Tablero</span>
+            <h3>RRHH operativo avanzado</h3>
+            <p>Dotacion activa, alertas de contratos, licencias, vacaciones y datos incompletos que afectan asignacion o valorizacion.</p>
+          </div>
+          <div class="panel module-card">
+            <span class="tag cyan">Costeo</span>
+            <h3>Mano de obra estimada</h3>
+            <p>Uso de sueldo liquido / 180 horas como estimacion cuando el dato existe, con alerta si falta informacion.</p>
+          </div>
+          <div class="panel module-card">
+            <span class="tag ok">Permisos</span>
+            <h3>Control por rol</h3>
+            <p>Alta/edicion/baja protegidas por permisos RRHH, manteniendo taller y RRHH con visibilidad diferenciada.</p>
+          </div>
+          <div class="panel module-card">
+            <span class="tag partial">Alcance legal</span>
+            <h3>No reemplaza validacion laboral</h3>
+            <p>La entrega no promete cumplimiento legal completo ni genera contratos/liquidaciones automaticas; eso queda como fase administrativa posterior.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <span class="eyebrow">Sprints cerrados</span>
+        <h2>La entrega se construyo en dos capas: cierre base y refinamientos.</h2>
+        <div class="grid cols-2">
+          <div class="panel">
+            <h3>Sprints 0 a 6: base operacional</h3>
+            <div class="status-row"><strong>0</strong><span>Diagnostico operativo y cruce PDF vs estado real.</span><span class="tag ok">Cerrado</span></div>
+            <div class="status-row"><strong>1</strong><span>ODT como nucleo operativo con responsable, estados y meta.</span><span class="tag ok">Cerrado</span></div>
+            <div class="status-row"><strong>2</strong><span>Workflow por item/taller, bitacora y carga por responsable.</span><span class="tag ok">Cerrado</span></div>
+            <div class="status-row"><strong>3</strong><span>Consumo trazable de materiales desde ODT.</span><span class="tag ok">Cerrado</span></div>
+            <div class="status-row"><strong>4</strong><span>Despacho y guias vinculados a venta/ODT.</span><span class="tag ok">Cerrado</span></div>
+            <div class="status-row"><strong>5</strong><span>RRHH conectado a responsables y cargos.</span><span class="tag ok">Cerrado</span></div>
+            <div class="status-row"><strong>6</strong><span>QA operacional, CI y deploy workflow robustecido.</span><span class="tag ok">Cerrado</span></div>
+          </div>
+          <div class="panel">
+            <h3>Sprints 7 a 15: cierre extendido</h3>
+            <div class="status-row"><strong>7-10</strong><span>Kanban formal, tablero completo y drag and drop con confirmacion.</span><span class="tag ok">Cerrado</span></div>
+            <div class="status-row"><strong>8 y 11</strong><span>Packing por linea, bultos y eventos trazables.</span><span class="tag ok">Cerrado</span></div>
+            <div class="status-row"><strong>9 y 12</strong><span>Tiempos basicos y tracking logistico por despacho.</span><span class="tag ok">Cerrado</span></div>
+            <div class="status-row"><strong>13-14</strong><span>Costeo productivo y productividad avanzada.</span><span class="tag ok">Cerrado</span></div>
+            <div class="status-row"><strong>15</strong><span>RRHH operativo avanzado con alertas y tolerancia a schema legacy/local.</span><span class="tag ok">Cerrado</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <span class="eyebrow">QA y evidencia</span>
+        <h2>La presentacion separa avance real de pendientes de entorno.</h2>
+        <div class="grid cols-3">
+          <div class="panel metric"><strong>70/70</strong><span>Suite operacional base OK en cierre de Sprints 0 a 6.</span></div>
+          <div class="panel metric"><strong>87/87</strong><span>Suite extendida OK para ODT, despachos, costeo, RRHH y consumos.</span></div>
+          <div class="panel metric"><strong>437</strong><span>Tests backend full pasados en remediacion legacy al 27 de mayo.</span></div>
+        </div>
+        <div class="grid cols-2">
+          <div class="panel">
+            <h3>Validaciones tecnicas</h3>
+            <ul class="checklist">
+              <li><code>prisma validate</code> OK.</li>
+              <li><code>prisma migrate deploy</code> OK en DB local de prueba.</li>
+              <li><code>node --check</code> OK en rutas tocadas.</li>
+              <li>ESLint focal frontend OK en despachos, taller y RRHH.</li>
+              <li>Build frontend Vite OK.</li>
+              <li>Smokes API no destructivos: health, login, ODT, Kanban, despachos, productividad y RRHH operativo.</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3>Limitaciones transparentes</h3>
+            <ul class="checklist">
+              <li>App movil operario diferida a backlog.</li>
+              <li>Smoke visual autenticado no automatizado por limitacion del wrapper de navegador.</li>
+              <li>DB local/legacy puede no tener schema RRHH completo; endpoints toleran esa ausencia sin 500.</li>
+              <li>Deploy productivo debe crear tablas nuevas de packing y tracking con migraciones.</li>
+              <li>Integraciones externas de transporte, SII/DTE y RAG no forman parte del cierre Fase 3.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <span class="eyebrow">Roadmap</span>
+        <h2>Avance de otras fases frente al PDF base.</h2>
+        <div class="timeline">
+          <div class="phase done"><b>Fase 1 Fundacion</b><span>Parcial alto: React, API, PostgreSQL, JWT/RBAC, CI/CD y produccion viva.</span></div>
+          <div class="phase done"><b>Fase 2 Core</b><span>Completada tecnicamente y pulida contra legacy para adopcion.</span></div>
+          <div class="phase active"><b>Fase 3 Operaciones</b><span>Cierre funcional: ODT, Kanban, consumos, packing, tracking, costeo, RRHH.</span></div>
+          <div class="phase later"><b>Fase 4 Inteligencia</b><span>No iniciada: RAG/IA y alertas inteligentes siguen como fase posterior.</span></div>
+          <div class="phase partial"><b>Fase 5 Reportes</b><span>Parcial: reportes gerenciales existen; faltan SII/DTE, backups administrables y exportables formales avanzados.</span></div>
+          <div class="phase partial"><b>Fase 6 QA</b><span>Parcial alto: smokes, deploy, pruebas y datos; faltan capacitacion/manuales y aceptacion formal.</span></div>
+          <div class="phase partial"><b>Fase 7 Web</b><span>Parcial: catalogo publico, usuarios web y banners; falta sitio high performance final.</span></div>
+        </div>
+        <div class="note warning">Estado de roadmap: Fase 3 se entrega como bloque operacional; IA/RAG, SII/DTE, web publica final y capacitacion formal quedan en fases posteriores.</div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <span class="eyebrow">Comparativa</span>
+        <h2>De Fase 2 pulida a Fase 3 operable.</h2>
+        <div class="mermaid-wrap">
+          <pre class="mermaid">
+flowchart TB
+  classDef base fill:#DBEAFE,stroke:#2563EB,color:#111827
+  classDef bridge fill:#FEF3C7,stroke:#D97706,color:#111827
+  classDef ops fill:#DCFCE7,stroke:#16A34A,color:#111827
+  classDef next fill:#EDE9FE,stroke:#7C3AED,color:#111827
+
+  F2["Fase 2 pulida<br/>productos, ventas, bodega, clientes, CRM, caja"]:::base
+  LEG["Compatibilidad legacy<br/>48 SPR, capturas, rutas equivalentes, permisos"]:::bridge
+  DATA["Datos relacionados<br/>cliente canonico, producto canonico, venta real"]:::bridge
+  F3["Fase 3 operable<br/>ODT, Kanban, consumos, packing, tracking, RRHH"]:::ops
+  CONTROL["Control operacional<br/>costeo, productividad, auditoria, reportes"]:::ops
+  NEXT["Siguiente capa<br/>IA/RAG, SII/DTE, web final, capacitacion"]:::next
+
+  F2 --> LEG
+  LEG --> DATA
+  DATA --> F3
+  F3 --> CONTROL
+  CONTROL --> NEXT
+          </pre>
+        </div>
+        <div class="grid cols-3">
+          <div class="panel flat"><h3>Lo mismo reconocible</h3><p>Ventas, bodega, taller, caja y filtros mantienen continuidad conceptual con el legacy.</p></div>
+          <div class="panel flat"><h3>Lo nuevo controlado</h3><p>ODT, packing, tracking, costeo y RRHH operativo agregan trazabilidad sin duplicar pantallas antiguas.</p></div>
+          <div class="panel flat"><h3>Lo posterior separado</h3><p>IA, SII, web final y capacitacion se dejan como backlog formal, no como deuda oculta de esta entrega.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <span class="eyebrow">Validacion funcional</span>
+        <h2>Que debe validar Plastimar en esta entrega.</h2>
+        <div class="grid cols-2">
+          <div class="panel">
+            <h3>Recorrido sugerido de demo</h3>
+            <ol class="checklist">
+              <li>Entrar a Taller / ODT y revisar Kanban.</li>
+              <li>Abrir ODT, cambiar estado y verificar bitacora.</li>
+              <li>Registrar consumo de material desde ODT.</li>
+              <li>Revisar costo, tiempo, atraso y productividad.</li>
+              <li>Abrir matriz de despacho y usar packing por linea.</li>
+              <li>Registrar tracking logistico y confirmar sincronizacion de entrega.</li>
+              <li>Entrar a RRHH y revisar tablero operativo.</li>
+            </ol>
+          </div>
+          <div class="panel">
+            <h3>Criterios de aceptacion funcional</h3>
+            <ul class="checklist">
+              <li>Estados de taller reflejan la forma real de trabajar.</li>
+              <li>Responsables disponibles coinciden con personas/cargos operativos.</li>
+              <li>Packing por linea sirve para entregas parciales reales.</li>
+              <li>Tracking logistico captura eventos suficientes para despacho diario.</li>
+              <li>Costeo/productividad se entiende como estimacion operacional, no cierre contable.</li>
+              <li>Los pendientes no bloqueantes quedan priorizados para fase posterior.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="note">Recomendacion de cierre: registrar feedback por pantalla, usuario responsable, comportamiento esperado y prioridad. Eso evita volver a mezclar ajustes de adopcion con cambios de alcance.</div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <span class="eyebrow">Pendientes no bloqueantes</span>
+        <h2>Lo que no se debe confundir con falta de Fase 3.</h2>
+        <div class="grid cols-3">
+          <div class="panel module-card">
+            <span class="tag partial">Operario movil</span>
+            <h3>Backlog futuro</h3>
+            <p>La app movil queda diferida. Kanban, acciones rapidas y productividad cubren la operacion inicial desde escritorio.</p>
+          </div>
+          <div class="panel module-card">
+            <span class="tag partial">Automatizaciones externas</span>
+            <h3>Transportistas y codigos</h3>
+            <p>Codigo de barra, geolocalizacion, firma/foto e integraciones de transportista son mejoras posteriores.</p>
+          </div>
+          <div class="panel module-card">
+            <span class="tag partial">Costo avanzado</span>
+            <h3>No contabilidad final</h3>
+            <p>El costeo usa estimaciones y precios actuales; snapshot historico, indirectos y multi-operario son refinamientos futuros.</p>
+          </div>
+          <div class="panel module-card">
+            <span class="tag pending">IA/RAG</span>
+            <h3>Fase 4</h3>
+            <p>Embeddings, consultas en lenguaje natural y analisis predictivo no estan dentro de Fase 3.</p>
+          </div>
+          <div class="panel module-card">
+            <span class="tag pending">SII/DTE</span>
+            <h3>Fase 5</h3>
+            <p>Facturacion electronica, libros y documentos tributarios finales requieren una fase de integracion propia.</p>
+          </div>
+          <div class="panel module-card">
+            <span class="tag pending">Capacitacion formal</span>
+            <h3>Fase 6</h3>
+            <p>Manuales, sesiones de capacitacion y aceptacion firmada deben calendarizarse despues de validacion funcional.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <span class="eyebrow">Cierre</span>
+        <h2>Fase 3 entrega operacion, no solo modulos.</h2>
+        <div class="panel">
+          <p class="lead">El nuevo ERP ya permite explicar el trabajo de Plastimar como un flujo conectado: venta, ODT, taller, materiales, packing, despacho, tracking, responsable, costo y productividad. La base de Fase 2 fue pulida para que esta transicion sea reconocible para usuarios que vienen del sistema anterior.</p>
+        </div>
+        <div class="grid cols-3">
+          <div class="panel flat"><h3>Entregado</h3><p>Produccion/ODT, Kanban, consumos, despacho, packing, tracking, RRHH operativo, costeo y productividad.</p></div>
+          <div class="panel flat"><h3>Validar</h3><p>Estados, responsables, datos reales, reglas de packing, utilidad del tracking y criterio de aceptacion funcional.</p></div>
+          <div class="panel flat"><h3>Siguiente</h3><p>Deploy con migraciones nuevas, smoke productivo, capacitacion por rol y priorizacion de Fase 4/Fase 5.</p></div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="footer-mark">SisGestion 3.0 &middot; Plastimar &middot; Entrega Fase 3</div>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      securityLevel: "loose",
+      themeVariables: {
+        fontFamily: "Inter, system-ui, sans-serif",
+        primaryColor: "#DCFCE7",
+        primaryTextColor: "#111827",
+        primaryBorderColor: "#147247",
+        lineColor: "#526070",
+        secondaryColor: "#DBEAFE",
+        tertiaryColor: "#FEF3C7",
+        background: "#ffffff"
+      },
+      flowchart: {
+        htmlLabels: true,
+        curve: "basis"
+      }
+    });
+  </script>
+</body>
+</html>

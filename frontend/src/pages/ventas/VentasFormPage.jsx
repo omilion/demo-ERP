@@ -2,14 +2,14 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../components/forms/index'
-import { Icon } from '../../components/shared'
+import { Badge, Btn, Icon } from '../../components/shared'
 import { useVenta, useCreateVenta, useUpdateVenta, useAnularVenta, useActivarVenta, useVentaCargos, useAddCargo, useDeleteCargo, useUpdateItemEntregados } from '../../api/ventas'
 import { useAuthStore } from '../../store/auth'
 import { useClientes, useClienteSucursales } from '../../api/clientes'
 import { useProductos } from '../../api/productos'
 import { useMultas, useCreateMulta, useDeleteMulta } from '../../api/multas'
 import { useCrearDocumentoVenta } from '../../api/caja'
-import { useDescuentos } from '../../api/descuentos'
+import { useDescuentos, useEvaluarDescuentos, useSolicitarDescuento, useSolicitudesDescuento } from '../../api/descuentos'
 import { can, canAny } from '../../utils/permissions'
 import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
 
@@ -222,6 +222,331 @@ function hasFinancialTrace(venta) {
 
 function discountAmount(subtotal, pct) {
   return Math.round(Number(subtotal || 0) * Number(pct || 0) / 100)
+}
+
+function firstDefined(...values) {
+  return values.find(value => value !== undefined && value !== null && value !== '')
+}
+
+function discountApiError(error, fallback = 'No fue posible procesar descuentos') {
+  return error?.response?.data?.error || fallback
+}
+
+function money(value) {
+  return '$' + Number(value || 0).toLocaleString('es-CL')
+}
+
+function normalizeRuleValue(rule) {
+  const value = firstDefined(rule.valor, rule.porcentaje, rule.descuentoPct, rule.valorDescuento)
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function normalizeRuleStatus(value) {
+  return String(value || '').trim().toUpperCase()
+}
+
+function normalizeEvaluatedRule(rule, defaults = {}, idx = 0) {
+  const estado = normalizeRuleStatus(firstDefined(rule.estado, rule.status, defaults.estado, ''))
+  const isPending = estado === 'PENDIENTE'
+  const isRejected = estado === 'RECHAZADA'
+  const isAuthorized = estado === 'AUTORIZADA'
+  const requiresApproval = Boolean(firstDefined(
+    rule.requiereAprobacion,
+    rule.requiere_aprobacion,
+    rule.requiresApproval,
+    defaults.requiereAprobacion,
+    false
+  )) || isPending
+  const disponibleRaw = firstDefined(rule.disponible, rule.aplicable, rule.aprobada, defaults.disponible)
+  return {
+    id: firstDefined(rule.id, rule.reglaId, rule.codigo, defaults.id, `regla-${idx}`),
+    codigo: firstDefined(rule.codigo, rule.code, ''),
+    nombre: firstDefined(rule.nombre, rule.name, rule.titulo, defaults.nombre, `Regla ${idx + 1}`),
+    descripcion: firstDefined(rule.descripcion, rule.description, rule.motivo, rule.razon, ''),
+    valor: normalizeRuleValue(rule),
+    tipoDescuento: firstDefined(rule.tipoDescuento, rule.tipo_descuento, rule.modo, defaults.tipoDescuento, 'porcentaje'),
+    montoDescuento: firstDefined(rule.montoDescuento, rule.descuentoMonto, null),
+    totalConDescuento: firstDefined(rule.totalConDescuento, rule.totalFinal, null),
+    requiereAprobacion: requiresApproval,
+    estado,
+    disponible: isAuthorized ? true : isPending || isRejected ? false : disponibleRaw === undefined ? !requiresApproval : Boolean(disponibleRaw),
+    origen: defaults.origen || rule.origen || 'regla',
+  }
+}
+
+function normalizeEvaluacionDescuentos(result) {
+  const grupos = []
+  const add = (items, defaults) => {
+    if (Array.isArray(items)) grupos.push(...items.map((item, idx) => normalizeEvaluatedRule(item, defaults, grupos.length + idx)))
+  }
+
+  if (Array.isArray(result)) add(result, {})
+  else {
+    add(result?.disponibles, { disponible: true })
+    add(result?.aplicables, { disponible: true })
+    add(result?.reglasDisponibles, { disponible: true })
+    add(result?.solicitables, { requiereAprobacion: true, disponible: false })
+    add(result?.requierenAprobacion, { requiereAprobacion: true, disponible: false })
+    add(result?.requiereAprobacion, { requiereAprobacion: true, disponible: false })
+    if (!grupos.length) add(result?.items, {})
+    if (!grupos.length) add(result?.reglas, {})
+  }
+
+  const seen = new Set()
+  return grupos.filter(rule => {
+    const key = `${rule.id || ''}-${rule.codigo || ''}-${rule.nombre}-${rule.valor}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return rule.valor !== null
+  })
+}
+
+function legacyDiscountRules(catalogo, tipoVenta) {
+  const catalogKey = isConvenioMarco(tipoVenta) ? 'marco' : isNormalDiscountTipo(tipoVenta) ? 'normales' : null
+  if (!catalogKey) return []
+  return (catalogo?.[catalogKey] || []).map(item => ({
+    id: `legacy-${catalogKey}-${item.id ?? item.valor}`,
+    codigo: 'LEGACY',
+    nombre: `Catalogo autorizado ${item.valor}%`,
+    descripcion: catalogKey === 'marco' ? 'Porcentaje autorizado para Convenio Marco' : 'Porcentaje autorizado para venta normal',
+    valor: Number(item.valor),
+    tipoDescuento: 'porcentaje',
+    requiereAprobacion: false,
+    disponible: true,
+    origen: 'legacy',
+  }))
+}
+
+function buildVentaDiscountPayload({ venta, items, subtotal, cargosTotal, totalBase }) {
+  return {
+    origen: 'venta',
+    tipoVenta: venta.tipo,
+    clienteId: venta.clienteId ? Number(venta.clienteId) : null,
+    clienteSucursalId: venta.clienteSucursalId ? Number(venta.clienteSucursalId) : null,
+    licitacion: venta.licitacion || null,
+    subtotal,
+    cargosTotal,
+    totalBase,
+    descuentoPctActual: Number(venta.descuentoPct || 0),
+    items: normalizeItems(items).map((item, idx) => ({
+      ...item,
+      nombre: items[idx]?.nombre,
+      codigoInterno: items[idx]?.codigoInterno,
+    })),
+  }
+}
+
+function buildVentaDiscountKey({ venta, items, cargosTotal }) {
+  return JSON.stringify({
+    tipo: venta.tipo || 'Normal',
+    clienteId: venta.clienteId ? Number(venta.clienteId) : null,
+    clienteSucursalId: venta.clienteSucursalId ? Number(venta.clienteSucursalId) : null,
+    licitacion: venta.licitacion || null,
+    cargosTotal: Number(cargosTotal || 0),
+    items: normalizeItems(items).map((item, idx) => ({
+      productoId: item.productoId ?? null,
+      codigoInterno: items[idx]?.codigoInterno || '',
+      cantidad: Number(item.cantidad || 0),
+      precioUnitario: Number(item.precioUnitario || 0),
+    })),
+  })
+}
+
+function DescuentosDisponiblesPanel({ venta, items, subtotal, cargosTotal, totalBase, catalogo, selectedRule, onSelect, disabled = false }) {
+  const evaluar = useEvaluarDescuentos()
+  const solicitar = useSolicitarDescuento()
+  const solicitudesQuery = useSolicitudesDescuento(items.length > 0)
+  const [evaluacion, setEvaluacion] = useState(null)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+
+  const hasContext = items.length > 0 && totalBase > 0
+  const payload = buildVentaDiscountPayload({ venta, items, subtotal, cargosTotal, totalBase })
+  const evaluatedRules = normalizeEvaluacionDescuentos(evaluacion)
+  const legacyRules = legacyDiscountRules(catalogo, venta.tipo)
+  const rules = evaluatedRules.length ? evaluatedRules : legacyRules
+  const usingLegacy = !evaluatedRules.length && legacyRules.length > 0
+  const solicitudes = Array.isArray(solicitudesQuery.data) ? solicitudesQuery.data : []
+
+  function findSolicitud(rule, estados) {
+    const draftHash = evaluacion?.draftHash
+    if (!draftHash || rule.origen === 'legacy') return null
+    return solicitudes.find(solicitud => {
+      const estado = String(solicitud.estado || '').toUpperCase()
+      const hash = solicitud.resultadoSnapshot?.draftHash || solicitud.contextoSnapshot?.draftHash
+      const pct = Number(solicitud.descuentoPctAprobado ?? solicitud.descuentoPctSolicitado ?? solicitud.resultadoSnapshot?.porcentaje ?? 0)
+      return estados.includes(estado) &&
+        hash === draftHash &&
+        Number(solicitud.reglaId || 0) === Number(rule.id || 0) &&
+        Number(rule.valor || 0) === pct
+    }) || null
+  }
+
+  function montoSolicitud(solicitud, fallback) {
+    return firstDefined(
+      solicitud?.descuentoMontoAprobado,
+      solicitud?.descuentoMontoSolicitado,
+      solicitud?.resultadoSnapshot?.montoDescuento,
+      fallback
+    )
+  }
+
+  function evaluate() {
+    if (!hasContext) return
+    setError('')
+    setMessage('')
+    evaluar.mutate(payload, {
+      onSuccess: data => setEvaluacion(data),
+      onError: err => {
+        setEvaluacion(null)
+        setError(discountApiError(err, 'No fue posible evaluar reglas. Se muestra el catalogo autorizado si aplica.'))
+      },
+    })
+  }
+
+  useEffect(() => {
+    if (!hasContext) {
+      setEvaluacion(null)
+      return
+    }
+    const timer = setTimeout(() => evaluate(), 450)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasContext, venta.tipo, venta.clienteId, venta.clienteSucursalId, venta.licitacion, venta.descuentoPct, subtotal, cargosTotal, totalBase, items])
+
+  function applyRule(rule) {
+    if (disabled || rule.requiereAprobacion || rule.disponible === false) return
+    if (rule.origen === 'legacy') {
+      onSelect(rule)
+      setMessage(`Regla aplicada: ${rule.nombre}`)
+      return
+    }
+    if (rule.autorizacionId) {
+      onSelect(rule)
+      setMessage('Autorizacion aprobada aplicada al borrador')
+      return
+    }
+    setError('')
+    setMessage('')
+    solicitar.mutate({
+      ...payload,
+      origenTipo: 'venta',
+      reglaId: rule.id,
+      reglaCodigo: rule.codigo || null,
+      reglaNombre: rule.nombre,
+      descuentoPct: rule.valor,
+      porcentaje: rule.valor,
+      descuentoPctSolicitado: rule.valor,
+    }, {
+      onSuccess: res => {
+        onSelect({ ...rule, autorizacionId: res?.solicitud?.id })
+        setMessage('Regla autorizada y aplicada al borrador')
+      },
+      onError: err => setError(discountApiError(err, 'No se pudo autorizar la regla')),
+    })
+  }
+
+  function requestRule(rule) {
+    if (disabled) return
+    const motivo = window.prompt('Motivo de solicitud de descuento')
+    if (motivo === null) return
+    setError('')
+    setMessage('')
+    solicitar.mutate({
+      ...payload,
+      origenTipo: 'venta',
+      reglaId: String(rule.id).startsWith('legacy-') ? null : rule.id,
+      reglaCodigo: rule.codigo || null,
+      reglaNombre: rule.nombre,
+      descuentoPct: rule.valor,
+      porcentaje: rule.valor,
+      descuentoPctSolicitado: rule.valor,
+      motivo: motivo.trim() || undefined,
+    }, {
+      onSuccess: () => setMessage('Solicitud de descuento enviada'),
+      onError: err => setError(discountApiError(err, 'No se pudo enviar la solicitud')),
+    })
+  }
+
+  return (
+    <section style={{ marginTop: 16, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-1)' }}>Reglas de descuento disponibles</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>Evaluacion comercial sobre {money(totalBase)}</div>
+        </div>
+        <Btn variant="secondary" size="sm" icon="refreshCw" onClick={evaluate} disabled={!hasContext || evaluar.isPending}>
+          {evaluar.isPending ? 'Evaluando...' : 'Evaluar'}
+        </Btn>
+      </div>
+      <div style={{ padding: 14 }}>
+        {!hasContext && <div style={discountEmpty}>Agrega productos para evaluar reglas.</div>}
+        {hasContext && error && (
+          <div style={{ ...discountNotice, background: 'var(--amber-bg)', color: 'var(--text-2)' }}>
+            {error}
+          </div>
+        )}
+        {hasContext && message && (
+          <div style={{ ...discountNotice, background: 'var(--green-50)', color: 'var(--green-700)' }}>
+            {message}
+          </div>
+        )}
+        {hasContext && usingLegacy && (
+          <div style={{ ...discountNotice, background: 'var(--bg)', color: 'var(--text-3)' }}>
+            Mostrando catalogo autorizado como respaldo.
+          </div>
+        )}
+        {hasContext && rules.length === 0 && !evaluar.isPending && <div style={discountEmpty}>Sin reglas disponibles para esta venta.</div>}
+        {hasContext && rules.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+            {rules.map(rule => {
+              const approvedSolicitud = findSolicitud(rule, ['AUTORIZADA'])
+              const pendingSolicitud = findSolicitud(rule, ['PENDIENTE'])
+              const actionableRule = approvedSolicitud
+                ? {
+                    ...rule,
+                    autorizacionId: approvedSolicitud.id,
+                    estado: 'AUTORIZADA',
+                    disponible: true,
+                    requiereAprobacion: false,
+                    montoDescuento: montoSolicitud(approvedSolicitud, rule.montoDescuento),
+                  }
+                : rule
+              const selected = selectedRule?.id === actionableRule.id && (!actionableRule.autorizacionId || selectedRule?.autorizacionId === actionableRule.autorizacionId)
+              const canApply = !disabled && actionableRule.disponible !== false && !actionableRule.requiereAprobacion && actionableRule.estado !== 'RECHAZADA'
+              const canRequest = !disabled && !pendingSolicitud && actionableRule.estado !== 'RECHAZADA' && (rule.requiereAprobacion || rule.disponible === false) && rule.origen !== 'legacy'
+              return (
+                <article key={rule.id} style={{ border: `1px solid ${selected ? 'var(--green-600)' : 'var(--border)'}`, borderRadius: 8, padding: 10, background: selected ? 'var(--green-50)' : '#fff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>{rule.nombre}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{rule.descripcion || rule.codigo || 'Regla comercial'}</div>
+                    </div>
+                    <strong style={{ fontFamily: "'DM Mono',monospace", fontSize: 16, color: 'var(--green-700)' }}>{rule.valor}%</strong>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                    <Badge tone={rule.origen === 'legacy' ? 'gray' : 'blue'}>{rule.origen === 'legacy' ? 'Catalogo' : 'Regla'}</Badge>
+                    {actionableRule.estado && <Badge tone={actionableRule.estado === 'AUTORIZADA' ? 'green' : actionableRule.estado === 'PENDIENTE' ? 'amber' : 'red'}>{actionableRule.estado}</Badge>}
+                    {pendingSolicitud && <Badge tone="amber">Solicitud enviada</Badge>}
+                    {actionableRule.montoDescuento != null && <Badge tone="green">{money(actionableRule.montoDescuento)}</Badge>}
+                    {rule.requiereAprobacion && !approvedSolicitud && <Badge tone="amber">Solicitar</Badge>}
+                    {selected && <Badge tone="green">Seleccionada</Badge>}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 10 }}>
+                    {canRequest && <Btn variant="secondary" size="xs" onClick={() => requestRule(rule)} disabled={solicitar.isPending}>Solicitar</Btn>}
+                    <Btn variant={selected ? 'primary' : 'secondary'} size="xs" onClick={() => applyRule(actionableRule)} disabled={!canApply || solicitar.isPending}>
+                      {selected ? 'Aplicada' : 'Aplicar'}
+                    </Btn>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </section>
+  )
 }
 
 function CargosSection({ ordenId, locked = false }) {
@@ -551,6 +876,7 @@ export default function VentasFormPage() {
   const { data: sucursalesCliente = [] } = useClienteSucursales(selectedClienteId)
 
   const [items, setItems] = useState([])
+  const [selectedDiscountRule, setSelectedDiscountRule] = useState(null)
   const [initializedId, setInitializedId] = useState(null)
 
   useEffect(() => {
@@ -579,6 +905,7 @@ export default function VentasFormPage() {
         : []
       const timer = setTimeout(() => {
         setItems(initialItems)
+        setSelectedDiscountRule(null)
         setInitializedId(found.id)
       }, 0)
       return () => clearTimeout(timer)
@@ -589,10 +916,23 @@ export default function VentasFormPage() {
   const subtotal = items.reduce((s, i) => s + (Number(i.cantidad) || 0) * (Number(i.precioUnitario) || 0), 0)
   const cargosTotal = (found?.cargos || []).reduce((s, c) => s + Number(c.valor || 0), 0)
   const totalBase = subtotal + cargosTotal
-  const descuentoMonto = discountAmount(totalBase, descuento)
+  const discountDraftKey = buildVentaDiscountKey({ venta: data, items, cargosTotal })
+  const activeSelectedDiscountRule = selectedDiscountRule && (!selectedDiscountRule.draftKey || selectedDiscountRule.draftKey === discountDraftKey)
+    ? selectedDiscountRule
+    : null
+  const descuentoMonto = activeSelectedDiscountRule?.montoDescuento != null
+    ? Number(activeSelectedDiscountRule.montoDescuento || 0)
+    : discountAmount(totalBase, descuento)
   const totalCalculado = totalBase - descuentoMonto
   const itemsLocked = isEdit && (hasDeliveredItems(found) || hasFinancialTrace(found))
   const financialLocked = isEdit && hasFinancialTrace(found)
+
+  useEffect(() => {
+    if (selectedDiscountRule?.draftKey && selectedDiscountRule.draftKey !== discountDraftKey) {
+      setSelectedDiscountRule(null)
+      set('descuentoPct', '')
+    }
+  }, [discountDraftKey, selectedDiscountRule, set])
 
   function addProducto(p) {
     if (itemsLocked) return
@@ -624,6 +964,13 @@ export default function VentasFormPage() {
     if (data.clienteId) payload.clienteId = Number(data.clienteId)
     payload.clienteSucursalId = data.clienteSucursalId ? Number(data.clienteSucursalId) : null
     if (data.descuentoPct !== '') payload.descuentoPct = Number(data.descuentoPct)
+    if (activeSelectedDiscountRule?.id && !String(activeSelectedDiscountRule.id).startsWith('legacy-')) {
+      payload.descuentoReglaId = activeSelectedDiscountRule.id
+      if (activeSelectedDiscountRule.codigo) payload.descuentoReglaCodigo = activeSelectedDiscountRule.codigo
+    }
+    if (activeSelectedDiscountRule?.autorizacionId) {
+      payload.descuentoAutorizacionId = Number(activeSelectedDiscountRule.autorizacionId)
+    }
 
     if (isEdit) {
       if (data.guias !== '') payload.guias = parseInt(data.guias, 10)
@@ -752,6 +1099,23 @@ export default function VentasFormPage() {
         </div>
       )}
 
+      {!isEdit && (
+        <DescuentosDisponiblesPanel
+          venta={data}
+          items={items}
+          subtotal={subtotal}
+          cargosTotal={cargosTotal}
+          totalBase={totalBase}
+          catalogo={descuentosCatalogo}
+          selectedRule={activeSelectedDiscountRule}
+          disabled={financialLocked}
+          onSelect={rule => {
+            set('descuentoPct', String(rule.valor))
+            setSelectedDiscountRule({ ...rule, draftKey: discountDraftKey })
+          }}
+        />
+      )}
+
       <FormDivider label="Seguimiento financiero" />
       <div style={{ display: 'grid', gridTemplateColumns: isEdit ? '1fr 1fr 1fr 1fr' : '1fr', gap: 14 }}>
         <FormField
@@ -759,10 +1123,10 @@ export default function VentasFormPage() {
           hint={isConvenioMarco(data.tipo) || isNormalDiscountTipo(data.tipo) ? 'Catalogo de porcentajes autorizados' : 'Porcentaje global sobre subtotal'}
         >
           {isConvenioMarco(data.tipo)
-            ? <Select value={data.descuentoPct} onChange={v => set('descuentoPct', v)} options={marcoDiscountOptions} disabled={financialLocked} />
+            ? <Select value={data.descuentoPct} onChange={v => { set('descuentoPct', v); setSelectedDiscountRule(null) }} options={marcoDiscountOptions} disabled={financialLocked} />
             : isNormalDiscountTipo(data.tipo)
-              ? <Select value={data.descuentoPct} onChange={v => set('descuentoPct', v)} options={normalDiscountOptions} disabled={financialLocked} />
-              : <Input value={data.descuentoPct} onChange={v => set('descuentoPct', v)} type="number" placeholder="0" disabled={financialLocked} />}
+              ? <Select value={data.descuentoPct} onChange={v => { set('descuentoPct', v); setSelectedDiscountRule(null) }} options={normalDiscountOptions} disabled={financialLocked} />
+              : <Input value={data.descuentoPct} onChange={v => { set('descuentoPct', v); setSelectedDiscountRule(null) }} type="number" placeholder="0" disabled={financialLocked} />}
         </FormField>
         {isEdit && <>
           <FormField label="Abono recibido">
@@ -845,3 +1209,21 @@ const actionBtn = (color) => ({
   borderRadius: 6, border: `1px solid ${color}`,
   background: '#fff', color, cursor: 'pointer',
 })
+
+const discountEmpty = {
+  padding: 14,
+  borderRadius: 8,
+  border: '1px dashed var(--border)',
+  background: 'var(--bg)',
+  color: 'var(--text-3)',
+  fontSize: 13,
+  textAlign: 'center',
+}
+
+const discountNotice = {
+  padding: '8px 10px',
+  borderRadius: 8,
+  fontSize: 12,
+  fontWeight: 600,
+  marginBottom: 10,
+}

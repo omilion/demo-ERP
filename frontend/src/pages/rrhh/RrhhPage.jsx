@@ -23,6 +23,11 @@ function readAsDataUrl(file) {
   })
 }
 
+function isValidDocumentUrl(value) {
+  const text = String(value || '').trim()
+  return /^\/uploads\/\S+/i.test(text) || /^https?:\/\/\S+/i.test(text)
+}
+
 // ── TabBtn ────────────────────────────────────────────────────────────────
 function TabBtn({ active, onClick, children, badge }) {
   return (
@@ -95,25 +100,6 @@ function TabDatos({ t }) {
       <DataRow l="Cargo" v={t.cargo} />
       {t.observacion && <DataRow l="Observación" v={t.observacion} />}
     </>
-  )
-}
-
-// ── ListTab genérica ────────────────────────────────────────────────────
-function ListTab({ items, columns, emptyText }) {
-  if (!items || items.length === 0) return <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{emptyText}</div>
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {items.map(it => (
-        <div key={it.id} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', border: '1px solid var(--border)' }}>
-          {columns.map(([l, v]) => (
-            <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}>
-              <span style={{ color: 'var(--text-3)' }}>{l}</span>
-              <span style={{ textAlign: 'right' }}>{typeof v === 'function' ? v(it) : it[v] || '—'}</span>
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
   )
 }
 
@@ -222,7 +208,10 @@ function normalizeSubresourceForm(config, item) {
     else if (field?.type === 'checkbox') base[key] = value !== false
     else base[key] = value ?? ''
   }
-  if (config.documentField) base[config.documentField] = item[config.documentField] || ''
+  if (config.documentField) {
+    const documentUrl = item[config.documentField]
+    base[config.documentField] = isValidDocumentUrl(documentUrl) ? String(documentUrl).trim() : ''
+  }
   return base
 }
 
@@ -246,6 +235,7 @@ function RrhhInputField({ field, value, onChange }) {
 
 function RrhhDocumentField({ trabajadorId, value, onChange, disabled }) {
   const upload = useUploadRrhhDocumento()
+  const hasValidDocument = isValidDocumentUrl(value)
   const handleFile = async event => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -271,7 +261,7 @@ function RrhhDocumentField({ trabajadorId, value, onChange, disabled }) {
           <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={handleFile} disabled={disabled || upload.isPending} style={{ display: 'none' }} />
         </label>
       </div>
-      {value && (
+      {hasValidDocument && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 10, fontSize: 12 }}>
           <span style={{ color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
           <a href={value} target="_blank" rel="noreferrer" style={{ color: 'var(--green-700)', fontWeight: 700, whiteSpace: 'nowrap' }}>Ver documento</a>
@@ -322,6 +312,16 @@ function EditableRrhhTab({ trabajadorId, config, items = [], canWrite }) {
   const [editing, setEditing] = useState(null)
   const [creating, setCreating] = useState(false)
   const documentField = config.documentField
+  const documentBtnBase = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    minHeight: 28,
+    padding: '4px 9px',
+    borderRadius: 7,
+    fontSize: 11,
+    fontWeight: 700,
+  }
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -345,11 +345,15 @@ function EditableRrhhTab({ trabajadorId, config, items = [], canWrite }) {
                 ))}
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                {documentField && it[documentField] && (
-                  <a href={it[documentField]} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minHeight: 28, padding: '4px 9px', borderRadius: 7, border: '1px solid var(--green-100)', background: '#fff', color: 'var(--green-700)', fontSize: 11, fontWeight: 700 }}>
+                {documentField && (isValidDocumentUrl(it[documentField]) ? (
+                  <a href={String(it[documentField]).trim()} target="_blank" rel="noreferrer" style={{ ...documentBtnBase, border: '1px solid var(--green-100)', background: '#fff', color: 'var(--green-700)' }}>
                     <Icon name="fileText" size={13} /> Ver documento
                   </a>
-                )}
+                ) : (
+                  <button type="button" disabled title="No hay documento" style={{ ...documentBtnBase, border: '1px solid var(--border)', background: 'oklch(0.95 0.003 220)', color: 'var(--text-3)', cursor: 'not-allowed', opacity: 0.85 }}>
+                    <Icon name="fileText" size={13} /> Sin documento
+                  </button>
+                ))}
                 {canWrite && <Btn variant="secondary" size="xs" icon="edit" onClick={() => setEditing(it)}>Editar</Btn>}
               </div>
             </div>
@@ -410,42 +414,6 @@ function ViewTrabajadorPage({ trabajador, onClose, onEdit, canWrite, canDelete }
           {tab === 'vacaciones' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.vacaciones} items={full?.vacaciones} canWrite={canWrite} />}
           {tab === 'licencias' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.licencias} items={full?.licencias} canWrite={canWrite} />}
           {tab === 'epps' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.epps} items={full?.epps} canWrite={canWrite} />}
-          {false && tab === 'contratos' && <ListTab items={full?.contratos} emptyText="Sin contratos" columns={[
-            ['Contrato', 'contrato'], ['Plazo', 'plazo'],
-            ['Inicio', it => fmtDate(it.inicio)], ['Término', it => fmtDate(it.termino)],
-            ['Estado', it => it.estado ? <Badge tone="green">Vigente</Badge> : <Badge tone="gray">Cerrado</Badge>],
-          ]} />}
-          {false && tab === 'liquidaciones' && <ListTab items={full?.liquidaciones} emptyText="Sin liquidaciones" columns={[
-            ['Periodo', it => `${it.anio}-${it.mes}`],
-            ['Sueldo base', it => fmtPeso(it.sueldoBase)],
-            ['Imponible', it => fmtPeso(it.totalImponible)],
-            ['Líquido', it => fmtPeso(it.liquidoPagar)],
-            ['Horas extra', it => `${it.horasExtras || 0} hrs`],
-          ]} />}
-          {false && tab === 'anticipos' && <ListTab items={full?.anticipos} emptyText="Sin anticipos" columns={[
-            ['Periodo', it => `${it.anio}-${it.mes}`],
-            ['Fecha', it => fmtDate(it.fecha)],
-            ['Banco', 'banco'],
-            ['Monto', it => fmtPeso(it.monto)],
-          ]} />}
-          {false && tab === 'vacaciones' && <ListTab items={full?.vacaciones} emptyText="Sin vacaciones" columns={[
-            ['Periodo', 'periodo'],
-            ['Inicio', it => fmtDate(it.fechaInicio)],
-            ['Término', it => fmtDate(it.fechaTermino)],
-            ['Días', 'dias'],
-            ['Saldo', 'saldo'],
-          ]} />}
-          {false && tab === 'licencias' && <ListTab items={full?.licencias} emptyText="Sin licencias" columns={[
-            ['Tipo', 'tipo'],
-            ['Inicio', it => fmtDate(it.inicio)],
-            ['Término', it => fmtDate(it.termino)],
-            ['Días', 'dias'],
-            ['Reposo', 'reposo'],
-          ]} />}
-          {false && tab === 'epps' && <ListTab items={full?.epps} emptyText="Sin EPP entregados" columns={[
-            ['EPP', 'epp'], ['Marca', 'marca'], ['Cantidad', 'cantidad'],
-            ['Entrega', it => fmtDate(it.fechaEntrega)], ['Observación', 'observacion'],
-          ]} />}
         </div>
       </section>
     </main>

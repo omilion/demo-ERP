@@ -280,7 +280,7 @@ export default async function ordenesCompraRoutes(fastify) {
       }
 
       await tx.ordenCompraOnline.update({ where: { id: oc.id }, data: { estadoCompra: 'Procesada' } })
-      return { orden: { ...orden, total: computeTotal(orden.items, orden.descuentoPct) } }
+      return { orden: { ...orden, total: computeTotal(orden.items, orden.descuentoPct, [], orden.descuentoMonto) } }
       })
     } catch (e) {
       if (e.statusCode) return reply.code(e.statusCode).send({ error: e.message })

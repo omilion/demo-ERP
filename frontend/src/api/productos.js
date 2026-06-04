@@ -6,7 +6,7 @@ export const useProductos = (params = {}) =>
     queryKey: ['productos', params],
     queryFn: () => api.get('/productos', { params }).then(r => r.data),
     staleTime: 30_000,
-    placeholderData: { items: [], total: 0, limit: 500 },
+    placeholderData: { items: [], total: 0, limit: 500, stats: { total: 0, critico: 0, sinStock: 0, valorInventario: 0 } },
   })
 
 export const useProducto = (id) =>

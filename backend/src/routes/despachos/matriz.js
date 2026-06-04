@@ -316,7 +316,7 @@ function mapOrderRows(ordenes, { odtsByOrden, cotizByOrden, clientesById }) {
     const cliente = orden.clienteSucursal?.cliente || clienteDirecto
     const sucursal = orden.clienteSucursal || null
     const despachoPrincipal = (orden.despachos || [])[0] || null
-    const total = computeTotal(orden.items || [], orden.descuentoPct || 0, orden.cargos || [])
+    const total = computeTotal(orden.items || [], orden.descuentoPct || 0, orden.cargos || [], orden.descuentoMonto)
     const abono = Number(orden.abono || 0)
     const facturado = Number(orden.facturado || 0)
     const odts = odtsByOrden[orden.id] || []

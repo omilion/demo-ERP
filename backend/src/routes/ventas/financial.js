@@ -47,7 +47,7 @@ export function resolveEstadoPago({ total = 0, abono = 0, ajustesFinancieros = 0
 }
 
 export function computeVentaFinancialState(orden, inputs = {}) {
-  const total = computeTotal(orden.items || [], orden.descuentoPct, orden.cargos || [])
+  const total = computeTotal(orden.items || [], orden.descuentoPct, orden.cargos || [], orden.descuentoMonto)
   const abono = Number(orden.abono || 0)
   const ajustesFinancieros = computeFinancialAdjustments(inputs)
   const saldo = Math.max(0, total - abono - ajustesFinancieros)

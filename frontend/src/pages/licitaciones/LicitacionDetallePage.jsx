@@ -7,6 +7,7 @@ import {
   useAddCotizacionItem, useUpdateCotizacionItem, useDeleteCotizacionItem,
   useCrearVentaDesdeLicitacion, useActualizarVentaDesdeLicitacion,
 } from '../../api/cotizaciones'
+import { useEvaluarDescuentoCotizacion, useSolicitarDescuentoCotizacion } from '../../api/descuentos'
 import { useProductos } from '../../api/productos'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
@@ -31,6 +32,207 @@ const licitacionForm = data => ({
 
 function precioLicitacion(producto) {
   return Number(producto.consultaPrecios?.precioLicitacion ?? producto.precioLicitacion ?? producto.precioLista ?? 0)
+}
+
+function firstDefined(...values) {
+  return values.find(value => value !== undefined && value !== null && value !== '')
+}
+
+function descuentoApiError(error, fallback = 'No fue posible evaluar descuentos') {
+  return error?.response?.data?.error || fallback
+}
+
+function normalizeRuleValue(rule) {
+  const value = firstDefined(rule.valor, rule.porcentaje, rule.descuentoPct, rule.valorDescuento)
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function normalizeRuleStatus(value) {
+  return String(value || '').trim().toUpperCase()
+}
+
+function normalizeEvaluatedRule(rule, defaults = {}, idx = 0) {
+  const estado = normalizeRuleStatus(firstDefined(rule.estado, rule.status, defaults.estado, ''))
+  const isPending = estado === 'PENDIENTE'
+  const isRejected = estado === 'RECHAZADA'
+  const isAuthorized = estado === 'AUTORIZADA'
+  const requiresApproval = Boolean(firstDefined(
+    rule.requiereAprobacion,
+    rule.requiere_aprobacion,
+    rule.requiresApproval,
+    defaults.requiereAprobacion,
+    false
+  )) || isPending
+  const disponibleRaw = firstDefined(rule.disponible, rule.aplicable, rule.aprobada, defaults.disponible)
+  return {
+    id: firstDefined(rule.id, rule.reglaId, rule.codigo, defaults.id, `regla-${idx}`),
+    codigo: firstDefined(rule.codigo, rule.code, ''),
+    nombre: firstDefined(rule.nombre, rule.name, rule.titulo, defaults.nombre, `Regla ${idx + 1}`),
+    descripcion: firstDefined(rule.descripcion, rule.description, rule.motivo, rule.razon, ''),
+    valor: normalizeRuleValue(rule),
+    montoDescuento: firstDefined(rule.montoDescuento, rule.descuentoMonto, null),
+    totalConDescuento: firstDefined(rule.totalConDescuento, rule.totalFinal, null),
+    requiereAprobacion: requiresApproval,
+    estado,
+    disponible: isAuthorized ? true : isPending || isRejected ? false : disponibleRaw === undefined ? !requiresApproval : Boolean(disponibleRaw),
+  }
+}
+
+function normalizeEvaluacionDescuentos(result) {
+  const grupos = []
+  const add = (items, defaults) => {
+    if (Array.isArray(items)) grupos.push(...items.map((item, idx) => normalizeEvaluatedRule(item, defaults, grupos.length + idx)))
+  }
+
+  if (Array.isArray(result)) add(result, {})
+  else {
+    add(result?.disponibles, { disponible: true })
+    add(result?.aplicables, { disponible: true })
+    add(result?.reglasDisponibles, { disponible: true })
+    add(result?.solicitables, { requiereAprobacion: true, disponible: false })
+    add(result?.requierenAprobacion, { requiereAprobacion: true, disponible: false })
+    add(result?.requiereAprobacion, { requiereAprobacion: true, disponible: false })
+    if (!grupos.length) add(result?.items, {})
+    if (!grupos.length) add(result?.reglas, {})
+  }
+
+  const seen = new Set()
+  return grupos.filter(rule => {
+    const key = `${rule.id || ''}-${rule.codigo || ''}-${rule.nombre}-${rule.valor}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return rule.valor !== null
+  })
+}
+
+function buildCotizacionDiscountPayload({ cotizacion, items, subtotal, totalAdjudicado }) {
+  return {
+    origen: 'licitacion',
+    cotizacionId: cotizacion.id,
+    idLicitacion: cotizacion.idLicitacion || null,
+    tipoVenta: 'Licitacion',
+    estado: cotizacion.estado || null,
+    rutCliente: cotizacion.rutCliente || cotizacion.cliente?.rut || null,
+    clienteId: cotizacion.cliente?.id || null,
+    ordenId: cotizacion.orden?.id || cotizacion.ordenId || null,
+    ordenCompra: cotizacion.ordenCompra || null,
+    subtotal,
+    totalAdjudicado,
+    baseEvaluacion: totalAdjudicado || subtotal,
+    items: items.map(item => ({
+      id: item.id,
+      productoId: item.productoId || null,
+      codigoInterno: item.codigoInterno || null,
+      nombre: item.nombre || null,
+      cantidad: Number(item.cantidad || 0),
+      cantAdjudicados: Number(item.cantAdjudicados || 0),
+      precio: Number(item.precio || 0),
+    })),
+  }
+}
+
+function LicitacionDescuentoPanel({ cotizacion, items, subtotal, totalAdjudicado, canRequest }) {
+  const evaluar = useEvaluarDescuentoCotizacion()
+  const solicitar = useSolicitarDescuentoCotizacion()
+  const [evaluacion, setEvaluacion] = useState(null)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+
+  const hasContext = items.length > 0 && (subtotal > 0 || totalAdjudicado > 0)
+  const payload = buildCotizacionDiscountPayload({ cotizacion, items, subtotal, totalAdjudicado })
+  const reglas = normalizeEvaluacionDescuentos(evaluacion)
+
+  function evaluate() {
+    if (!hasContext) return
+    setError('')
+    setMessage('')
+    evaluar.mutate({ id: cotizacion.id, data: payload }, {
+      onSuccess: data => setEvaluacion(data),
+      onError: err => {
+        setEvaluacion(null)
+        setError(descuentoApiError(err, 'No fue posible evaluar reglas para esta licitacion'))
+      },
+    })
+  }
+
+  useEffect(() => {
+    if (!hasContext) {
+      setEvaluacion(null)
+      return
+    }
+    const timer = setTimeout(() => evaluate(), 450)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasContext, cotizacion.id, cotizacion.estado, cotizacion.ordenCompra, subtotal, totalAdjudicado, items])
+
+  function requestRule(rule) {
+    const motivo = window.prompt('Motivo de solicitud para esta licitacion')
+    if (motivo === null) return
+    setError('')
+    setMessage('')
+    solicitar.mutate({
+      id: cotizacion.id,
+      data: {
+        ...payload,
+        reglaId: rule.id,
+        reglaCodigo: rule.codigo || null,
+        reglaNombre: rule.nombre,
+        descuentoPct: rule.valor,
+        porcentaje: rule.valor,
+        descuentoPctSolicitado: rule.valor,
+        motivo: motivo.trim() || undefined,
+      },
+    }, {
+      onSuccess: () => setMessage('Solicitud de descuento enviada'),
+      onError: err => setError(descuentoApiError(err, 'No se pudo enviar la solicitud')),
+    })
+  }
+
+  return (
+    <section style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden', marginBottom: 16 }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>Evaluacion de descuentos</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>Base adjudicada {fmt(totalAdjudicado || subtotal)}</div>
+        </div>
+        <Btn variant="secondary" size="sm" icon="refreshCw" onClick={evaluate} disabled={!hasContext || evaluar.isPending}>
+          {evaluar.isPending ? 'Evaluando...' : 'Evaluar'}
+        </Btn>
+      </div>
+      <div style={{ padding: 14 }}>
+        {!hasContext && <div style={discountEmpty}>Agrega productos para evaluar reglas de descuento.</div>}
+        {hasContext && error && <div style={{ ...discountNotice, background: 'var(--amber-bg)', color: 'var(--text-2)' }}>{error}</div>}
+        {hasContext && message && <div style={{ ...discountNotice, background: 'var(--green-50)', color: 'var(--green-700)' }}>{message}</div>}
+        {hasContext && reglas.length === 0 && !evaluar.isPending && !error && <div style={discountEmpty}>Sin reglas evaluadas para esta licitacion.</div>}
+        {hasContext && reglas.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+            {reglas.map(rule => (
+              <article key={rule.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: '#fff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{rule.nombre}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{rule.descripcion || rule.codigo || 'Regla comercial'}</div>
+                  </div>
+                  <strong style={{ fontFamily: "'DM Mono', monospace", color: 'var(--green-700)', fontSize: 16 }}>{rule.valor}%</strong>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  <Badge tone={rule.disponible ? 'green' : 'amber'}>{rule.disponible ? 'Disponible' : 'Requiere gestion'}</Badge>
+                  {rule.estado && <Badge tone={rule.estado === 'AUTORIZADA' ? 'green' : rule.estado === 'PENDIENTE' ? 'amber' : 'red'}>{rule.estado}</Badge>}
+                  {rule.montoDescuento != null && <Badge tone="blue">{fmt(rule.montoDescuento)}</Badge>}
+                </div>
+                <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Btn variant="secondary" size="xs" onClick={() => requestRule(rule)} disabled={!canRequest || rule.estado === 'RECHAZADA' || solicitar.isPending}>
+                    Solicitar
+                  </Btn>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  )
 }
 
 function ProductoLookup({ onSelect }) {
@@ -377,6 +579,14 @@ export default function LicitacionDetallePage() {
         </div>
       )}
 
+      <LicitacionDescuentoPanel
+        cotizacion={data}
+        items={items}
+        subtotal={subtotal}
+        totalAdjudicado={totalAdjudicado}
+        canRequest={canWriteLicitaciones}
+      />
+
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontWeight: 600, fontSize: 14 }}>Productos cotizados <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>({items.length})</span></div>
@@ -447,6 +657,8 @@ const btnTiny = { padding: '3px 6px', fontSize: 11, borderRadius: 4, border: '1p
 const btnSm = { padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer' }
 const btnSmPrim = { padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--green-600)', background: 'var(--green-600)', color: '#fff', cursor: 'pointer', fontWeight: 500 }
 const chip = { padding: '4px 10px', fontSize: 12, borderRadius: 999, border: '1px solid var(--border)', background: 'var(--bg-2)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: "'DM Mono', monospace" }
+const discountEmpty = { padding: 14, borderRadius: 8, border: '1px dashed var(--border)', background: 'var(--bg)', color: 'var(--text-3)', fontSize: 13, textAlign: 'center' }
+const discountNotice = { padding: '8px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, marginBottom: 10 }
 
 function InfoCard({ label, value, children }) {
   return (

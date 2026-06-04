@@ -5,6 +5,7 @@ import { applyVentaStockDeltas, buildStockDeltasFromItems, isVentaDirectaStockTi
 import { validateConvenioMarcoOcForWrite } from './convenio-marco.js'
 import { canApplyDescuento, requiresDescuentoPermission } from './descuentos-permissions.js'
 import { validateVentaDescuentoCatalogForWrite } from './descuentos-catalog.js'
+import { assertDiscountAuthorizationForDraft } from '../descuentos/rules-engine.js'
 
 const ItemSchema = z.object({
   productoId: z.number().int(),
@@ -17,6 +18,7 @@ const Schema = z.object({
   clienteId: z.number().int(),
   clienteSucursalId: z.number().int().optional().nullable(),
   descuentoPct: z.number().min(0).max(100).default(0),
+  descuentoAutorizacionId: z.number().int().positive().optional(),
   abono: z.number().min(0).default(0),
   facturado: z.number().min(0).optional(),
   guias: z.number().int().optional(),
@@ -35,11 +37,11 @@ export default async function createVenta(fastify) {
     try {
     const parsed = Schema.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
-    const { items, abono, estadoPago, facturado, ...rest } = parsed.data
+    const { items, abono, estadoPago, facturado, descuentoAutorizacionId, ...rest } = parsed.data
     if (abono > 0 || facturado !== undefined || (estadoPago && estadoPago !== 'No pagada')) {
       return reply.code(400).send({ error: 'Los abonos, facturado y estado de pago se registran desde Cobranza/Caja' })
     }
-    if (requiresDescuentoPermission(rest.descuentoPct) && !canApplyDescuento(request.user)) {
+    if (!descuentoAutorizacionId && requiresDescuentoPermission(rest.descuentoPct) && !canApplyDescuento(request.user)) {
       return reply.code(403).send({ error: 'No tiene permiso para aplicar descuentos' })
     }
     const cliente = await fastify.prisma.cliente.findUnique({ where: { id: rest.clienteId }, select: { id: true, activo: true } })
@@ -78,19 +80,40 @@ export default async function createVenta(fastify) {
         err.statusCode = convenioOc.statusCode || 400
         throw err
       }
-      const descuentoCatalogo = await validateVentaDescuentoCatalogForWrite(tx, {
-        tipo: rest.tipo,
-        descuentoPct: rest.descuentoPct,
-      })
-      if (descuentoCatalogo.error) {
-        const err = new Error(descuentoCatalogo.error)
-        err.statusCode = descuentoCatalogo.statusCode || 400
-        throw err
+      let descuentoData = {}
+      if (descuentoAutorizacionId) {
+        const auth = await assertDiscountAuthorizationForDraft(tx, {
+          autorizacionId: descuentoAutorizacionId,
+          payload: {
+            tipo: rest.tipo,
+            clienteId: rest.clienteId,
+            sucursalId: request.user?.sucursalId ?? null,
+            items: itemsData,
+          },
+          user: request.user,
+        })
+        if (auth.error) {
+          const err = new Error(auth.error)
+          err.statusCode = auth.statusCode || 400
+          throw err
+        }
+        descuentoData = auth.descuentoData
+      } else {
+        const descuentoCatalogo = await validateVentaDescuentoCatalogForWrite(tx, {
+          tipo: rest.tipo,
+          descuentoPct: rest.descuentoPct,
+        })
+        if (descuentoCatalogo.error) {
+          const err = new Error(descuentoCatalogo.error)
+          err.statusCode = descuentoCatalogo.statusCode || 400
+          throw err
+        }
       }
       const ordenData = convenioOc.applies ? { ...rest, licitacion: convenioOc.licitacion } : rest
       const created = await tx.orden.create({
         data: {
           ...ordenData,
+          ...descuentoData,
           abono: 0,
           estadoPago: 'No pagada',
           userId: request.user.id,
@@ -114,10 +137,16 @@ export default async function createVenta(fastify) {
         err.statusCode = stock.status || 400
         throw err
       }
+      if (descuentoData.descuentoSolicitudId) {
+        await tx.descuentoSolicitud.update({
+          where: { id: descuentoData.descuentoSolicitudId },
+          data: { estado: 'APLICADA', resueltoAt: new Date(), comentarioResolucion: `Aplicada en venta ${created.nInterno || created.id}` },
+        })
+      }
       return created
     })
     const withCliente = await attachCliente(fastify, orden)
-    return reply.code(201).send({ ...withCliente, total: computeTotal(orden.items, orden.descuentoPct) })
+    return reply.code(201).send({ ...withCliente, total: computeTotal(orden.items, orden.descuentoPct, [], orden.descuentoMonto) })
     } catch (e) {
       if (e.statusCode) return reply.code(e.statusCode).send({ error: e.message })
       throw e

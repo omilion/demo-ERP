@@ -5,6 +5,7 @@ import { applyVentaStockDeltas, buildReplacementStockDeltas } from './stock.js'
 import { validateConvenioMarcoOcForWrite } from './convenio-marco.js'
 import { canApplyDescuento } from './descuentos-permissions.js'
 import { getVentaDescuentoCatalogKind, validateVentaDescuentoCatalogForWrite } from './descuentos-catalog.js'
+import { assertDiscountAuthorizationForDraft } from '../descuentos/rules-engine.js'
 
 export const ESTADO_PAGO_VALUES = ['No pagada', 'Pagada', 'Parcial']
 export const ESTADO_ENTREGA_VALUES = ['Pendiente entrega', 'En despacho', 'Entregada', 'Parcial']
@@ -27,6 +28,7 @@ const Schema = z.object({
   licitacion: z.string().optional(),
   observaciones: z.string().optional(),
   descuentoPct: z.number().min(0).max(100).optional(),
+  descuentoAutorizacionId: z.number().int().positive().optional(),
   items: z.array(ItemSchema).min(1).refine(items => new Set(items.map(i => i.productoId)).size === items.length, {
     message: 'No se permiten productos duplicados en la venta',
   }).optional(),
@@ -62,7 +64,7 @@ export default async function updateVenta(fastify) {
     const parsed = Schema.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     try {
-      const { items, ...ordenData } = parsed.data
+      const { items, descuentoAutorizacionId, ...ordenData } = parsed.data
       const sucursalId = getUserSucursalId(request.user)
       const current = await fastify.prisma.orden.findFirst({
         where: { id, ...(sucursalId ? { sucursalId } : {}) },
@@ -72,13 +74,16 @@ export default async function updateVenta(fastify) {
           tipo: true,
           licitacion: true,
           clienteId: true,
+          sucursalId: true,
           estado: true,
           estadoPago: true,
           estadoEntrega: true,
           abono: true,
           descuentoPct: true,
+          descuentoMonto: true,
+          descuentoSolicitudId: true,
           eliminada: true,
-          items: { where: { eliminado: false }, select: { productoId: true, cantidad: true, nEntregados: true } },
+          items: { where: { eliminado: false }, select: { productoId: true, codigoInterno: true, nombre: true, cantidad: true, precioUnitario: true, nEntregados: true } },
         },
       })
       if (!current) return reply.code(404).send({ error: 'Venta no encontrada' })
@@ -97,7 +102,7 @@ export default async function updateVenta(fastify) {
           where: { ordenId: id, eliminado: false },
         })
         const hasFinancialTrace = Number(current.abono || 0) > 0 || current.estadoPago !== 'No pagada' || activeCajaMovements > 0
-        if (!hasFinancialTrace && !canApplyDescuento(request.user)) {
+        if (!hasFinancialTrace && !descuentoAutorizacionId && !canApplyDescuento(request.user)) {
           return reply.code(403).send({ error: 'No tiene permiso para aplicar descuentos' })
         }
       }
@@ -175,11 +180,15 @@ export default async function updateVenta(fastify) {
             nInterno: true,
             tipo: true,
             licitacion: true,
+            clienteId: true,
+            sucursalId: true,
             estadoPago: true,
             abono: true,
             descuentoPct: true,
+            descuentoMonto: true,
+            descuentoSolicitudId: true,
             eliminada: true,
-            items: { where: { eliminado: false }, select: { productoId: true, cantidad: true, nEntregados: true } },
+            items: { where: { eliminado: false }, select: { productoId: true, codigoInterno: true, nombre: true, cantidad: true, precioUnitario: true, nEntregados: true } },
           },
         })
         if (!lockedCurrent || lockedCurrent.eliminada) {
@@ -207,7 +216,9 @@ export default async function updateVenta(fastify) {
         const shouldReconcileStock = itemsData || (ordenData.tipo !== undefined && ordenData.tipo !== lockedCurrent.tipo)
         const lockedDiscountChanged = Object.prototype.hasOwnProperty.call(ordenData, 'descuentoPct') &&
           Number(ordenData.descuentoPct || 0) !== Number(lockedCurrent.descuentoPct || 0)
-        const traceSensitiveChange = shouldReconcileStock || lockedDiscountChanged
+        const discountAuthorizationChanged = descuentoAutorizacionId !== undefined &&
+          Number(descuentoAutorizacionId || 0) !== Number(lockedCurrent.descuentoSolicitudId || 0)
+        const traceSensitiveChange = shouldReconcileStock || lockedDiscountChanged || discountAuthorizationChanged
         if (traceSensitiveChange) {
           const activeCajaMovements = await tx.movimientoCaja.count({
             where: { ordenId: id, eliminado: false },
@@ -222,7 +233,50 @@ export default async function updateVenta(fastify) {
         }
         const currentCatalogKind = getVentaDescuentoCatalogKind(lockedCurrent.tipo)
         const nextCatalogKind = getVentaDescuentoCatalogKind(nextTipo)
-        if (nextCatalogKind && (lockedDiscountChanged || currentCatalogKind !== nextCatalogKind)) {
+        const hasAuthorizedDiscount = Boolean(lockedCurrent.descuentoSolicitudId)
+        const clearingAuthorizedDiscount = hasAuthorizedDiscount &&
+          !descuentoAutorizacionId &&
+          Object.prototype.hasOwnProperty.call(ordenData, 'descuentoPct') &&
+          Number(ordenData.descuentoPct || 0) === 0
+        if (hasAuthorizedDiscount && !descuentoAutorizacionId && !clearingAuthorizedDiscount && (shouldReconcileStock || lockedDiscountChanged)) {
+          const err = new Error('La venta tiene un descuento autorizado; reevalua el descuento antes de cambiar productos, precios, cantidades o porcentaje')
+          err.statusCode = 409
+          throw err
+        }
+        if (clearingAuthorizedDiscount) {
+          Object.assign(ordenData, {
+            descuentoSolicitudId: null,
+            descuentoMonto: null,
+            descuentoSnapshot: null,
+          })
+        }
+        let appliedDiscountSolicitudId = null
+        if (descuentoAutorizacionId) {
+          const draftItems = itemsData || lockedCurrent.items.map(item => ({
+            productoId: item.productoId,
+            codigoInterno: item.codigoInterno,
+            nombre: item.nombre,
+            cantidad: item.cantidad,
+            precioUnitario: item.precioUnitario,
+          }))
+          const auth = await assertDiscountAuthorizationForDraft(tx, {
+            autorizacionId: descuentoAutorizacionId,
+            payload: {
+              tipo: nextTipo,
+              clienteId: lockedCurrent.clienteId,
+              sucursalId: lockedCurrent.sucursalId,
+              items: draftItems,
+            },
+            user: request.user,
+          })
+          if (auth.error) {
+            const err = new Error(auth.error)
+            err.statusCode = auth.statusCode || 400
+            throw err
+          }
+          Object.assign(ordenData, auth.descuentoData)
+          appliedDiscountSolicitudId = auth.descuentoData.descuentoSolicitudId
+        } else if (nextCatalogKind && (lockedDiscountChanged || currentCatalogKind !== nextCatalogKind)) {
           const descuentoCatalogo = await validateVentaDescuentoCatalogForWrite(tx, {
             tipo: nextTipo,
             descuentoPct: Object.prototype.hasOwnProperty.call(ordenData, 'descuentoPct')
@@ -257,6 +311,12 @@ export default async function updateVenta(fastify) {
             data: ordenData,
           })
         }
+        if (appliedDiscountSolicitudId) {
+          await tx.descuentoSolicitud.update({
+            where: { id: appliedDiscountSolicitudId },
+            data: { estado: 'APLICADA', resueltoAt: new Date(), comentarioResolucion: `Aplicada en venta ${lockedCurrent.nInterno || lockedCurrent.id}` },
+          })
+        }
         if (itemsData) {
           await tx.ordenItem.deleteMany({ where: { ordenId: id } })
           await tx.ordenItem.createMany({
@@ -267,7 +327,7 @@ export default async function updateVenta(fastify) {
       })
       orden.items = await attachProductos(fastify, orden.items)
       const withCliente = await attachCliente(fastify, orden)
-      return { ...withCliente, total: computeTotal(orden.items, orden.descuentoPct, orden.cargos) }
+      return { ...withCliente, total: computeTotal(orden.items, orden.descuentoPct, orden.cargos, orden.descuentoMonto) }
     } catch (e) {
       if (e.statusCode) return reply.code(e.statusCode).send({ error: e.message })
       if (e.code === 'P2025') return reply.code(404).send({ error: 'Venta no encontrada' })

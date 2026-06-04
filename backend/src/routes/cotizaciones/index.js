@@ -3,6 +3,11 @@ import { applyVentaStockDeltas, buildReplacementStockDeltas, buildStockDeltasFro
 import { computeVentaFinancialState } from '../ventas/financial.js'
 import { can as canAccess } from '../../middleware/rbac.js'
 import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import {
+  assertDiscountAuthorizationForDraft,
+  buildDiscountSnapshot,
+  evaluateDiscountRules,
+} from '../descuentos/rules-engine.js'
 
 function scopedWhere(user, where = {}) {
   const sucursalId = getUserSucursalId(user)
@@ -196,6 +201,42 @@ function computeCotizacionTotals(items = []) {
   }, 0)
   const iva = Math.round(totalNeto * 0.19)
   return { totalNeto, iva, totalConIva: totalNeto + iva, totalAdjudicado }
+}
+
+async function buildCotizacionDiscountPayload(prisma, cot, user, body = {}) {
+  let clienteId = null
+  let clienteSegmento = null
+  if (cot.rutCliente) {
+    const cliente = await prisma.cliente.findUnique({
+      where: { rut: cot.rutCliente },
+      select: { id: true, segmento: true },
+    })
+    clienteId = cliente?.id || null
+    clienteSegmento = cliente?.segmento || null
+  }
+  return {
+    tipo: body.tipo || 'LicitaciÃ³n',
+    clienteId,
+    clienteSegmento,
+    sucursalId: cot.sucursalId ?? getUserSucursalId(user),
+    reglaId: body.reglaId,
+    descuentoPct: body.descuentoPct ?? body.porcentaje,
+    items: (cot.items || []).map(item => ({
+      codigoInterno: item.codigoInterno,
+      nombre: item.nombre,
+      cantidad: Number(item.cantAdjudicados || 0) > 0 ? item.cantAdjudicados : item.cantidad,
+      precioUnitario: item.precio,
+    })),
+  }
+}
+
+function clearCotizacionDiscountData() {
+  return {
+    descuentoSolicitudId: null,
+    descuentoMonto: null,
+    descuentoSnapshot: null,
+    descuentoPct: 0,
+  }
 }
 
 function formatReportDate(value, withTime = false) {
@@ -558,6 +599,7 @@ export default async function cotizacionesRoutes(fastify) {
     if (body.ordenCompra !== undefined) data.ordenCompra = body.ordenCompra
     if (body.referencia !== undefined) data.referencia = body.referencia
     if (body.fecha !== undefined) data.fecha = body.fecha ? new Date(body.fecha) : null
+    if (body.rutCliente !== undefined) Object.assign(data, clearCotizacionDiscountData())
     try {
       const current = await fastify.prisma.cotizacionLicitacion.findFirst({
         where: scopedWhere(request.user, { id }),
@@ -623,11 +665,15 @@ export default async function cotizacionesRoutes(fastify) {
       select: { id: true },
     })
     if (!cotizacion) return reply.code(404).send({ error: 'Cotización no encontrada' })
-    const item = await fastify.prisma.cotizacionLicitacionItem.create({
-      data: {
-        cotizacionId,
-        ...parsedItem.data,
-      },
+    const item = await fastify.prisma.$transaction(async (tx) => {
+      const created = await tx.cotizacionLicitacionItem.create({
+        data: {
+          cotizacionId,
+          ...parsedItem.data,
+        },
+      })
+      await tx.cotizacionLicitacion.update({ where: { id: cotizacionId }, data: clearCotizacionDiscountData() })
+      return created
     })
     return reply.code(201).send(item)
   })
@@ -641,13 +687,17 @@ export default async function cotizacionesRoutes(fastify) {
     try {
       const current = await fastify.prisma.cotizacionLicitacionItem.findFirst({
         where: scopedItemWhere(request.user, itemId),
-        select: { id: true, codigoInterno: true, nombre: true, descripcion: true, cantidad: true, cantAdjudicados: true, precio: true },
+        select: { id: true, cotizacionId: true, codigoInterno: true, nombre: true, descripcion: true, cantidad: true, cantAdjudicados: true, precio: true },
       })
       if (!current) return reply.code(404).send({ error: 'Item no encontrado' })
       const parsedPatch = buildCotizacionItemPatchData(body, current)
       if (parsedPatch.error) return reply.code(400).send({ error: parsedPatch.error })
       const data = parsedPatch.data
-      const item = await fastify.prisma.cotizacionLicitacionItem.update({ where: { id: itemId }, data })
+      const item = await fastify.prisma.$transaction(async (tx) => {
+        const updated = await tx.cotizacionLicitacionItem.update({ where: { id: itemId }, data })
+        await tx.cotizacionLicitacion.update({ where: { id: current.cotizacionId }, data: clearCotizacionDiscountData() })
+        return updated
+      })
       return item
     } catch (e) {
       if (e.code === 'P2025') return reply.code(404).send({ error: 'Item no encontrado' })
@@ -663,10 +713,13 @@ export default async function cotizacionesRoutes(fastify) {
     try {
       const current = await fastify.prisma.cotizacionLicitacionItem.findFirst({
         where: scopedItemWhere(request.user, itemId),
-        select: { id: true },
+        select: { id: true, cotizacionId: true },
       })
       if (!current) return reply.code(404).send({ error: 'Item no encontrado' })
-      await fastify.prisma.cotizacionLicitacionItem.delete({ where: { id: itemId } })
+      await fastify.prisma.$transaction(async (tx) => {
+        await tx.cotizacionLicitacionItem.delete({ where: { id: itemId } })
+        await tx.cotizacionLicitacion.update({ where: { id: current.cotizacionId }, data: clearCotizacionDiscountData() })
+      })
       return reply.code(204).send()
     } catch (e) {
       if (e.code === 'P2025') return reply.code(404).send({ error: 'Item no encontrado' })
@@ -675,6 +728,76 @@ export default async function cotizacionesRoutes(fastify) {
   })
 
   // Crear venta desde licitación adjudicada
+  fastify.post('/:id/descuento/evaluar', {
+    preHandler: [fastify.authenticate, fastify.rbac('licitaciones', 'read')],
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invÃ¡lido' })
+    const cot = await fastify.prisma.cotizacionLicitacion.findFirst({
+      where: scopedWhere(request.user, { id }),
+      include: { items: true },
+    })
+    if (!cot) return reply.code(404).send({ error: 'CotizaciÃ³n no encontrada' })
+    const payload = await buildCotizacionDiscountPayload(fastify.prisma, cot, request.user, request.body || {})
+    return evaluateDiscountRules(fastify.prisma, payload, request.user)
+  })
+
+  fastify.post('/:id/descuento/solicitar', {
+    preHandler: [fastify.authenticate, fastify.rbac('licitaciones', 'write')],
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invÃ¡lido' })
+    const reglaId = parseInt(request.body?.reglaId, 10)
+    if (!Number.isInteger(reglaId) || reglaId <= 0) return reply.code(400).send({ error: 'reglaId requerido' })
+    try {
+      const result = await fastify.prisma.$transaction(async (tx) => {
+        const cot = await tx.cotizacionLicitacion.findFirst({
+          where: scopedWhere(request.user, { id }),
+          include: { items: true },
+        })
+        if (!cot) throw httpError(404, 'CotizaciÃ³n no encontrada')
+        const payload = await buildCotizacionDiscountPayload(tx, cot, request.user, { ...(request.body || {}), reglaId })
+        const evaluation = await evaluateDiscountRules(tx, payload, request.user)
+        const selected = evaluation.selected
+        if (!selected) throw httpError(409, 'La regla no aplica a la cotizacion actual')
+        const snapshot = buildDiscountSnapshot(evaluation, selected)
+        const solicitud = await tx.descuentoSolicitud.create({
+          data: {
+            reglaId,
+            estado: selected.estado,
+            origenTipo: 'cotizacion',
+            contextoSnapshot: { ...evaluation.draft, draftHash: evaluation.draftHash, cotizacionId: cot.id },
+            resultadoSnapshot: snapshot,
+            subtotalBase: selected.baseElegible,
+            descuentoPctSolicitado: selected.porcentaje,
+            descuentoPctAprobado: selected.estado === 'AUTORIZADA' ? selected.porcentaje : null,
+            descuentoMontoSolicitado: selected.montoDescuento,
+            descuentoMontoAprobado: selected.estado === 'AUTORIZADA' ? selected.montoDescuento : null,
+            solicitanteId: request.user?.id || null,
+            solicitanteNombre: request.user?.nombre || request.user?.email || null,
+            motivo: selected.motivo,
+          },
+        })
+        if (selected.estado === 'AUTORIZADA') {
+          await tx.cotizacionLicitacion.update({
+            where: { id: cot.id },
+            data: {
+              descuentoSolicitudId: solicitud.id,
+              descuentoMonto: selected.montoDescuento,
+              descuentoSnapshot: snapshot,
+              descuentoPct: selected.porcentaje,
+            },
+          })
+        }
+        return { solicitud, evaluation: selected }
+      })
+      return reply.code(201).send(result)
+    } catch (e) {
+      if (e.statusCode) return reply.code(e.statusCode).send({ error: e.message })
+      throw e
+    }
+  })
+
   fastify.post('/:id/crear-venta', {
     preHandler: [fastify.authenticate, fastify.rbac('licitaciones', 'write'), fastify.rbac('ventas', 'write')],
   }, async (request, reply) => {
@@ -743,6 +866,27 @@ export default async function cotizacionesRoutes(fastify) {
           throw httpError(400, `Ningún producto encontrado en catálogo (faltan: ${faltantes.join(', ')})`)
         }
 
+        let descuentoData = {}
+        if (cot.descuentoSolicitudId) {
+          const auth = await assertDiscountAuthorizationForDraft(tx, {
+            autorizacionId: cot.descuentoSolicitudId,
+            payload: {
+              tipo: 'LicitaciÃ³n',
+              clienteId,
+              sucursalId: cot.sucursalId ?? getUserSucursalId(request.user),
+              items: ordenItems.map(item => ({
+                codigoInterno: item.codigoInterno,
+                nombre: item.nombre,
+                cantidad: item.cantidad,
+                precioUnitario: item.precioUnitario,
+              })),
+            },
+            user: request.user,
+          })
+          if (auth.error) throw httpError(auth.statusCode || 400, auth.error)
+          descuentoData = auth.descuentoData
+        }
+
         const orden = await tx.orden.create({
           data: {
             tipo: 'Licitación',
@@ -750,6 +894,7 @@ export default async function cotizacionesRoutes(fastify) {
             rutCliente: cot.rutCliente,
             licitacion: cot.idLicitacion,
             observaciones: buildVentaObservacionesFromCotizacion(cot),
+            ...descuentoData,
             userId: request.user.id,
             creadorNombre: request.user.nombre || request.user.email || 'Sistema',
             sucursalId: cot.sucursalId ?? getUserSucursalId(request.user),
@@ -767,6 +912,12 @@ export default async function cotizacionesRoutes(fastify) {
           motivo: `Licitacion adjudicada ${orden.nInterno || orden.id}`,
         })
         if (stock.error) throw httpError(stock.status || 400, stock.error)
+        if (descuentoData.descuentoSolicitudId) {
+          await tx.descuentoSolicitud.update({
+            where: { id: descuentoData.descuentoSolicitudId },
+            data: { estado: 'APLICADA', resueltoAt: new Date(), comentarioResolucion: `Aplicada en venta ${orden.nInterno || orden.id}` },
+          })
+        }
         await tx.cotizacionLicitacion.update({
           where: { id },
           data: { ordenId: orden.id },
@@ -859,6 +1010,28 @@ export default async function cotizacionesRoutes(fastify) {
           throw httpError(400, `Ningún producto encontrado en catálogo (faltan: ${faltantes.join(', ')})`)
         }
 
+        let updatedDescuentoData = {}
+        if (cot.descuentoSolicitudId) {
+          const auth = await assertDiscountAuthorizationForDraft(tx, {
+            autorizacionId: cot.descuentoSolicitudId,
+            requireAvailable: false,
+            payload: {
+              tipo: 'LicitaciÃ³n',
+              clienteId: orden.clienteId,
+              sucursalId: cot.sucursalId ?? getUserSucursalId(request.user),
+              items: ordenItems.map(item => ({
+                codigoInterno: item.codigoInterno,
+                nombre: item.nombre,
+                cantidad: item.cantidad,
+                precioUnitario: item.precioUnitario,
+              })),
+            },
+            user: request.user,
+          })
+          if (auth.error) throw httpError(auth.statusCode || 400, auth.error)
+          updatedDescuentoData = auth.descuentoData
+        }
+
         const stock = await applyVentaStockDeltas(tx, {
           deltas: buildReplacementStockDeltas(orden.items, ordenItems, orden.tipo, orden.tipo),
           ordenId: orden.id,
@@ -878,6 +1051,7 @@ export default async function cotizacionesRoutes(fastify) {
             rutCliente: cot.rutCliente,
             licitacion: cot.idLicitacion,
             observaciones: buildVentaObservacionesFromCotizacion(cot),
+            ...updatedDescuentoData,
           },
           include: { items: true },
         })

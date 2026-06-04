@@ -121,7 +121,7 @@ export function buildOdtCosteo(odt = {}, {
   const costoManoObra = costoHora && produccionHoras ? roundMoney(costoHora * produccionHoras) : 0
   const costoTotal = costoMateriales + costoManoObra
   const unidades = items.reduce((sum, item) => sum + Number(item.cantidad || 0), 0)
-  const ventaTotal = orden ? computeTotal(orden.items || [], orden.descuentoPct, orden.cargos || []) : null
+  const ventaTotal = orden ? computeTotal(orden.items || [], orden.descuentoPct, orden.cargos || [], orden.descuentoMonto) : null
   const margenEstimado = ventaTotal == null ? null : roundMoney(ventaTotal - costoTotal)
 
   return {
@@ -180,6 +180,7 @@ export async function attachOdtCosteos(prisma, odts, now = new Date()) {
       select: {
         id: true,
         descuentoPct: true,
+        descuentoMonto: true,
         items: { select: { cantidad: true, precioUnitario: true } },
         cargos: { select: { valor: true } },
       },
