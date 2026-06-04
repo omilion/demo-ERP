@@ -24,6 +24,7 @@ model User {
   createdAt         DateTime    @default(now()) @map("created_at")
   sessions          Session[]
   accesos           AccesoLog[]
+  comisionReglas    ComisionRegla[]
 
   @@index([codigoVendedor])
   @@map("users")
@@ -732,6 +733,44 @@ model DescuentoSolicitud {
   @@index([solicitanteId, createdAt])
   @@index([aprobadorId, resueltoAt])
   @@map("descuento_solicitudes")
+  @@schema("ventas")
+}
+
+model ComisionRegla {
+  id             Int                   @id @default(autoincrement())
+  nombre         String
+  descripcion    String?
+  tipoVenta      String?               @map("tipo_venta")
+  vendedorId     Int?                  @map("vendedor_id")
+  modalidad      String                @default("FIJA")
+  base           String                @default("VENDIDO")
+  porcentaje     Float?
+  prioridad      Int                   @default(100)
+  vigenteDesde   DateTime?             @map("vigente_desde")
+  vigenteHasta   DateTime?             @map("vigente_hasta")
+  activo         Boolean               @default(true)
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  vendedor       User?                 @relation(fields: [vendedorId], references: [id], onDelete: SetNull)
+  tramos         ComisionReglaTramo[]
+
+  @@index([tipoVenta, activo, prioridad])
+  @@index([vendedorId, activo])
+  @@index([vigenteDesde, vigenteHasta])
+  @@map("comision_reglas")
+  @@schema("ventas")
+}
+
+model ComisionReglaTramo {
+  id          Int           @id @default(autoincrement())
+  reglaId     Int           @map("regla_id")
+  montoDesde  Float         @map("monto_desde")
+  montoHasta  Float?        @map("monto_hasta")
+  porcentaje  Float
+  regla       ComisionRegla @relation(fields: [reglaId], references: [id], onDelete: Cascade)
+
+  @@index([reglaId, montoDesde])
+  @@map("comision_regla_tramos")
   @@schema("ventas")
 }
 

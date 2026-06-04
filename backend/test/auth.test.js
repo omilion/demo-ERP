@@ -140,14 +140,14 @@ describe('POST /api/usuarios-web/login', () => {
     const registerRes = await app.inject({
       method: 'POST',
       url: '/api/usuarios-web/register',
-      payload: { email, password: 'dev1234', nombre: 'Cliente Web Test' },
+      payload: { email, password: 'dev12345', nombre: 'Cliente Web Test' },
     })
     expect(registerRes.statusCode).toBe(201)
 
     const res = await app.inject({
       method: 'POST',
       url: '/api/usuarios-web/login',
-      payload: { email, password: 'dev1234' },
+      payload: { email, password: 'dev12345' },
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)

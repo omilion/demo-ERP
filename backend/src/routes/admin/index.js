@@ -1,3 +1,5 @@
+import comisionesAdminRoutes from './comisiones.js'
+
 export function toJsonSerializable(value) {
   if (typeof value === 'bigint') {
     const asNumber = Number(value)
@@ -17,6 +19,8 @@ export default async function adminRoutes(fastify) {
   const adminRead = fastify.rbac('admin', 'read', { allowExtra: false })
   const adminWrite = fastify.rbac('admin', 'write', { allowExtra: false })
   const adminDelete = fastify.rbac('admin', 'delete', { allowExtra: false })
+
+  fastify.register(comisionesAdminRoutes, { prefix: '/comisiones' })
 
   fastify.get('/integridad/resumen', { preHandler: [fastify.authenticate, adminRead] }, async () => {
     const p = fastify.prisma

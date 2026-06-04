@@ -131,7 +131,7 @@ describe('SPR-34 proveedores legacy parity', () => {
     expect(res.body).toContain('Comuna')
     expect(res.body).toContain('Porcentaje Venta Sala')
     expect(res.body).toContain('Porcentaje Convenio Marco')
-    expect(res.body).toContain('Porcentaje Licitacion')
+    expect(res.body).toContain('Porcentaje Licitaci\u00f3n')
     expect(res.body).toContain(String(proveedor.codigoProveedor))
     expect(res.body).toContain(proveedor.nombre)
   })
