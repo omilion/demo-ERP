@@ -689,7 +689,7 @@ describe('GET /api/reportes/export/productos', () => {
     expect(res.body).toContain('Precio Costo')
     expect(res.body).toContain('Precio venta + IVA')
     expect(res.body).toContain('Precio Conv. Marco')
-    expect(res.body).toContain('PrecioLicitacion')
+    expect(res.body).toContain('Precio Licitación')
     expect(res.body).toContain(codigoInterno)
     expect(res.body).toContain('CM-EXPORT')
     expect(res.body).toContain(categoria.nombre)
@@ -718,6 +718,6 @@ describe('GET /api/reportes/export/productos', () => {
       headers: { authorization: `Bearer ${token}` },
     })
     expect(res.statusCode).toBe(400)
-    expect(JSON.parse(res.body).error).toBe('subcategoriaId invalido')
+    expect(JSON.parse(res.body).error).toBe('subcategoriaId inválido')
   })
 })
