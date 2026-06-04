@@ -13,7 +13,7 @@
   --red-bg:    oklch(0.97 0.04 25);
   --blue:      oklch(0.52 0.14 240);
   --blue-bg:   oklch(0.97 0.03 240);
-  --bg:        oklch(0.965 0.006 220);
+  --bg:        #eff4f6;
   --bg-2:      oklch(0.985 0.004 220);
   --border:    oklch(0.90 0.008 220);
   --text-1:    oklch(0.18 0.02 220);

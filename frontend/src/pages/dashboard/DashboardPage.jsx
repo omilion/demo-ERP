@@ -255,6 +255,7 @@ const dashboardStartShell = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+  background: 'var(--bg)',
   padding: 'clamp(16px, 3vh, 34px) clamp(12px, 2vw, 28px)',
 }
 
