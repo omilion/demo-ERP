@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
 import {
   useTrabajadores, useTrabajador, useCreateTrabajador, useUpdateTrabajador, useDeleteTrabajador,
@@ -9,7 +10,7 @@ import { can } from '../../utils/permissions'
 
 const fmtPeso = n => '$' + (Number(n) || 0).toLocaleString('es-CL')
 const fmtDate = d => d ? new Date(d).toLocaleDateString('es-CL') : '—'
-const fullName = t => `${t.nombres} ${t.apellidoPaterno} ${t.apellidoMaterno || ''}`.trim()
+const fullName = t => `${t?.nombres || ''} ${t?.apellidoPaterno || ''} ${t?.apellidoMaterno || ''}`.trim()
 
 // ── TabBtn ────────────────────────────────────────────────────────────────
 function TabBtn({ active, onClick, children, badge }) {
@@ -104,38 +105,36 @@ function ListTab({ items, columns, emptyText }) {
   )
 }
 
-// ── ViewTrabajadorPanel ───────────────────────────────────────────────
-function ViewTrabajadorPanel({ trabajador, onClose, onEdit, canWrite, canDelete }) {
+// ── ViewTrabajadorPage ───────────────────────────────────────────────
+function ViewTrabajadorPage({ trabajador, onClose, onEdit, canWrite, canDelete }) {
   const [tab, setTab] = useState('datos')
   const { data: full, isLoading } = useTrabajador(trabajador.id)
   const t = full || trabajador
   const del = useDeleteTrabajador()
+  const name = fullName(t) || 'Trabajador'
 
   const handleDelete = () => {
     if (!canDelete) return
-    if (!confirm(`¿Dar de baja a ${fullName(t)}? (estado=false)`)) return
+    if (!confirm(`¿Dar de baja a ${name}? (estado=false)`)) return
     del.mutate(t.id, { onSuccess: onClose })
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex', justifyContent: 'flex-end', background: 'oklch(0 0 0 / 0.4)' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width: 'min(460px, 100vw)', height: '100%', background: '#fff',
-        boxShadow: '-8px 0 32px oklch(0 0 0 / 0.12)', overflowY: 'auto',
-        display: 'flex', flexDirection: 'column',
-      }}>
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis' }}>{fullName(t)}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace", marginTop: 2 }}>{t.rut}</div>
-          </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-            {canWrite && <button onClick={() => onEdit(t)} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Editar</button>}
-            {canDelete && <button onClick={handleDelete} disabled={del.isPending} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--red, #fca5a5)', background: '#fff', cursor: 'pointer', color: 'var(--red, #991b1b)' }}>Baja</button>}
-            <button onClick={onClose} style={{ color: 'var(--text-3)', padding: 4, background: 'none', border: 'none' }}><Icon name="x" size={18} /></button>
-          </div>
-        </div>
+    <main className="page page-wide">
+      <PageHeader
+        title={name}
+        subtitle={t.rut || 'Ficha trabajador'}
+        breadcrumb={['Inicio', 'RRHH', 'Trabajador']}
+        actions={(
+          <>
+            {canWrite && <Btn variant="secondary" size="sm" icon="edit" onClick={() => onEdit(t)}>Editar</Btn>}
+            {canDelete && <Btn variant="secondary" size="sm" onClick={handleDelete} disabled={del.isPending} style={{ color: 'var(--red)' }}>Baja</Btn>}
+            <Btn variant="ghost" size="sm" icon="x" onClick={onClose}>Cerrar</Btn>
+          </>
+        )}
+      />
 
+      <section style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', flexShrink: 0, overflowX: 'auto' }}>
           <TabBtn active={tab === 'datos'} onClick={() => setTab('datos')}>Datos</TabBtn>
           <TabBtn active={tab === 'contratos'} onClick={() => setTab('contratos')} badge={full?.contratos?.length}>Contratos</TabBtn>
@@ -146,7 +145,7 @@ function ViewTrabajadorPanel({ trabajador, onClose, onEdit, canWrite, canDelete 
           <TabBtn active={tab === 'epps'} onClick={() => setTab('epps')} badge={full?.epps?.length}>EPP</TabBtn>
         </div>
 
-        <div style={{ flex: 1, padding: '14px 18px', overflowY: 'auto' }}>
+        <div style={{ padding: '18px 22px' }}>
           {isLoading && !full && <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Cargando…</div>}
           {tab === 'datos' && <TabDatos t={t} />}
           {tab === 'contratos' && <ListTab items={full?.contratos} emptyText="Sin contratos" columns={[
@@ -186,8 +185,8 @@ function ViewTrabajadorPanel({ trabajador, onClose, onEdit, canWrite, canDelete 
             ['Entrega', it => fmtDate(it.fechaEntrega)], ['Observación', 'observacion'],
           ]} />}
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   )
 }
 
@@ -391,6 +390,7 @@ function RrhhOperativoPanel({ data, onCargoClick, onTrabajadorClick }) {
 }
 
 export default function RrhhPage() {
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const canWriteRrhh = can(user, 'rrhh', 'write')
   const canDeleteRrhh = can(user, 'rrhh', 'delete')
@@ -398,7 +398,6 @@ export default function RrhhPage() {
   const [debounced, setDebounced] = useState('')
   const [empresa, setEmpresa] = useState('')
   const [cargo, setCargo] = useState('')
-  const [selected, setSelected] = useState(null)
   const [editing, setEditing] = useState(null)
   const [creating, setCreating] = useState(false)
   const ref = useRef(null)
@@ -427,15 +426,7 @@ export default function RrhhPage() {
   const cargos = [...new Set(cargoSource.map(c => typeof c === 'string' ? c : (c.cargo || c.nombre || c.name)).filter(Boolean))]
   const selectOperativoTrabajador = trabajador => {
     if (!trabajador?.id) return
-    setSelected({
-      id: trabajador.id,
-      nombres: trabajador.nombre || trabajador.nombres || '',
-      apellidoPaterno: trabajador.apellidoPaterno || '',
-      apellidoMaterno: trabajador.apellidoMaterno || '',
-      rut: trabajador.rut || '',
-      empresa: trabajador.empresa || '',
-      cargo: trabajador.cargo || '',
-    })
+    navigate(`/rrhh/${trabajador.id}`)
   }
 
   const cols = [
@@ -499,7 +490,7 @@ export default function RrhhPage() {
         </div>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-          : <Table columns={cols} rows={trabajadores} emptyMessage="Sin trabajadores" onRowClick={row => setSelected(row)} ariaLabel="Trabajadores" getRowKey={row => row.id} />
+          : <Table columns={cols} rows={trabajadores} emptyMessage="Sin trabajadores" onRowClick={row => navigate(`/rrhh/${row.id}`)} ariaLabel="Trabajadores" getRowKey={row => row.id} />
         }
         {total > (result.limit ?? 100) && (
           <div style={{ padding: '10px 20px', textAlign: 'center', fontSize: 12, color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>
@@ -508,9 +499,31 @@ export default function RrhhPage() {
         )}
       </div>
 
-      {selected && <ViewTrabajadorPanel trabajador={selected} canWrite={canWriteRrhh} canDelete={canDeleteRrhh} onClose={() => setSelected(null)} onEdit={t => { setSelected(null); setEditing(t) }} />}
       {creating && canWriteRrhh && <TrabajadorFormModal onClose={() => setCreating(false)} />}
       {editing && canWriteRrhh && <TrabajadorFormModal trabajador={editing} onClose={() => setEditing(null)} />}
     </main>
+  )
+}
+
+export function TrabajadorDetallePage() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const canWriteRrhh = can(user, 'rrhh', 'write')
+  const canDeleteRrhh = can(user, 'rrhh', 'delete')
+  const [editing, setEditing] = useState(null)
+  const trabajadorId = Number(id)
+
+  return (
+    <>
+      <ViewTrabajadorPage
+        trabajador={{ id: trabajadorId }}
+        canWrite={canWriteRrhh}
+        canDelete={canDeleteRrhh}
+        onClose={() => navigate('/rrhh')}
+        onEdit={setEditing}
+      />
+      {editing && canWriteRrhh && <TrabajadorFormModal trabajador={editing} onClose={() => setEditing(null)} />}
+    </>
   )
 }

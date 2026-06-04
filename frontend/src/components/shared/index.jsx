@@ -47,6 +47,8 @@ const ICONS = {
   trendingDown: <><polyline points="23,18 13.5,8.5 8.5,13.5 1,6"/><polyline points="17,18 23,18 23,12"/></>,
   minus:        <line x1="5" y1="12" x2="19" y2="12"/>,
   plus:         <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>,
+  maximize:     <><polyline points="15,3 21,3 21,9"/><polyline points="9,21 3,21 3,15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></>,
+  minimize:     <><polyline points="4,14 10,14 10,20"/><polyline points="20,10 14,10 14,4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></>,
   refreshCw:    <><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></>,
   info:         <><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></>,
   printer:      <><polyline points="6,9 6,2 18,2 18,9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></>,
@@ -400,12 +402,14 @@ export const Table = ({
   getRowKey,
   columnPrefsKey,
   columnPrefs = true,
+  toolbarExtra,
 }) => {
   const user = useAuthStore(s => s.user)
   const [hovRow, setHovRow] = useState(null)
   const [activeRow, setActiveRow] = useState(0)
   const [hasKeyboardFocus, setHasKeyboardFocus] = useState(false)
   const [tableZoom, setTableZoomState] = useState(readTableZoom)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const autoColumnPrefs = columnPrefs && columns.length >= 6
   const prefsKey = autoColumnPrefs ? (columnPrefsKey || ariaLabel) : null
   const defaultColumnKeys = columns.filter(col => !col.defaultHidden).map(col => col.key)
@@ -453,6 +457,20 @@ export const Table = ({
     row?.scrollIntoView({ block: 'nearest' })
   }, [clampedActiveRow, keyboardEnabled])
 
+  useEffect(() => {
+    if (!isFullscreen || typeof document === 'undefined') return undefined
+    const previousOverflow = document.body.style.overflow
+    const handleKeyDown = event => {
+      if (event.key === 'Escape') setIsFullscreen(false)
+    }
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isFullscreen])
+
   const isInteractiveTarget = target => target?.closest?.('input, textarea, select, button, a, [contenteditable="true"], [role="button"]')
   const runRowAction = event => {
     const row = rows[clampedActiveRow]
@@ -495,8 +513,9 @@ export const Table = ({
   }
 
   return (
-    <div className="table-shell">
+    <div className={`table-shell${isFullscreen ? ' table-shell-fullscreen' : ''}`}>
       <div className="table-tools" aria-label="Controles de tabla">
+        {toolbarExtra && <div className="table-tools-extra">{toolbarExtra}</div>}
         {prefsKey && (
           <TableColumnSelector
             columns={columns}
@@ -539,6 +558,15 @@ export const Table = ({
           <Icon name="plus" size={13} />
         </button>
         <span className="table-zoom-value">{zoomPercent}%</span>
+        <button
+          type="button"
+          className="table-zoom-btn"
+          title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+          aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Ver tabla en pantalla completa'}
+          onClick={() => setIsFullscreen(value => !value)}
+        >
+          <Icon name={isFullscreen ? 'minimize' : 'maximize'} size={13} />
+        </button>
       </div>
       {!rows.length ? (
         <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>

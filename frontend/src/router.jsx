@@ -42,7 +42,7 @@ import ConsultaPreciosPage from './pages/consulta-precios/ConsultaPreciosPage'
 import ReportesLicitacionesPage from './pages/reportes-licitaciones/ReportesLicitacionesPage'
 import ReportesGerencialesPage from './pages/reportes-gerenciales/ReportesGerencialesPage'
 import UsuariosPage from './pages/usuarios/UsuariosPage'
-import RrhhPage from './pages/rrhh/RrhhPage'
+import RrhhPage, { TrabajadorDetallePage } from './pages/rrhh/RrhhPage'
 import IntegridadPage from './pages/admin/IntegridadPage'
 import AuditoriaPage from './pages/admin/AuditoriaPage'
 import HistoricoPage from './pages/admin/HistoricoPage'
@@ -112,6 +112,7 @@ export const router = createBrowserRouter([
       { path: 'reportes/gerenciales', element: protect(<ReportesGerencialesPage />, { module: 'reportes' }) },
       { path: 'reportes/licitaciones', element: protect(<ReportesLicitacionesPage />, { module: 'licitaciones' }) },
       { path: 'rrhh', element: protect(<RrhhPage />, { module: 'rrhh' }) },
+      { path: 'rrhh/:id', element: protect(<TrabajadorDetallePage />, { module: 'rrhh' }) },
       { path: 'admin/integridad', element: <ProtectedRoute allowedRoles={['admin']}><IntegridadPage /></ProtectedRoute> },
       { path: 'admin/auditoria',  element: <ProtectedRoute allowedRoles={['admin']}><AuditoriaPage /></ProtectedRoute> },
       { path: 'admin/historico',  element: <ProtectedRoute allowedRoles={['admin']}><HistoricoPage /></ProtectedRoute> },

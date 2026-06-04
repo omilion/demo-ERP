@@ -103,6 +103,25 @@ export default function MatrizVentasPage() {
   const LIMIT = data.limit ?? 100
   const pages = Math.max(1, Math.ceil(total / LIMIT))
   const suffix = todayIso()
+  const hasUserFilters = Boolean(
+    tab !== 'all' || quick || search || desde || hasta || rut || nombre || oc || idLicitacion ||
+    nInterno || odt || guia || nc || nd || estadoPago || estadoEntrega || scope !== 'operacional'
+  )
+  const paginationControls = (
+    <>
+      <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={pagerBtn(page <= 1)}>Anterior</button>
+      <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{page} / {pages}</span>
+      <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} style={pagerBtn(page >= pages)}>Siguiente</button>
+      <button
+        disabled={!hasUserFilters || isLoading}
+        onClick={() => exportar('resumen')}
+        style={exportFilteredBtn(!hasUserFilters || isLoading)}
+        title={hasUserFilters ? 'Exporta todos los resultados filtrados, no solo esta pagina' : 'Aplica un filtro para activar este export'}
+      >
+        Exportar filtrado
+      </button>
+    </>
+  )
 
   function openVenta(row) {
     if (row.fuente === 'orden') navigate(ventaPath(row.id, user))
@@ -316,14 +335,9 @@ export default function MatrizVentasPage() {
           <Tabs tabs={TABS} active={tab} onChange={t => { setTab(t); setPage(1) }} />
           <SearchBar placeholder="Buscar libre" value={search} onChange={setFilter(setSearch)} style={{ width: 280 }} />
         </div>
-        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
-          <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={pagerBtn(page <= 1)}>Anterior</button>
-          <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{page} / {pages}</span>
-          <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} style={pagerBtn(page >= pages)}>Siguiente</button>
-        </div>
         {isLoading
           ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={data.items} emptyMessage="Sin ventas" onRowClick={openVenta} ariaLabel="Matriz de ventas" getRowKey={row => row.id} />
+          : <Table columns={cols} rows={data.items} emptyMessage="Sin ventas" onRowClick={openVenta} ariaLabel="Matriz de ventas" getRowKey={row => row.id} toolbarExtra={paginationControls} />
         }
       </div>
     </main>
@@ -332,5 +346,15 @@ export default function MatrizVentasPage() {
 
 const btnSm = color => ({ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color, fontWeight: 500 })
 const pagerBtn = disabled => ({ padding: '5px 10px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1 })
+const exportFilteredBtn = disabled => ({
+  padding: '5px 10px',
+  fontSize: 12,
+  borderRadius: 5,
+  border: `1px solid ${disabled ? 'var(--border)' : 'var(--green-600)'}`,
+  background: disabled ? 'oklch(0.96 0.002 220)' : 'var(--green-600)',
+  color: disabled ? 'var(--text-3)' : '#fff',
+  cursor: disabled ? 'not-allowed' : 'pointer',
+  fontWeight: 700,
+})
 const quickBtn = active => ({ padding: '7px 12px', fontSize: 12, borderRadius: 6, border: `1px solid ${active ? 'var(--green-600)' : 'var(--border)'}`, background: active ? 'var(--green-50)' : '#fff', cursor: 'pointer', color: active ? 'var(--green-800)' : 'var(--text-2)', fontWeight: active ? 700 : 500 })
 const selectStyle = { width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', background: '#fff', boxSizing: 'border-box' }
