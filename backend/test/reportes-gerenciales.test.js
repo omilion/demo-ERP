@@ -323,4 +323,21 @@ describeDb('reportes gerenciales backend', () => {
     expect(body.taller.pendientes).toBe(baseOdts.filter(o => String(o.estado || '').toLowerCase() !== 'terminada').length)
     expect(body.despachos.pendientes).toBeGreaterThanOrEqual(1)
   })
+
+  it('exporta el consolidado gerencial en CSV', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/export/gerencial?desde=${desde}&hasta=${hasta}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('text/csv')
+    expect(res.body).toContain('Seccion;Indicador;Valor;Detalle')
+    expect(res.body).toContain('Ventas;Total periodo')
+    expect(res.body).toContain('Cobranza;CxC pendiente')
+    expect(res.body).toContain('Caja;Neto')
+    expect(res.body).toContain('Stock;Productos criticos')
+    expect(res.body).toContain('Licitaciones;pendiente')
+    expect(res.body).toContain('Operacion;Despachos pendientes')
+  })
 })

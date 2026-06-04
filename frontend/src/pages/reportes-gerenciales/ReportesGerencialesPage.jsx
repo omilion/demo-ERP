@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, Icon, KpiCard, PageHeader, Table, Tabs } from '../../components/shared'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import { downloadFromBackend } from '../../utils/csv'
 import {
   useReporteGerencialCobranzaCaja,
   useReporteGerencialLicitaciones,
@@ -262,6 +263,17 @@ export default function ReportesGerencialesPage() {
 
   const updateFilter = (key, value) => setFilters(current => ({ ...current, [key]: value }))
   const resetFilters = () => setFilters({ desde: initialRange.desde, hasta: initialRange.hasta, tipo: '', vendedor: '', cliente: '' })
+  const exportGerencial = () => downloadFromBackend(
+    '/reportes/export/gerencial',
+    `reporte_gerencial_${new Date().toISOString().slice(0, 10)}.csv`,
+    {
+      desde: filters.desde || undefined,
+      hasta: filters.hasta || undefined,
+      tipo: filters.tipo || undefined,
+      vendedor: filters.vendedor || undefined,
+      cliente: filters.cliente || undefined,
+    },
+  )
 
   const tabs = [
     { id: 'resumen', label: 'Resumen' },
@@ -276,7 +288,12 @@ export default function ReportesGerencialesPage() {
         title="Reporteria gerencial"
         subtitle="Vista filtrable de ventas, caja, cobranza, stock critico, licitaciones y pendientes operacionales."
         breadcrumb={['Inicio', 'Reportes']}
-        actions={<Btn variant="secondary" icon="refreshCw" onClick={resetFilters}>Limpiar filtros</Btn>}
+        actions={
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Btn variant="secondary" icon="download" onClick={exportGerencial}>Exportar CSV</Btn>
+            <Btn variant="secondary" icon="refreshCw" onClick={resetFilters}>Limpiar filtros</Btn>
+          </div>
+        }
       />
 
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 18 }}>

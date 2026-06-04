@@ -72,6 +72,14 @@ function requireRead(...modules) {
   }
 }
 
+function canReadModule(user, module) {
+  return can(user?.role, module, 'read', user?.permisosExtra)
+}
+
+function canReadAll(user, modules = []) {
+  return modules.every(module => canReadModule(user, module))
+}
+
 function normalizeSearchText(value) {
   return String(value ?? '')
     .normalize('NFD')
@@ -597,6 +605,194 @@ async function buildVentasGerenciales(fastify, query, user) {
   }
 }
 
+async function buildCobranzaCajaGerencial(fastify, query = {}, user = null) {
+  const range = buildDateRange(query.desde, query.hasta)
+  if (range.error) return { error: range.error }
+  const cobranzaWhere = mergeCobranzaWhere(
+    applyRange({}, 'fechaFactura', range),
+    await buildCobranzaHistoricoScopeWhere(fastify.prisma, user),
+  )
+  const cajaWhere = withMovimientoSucursalScope(
+    user,
+    applyRange({
+      eliminado: false,
+      NOT: { medioPago: { equals: 'Referencial', mode: 'insensitive' } },
+    }, 'fecha', range),
+  )
+  const [cobranza, caja] = await Promise.all([
+    fastify.prisma.cobranzaHistorico.findMany({ where: cobranzaWhere }),
+    fastify.prisma.movimientoCaja.findMany({ where: cajaWhere }),
+  ])
+  const byEstado = {}
+  let porCobrar = 0
+  let cobrado = 0
+  for (const c of cobranza) {
+    const estado = String(c.estado || 'sin-dato').toUpperCase()
+    const valor = Number(c.valorFactura || 0)
+    const monto = Number(c.monto || 0)
+    if (!byEstado[estado]) byEstado[estado] = { count: 0, valorFactura: 0, monto: 0 }
+    byEstado[estado].count += 1
+    byEstado[estado].valorFactura += valor
+    byEstado[estado].monto += monto
+    if (estado === 'PENDIENTE') porCobrar += valor
+    if (estado === 'CANCELADA') cobrado += monto
+  }
+  const cajaStats = caja.reduce((acc, m) => {
+    const monto = Number(m.monto || 0)
+    if (String(m.tipo).toLowerCase() === 'ingreso') acc.ingresos += monto
+    if (String(m.tipo).toLowerCase() === 'egreso') acc.egresos += Math.abs(monto)
+    addMetric(acc.byMedioPago, m.medioPago, monto)
+    return acc
+  }, { ingresos: 0, egresos: 0, byMedioPago: {} })
+  return { cuentasPorCobrar: { porCobrar, cobrado, count: cobranza.length, byEstado }, caja: { ...cajaStats, count: caja.length } }
+}
+
+async function buildStockGerencial(fastify, query = {}) {
+  const range = buildDateRange(query.desde, query.hasta)
+  if (range.error) return { error: range.error }
+  const [critico, movProductos, movMateriales, movTelas] = await Promise.all([
+    Promise.all([
+      fastify.prisma.producto.findMany({ where: { activo: true, stockCritico: { gt: 0 } }, select: { id: true, codigoInterno: true, nombre: true, stock: true, stockCritico: true } }),
+      fastify.prisma.bodegaTaller.findMany({ where: { activo: true, stockCritico: { gt: 0 } }, select: { id: true, codigoInterno: true, nombre: true, stock: true, stockCritico: true } }),
+    ]),
+    fastify.prisma.movimientoBodega.findMany({ where: applyRange({}, 'createdAt', range) }),
+    fastify.prisma.bodegaTallerMovimiento.findMany({ where: applyRange({}, 'createdAt', range) }),
+    fastify.prisma.telaMovimiento.findMany({ where: applyRange({}, 'fecha', range) }),
+  ])
+  const [productos, materiales] = critico
+  const productosCriticos = productos.filter(p => (p.stock || 0) <= (p.stockCritico || 0))
+  const materialesCriticos = materiales.filter(m => (m.stock || 0) <= (m.stockCritico || 0))
+  const movimientos = { productos: {}, materiales: {}, telas: {}, total: movProductos.length + movMateriales.length + movTelas.length }
+  for (const m of movProductos) addMetric(movimientos.productos, m.tipo, m.cantidad, 1)
+  for (const m of movMateriales) addMetric(movimientos.materiales, m.tipo, m.cantidad, 1)
+  for (const m of movTelas) addMetric(movimientos.telas, m.tipo, m.cantidad, 1)
+  return {
+    stockCritico: {
+      productos: productosCriticos,
+      materiales: materialesCriticos,
+      totales: { productosCriticos: productosCriticos.length, materialesCriticos: materialesCriticos.length },
+    },
+    movimientos,
+  }
+}
+
+async function buildLicitacionesGerencial(fastify, query = {}, user = null) {
+  const range = buildDateRange(query.desde, query.hasta)
+  if (range.error) return { error: range.error }
+  const where = applyRange({}, 'fecha', range)
+  const sucursalId = user?.role === 'admin' ? null : getUserSucursalId(user)
+  if (sucursalId) where.sucursalId = sucursalId
+  const licitaciones = await fastify.prisma.cotizacionLicitacion.findMany({ where, include: { items: true } })
+  const byResultado = { ganada: { count: 0, total: 0 }, perdida: { count: 0, total: 0 }, pendiente: { count: 0, total: 0 } }
+  for (const l of licitaciones) addMetric(byResultado, classifyLicitacion(l), totalLicitacion(l))
+  return { count: licitaciones.length, byResultado }
+}
+
+async function buildOperacionesGerencial(fastify, query = {}) {
+  const range = buildDateRange(query.desde, query.hasta)
+  if (range.error) return { error: range.error }
+  const [odts, despachos, guias] = await Promise.all([
+    fastify.prisma.odt.findMany({ where: { ...applyRange({}, 'createdAt', range), eliminado: false } }),
+    fastify.prisma.despacho.findMany({ where: applyRange({ eliminado: false }, 'fechaEntrega', range) }),
+    fastify.prisma.guiaDespacho.findMany({ where: { eliminado: false }, select: { ordenId: true, odtId: true, origenTipo: true, origenId: true } }),
+  ])
+  const odtsPendientes = odts.filter(o => String(o.estado || '').toLowerCase() !== 'terminada')
+  const guiasKeys = new Set(guias.flatMap(g => [
+    g.ordenId ? `orden:${g.ordenId}` : null,
+    g.odtId ? `odt:${g.odtId}` : null,
+    g.origenTipo && g.origenId ? `${g.origenTipo}:${g.origenId}` : null,
+  ].filter(Boolean)))
+  const despachosPendientes = despachos.filter(d => {
+    const keys = [
+      d.ordenId ? `orden:${d.ordenId}` : null,
+      d.odtId ? `odt:${d.odtId}` : null,
+      d.origenTipo && d.origenId ? `${d.origenTipo}:${d.origenId}` : null,
+    ].filter(Boolean)
+    return keys.length === 0 || keys.every(k => !guiasKeys.has(k))
+  })
+  const byEstadoOdt = {}
+  for (const o of odtsPendientes) addMetric(byEstadoOdt, o.estado, 0, 1)
+  const now = new Date()
+  return {
+    taller: { pendientes: odtsPendientes.length, byEstado: byEstadoOdt },
+    despachos: {
+      pendientes: despachosPendientes.length,
+      vencidos: despachosPendientes.filter(d => d.fechaEntrega && new Date(d.fechaEntrega) < now).length,
+    },
+  }
+}
+
+function sortedMetricEntries(bucket = {}, valueKey = 'total') {
+  return Object.entries(bucket)
+    .map(([label, data]) => ({ label, ...data }))
+    .sort((a, b) => Number(b[valueKey] || 0) - Number(a[valueKey] || 0))
+}
+
+function pushGerencialRow(rows, seccion, indicador, valor, detalle = '') {
+  rows.push({ seccion, indicador, valor, detalle })
+}
+
+function buildGerencialExportRows(reportes = {}, query = {}) {
+  const rows = []
+  pushGerencialRow(rows, 'Filtros', 'Desde', query.desde || 'Sin filtro')
+  pushGerencialRow(rows, 'Filtros', 'Hasta', query.hasta || 'Sin filtro')
+  pushGerencialRow(rows, 'Filtros', 'Generado', new Date())
+
+  const ventas = reportes.ventas
+  if (ventas) {
+    pushGerencialRow(rows, 'Ventas', 'Total periodo', ventas.total, `${ventas.count} operaciones`)
+    pushGerencialRow(rows, 'Ventas', 'Ticket promedio', ventas.count ? Math.round(Number(ventas.total || 0) / ventas.count) : 0)
+    pushGerencialRow(rows, 'Ventas', 'Fuente ordenes', ventas.fuentes?.ordenes?.total || 0, `${ventas.fuentes?.ordenes?.count || 0} operaciones`)
+    pushGerencialRow(rows, 'Ventas', 'Fuente OC online', ventas.fuentes?.ocOnline?.total || 0, `${ventas.fuentes?.ocOnline?.count || 0} operaciones`)
+    pushGerencialRow(rows, 'Ventas', 'Fuente licitaciones', ventas.fuentes?.licitaciones?.total || 0, `${ventas.fuentes?.licitaciones?.count || 0} operaciones`)
+    for (const item of sortedMetricEntries(ventas.byTipo).slice(0, 8)) {
+      pushGerencialRow(rows, 'Ventas por tipo', item.label, item.total || 0, `${item.count || 0} operaciones`)
+    }
+  }
+
+  const cobranzaCaja = reportes.cobranzaCaja
+  if (cobranzaCaja) {
+    pushGerencialRow(rows, 'Cobranza', 'CxC pendiente', cobranzaCaja.cuentasPorCobrar?.porCobrar || 0, `${cobranzaCaja.cuentasPorCobrar?.count || 0} documentos`)
+    pushGerencialRow(rows, 'Cobranza', 'Cobrado historico', cobranzaCaja.cuentasPorCobrar?.cobrado || 0)
+    for (const item of sortedMetricEntries(cobranzaCaja.cuentasPorCobrar?.byEstado, 'valorFactura').slice(0, 8)) {
+      pushGerencialRow(rows, 'Cobranza por estado', item.label, item.valorFactura || 0, `${item.count || 0} documentos`)
+    }
+    const ingresos = Number(cobranzaCaja.caja?.ingresos || 0)
+    const egresos = Number(cobranzaCaja.caja?.egresos || 0)
+    pushGerencialRow(rows, 'Caja', 'Ingresos', ingresos, `${cobranzaCaja.caja?.count || 0} movimientos`)
+    pushGerencialRow(rows, 'Caja', 'Egresos', egresos)
+    pushGerencialRow(rows, 'Caja', 'Neto', ingresos - egresos)
+  }
+
+  const stock = reportes.stock
+  if (stock) {
+    pushGerencialRow(rows, 'Stock', 'Productos criticos', stock.stockCritico?.totales?.productosCriticos || 0)
+    pushGerencialRow(rows, 'Stock', 'Materiales criticos', stock.stockCritico?.totales?.materialesCriticos || 0)
+    pushGerencialRow(rows, 'Stock', 'Movimientos periodo', stock.movimientos?.total || 0)
+  }
+
+  const licitaciones = reportes.licitaciones
+  if (licitaciones) {
+    pushGerencialRow(rows, 'Licitaciones', 'Total periodo', licitaciones.count || 0)
+    for (const key of ['ganada', 'perdida', 'pendiente']) {
+      const item = licitaciones.byResultado?.[key] || {}
+      pushGerencialRow(rows, 'Licitaciones', key, item.total || 0, `${item.count || 0} licitaciones`)
+    }
+  }
+
+  const operaciones = reportes.operaciones
+  if (operaciones) {
+    pushGerencialRow(rows, 'Operacion', 'ODT pendientes', operaciones.taller?.pendientes || 0)
+    pushGerencialRow(rows, 'Operacion', 'Despachos pendientes', operaciones.despachos?.pendientes || 0)
+    pushGerencialRow(rows, 'Operacion', 'Despachos vencidos', operaciones.despachos?.vencidos || 0)
+    for (const item of sortedMetricEntries(operaciones.taller?.byEstado, 'count').slice(0, 8)) {
+      pushGerencialRow(rows, 'ODT por estado', item.label, item.count || 0)
+    }
+  }
+
+  return rows
+}
+
 export default async function reportesRoutes(fastify) {
   fastify.get('/gerencial/ventas', {
     preHandler: [fastify.authenticate, fastify.rbac('cobranza', 'read')],
@@ -609,126 +805,33 @@ export default async function reportesRoutes(fastify) {
   fastify.get('/gerencial/cobranza-caja', {
     preHandler: [fastify.authenticate, requireRead('caja', 'cobranza')],
   }, async (request, reply) => {
-    const range = buildDateRange(request.query.desde, request.query.hasta)
-    if (range.error) return reply.code(400).send({ error: range.error })
-    const cobranzaWhere = mergeCobranzaWhere(
-      applyRange({}, 'fechaFactura', range),
-      await buildCobranzaHistoricoScopeWhere(fastify.prisma, request.user),
-    )
-    const cajaWhere = withMovimientoSucursalScope(
-      request.user,
-      applyRange({
-        eliminado: false,
-        NOT: { medioPago: { equals: 'Referencial', mode: 'insensitive' } },
-      }, 'fecha', range),
-    )
-    const [cobranza, caja] = await Promise.all([
-      fastify.prisma.cobranzaHistorico.findMany({ where: cobranzaWhere }),
-      fastify.prisma.movimientoCaja.findMany({ where: cajaWhere }),
-    ])
-    const byEstado = {}
-    let porCobrar = 0
-    let cobrado = 0
-    for (const c of cobranza) {
-      const estado = String(c.estado || 'sin-dato').toUpperCase()
-      const valor = Number(c.valorFactura || 0)
-      const monto = Number(c.monto || 0)
-      if (!byEstado[estado]) byEstado[estado] = { count: 0, valorFactura: 0, monto: 0 }
-      byEstado[estado].count += 1
-      byEstado[estado].valorFactura += valor
-      byEstado[estado].monto += monto
-      if (estado === 'PENDIENTE') porCobrar += valor
-      if (estado === 'CANCELADA') cobrado += monto
-    }
-    const cajaStats = caja.reduce((acc, m) => {
-      const monto = Number(m.monto || 0)
-      if (String(m.tipo).toLowerCase() === 'ingreso') acc.ingresos += monto
-      if (String(m.tipo).toLowerCase() === 'egreso') acc.egresos += Math.abs(monto)
-      addMetric(acc.byMedioPago, m.medioPago, monto)
-      return acc
-    }, { ingresos: 0, egresos: 0, byMedioPago: {} })
-    return { cuentasPorCobrar: { porCobrar, cobrado, count: cobranza.length, byEstado }, caja: { ...cajaStats, count: caja.length } }
+    const reporte = await buildCobranzaCajaGerencial(fastify, request.query, request.user)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    return reporte
   })
 
   fastify.get('/gerencial/stock', {
     preHandler: [fastify.authenticate, fastify.rbac('bodega', 'read')],
   }, async (request, reply) => {
-    const range = buildDateRange(request.query.desde, request.query.hasta)
-    if (range.error) return reply.code(400).send({ error: range.error })
-    const [critico, movProductos, movMateriales, movTelas] = await Promise.all([
-      Promise.all([
-        fastify.prisma.producto.findMany({ where: { activo: true, stockCritico: { gt: 0 } }, select: { id: true, codigoInterno: true, nombre: true, stock: true, stockCritico: true } }),
-        fastify.prisma.bodegaTaller.findMany({ where: { activo: true, stockCritico: { gt: 0 } }, select: { id: true, codigoInterno: true, nombre: true, stock: true, stockCritico: true } }),
-      ]),
-      fastify.prisma.movimientoBodega.findMany({ where: applyRange({}, 'createdAt', range) }),
-      fastify.prisma.bodegaTallerMovimiento.findMany({ where: applyRange({}, 'createdAt', range) }),
-      fastify.prisma.telaMovimiento.findMany({ where: applyRange({}, 'fecha', range) }),
-    ])
-    const [productos, materiales] = critico
-    const productosCriticos = productos.filter(p => (p.stock || 0) <= (p.stockCritico || 0))
-    const materialesCriticos = materiales.filter(m => (m.stock || 0) <= (m.stockCritico || 0))
-    const movimientos = { productos: {}, materiales: {}, telas: {}, total: movProductos.length + movMateriales.length + movTelas.length }
-    for (const m of movProductos) addMetric(movimientos.productos, m.tipo, m.cantidad, 1)
-    for (const m of movMateriales) addMetric(movimientos.materiales, m.tipo, m.cantidad, 1)
-    for (const m of movTelas) addMetric(movimientos.telas, m.tipo, m.cantidad, 1)
-    return {
-      stockCritico: {
-        productos: productosCriticos,
-        materiales: materialesCriticos,
-        totales: { productosCriticos: productosCriticos.length, materialesCriticos: materialesCriticos.length },
-      },
-      movimientos,
-    }
+    const reporte = await buildStockGerencial(fastify, request.query)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    return reporte
   })
 
   fastify.get('/gerencial/licitaciones', {
     preHandler: [fastify.authenticate, fastify.rbac('licitaciones', 'read')],
   }, async (request, reply) => {
-    const range = buildDateRange(request.query.desde, request.query.hasta)
-    if (range.error) return reply.code(400).send({ error: range.error })
-    const where = applyRange({}, 'fecha', range)
-    const sucursalId = request.user?.role === 'admin' ? null : getUserSucursalId(request.user)
-    if (sucursalId) where.sucursalId = sucursalId
-    const licitaciones = await fastify.prisma.cotizacionLicitacion.findMany({ where, include: { items: true } })
-    const byResultado = { ganada: { count: 0, total: 0 }, perdida: { count: 0, total: 0 }, pendiente: { count: 0, total: 0 } }
-    for (const l of licitaciones) addMetric(byResultado, classifyLicitacion(l), totalLicitacion(l))
-    return { count: licitaciones.length, byResultado }
+    const reporte = await buildLicitacionesGerencial(fastify, request.query, request.user)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    return reporte
   })
 
   fastify.get('/gerencial/operaciones', {
     preHandler: [fastify.authenticate, requireRead('taller', 'despacho')],
   }, async (request, reply) => {
-    const range = buildDateRange(request.query.desde, request.query.hasta)
-    if (range.error) return reply.code(400).send({ error: range.error })
-    const [odts, despachos, guias] = await Promise.all([
-      fastify.prisma.odt.findMany({ where: { ...applyRange({}, 'createdAt', range), eliminado: false } }),
-      fastify.prisma.despacho.findMany({ where: applyRange({ eliminado: false }, 'fechaEntrega', range) }),
-      fastify.prisma.guiaDespacho.findMany({ where: { eliminado: false }, select: { ordenId: true, odtId: true, origenTipo: true, origenId: true } }),
-    ])
-    const odtsPendientes = odts.filter(o => String(o.estado || '').toLowerCase() !== 'terminada')
-    const guiasKeys = new Set(guias.flatMap(g => [
-      g.ordenId ? `orden:${g.ordenId}` : null,
-      g.odtId ? `odt:${g.odtId}` : null,
-      g.origenTipo && g.origenId ? `${g.origenTipo}:${g.origenId}` : null,
-    ].filter(Boolean)))
-    const despachosPendientes = despachos.filter(d => {
-      const keys = [
-        d.ordenId ? `orden:${d.ordenId}` : null,
-        d.odtId ? `odt:${d.odtId}` : null,
-        d.origenTipo && d.origenId ? `${d.origenTipo}:${d.origenId}` : null,
-      ].filter(Boolean)
-      return keys.length === 0 || keys.every(k => !guiasKeys.has(k))
-    })
-    const byEstadoOdt = {}
-    for (const o of odtsPendientes) addMetric(byEstadoOdt, o.estado, 0, 1)
-    const now = new Date()
-    return {
-      taller: { pendientes: odtsPendientes.length, byEstado: byEstadoOdt },
-      despachos: {
-        pendientes: despachosPendientes.length,
-        vencidos: despachosPendientes.filter(d => d.fechaEntrega && new Date(d.fechaEntrega) < now).length,
-      },
-    }
+    const reporte = await buildOperacionesGerencial(fastify, request.query)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    return reporte
   })
   // Reporte stock crítico (productos + materiales bodega taller) — G6
   fastify.get('/stock-critico', {
@@ -769,6 +872,47 @@ export default async function reportesRoutes(fastify) {
   })
 
   // G11: exports CSV — productos, clientes, proveedores, ventas, caja
+  fastify.get('/export/gerencial', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async (request, reply) => {
+    const reportes = {}
+    if (canReadModule(request.user, 'ventas') || canReadModule(request.user, 'cobranza')) {
+      const ventas = await buildVentasGerenciales(fastify, request.query, request.user)
+      if (ventas.error) return reply.code(400).send({ error: ventas.error })
+      reportes.ventas = ventas
+    }
+    if (canReadAll(request.user, ['caja', 'cobranza'])) {
+      const cobranzaCaja = await buildCobranzaCajaGerencial(fastify, request.query, request.user)
+      if (cobranzaCaja.error) return reply.code(400).send({ error: cobranzaCaja.error })
+      reportes.cobranzaCaja = cobranzaCaja
+    }
+    if (canReadModule(request.user, 'bodega')) {
+      const stock = await buildStockGerencial(fastify, request.query)
+      if (stock.error) return reply.code(400).send({ error: stock.error })
+      reportes.stock = stock
+    }
+    if (canReadModule(request.user, 'licitaciones')) {
+      const licitaciones = await buildLicitacionesGerencial(fastify, request.query, request.user)
+      if (licitaciones.error) return reply.code(400).send({ error: licitaciones.error })
+      reportes.licitaciones = licitaciones
+    }
+    if (canReadAll(request.user, ['taller', 'despacho'])) {
+      const operaciones = await buildOperacionesGerencial(fastify, request.query)
+      if (operaciones.error) return reply.code(400).send({ error: operaciones.error })
+      reportes.operaciones = operaciones
+    }
+
+    const rows = buildGerencialExportRows(reportes, request.query)
+    if (rows.length <= 3) return reply.code(403).send({ error: 'Sin permisos para exportar reportes gerenciales' })
+    const csv = rowsToCsv(rows, [
+      { key: 'seccion', label: 'Seccion' },
+      { key: 'indicador', label: 'Indicador' },
+      { key: 'valor', label: 'Valor' },
+      { key: 'detalle', label: 'Detalle' },
+    ])
+    return sendCsv(reply, `reporte_gerencial_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+  })
+
   fastify.get('/export/productos', {
     preHandler: [fastify.authenticate, fastify.rbac('bodega', 'read')],
   }, async (request, reply) => {
