@@ -108,3 +108,12 @@ export function useReporteDespachos(params = {}, enabled = true) {
     staleTime: 60_000,
   })
 }
+
+export function useReporteComisiones(params = {}, enabled = true) {
+  return useQuery({
+    queryKey: ['reportes-gerenciales', 'comisiones', params],
+    queryFn: () => api.get('/reportes/comisiones', { params }).then(r => r.data),
+    enabled,
+    staleTime: 60_000,
+  })
+}

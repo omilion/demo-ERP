@@ -14,6 +14,7 @@ const NAV_GROUPS = [
     { label: 'CRM', route: '/crm', module: 'ventas' },
     { label: 'Clientes', route: '/clientes', module: 'clientes' },
     { label: 'Reporteria Gerencial', route: '/reportes/gerenciales', module: 'reportes' },
+    { label: 'Comisiones', route: '/reportes/comisiones', roles: ['admin'] },
   ] },
   { label: 'Bodega', items: [
     { label: 'Inventario', route: '/bodega', module: 'bodega' },

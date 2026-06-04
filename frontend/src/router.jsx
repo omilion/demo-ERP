@@ -41,6 +41,7 @@ import PasarTallerPage from './pages/pasar-taller/PasarTallerPage'
 import ConsultaPreciosPage from './pages/consulta-precios/ConsultaPreciosPage'
 import ReportesLicitacionesPage from './pages/reportes-licitaciones/ReportesLicitacionesPage'
 import ReportesGerencialesPage from './pages/reportes-gerenciales/ReportesGerencialesPage'
+import ReportesComisionesPage from './pages/reportes-comisiones/ReportesComisionesPage'
 import UsuariosPage from './pages/usuarios/UsuariosPage'
 import RrhhPage, { TrabajadorDetallePage } from './pages/rrhh/RrhhPage'
 import IntegridadPage from './pages/admin/IntegridadPage'
@@ -111,6 +112,7 @@ export const router = createBrowserRouter([
       { path: 'pasar-taller', element: protect(<PasarTallerPage />, { requirements: [['taller', 'write'], ['ventas', 'write']] }) },
       { path: 'consulta-precios', element: protect(<ConsultaPreciosPage />, { module: 'catalogo' }) },
       { path: 'reportes/gerenciales', element: protect(<ReportesGerencialesPage />, { module: 'reportes' }) },
+      { path: 'reportes/comisiones', element: <ProtectedRoute allowedRoles={['admin']}><ReportesComisionesPage /></ProtectedRoute> },
       { path: 'reportes/licitaciones', element: protect(<ReportesLicitacionesPage />, { module: 'licitaciones' }) },
       { path: 'rrhh', element: protect(<RrhhPage />, { module: 'rrhh' }) },
       { path: 'rrhh/:id', element: protect(<TrabajadorDetallePage />, { module: 'rrhh' }) },
