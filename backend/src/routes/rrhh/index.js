@@ -1,4 +1,8 @@
 // RRHH module — trabajadores y sub-recursos
+import { mkdir, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import { randomUUID } from 'node:crypto'
+
 export default async function rrhhRoutes(fastify) {
   fastify.register(async function (f) {
     // ── Trabajadores ──────────────────────────────────────────────────
@@ -162,6 +166,25 @@ export default async function rrhhRoutes(fastify) {
     })
 
     // ── Sub-recursos por trabajador ──────────────────────────────────
+    f.post('/upload-documento', {
+      preHandler: [f.authenticate, f.rbac('rrhh', 'write')],
+      bodyLimit: 14 * 1024 * 1024,
+    }, async (request, reply) => {
+      const trabajadorId = parseInt(request.body?.trabajadorId, 10)
+      if (!Number.isFinite(trabajadorId) || trabajadorId < 1) {
+        return reply.code(400).send({ error: 'trabajadorId requerido' })
+      }
+
+      const parsed = parseRrhhDocumentDataUrl(request.body || {})
+      if (parsed.error) return reply.code(400).send({ error: parsed.error })
+
+      const dir = path.join(uploadsRoot(), 'rrhh', String(trabajadorId))
+      await mkdir(dir, { recursive: true })
+      const filename = `${randomUUID()}${parsed.ext}`
+      await writeFile(path.join(dir, filename), parsed.bytes)
+      return reply.code(201).send({ url: `/uploads/rrhh/${trabajadorId}/${filename}` })
+    })
+
     registerSubResource(f, 'contratos', 'contrato', pickContrato)
     registerSubResource(f, 'liquidaciones', 'liquidacion', pickLiquidacion)
     registerSubResource(f, 'anticipos', 'anticipo', pickAnticipo)
@@ -358,6 +381,13 @@ const toInt = v => (v == null || v === '' ? null : parseInt(v, 10))
 const toFloat = v => (v == null || v === '' ? null : parseFloat(v))
 const toBool = v => v === true || v === '1' || v === 1 || v === 'true'
 const queryText = v => (v == null ? '' : String(v).trim())
+const MAX_RRHH_DOCUMENT_BYTES = 10 * 1024 * 1024
+const RRHH_DOCUMENT_EXT = {
+  'application/pdf': '.pdf',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+}
 const trabajadorOperativoSelect = {
   id: true,
   empresa: true,
@@ -371,6 +401,21 @@ const trabajadorOperativoSelect = {
   tipoContrato: true,
   sueldoLiquido: true,
   estado: true,
+}
+
+function uploadsRoot() {
+  return path.resolve(process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads'))
+}
+
+function parseRrhhDocumentDataUrl(body = {}) {
+  const raw = String(body.data || '')
+  const match = raw.match(/^data:(application\/pdf|image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/)
+  if (!match) return { error: 'Documento debe ser PDF, JPG, PNG o WEBP' }
+  const [, mime, base64] = match
+  const bytes = Buffer.from(base64, 'base64')
+  if (!bytes.length) return { error: 'Documento vacio' }
+  if (bytes.length > MAX_RRHH_DOCUMENT_BYTES) return { error: 'Documento supera maximo 10 MB' }
+  return { bytes, ext: RRHH_DOCUMENT_EXT[mime] }
 }
 
 function startOfDay(date) {

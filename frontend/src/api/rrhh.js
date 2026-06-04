@@ -76,7 +76,10 @@ function makeSubResource(path) {
     const qc = useQueryClient()
     return useMutation({
       mutationFn: ({ trabajadorId, ...data }) => api.post(`/rrhh/trabajadores/${trabajadorId}/${path}`, data).then(r => r.data),
-      onSuccess: (_, { trabajadorId }) => qc.invalidateQueries({ queryKey: ['rrhh', 'trabajadores', trabajadorId] }),
+      onSuccess: (_, { trabajadorId }) => {
+        qc.invalidateQueries({ queryKey: ['rrhh', 'trabajadores', trabajadorId] })
+        qc.invalidateQueries({ queryKey: ['rrhh', 'operativo'] })
+      },
     })
   }
   const useUpdate = () => {
@@ -89,6 +92,7 @@ function makeSubResource(path) {
       },
       onSuccess: (_, { trabajadorId }) => {
         if (trabajadorId) qc.invalidateQueries({ queryKey: ['rrhh', 'trabajadores', trabajadorId] })
+        qc.invalidateQueries({ queryKey: ['rrhh', 'operativo'] })
       },
     })
   }
@@ -98,6 +102,7 @@ function makeSubResource(path) {
       mutationFn: ({ id }) => api.delete(`/rrhh/${path}/${id}`),
       onSuccess: (_, { trabajadorId }) => {
         if (trabajadorId) qc.invalidateQueries({ queryKey: ['rrhh', 'trabajadores', trabajadorId] })
+        qc.invalidateQueries({ queryKey: ['rrhh', 'operativo'] })
       },
     })
   }
@@ -113,6 +118,12 @@ export const epps = makeSubResource('epps')
 export const hojasVida = makeSubResource('hojas-vida')
 export const horasExtras = makeSubResource('horas-extras')
 export const reglamentos = makeSubResource('reglamentos')
+
+export const useUploadRrhhDocumento = () =>
+  useMutation({
+    mutationFn: ({ trabajadorId, dataUrl }) =>
+      api.post('/rrhh/upload-documento', { trabajadorId, data: dataUrl }).then(r => r.data),
+  })
 
 // ── Asistencias ──────────────────────────────────────────────────
 export const useAsistencias = (params = {}) =>

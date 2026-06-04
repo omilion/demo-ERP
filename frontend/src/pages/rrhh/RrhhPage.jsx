@@ -4,6 +4,7 @@ import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../c
 import {
   useTrabajadores, useTrabajador, useCreateTrabajador, useUpdateTrabajador, useDeleteTrabajador,
   useRrhhCargos, useRrhhOperativo, useResumenRRHH,
+  contratos, liquidaciones, anticipos, licencias, vacaciones, epps, useUploadRrhhDocumento,
 } from '../../api/rrhh'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
@@ -11,15 +12,26 @@ import { can } from '../../utils/permissions'
 const fmtPeso = n => '$' + (Number(n) || 0).toLocaleString('es-CL')
 const fmtDate = d => d ? new Date(d).toLocaleDateString('es-CL') : '—'
 const fullName = t => `${t?.nombres || ''} ${t?.apellidoPaterno || ''} ${t?.apellidoMaterno || ''}`.trim()
+const dateInput = value => value ? String(value).slice(0, 10) : ''
+
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(reader.error || new Error('No se pudo leer el archivo'))
+    reader.readAsDataURL(file)
+  })
+}
 
 // ── TabBtn ────────────────────────────────────────────────────────────────
 function TabBtn({ active, onClick, children, badge }) {
   return (
     <button onClick={onClick} style={{
-      flex: 1, padding: '10px 8px', fontSize: 12, fontWeight: active ? 700 : 500,
+      flex: '0 0 auto', minWidth: 112, padding: '12px 14px', fontSize: 12, fontWeight: active ? 700 : 500,
       color: active ? 'var(--green-700)' : 'var(--text-3)',
       background: 'none', border: 'none', borderBottom: active ? '2px solid var(--green-600)' : '2px solid transparent',
-      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+      whiteSpace: 'nowrap',
     }}>
       {children}
       {badge != null && badge > 0 && (
@@ -106,6 +118,250 @@ function ListTab({ items, columns, emptyText }) {
 }
 
 // ── ViewTrabajadorPage ───────────────────────────────────────────────
+const RRHH_TAB_CONFIG = {
+  contratos: {
+    label: 'Contratos', singular: 'contrato', addLabel: 'Nuevo contrato',
+    resource: contratos, documentField: 'imagen', required: ['contrato'],
+    defaults: { contrato: '', plazo: '', inicio: '', termino: '', estado: true, imagen: '' },
+    fields: [
+      { key: 'contrato', label: 'Contrato', required: true }, { key: 'plazo', label: 'Plazo' },
+      { key: 'inicio', label: 'Inicio', type: 'date' }, { key: 'termino', label: 'Termino', type: 'date' },
+      { key: 'estado', label: 'Vigente', type: 'checkbox' },
+    ],
+    columns: [
+      ['Contrato', 'contrato'], ['Plazo', 'plazo'],
+      ['Inicio', it => fmtDate(it.inicio)], ['Termino', it => fmtDate(it.termino)],
+      ['Estado', it => it.estado ? <Badge tone="green">Vigente</Badge> : <Badge tone="gray">Cerrado</Badge>],
+    ],
+  },
+  liquidaciones: {
+    label: 'Liquidaciones', singular: 'liquidacion', addLabel: 'Nueva liquidacion',
+    resource: liquidaciones, documentField: 'imagen',
+    defaults: { anio: '', mes: '', sueldoBase: '', totalImponible: '', totalHaberes: '', totalDescuentos: '', liquidoPagar: '', horasExtras: '', totalExtras: '', imagen: '', estado: true },
+    fields: [
+      { key: 'anio', label: 'Ano' }, { key: 'mes', label: 'Mes' },
+      { key: 'sueldoBase', label: 'Sueldo base', type: 'number' }, { key: 'totalImponible', label: 'Total imponible', type: 'number' },
+      { key: 'totalHaberes', label: 'Total haberes', type: 'number' }, { key: 'totalDescuentos', label: 'Total descuentos', type: 'number' },
+      { key: 'liquidoPagar', label: 'Liquido a pagar', type: 'number' }, { key: 'horasExtras', label: 'Horas extra', type: 'number', step: '0.5' },
+      { key: 'totalExtras', label: 'Total extras', type: 'number' }, { key: 'estado', label: 'Activa', type: 'checkbox' },
+    ],
+    columns: [
+      ['Periodo', it => [it.anio, it.mes].filter(Boolean).join('-') || '-'],
+      ['Sueldo base', it => fmtPeso(it.sueldoBase)], ['Imponible', it => fmtPeso(it.totalImponible)],
+      ['Liquido', it => fmtPeso(it.liquidoPagar)], ['Horas extra', it => `${it.horasExtras || 0} hrs`],
+    ],
+  },
+  anticipos: {
+    label: 'Anticipos', singular: 'anticipo', addLabel: 'Nuevo anticipo',
+    resource: anticipos,
+    defaults: { anio: '', mes: '', banco: '', tipoCuenta: '', cuenta: '', fecha: '', monto: '' },
+    fields: [
+      { key: 'anio', label: 'Ano' }, { key: 'mes', label: 'Mes' }, { key: 'banco', label: 'Banco' },
+      { key: 'tipoCuenta', label: 'Tipo cuenta' }, { key: 'cuenta', label: 'Cuenta' },
+      { key: 'fecha', label: 'Fecha', type: 'date' }, { key: 'monto', label: 'Monto', type: 'number' },
+    ],
+    columns: [
+      ['Periodo', it => [it.anio, it.mes].filter(Boolean).join('-') || '-'],
+      ['Fecha', it => fmtDate(it.fecha)], ['Banco', 'banco'], ['Monto', it => fmtPeso(it.monto)],
+    ],
+  },
+  vacaciones: {
+    label: 'Vacaciones', singular: 'vacacion', addLabel: 'Nueva vacacion',
+    resource: vacaciones, documentField: 'imagen', required: ['fechaInicio', 'fechaTermino'],
+    defaults: { inicioContrato: '', diasPendientes: '', periodo: '', dias: '', saldo: '', fechaInicio: '', fechaTermino: '', imagen: '', estado: true },
+    fields: [
+      { key: 'inicioContrato', label: 'Inicio contrato', type: 'date' }, { key: 'diasPendientes', label: 'Dias pendientes' },
+      { key: 'periodo', label: 'Periodo' }, { key: 'dias', label: 'Dias', type: 'number' }, { key: 'saldo', label: 'Saldo', type: 'number' },
+      { key: 'fechaInicio', label: 'Fecha inicio', type: 'date', required: true }, { key: 'fechaTermino', label: 'Fecha termino', type: 'date', required: true },
+      { key: 'estado', label: 'Activa', type: 'checkbox' },
+    ],
+    columns: [
+      ['Periodo', 'periodo'], ['Inicio', it => fmtDate(it.fechaInicio)], ['Termino', it => fmtDate(it.fechaTermino)],
+      ['Dias', 'dias'], ['Saldo', 'saldo'],
+    ],
+  },
+  licencias: {
+    label: 'Licencias', singular: 'licencia', addLabel: 'Nueva licencia',
+    resource: licencias, documentField: 'imagen', required: ['inicio', 'termino'],
+    defaults: { fecha: '', inicio: '', termino: '', dias: '', tipo: '', reposo: '', imagen: '', estado: true },
+    fields: [
+      { key: 'fecha', label: 'Fecha', type: 'date' }, { key: 'inicio', label: 'Inicio', type: 'date', required: true },
+      { key: 'termino', label: 'Termino', type: 'date', required: true }, { key: 'dias', label: 'Dias', type: 'number' },
+      { key: 'tipo', label: 'Tipo' }, { key: 'reposo', label: 'Reposo' }, { key: 'estado', label: 'Activa', type: 'checkbox' },
+    ],
+    columns: [
+      ['Tipo', 'tipo'], ['Inicio', it => fmtDate(it.inicio)], ['Termino', it => fmtDate(it.termino)],
+      ['Dias', 'dias'], ['Reposo', 'reposo'],
+      ['Estado', it => it.estado ? <Badge tone="green">Activa</Badge> : <Badge tone="gray">Inactiva</Badge>],
+    ],
+  },
+  epps: {
+    label: 'EPP', singular: 'EPP', addLabel: 'Nuevo EPP',
+    resource: epps, documentField: 'documento', required: ['epp', 'cantidad', 'fechaEntrega'],
+    defaults: { epp: '', marca: '', cantidad: '', fechaEntrega: '', documento: '', observacion: '' },
+    fields: [
+      { key: 'epp', label: 'EPP', required: true }, { key: 'marca', label: 'Marca' },
+      { key: 'cantidad', label: 'Cantidad', type: 'number', required: true },
+      { key: 'fechaEntrega', label: 'Fecha entrega', type: 'date', required: true },
+      { key: 'observacion', label: 'Observacion', wide: true },
+    ],
+    columns: [
+      ['EPP', 'epp'], ['Marca', 'marca'], ['Cantidad', 'cantidad'],
+      ['Entrega', it => fmtDate(it.fechaEntrega)], ['Observacion', 'observacion'],
+    ],
+  },
+}
+
+function normalizeSubresourceForm(config, item) {
+  const base = { ...config.defaults }
+  if (!item) return base
+  for (const key of Object.keys(base)) {
+    const value = item[key]
+    const field = config.fields.find(f => f.key === key)
+    if (field?.type === 'date') base[key] = dateInput(value)
+    else if (field?.type === 'checkbox') base[key] = value !== false
+    else base[key] = value ?? ''
+  }
+  if (config.documentField) base[config.documentField] = item[config.documentField] || ''
+  return base
+}
+
+function RrhhInputField({ field, value, onChange }) {
+  if (field.type === 'checkbox') {
+    return (
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 32, fontSize: 12, color: 'var(--text-2)', fontWeight: 600 }}>
+        <input type="checkbox" checked={!!value} onChange={e => onChange(e.target.checked)} />
+        {field.label}
+      </label>
+    )
+  }
+  return (
+    <div style={{ gridColumn: field.wide ? '1 / -1' : undefined }}>
+      <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>{field.label}{field.required ? ' *' : ''}</div>
+      <input type={field.type || 'text'} step={field.step} value={value ?? ''} onChange={e => onChange(e.target.value)}
+        style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+    </div>
+  )
+}
+
+function RrhhDocumentField({ trabajadorId, value, onChange, disabled }) {
+  const upload = useUploadRrhhDocumento()
+  const handleFile = async event => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      const dataUrl = await readAsDataUrl(file)
+      const uploaded = await upload.mutateAsync({ trabajadorId, dataUrl })
+      onChange(uploaded.url)
+      event.target.value = ''
+    } catch (error) {
+      alert(error?.response?.data?.error || error.message || 'No se pudo subir el documento')
+    }
+  }
+  return (
+    <div style={{ gridColumn: '1 / -1', border: '1px solid var(--border)', borderRadius: 8, padding: 12, background: 'var(--bg)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)' }}>Documento adjunto</div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>PDF, JPG, PNG o WEBP. Maximo 10 MB.</div>
+        </div>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 32, padding: '7px 12px', borderRadius: 7, background: 'var(--green-700)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: disabled || upload.isPending ? 'default' : 'pointer', opacity: disabled || upload.isPending ? 0.6 : 1 }}>
+          <Icon name="upload" size={14} />
+          {upload.isPending ? 'Subiendo...' : 'Subir documento'}
+          <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={handleFile} disabled={disabled || upload.isPending} style={{ display: 'none' }} />
+        </label>
+      </div>
+      {value && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 10, fontSize: 12 }}>
+          <span style={{ color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+          <a href={value} target="_blank" rel="noreferrer" style={{ color: 'var(--green-700)', fontWeight: 700, whiteSpace: 'nowrap' }}>Ver documento</a>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SubresourceFormModal({ trabajadorId, config, item, onClose }) {
+  const [form, setForm] = useState(() => normalizeSubresourceForm(config, item))
+  const create = config.resource.useCreate()
+  const update = config.resource.useUpdate()
+  const pending = create.isPending || update.isPending
+  const isEdit = !!item?.id
+  const set = (key, value) => setForm(f => ({ ...f, [key]: value }))
+  const handleSave = () => {
+    const missing = (config.required || []).find(key => String(form[key] ?? '').trim() === '')
+    if (missing) {
+      const field = config.fields.find(f => f.key === missing)
+      return alert(`${field?.label || missing} es requerido`)
+    }
+    const payload = { ...form, trabajadorId }
+    if (isEdit) update.mutate({ id: item.id, ...payload }, { onSuccess: onClose })
+    else create.mutate(payload, { onSuccess: onClose })
+  }
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 560, background: 'oklch(0 0 0 / 0.38)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 'min(720px, 100%)', maxHeight: '90vh', overflowY: 'auto', background: '#fff', borderRadius: 12, padding: '18px 20px', boxShadow: '0 18px 50px oklch(0 0 0 / 0.18)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 14 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{isEdit ? `Editar ${config.singular}` : config.addLabel}</div>
+          <button type="button" onClick={onClose} style={{ color: 'var(--text-3)', padding: 4 }}><Icon name="x" size={18} /></button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 10 }}>
+          {config.fields.map(field => <RrhhInputField key={field.key} field={field} value={form[field.key]} onChange={value => set(field.key, value)} />)}
+          {config.documentField && <RrhhDocumentField trabajadorId={trabajadorId} value={form[config.documentField]} onChange={value => set(config.documentField, value)} disabled={pending} />}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+          <Btn variant="ghost" size="sm" onClick={onClose}>Cancelar</Btn>
+          <Btn size="sm" icon="check" onClick={handleSave} disabled={pending}>{pending ? 'Guardando...' : 'Guardar'}</Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EditableRrhhTab({ trabajadorId, config, items = [], canWrite }) {
+  const [editing, setEditing] = useState(null)
+  const [creating, setCreating] = useState(false)
+  const documentField = config.documentField
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-1)' }}>{config.label}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{items?.length || 0} registros</div>
+        </div>
+        {canWrite && <Btn size="sm" icon="plus" onClick={() => setCreating(true)}>{config.addLabel}</Btn>}
+      </div>
+      {(!items || items.length === 0) && <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Sin registros</div>}
+      {items?.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {items.map(it => (
+            <div key={it.id} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '4px 14px' }}>
+                {config.columns.map(([l, v]) => (
+                  <div key={l} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12, padding: '2px 0' }}>
+                    <span style={{ color: 'var(--text-3)' }}>{l}</span>
+                    <span style={{ textAlign: 'right', fontWeight: 500 }}>{typeof v === 'function' ? v(it) : it[v] || '-'}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                {documentField && it[documentField] && (
+                  <a href={it[documentField]} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minHeight: 28, padding: '4px 9px', borderRadius: 7, border: '1px solid var(--green-100)', background: '#fff', color: 'var(--green-700)', fontSize: 11, fontWeight: 700 }}>
+                    <Icon name="fileText" size={13} /> Ver documento
+                  </a>
+                )}
+                {canWrite && <Btn variant="secondary" size="xs" icon="edit" onClick={() => setEditing(it)}>Editar</Btn>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {creating && <SubresourceFormModal key={`${config.label}-new`} trabajadorId={trabajadorId} config={config} onClose={() => setCreating(false)} />}
+      {editing && <SubresourceFormModal key={`${config.label}-${editing.id}`} trabajadorId={trabajadorId} config={config} item={editing} onClose={() => setEditing(null)} />}
+    </>
+  )
+}
+
 function ViewTrabajadorPage({ trabajador, onClose, onEdit, canWrite, canDelete }) {
   const [tab, setTab] = useState('datos')
   const { data: full, isLoading } = useTrabajador(trabajador.id)
@@ -138,49 +394,55 @@ function ViewTrabajadorPage({ trabajador, onClose, onEdit, canWrite, canDelete }
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', flexShrink: 0, overflowX: 'auto' }}>
           <TabBtn active={tab === 'datos'} onClick={() => setTab('datos')}>Datos</TabBtn>
           <TabBtn active={tab === 'contratos'} onClick={() => setTab('contratos')} badge={full?.contratos?.length}>Contratos</TabBtn>
-          <TabBtn active={tab === 'liquidaciones'} onClick={() => setTab('liquidaciones')} badge={full?.liquidaciones?.length}>Liq.</TabBtn>
-          <TabBtn active={tab === 'anticipos'} onClick={() => setTab('anticipos')} badge={full?.anticipos?.length}>Ant.</TabBtn>
-          <TabBtn active={tab === 'vacaciones'} onClick={() => setTab('vacaciones')} badge={full?.vacaciones?.length}>Vac.</TabBtn>
-          <TabBtn active={tab === 'licencias'} onClick={() => setTab('licencias')} badge={full?.licencias?.length}>Lic.</TabBtn>
+          <TabBtn active={tab === 'liquidaciones'} onClick={() => setTab('liquidaciones')} badge={full?.liquidaciones?.length}>Liquidaciones</TabBtn>
+          <TabBtn active={tab === 'anticipos'} onClick={() => setTab('anticipos')} badge={full?.anticipos?.length}>Anticipos</TabBtn>
+          <TabBtn active={tab === 'vacaciones'} onClick={() => setTab('vacaciones')} badge={full?.vacaciones?.length}>Vacaciones</TabBtn>
+          <TabBtn active={tab === 'licencias'} onClick={() => setTab('licencias')} badge={full?.licencias?.length}>Licencias</TabBtn>
           <TabBtn active={tab === 'epps'} onClick={() => setTab('epps')} badge={full?.epps?.length}>EPP</TabBtn>
         </div>
 
         <div style={{ padding: '18px 22px' }}>
           {isLoading && !full && <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Cargando…</div>}
           {tab === 'datos' && <TabDatos t={t} />}
-          {tab === 'contratos' && <ListTab items={full?.contratos} emptyText="Sin contratos" columns={[
+          {tab === 'contratos' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.contratos} items={full?.contratos} canWrite={canWrite} />}
+          {tab === 'liquidaciones' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.liquidaciones} items={full?.liquidaciones} canWrite={canWrite} />}
+          {tab === 'anticipos' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.anticipos} items={full?.anticipos} canWrite={canWrite} />}
+          {tab === 'vacaciones' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.vacaciones} items={full?.vacaciones} canWrite={canWrite} />}
+          {tab === 'licencias' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.licencias} items={full?.licencias} canWrite={canWrite} />}
+          {tab === 'epps' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.epps} items={full?.epps} canWrite={canWrite} />}
+          {false && tab === 'contratos' && <ListTab items={full?.contratos} emptyText="Sin contratos" columns={[
             ['Contrato', 'contrato'], ['Plazo', 'plazo'],
             ['Inicio', it => fmtDate(it.inicio)], ['Término', it => fmtDate(it.termino)],
             ['Estado', it => it.estado ? <Badge tone="green">Vigente</Badge> : <Badge tone="gray">Cerrado</Badge>],
           ]} />}
-          {tab === 'liquidaciones' && <ListTab items={full?.liquidaciones} emptyText="Sin liquidaciones" columns={[
+          {false && tab === 'liquidaciones' && <ListTab items={full?.liquidaciones} emptyText="Sin liquidaciones" columns={[
             ['Periodo', it => `${it.anio}-${it.mes}`],
             ['Sueldo base', it => fmtPeso(it.sueldoBase)],
             ['Imponible', it => fmtPeso(it.totalImponible)],
             ['Líquido', it => fmtPeso(it.liquidoPagar)],
             ['Horas extra', it => `${it.horasExtras || 0} hrs`],
           ]} />}
-          {tab === 'anticipos' && <ListTab items={full?.anticipos} emptyText="Sin anticipos" columns={[
+          {false && tab === 'anticipos' && <ListTab items={full?.anticipos} emptyText="Sin anticipos" columns={[
             ['Periodo', it => `${it.anio}-${it.mes}`],
             ['Fecha', it => fmtDate(it.fecha)],
             ['Banco', 'banco'],
             ['Monto', it => fmtPeso(it.monto)],
           ]} />}
-          {tab === 'vacaciones' && <ListTab items={full?.vacaciones} emptyText="Sin vacaciones" columns={[
+          {false && tab === 'vacaciones' && <ListTab items={full?.vacaciones} emptyText="Sin vacaciones" columns={[
             ['Periodo', 'periodo'],
             ['Inicio', it => fmtDate(it.fechaInicio)],
             ['Término', it => fmtDate(it.fechaTermino)],
             ['Días', 'dias'],
             ['Saldo', 'saldo'],
           ]} />}
-          {tab === 'licencias' && <ListTab items={full?.licencias} emptyText="Sin licencias" columns={[
+          {false && tab === 'licencias' && <ListTab items={full?.licencias} emptyText="Sin licencias" columns={[
             ['Tipo', 'tipo'],
             ['Inicio', it => fmtDate(it.inicio)],
             ['Término', it => fmtDate(it.termino)],
             ['Días', 'dias'],
             ['Reposo', 'reposo'],
           ]} />}
-          {tab === 'epps' && <ListTab items={full?.epps} emptyText="Sin EPP entregados" columns={[
+          {false && tab === 'epps' && <ListTab items={full?.epps} emptyText="Sin EPP entregados" columns={[
             ['EPP', 'epp'], ['Marca', 'marca'], ['Cantidad', 'cantidad'],
             ['Entrega', it => fmtDate(it.fechaEntrega)], ['Observación', 'observacion'],
           ]} />}
