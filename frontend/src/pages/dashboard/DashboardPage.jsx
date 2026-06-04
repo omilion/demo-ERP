@@ -145,7 +145,7 @@ function MainMenuTile({ label, icon, route, tone = 'green', onClick }) {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        minHeight: 118,
+        minHeight: 92,
         border: 0,
         borderRadius: 8,
         background: `linear-gradient(145deg, ${hov ? palette.hover : palette.bg}, ${palette.bg})`,
@@ -154,8 +154,8 @@ function MainMenuTile({ label, icon, route, tone = 'green', onClick }) {
         gridTemplateRows: '1fr auto',
         alignItems: 'center',
         justifyItems: 'center',
-        gap: 12,
-        padding: 18,
+        gap: 8,
+        padding: '12px 10px',
         cursor: 'pointer',
         position: 'relative',
         overflow: 'hidden',
@@ -177,9 +177,9 @@ function MainMenuTile({ label, icon, route, tone = 'green', onClick }) {
         pointerEvents: 'none',
       }} />
       <span style={{
-        width: 54,
-        height: 54,
-        borderRadius: 14,
+        width: 42,
+        height: 42,
+        borderRadius: 12,
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -188,9 +188,9 @@ function MainMenuTile({ label, icon, route, tone = 'green', onClick }) {
         transition: 'transform 0.18s ease, background 0.18s ease',
         position: 'relative',
       }}>
-        <Icon name={icon} size={30} />
+        <Icon name={icon} size={24} />
       </span>
-      <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: 0, position: 'relative' }}>{label}</span>
+      <span style={{ fontSize: 14, lineHeight: 1.15, fontWeight: 800, letterSpacing: 0, position: 'relative', textAlign: 'center' }}>{label}</span>
     </button>
   )
 }
@@ -284,7 +284,7 @@ export default function DashboardPage() {
     <main className="page" style={dashboardStartShell}>
       <div style={dashboardStartFrame}>
         <section style={{ marginBottom: 22 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: 10 }}>
             {mainModules.map(item => (
               <MainMenuTile key={item.route} {...item} onClick={navigate} />
             ))}
