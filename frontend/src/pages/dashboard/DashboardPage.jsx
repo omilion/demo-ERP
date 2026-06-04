@@ -58,24 +58,27 @@ function StockRow({ label, icon, critico, sinStock, onClick }) {
 }
 
 function QuickAccessTile({ label, icon, tone = 'blue', badge, onClick }) {
+  const [hov, setHov] = useState(false)
   const colors = {
-    red: { bg: '#dc4f4f', hover: '#c94545' },
-    green: { bg: '#58b957', hover: '#4ca84b' },
-    blue: { bg: '#337fb9', hover: '#2c70a4' },
-    cyan: { bg: '#56bed9', hover: '#45abc7' },
-    amber: { bg: '#f3b247', hover: '#dd9e35' },
-    purple: { bg: '#8e24aa', hover: '#7b1f93' },
+    red: { bg: '#dc4f4f', hover: '#d94747', glow: 'oklch(0.54 0.13 25 / 0.20)' },
+    green: { bg: '#58b957', hover: '#51ae50', glow: 'oklch(0.54 0.11 150 / 0.20)' },
+    blue: { bg: '#337fb9', hover: '#3078af', glow: 'oklch(0.50 0.11 240 / 0.20)' },
+    cyan: { bg: '#56bed9', hover: '#50b5d0', glow: 'oklch(0.62 0.10 215 / 0.20)' },
+    amber: { bg: '#f3b247', hover: '#e7a941', glow: 'oklch(0.66 0.12 70 / 0.20)' },
+    purple: { bg: '#8e24aa', hover: '#8623a0', glow: 'oklch(0.48 0.13 315 / 0.20)' },
   }
   const palette = colors[tone] || colors.blue
   return (
     <button
       type="button"
       onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
       style={{
         minHeight: 66,
         border: 0,
         borderRadius: 6,
-        background: palette.bg,
+        background: `linear-gradient(135deg, ${hov ? palette.hover : palette.bg}, ${palette.bg})`,
         color: '#fff',
         display: 'grid',
         gridTemplateColumns: '52px minmax(0, 1fr) auto',
@@ -84,15 +87,29 @@ function QuickAccessTile({ label, icon, tone = 'blue', badge, onClick }) {
         padding: '10px 18px',
         cursor: 'pointer',
         textAlign: 'left',
-        boxShadow: 'inset 0 -1px 0 oklch(0 0 0 / 0.08)',
+        position: 'relative',
+        overflow: 'hidden',
+        transform: hov ? 'translateY(-1px)' : 'translateY(0)',
+        boxShadow: hov
+          ? `0 10px 22px ${palette.glow}, inset 0 1px 0 oklch(1 0 0 / 0.18)`
+          : 'inset 0 -1px 0 oklch(0 0 0 / 0.08)',
+        outline: hov ? '1px solid oklch(1 0 0 / 0.18)' : '1px solid transparent',
+        transition: 'transform 0.18s ease, box-shadow 0.18s ease, outline-color 0.18s ease, background 0.18s ease',
       }}
-      onMouseEnter={event => { event.currentTarget.style.background = palette.hover }}
-      onMouseLeave={event => { event.currentTarget.style.background = palette.bg }}
     >
-      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span style={{
+        position: 'absolute',
+        inset: 0,
+        opacity: hov ? 1 : 0,
+        background: 'linear-gradient(110deg, transparent 0%, oklch(1 0 0 / 0.10) 42%, transparent 68%)',
+        transform: hov ? 'translateX(10%)' : 'translateX(-24%)',
+        transition: 'opacity 0.18s ease, transform 0.36s ease',
+        pointerEvents: 'none',
+      }} />
+      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', transform: hov ? 'scale(1.04)' : 'scale(1)', transition: 'transform 0.18s ease', position: 'relative' }}>
         <Icon name={icon} size={35} />
       </span>
-      <span style={{ fontSize: 17, lineHeight: 1.2, fontWeight: 700, overflowWrap: 'anywhere' }}>{label}</span>
+      <span style={{ fontSize: 17, lineHeight: 1.2, fontWeight: 700, overflowWrap: 'anywhere', position: 'relative' }}>{label}</span>
       {badge != null && (
         <span style={{
           minWidth: 34,
@@ -104,6 +121,7 @@ function QuickAccessTile({ label, icon, tone = 'blue', badge, onClick }) {
           fontSize: 13,
           fontWeight: 700,
           textAlign: 'center',
+          position: 'relative',
         }}>{badge}</span>
       )}
     </button>
@@ -111,23 +129,26 @@ function QuickAccessTile({ label, icon, tone = 'blue', badge, onClick }) {
 }
 
 function MainMenuTile({ label, icon, route, tone = 'green', onClick }) {
+  const [hov, setHov] = useState(false)
   const colors = {
-    green: { bg: '#064e3b', fg: '#fff', iconBg: 'oklch(1 0 0 / 0.12)' },
-    blue: { bg: '#0f5f9e', fg: '#fff', iconBg: 'oklch(1 0 0 / 0.14)' },
-    amber: { bg: '#b7791f', fg: '#fff', iconBg: 'oklch(1 0 0 / 0.16)' },
-    slate: { bg: '#334155', fg: '#fff', iconBg: 'oklch(1 0 0 / 0.12)' },
-    red: { bg: '#b91c1c', fg: '#fff', iconBg: 'oklch(1 0 0 / 0.14)' },
+    green: { bg: '#064e3b', hover: '#075f48', fg: '#fff', iconBg: 'oklch(1 0 0 / 0.12)', glow: 'oklch(0.42 0.10 155 / 0.22)' },
+    blue: { bg: '#0f5f9e', hover: '#136daf', fg: '#fff', iconBg: 'oklch(1 0 0 / 0.14)', glow: 'oklch(0.48 0.12 240 / 0.22)' },
+    amber: { bg: '#b7791f', hover: '#c38425', fg: '#fff', iconBg: 'oklch(1 0 0 / 0.16)', glow: 'oklch(0.62 0.11 70 / 0.22)' },
+    slate: { bg: '#334155', hover: '#3d4b5f', fg: '#fff', iconBg: 'oklch(1 0 0 / 0.12)', glow: 'oklch(0.38 0.03 250 / 0.18)' },
+    red: { bg: '#b91c1c', hover: '#c92121', fg: '#fff', iconBg: 'oklch(1 0 0 / 0.14)', glow: 'oklch(0.46 0.13 25 / 0.22)' },
   }
   const palette = colors[tone] || colors.green
   return (
     <button
       type="button"
       onClick={() => onClick(route)}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
       style={{
         minHeight: 118,
         border: 0,
         borderRadius: 8,
-        background: palette.bg,
+        background: `linear-gradient(145deg, ${hov ? palette.hover : palette.bg}, ${palette.bg})`,
         color: palette.fg,
         display: 'grid',
         gridTemplateRows: '1fr auto',
@@ -136,9 +157,25 @@ function MainMenuTile({ label, icon, route, tone = 'green', onClick }) {
         gap: 12,
         padding: 18,
         cursor: 'pointer',
-        boxShadow: '0 10px 24px oklch(0 0 0 / 0.12)',
+        position: 'relative',
+        overflow: 'hidden',
+        transform: hov ? 'translateY(-2px)' : 'translateY(0)',
+        boxShadow: hov
+          ? `0 14px 28px ${palette.glow}, inset 0 1px 0 oklch(1 0 0 / 0.18)`
+          : '0 10px 24px oklch(0 0 0 / 0.12)',
+        outline: hov ? '1px solid oklch(1 0 0 / 0.16)' : '1px solid transparent',
+        transition: 'transform 0.18s ease, box-shadow 0.18s ease, outline-color 0.18s ease, background 0.18s ease',
       }}
     >
+      <span style={{
+        position: 'absolute',
+        inset: 0,
+        opacity: hov ? 1 : 0,
+        background: 'radial-gradient(circle at 30% 12%, oklch(1 0 0 / 0.12), transparent 32%), linear-gradient(120deg, transparent, oklch(1 0 0 / 0.08), transparent)',
+        transform: hov ? 'translateX(6%)' : 'translateX(-18%)',
+        transition: 'opacity 0.18s ease, transform 0.36s ease',
+        pointerEvents: 'none',
+      }} />
       <span style={{
         width: 54,
         height: 54,
@@ -147,10 +184,13 @@ function MainMenuTile({ label, icon, route, tone = 'green', onClick }) {
         alignItems: 'center',
         justifyContent: 'center',
         background: palette.iconBg,
+        transform: hov ? 'scale(1.04)' : 'scale(1)',
+        transition: 'transform 0.18s ease, background 0.18s ease',
+        position: 'relative',
       }}>
         <Icon name={icon} size={30} />
       </span>
-      <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: 0 }}>{label}</span>
+      <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: 0, position: 'relative' }}>{label}</span>
     </button>
   )
 }
@@ -210,11 +250,25 @@ function getAccessModel(user, stats, isLoading) {
   return { show, inv, tal, quickAccess }
 }
 
+const dashboardStartShell = {
+  minHeight: '100dvh',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 'clamp(16px, 3vh, 34px) clamp(12px, 2vw, 28px)',
+}
+
+const dashboardStartFrame = {
+  width: 'clamp(320px, 75vw, 1440px)',
+  maxWidth: '100%',
+  minWidth: 0,
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate()
   const { data: stats, isLoading } = useDashboardStats()
   const { user } = useAuthStore()
-  const { show, inv, tal, quickAccess } = getAccessModel(user, stats, isLoading)
+  const { show, quickAccess } = getAccessModel(user, stats, isLoading)
   const mainModules = [
     { label: 'Dashboard', icon: 'barChart2', tone: 'green', route: '/dashboard/operativo' },
     show.ventas && { label: 'Ventas', icon: 'shoppingCart', tone: 'blue', route: '/matriz-ventas' },
@@ -227,54 +281,48 @@ export default function DashboardPage() {
   ].filter(Boolean)
 
   return (
-    <main className="page page-wide" style={{ paddingTop: 18 }}>
-      <section style={{ marginBottom: 22 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 12 }}>
-          {mainModules.map(item => (
-            <MainMenuTile key={item.route} {...item} onClick={navigate} />
-          ))}
-        </div>
-      </section>
+    <main className="page" style={dashboardStartShell}>
+      <div style={dashboardStartFrame}>
+        <section style={{ marginBottom: 22 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 12 }}>
+            {mainModules.map(item => (
+              <MainMenuTile key={item.route} {...item} onClick={navigate} />
+            ))}
+          </div>
+        </section>
 
-      <section>
-        <div style={{
-          background: 'var(--green-700)',
-          color: '#fff',
-          padding: '9px 12px',
-          fontSize: 16,
-          fontWeight: 700,
-          textTransform: 'uppercase',
-          borderRadius: '6px 6px 0 0',
-        }}>
-          Accesos rápidos
-        </div>
-        <div style={{
-          background: '#fff',
-          border: '1px solid var(--border)',
-          borderTop: 0,
-          borderRadius: '0 0 8px 8px',
-          padding: 6,
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
-          gap: 6,
-        }}>
-          {quickAccess.map(item => (
-            <QuickAccessTile
-              key={`${item.route}-${item.label}`}
-              {...item}
-              onClick={() => navigate(item.route)}
-            />
-          ))}
-        </div>
-      </section>
+        <section>
+          <div style={{
+            background: 'var(--green-700)',
+            color: '#fff',
+            padding: '9px 12px',
+            fontSize: 16,
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            borderRadius: '6px 6px 0 0',
+          }}>
+            Accesos rápidos
+          </div>
+          <div style={{
+            background: '#fff',
+            border: '1px solid var(--border)',
+            borderTop: 0,
+            borderRadius: '0 0 8px 8px',
+            padding: 6,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+            gap: 6,
+          }}>
+            {quickAccess.map(item => (
+              <QuickAccessTile
+                key={`${item.route}-${item.label}`}
+                {...item}
+                onClick={() => navigate(item.route)}
+              />
+            ))}
+          </div>
+        </section>
 
-      <div style={{ marginTop: 24, paddingTop: 12, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-        <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Plastimar ERP · accesos por rol</span>
-        {!isLoading && (
-          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
-            {(inv.total ?? 0).toLocaleString('es-CL')} productos inventario · {(tal.total ?? 0).toLocaleString('es-CL')} en taller
-          </span>
-        )}
       </div>
     </main>
   )
