@@ -9,7 +9,7 @@ export default async function getProducto(fastify) {
     if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
     const p = await fastify.prisma.producto.findFirst({
       where: { id, activo: true },
-      include: { subcategoria: true },
+      include: { subcategoria: true, ubicacionCatalogo: true },
     })
     if (!p) return reply.code(404).send({ error: 'Producto no encontrado' })
     const canReadCosto = can(request.user?.role, 'bodega', 'read', request.user?.permisosExtra)

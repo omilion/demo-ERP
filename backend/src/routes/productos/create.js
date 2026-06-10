@@ -1,10 +1,21 @@
 import { z } from 'zod'
 import { can } from '../../middleware/rbac.js'
-import { computeEstado, computeEstadoOperacional, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos, sanitizeProductoCosto, syncProductoCategoriaText, validateProductoClasificacion } from './helpers.js'
+import { computeEstado, computeEstadoOperacional, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos, sanitizeProductoCosto, syncProductoCategoriaText, syncProductoUbicacionText, validateProductoClasificacion } from './helpers.js'
+import { ensureProductoMkNotification } from './mkNotifications.js'
 
 const FotoUrlSchema = z.string().refine(isProductoFotoUrl, {
   message: 'fotoUrl debe ser URL o ruta /uploads valida',
 })
+
+const LinkCompraSchema = z.string().nullable().optional().refine((value) => {
+  if (value == null || value === '') return true
+  try {
+    const url = new URL(value)
+    return ['http:', 'https:'].includes(url.protocol)
+  } catch {
+    return false
+  }
+}, { message: 'linkCompra debe ser URL http(s) valida' })
 
 const Schema = z.object({
   codigoInterno: z.string().min(1),
@@ -22,6 +33,7 @@ const Schema = z.object({
   precioMarco: z.number().min(0).default(0),
   porcDesc: z.number().min(0).max(100).default(0),
   ubicacion: z.string().optional(),
+  ubicacionId: z.number().int().positive().nullable().optional(),
   unidadMedida: z.string().optional(),
   idMarco: z.string().optional(),
   estadoInventario: z.string().optional(),
@@ -29,6 +41,10 @@ const Schema = z.object({
   fotoUrl: FotoUrlSchema.optional(),
   fotoUrlGrande: FotoUrlSchema.optional(),
   fotosGaleria: z.array(FotoUrlSchema).optional(),
+  descripcionLicitacion: z.string().optional(),
+  linkCompra: LinkCompraSchema,
+  edad: z.string().optional(),
+  materialidad: z.string().optional(),
   descripcionWeb: z.string().optional(),
   precioWeb: z.number().min(0).optional(),
   ordenWeb: z.number().int().optional(),
@@ -66,12 +82,18 @@ export default async function createProducto(fastify) {
     }
     const categoriaTextError = await syncProductoCategoriaText(fastify.prisma, data)
     if (categoriaTextError) return reply.code(categoriaTextError.status).send({ error: categoriaTextError.error })
+    const ubicacionTextError = await syncProductoUbicacionText(fastify.prisma, data)
+    if (ubicacionTextError) return reply.code(ubicacionTextError.status).send({ error: ubicacionTextError.error })
     const clasificacionError = await validateProductoClasificacion(fastify.prisma, {
       categoriaId: data.categoriaId ?? null,
       subcategoriaId: data.subcategoriaId ?? null,
     })
     if (clasificacionError) return reply.code(clasificacionError.status).send({ error: clasificacionError.error })
-    const p = await fastify.prisma.producto.create({ data })
+    const p = await fastify.prisma.$transaction(async (tx) => {
+      const created = await tx.producto.create({ data })
+      await ensureProductoMkNotification(tx, created, request.user)
+      return created
+    })
     const canReadCosto = can(request.user?.role, 'bodega', 'read', request.user?.permisosExtra)
     return reply.code(201).send(sanitizeProductoCosto(normalizeProductoFotos({ ...p, estado: computeEstado(p), estadoOperacional: computeEstadoOperacional(p) }), canReadCosto))
   })

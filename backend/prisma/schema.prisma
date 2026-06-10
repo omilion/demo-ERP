@@ -256,10 +256,15 @@ model Producto {
   stock            Int           @default(0)
   stockCritico     Int           @default(0) @map("stock_critico")
   ubicacion        String?
+  ubicacionId      Int?          @map("ubicacion_id")
   visibleWeb       Boolean       @default(false) @map("visible_web")
   fotoUrl          String?       @map("foto_url")
   fotoUrlGrande    String?       @map("foto_url_grande")
   fotosGaleria     Json?         @map("fotos_galeria")
+  descripcionLicitacion String?  @map("descripcion_licitacion")
+  linkCompra       String?       @map("link_compra")
+  edad             String?
+  materialidad     String?
   descripcionWeb   String?       @map("descripcion_web")
   precioWeb        Float?        @map("precio_web")
   ordenWeb         Int?          @map("orden_web")
@@ -267,10 +272,22 @@ model Producto {
   estadoInventario String?       @map("estado_inventario")
   activo           Boolean       @default(true)
   subcategoria     Subcategoria? @relation(fields: [subcategoriaId], references: [id])
+  ubicacionCatalogo Ubicacion?   @relation(fields: [ubicacionId], references: [id])
 
   @@index([subcategoriaId])
   @@index([categoriaId])
+  @@index([ubicacionId])
   @@map("productos")
+  @@schema("catalogo")
+}
+
+model Ubicacion {
+  id        Int        @id @default(autoincrement())
+  nombre    String     @unique
+  activo    Boolean    @default(true)
+  productos Producto[]
+
+  @@map("ubicaciones")
   @@schema("catalogo")
 }
 

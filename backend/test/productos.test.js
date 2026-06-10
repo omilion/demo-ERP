@@ -239,6 +239,101 @@ describe('POST /api/productos', () => {
     expect(body.porcDesc).toBe(5)
   })
 
+  it('persists catalog fields, validates purchase link and creates one MK workshop notice', async () => {
+    const codigoInterno = testCode('MK-TEST')
+    const marker = `${codigoInterno}-licitacion`
+    try {
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/productos',
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          codigoInterno,
+          nombre: 'Producto MK Catalogo',
+          descripcionLicitacion: marker,
+          linkCompra: 'https://proveedor.test/producto-mk',
+          edad: 'adulto',
+          materialidad: 'espuma',
+        },
+      })
+      expect(created.statusCode).toBe(201)
+      const body = JSON.parse(created.body)
+      expect(body).toMatchObject({
+        codigoInterno,
+        descripcionLicitacion: marker,
+        linkCompra: 'https://proveedor.test/producto-mk',
+        edad: 'adulto',
+        materialidad: 'espuma',
+      })
+
+      const notices = await app.prisma.bitacoraTaller.findMany({
+        where: { texto: { contains: `[producto-mk:${body.id}]` } },
+      })
+      expect(notices).toHaveLength(1)
+      expect(notices[0].texto).toContain(codigoInterno)
+
+      const update = await app.inject({
+        method: 'PUT',
+        url: `/api/productos/${body.id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { nombre: 'Producto MK Catalogo Editado' },
+      })
+      expect(update.statusCode).toBe(200)
+      await expect(app.prisma.bitacoraTaller.count({ where: { texto: { contains: `[producto-mk:${body.id}]` } } })).resolves.toBe(1)
+
+      const invalidLink = await app.inject({
+        method: 'POST',
+        url: '/api/productos',
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          codigoInterno: testCode('TEST-LINK'),
+          nombre: 'Producto Link Invalido',
+          linkCompra: 'ftp://proveedor.test/producto',
+        },
+      })
+      expect(invalidLink.statusCode).toBe(400)
+    } finally {
+      await app.prisma.bitacoraTaller.deleteMany({ where: { texto: { contains: codigoInterno } } }).catch(() => {})
+      await app.prisma.producto.deleteMany({ where: { codigoInterno } }).catch(() => {})
+    }
+  })
+
+  it('uses catalog ubicacion and keeps legacy text in sync', async () => {
+    const codigoInterno = testCode()
+    const ubicacionNombre = testCode('Ubicacion')
+    let productoId = null
+    let ubicacionId = null
+    try {
+      const ubicacion = await app.prisma.ubicacion.create({ data: { nombre: ubicacionNombre } })
+      ubicacionId = ubicacion.id
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/productos',
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          codigoInterno,
+          nombre: 'Producto con ubicacion catalogo',
+          ubicacionId,
+        },
+      })
+      expect(created.statusCode).toBe(201)
+      const body = JSON.parse(created.body)
+      productoId = body.id
+      expect(body).toMatchObject({ ubicacionId, ubicacion: ubicacionNombre })
+
+      const filtered = await app.inject({
+        method: 'GET',
+        url: `/api/productos?ubicacionId=${ubicacionId}`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(filtered.statusCode).toBe(200)
+      expect(JSON.parse(filtered.body).items.map(p => p.id)).toContain(productoId)
+    } finally {
+      if (productoId) await app.prisma.producto.deleteMany({ where: { id: productoId } }).catch(() => {})
+      if (ubicacionId) await app.prisma.ubicacion.deleteMany({ where: { id: ubicacionId } }).catch(() => {})
+    }
+  })
+
   it('requires bodega write when create payload touches stock or price fields', async () => {
     const catalogoOnlyToken = app.jwt.sign({
       id: 999999,
@@ -619,6 +714,48 @@ describe('Bodega product safeguards', () => {
     const body = JSON.parse(res.body)
     expect(body.aplicable).toBe(false)
     expect(body.errores.length).toBeGreaterThan(0)
+  })
+
+  it('creates MK workshop notices when importing new products', async () => {
+    const codigoMk = testCode('MK-IMP')
+    const codigoNormal = testCode('TEST-IMP')
+    try {
+      const dryRun = await app.inject({
+        method: 'POST',
+        url: '/api/productos/importar/nuevo',
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          rows: [
+            { codigo: codigoMk, nombre: 'Import MK', linkCompra: 'https://proveedor.test/import-mk' },
+            { codigo: codigoNormal, nombre: 'Import normal' },
+          ],
+          dryRun: true,
+        },
+      })
+      expect(dryRun.statusCode).toBe(200)
+      expect(JSON.parse(dryRun.body).aplicable).toBe(true)
+
+      const applied = await app.inject({
+        method: 'POST',
+        url: '/api/productos/importar/nuevo',
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          rows: [
+            { codigo: codigoMk, nombre: 'Import MK', linkCompra: 'https://proveedor.test/import-mk' },
+            { codigo: codigoNormal, nombre: 'Import normal' },
+          ],
+          confirm: true,
+        },
+      })
+      expect(applied.statusCode).toBe(200)
+      const mkProduct = await app.prisma.producto.findUnique({ where: { codigoInterno: codigoMk } })
+      const normalProduct = await app.prisma.producto.findUnique({ where: { codigoInterno: codigoNormal } })
+      await expect(app.prisma.bitacoraTaller.count({ where: { texto: { contains: `[producto-mk:${mkProduct.id}]` } } })).resolves.toBe(1)
+      await expect(app.prisma.bitacoraTaller.count({ where: { texto: { contains: `[producto-mk:${normalProduct.id}]` } } })).resolves.toBe(0)
+    } finally {
+      await app.prisma.bitacoraTaller.deleteMany({ where: { texto: { contains: codigoMk } } }).catch(() => {})
+      await app.prisma.producto.deleteMany({ where: { codigoInterno: { in: [codigoMk, codigoNormal] } } }).catch(() => {})
+    }
   })
 })
 

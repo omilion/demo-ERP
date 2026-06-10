@@ -34,6 +34,7 @@ export default async function listProductos(fastify) {
       proveedorCodigo,
       idMarco,
       ubicacion,
+      ubicacionId,
       estadoInventario,
       estado,
       sort,
@@ -113,7 +114,24 @@ export default async function listProductos(fastify) {
       })
     } else if (proveedor) where.proveedor = { contains: proveedor, mode: 'insensitive' }
     if (idMarco) where.idMarco = { contains: idMarco, mode: 'insensitive' }
-    if (ubicacion) where.ubicacion = { contains: ubicacion, mode: 'insensitive' }
+    if (ubicacionId) {
+      const parsedUbicacionId = parseInt(ubicacionId, 10)
+      if (Number.isNaN(parsedUbicacionId)) return reply.code(400).send({ error: 'ubicacionId invalido' })
+      const selectedUbicacion = await fastify.prisma.ubicacion.findFirst({
+        where: { id: parsedUbicacionId, activo: true },
+        select: { nombre: true },
+      })
+      if (selectedUbicacion?.nombre) {
+        andFilters.push({
+          OR: [
+            { ubicacionId: parsedUbicacionId },
+            { ubicacion: { contains: selectedUbicacion.nombre, mode: 'insensitive' } },
+          ],
+        })
+      } else {
+        where.ubicacionId = parsedUbicacionId
+      }
+    } else if (ubicacion) where.ubicacion = { contains: ubicacion, mode: 'insensitive' }
     if (estadoInventario) where.estadoInventario = estadoInventario
     if (codigoBarra) where.codigoBarra = { equals: codigoBarra, mode: 'insensitive' }
     if (codigoInterno) where.codigoInterno = { contains: codigoInterno, mode: 'insensitive' }
@@ -149,7 +167,7 @@ export default async function listProductos(fastify) {
         orderBy: sortByNombre ? [{ nombre: 'asc' }] : [{ stock: 'desc' }, { nombre: 'asc' }],
         take: fetchTake,
         skip,
-        include: { subcategoria: true },
+        include: { subcategoria: true, ubicacionCatalogo: true },
       }),
       fastify.prisma.producto.count({ where }),
       fastify.prisma.producto.findMany({

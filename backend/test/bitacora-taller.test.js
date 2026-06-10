@@ -205,7 +205,7 @@ describe('bitacora taller legacy parity', () => {
   })
 
   it('filters operator exactly and resolves legacy login labels when possible', async () => {
-    const login = `legacyop${seq++}`
+    const login = `legacyop${marker}-${seq++}`.replace(/[^a-zA-Z0-9]/g, '')
     const user = await app.prisma.user.create({
       data: {
         email: `${login}@plastimar.cl`,

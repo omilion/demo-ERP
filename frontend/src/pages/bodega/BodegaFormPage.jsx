@@ -4,6 +4,9 @@ import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, FormSection, Input, Select, Textarea, useForm } from '../../components/forms/index'
 import { useProducto, useUpdateProducto, useCreateProducto, useHistorialPrecios, useMovimientos, useAddMovimiento, useUploadProductoImagen } from '../../api/productos'
 import { useCategorias } from '../../api/categorias'
+import { useCreateUbicacion, useUbicaciones } from '../../api/ubicaciones'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 const ESTADO_INVENTARIO_OPTIONS = [
   'Inventariado',
@@ -118,15 +121,19 @@ export default function BodegaFormPage() {
   const isEdit = !!id
   const { data: found } = useProducto(isEdit ? Number(id) : null)
   const { data: categoriasApi = [] } = useCategorias()
+  const { data: ubicacionesResult = { items: [] } } = useUbicaciones()
+  const createUbicacion = useCreateUbicacion()
+  const { user } = useAuthStore()
   const createProducto = useCreateProducto()
   const updateProducto = useUpdateProducto()
   const { data: historial = [] } = useHistorialPrecios(found?.id)
 
   const { data, set, errors, validate } = useForm({
     cod: '', nombre: '', cat: '', bodega: 'Inventario', stock: '', minimo: '', precio: '',
-    codigoBarra: '', proveedor: '', ubicacion: '', descripcion: '', precioMarco: '',
+    codigoBarra: '', proveedor: '', ubicacion: '', ubicacionId: '', descripcion: '', precioMarco: '',
     categoriaId: '', subcategoriaId: '', porcDesc: '',
     idMarco: '', unidadMedida: '', estadoInventario: 'Inventariado',
+    descripcionLicitacion: '', linkCompra: '', edad: '', materialidad: '',
     visibleWeb: false, destacadoWeb: false, fotoUrl: '', fotoUrlGrande: '', fotosGaleria: '',
     descripcionWeb: '', precioWeb: '', ordenWeb: '',
   })
@@ -154,7 +161,12 @@ export default function BodegaFormPage() {
       set('codigoBarra', found.codigoBarra || '')
       set('proveedor', found.proveedor || '')
       set('ubicacion', found.ubicacion || '')
+      set('ubicacionId', found.ubicacionId != null ? String(found.ubicacionId) : '')
       set('descripcion', found.descripcion || '')
+      set('descripcionLicitacion', found.descripcionLicitacion || '')
+      set('linkCompra', found.linkCompra || '')
+      set('edad', found.edad || '')
+      set('materialidad', found.materialidad || '')
       set('precioMarco', found.precioMarco != null ? String(found.precioMarco) : '')
       set('idMarco', found.idMarco || '')
       set('unidadMedida', found.unidadMedida || '')
@@ -178,11 +190,36 @@ export default function BodegaFormPage() {
         ...['Espumas','Viscoelastico','Telas','Maderas','Colchones','Fibras','Accesorios','Latex','Bases','Protectores'].map(v => ({ value: v, label: v })),
       ]
 
+  const ubicaciones = ubicacionesResult.items || []
+  const ubicacionOptions = [
+    { value: '', label: 'Sin ubicacion' },
+    ...ubicaciones.map(u => ({ value: String(u.id), label: u.nombre })),
+  ]
+  const canCreateUbicacion = can(user, 'config', 'write')
+
   const setCategoria = (value) => {
     const cat = categoriasApi.find(c => String(c.id) === String(value))
     set('categoriaId', cat ? String(cat.id) : '')
     set('cat', cat?.nombre || value)
     set('subcategoriaId', '')
+  }
+
+  const setUbicacionCatalogo = (value) => {
+    const ubicacion = ubicaciones.find(u => String(u.id) === String(value))
+    set('ubicacionId', ubicacion ? String(ubicacion.id) : '')
+    set('ubicacion', ubicacion?.nombre || '')
+  }
+
+  const createUbicacionFromForm = async () => {
+    const nombre = window.prompt('Nueva ubicacion fisica')
+    if (!nombre?.trim()) return
+    try {
+      const created = await createUbicacion.mutateAsync({ nombre: nombre.trim() })
+      set('ubicacionId', String(created.id))
+      set('ubicacion', created.nombre)
+    } catch (error) {
+      alert(error?.response?.data?.error || 'No se pudo crear la ubicacion')
+    }
   }
 
   const setUploadedImage = (field, url, append = false) => {
@@ -196,6 +233,15 @@ export default function BodegaFormPage() {
 
   const handleSave = () => {
     if (!validate({ nombre: { required: true }, cod: { required: true } })) return
+    if (data.linkCompra) {
+      try {
+        const url = new URL(data.linkCompra)
+        if (!['http:', 'https:'].includes(url.protocol)) throw new Error('invalid')
+      } catch {
+        alert('Link de compra invalido')
+        return
+      }
+    }
     const payload = {
       nombre: data.nombre,
       categoriaId: data.categoriaId !== '' ? Number(data.categoriaId) : undefined,
@@ -207,7 +253,12 @@ export default function BodegaFormPage() {
       codigoBarra: data.codigoBarra || undefined,
       proveedor: data.proveedor || undefined,
       ubicacion: data.ubicacion || undefined,
+      ubicacionId: data.ubicacionId !== '' ? Number(data.ubicacionId) : undefined,
       descripcion: data.descripcion || undefined,
+      descripcionLicitacion: isEdit ? data.descripcionLicitacion : data.descripcionLicitacion || undefined,
+      linkCompra: isEdit ? data.linkCompra : data.linkCompra || undefined,
+      edad: isEdit ? data.edad : data.edad || undefined,
+      materialidad: isEdit ? data.materialidad : data.materialidad || undefined,
       precioMarco: data.precioMarco !== '' ? Number(data.precioMarco) : undefined,
       idMarco: data.idMarco || undefined,
       unidadMedida: data.unidadMedida || undefined,
@@ -222,6 +273,7 @@ export default function BodegaFormPage() {
       ordenWeb: data.ordenWeb !== '' ? Number(data.ordenWeb) : undefined,
     }
     if (isEdit && data.subcategoriaId === '') payload.subcategoriaId = null
+    if (isEdit && data.ubicacionId === '') payload.ubicacionId = null
     if (isEdit && data.categoriaId === '') {
       payload.categoriaId = null
       payload.subcategoriaId = null
@@ -275,9 +327,20 @@ export default function BodegaFormPage() {
       <FormField label="Nombre / Descripción corta" required error={errors.nombre}>
         <Input value={data.nombre} onChange={v => set('nombre', v)} placeholder="Espuma Alta Densidad 15cm 2x1" error={errors.nombre} />
       </FormField>
-      <FormField label="Descripción larga" hint="Detalles internos">
-        <Textarea value={data.descripcion} onChange={v => set('descripcion', v)} rows={2} />
+      <FormField label="Descripcion licitacion">
+        <Textarea value={data.descripcionLicitacion} onChange={v => set('descripcionLicitacion', v)} rows={3} />
       </FormField>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+        <FormField label="Link de compra">
+          <Input value={data.linkCompra} onChange={v => set('linkCompra', v)} type="url" placeholder="https://..." />
+        </FormField>
+        <FormField label="Edad">
+          <Input value={data.edad} onChange={v => set('edad', v)} placeholder="Ej. adulto, infantil" />
+        </FormField>
+        <FormField label="Materialidad">
+          <Input value={data.materialidad} onChange={v => set('materialidad', v)} placeholder="Ej. espuma, tela" />
+        </FormField>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <FormField label="Subcategoría">
           <Select
@@ -306,8 +369,15 @@ export default function BodegaFormPage() {
         <FormField label="Unidad medida" hint="ej. UN, MT, KG">
           <Input value={data.unidadMedida} onChange={v => set('unidadMedida', v)} placeholder="UN" />
         </FormField>
-        <FormField label="Ubicación física" hint="Pasillo/Rack">
-          <Input value={data.ubicacion} onChange={v => set('ubicacion', v)} placeholder="A-12" />
+        <FormField label="Ubicación física" hint="Catalogo de ubicaciones">
+          <div style={{ display: 'grid', gridTemplateColumns: canCreateUbicacion ? '1fr auto' : '1fr', gap: 8 }}>
+            <Select value={data.ubicacionId} onChange={setUbicacionCatalogo} options={ubicacionOptions} />
+            {canCreateUbicacion && (
+              <button type="button" onClick={createUbicacionFromForm} disabled={createUbicacion.isPending} style={smallSecondaryButton}>
+                Nueva
+              </button>
+            )}
+          </div>
         </FormField>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
@@ -439,10 +509,6 @@ function MovimientosSection({ productoId, stockActual }) {
   const cantidadNumero = parseInt(cantidad, 10)
   const esDisminucion = tipo === 'egreso' || (tipo === 'ajuste' && !isNaN(cantidadNumero) && cantidadNumero < Number(stockActual || 0))
 
-  useEffect(() => {
-    if (!esDisminucion && motivoCategoria) setMotivoCategoria('')
-  }, [esDisminucion, motivoCategoria])
-
   const submit = () => {
     const c = parseInt(cantidad, 10)
     if (isNaN(c)) { alert('Cantidad inválida'); return }
@@ -514,4 +580,15 @@ function MovimientosSection({ productoId, stockActual }) {
       )}
     </>
   )
+}
+
+const smallSecondaryButton = {
+  padding: '8px 11px',
+  borderRadius: 7,
+  border: '1px solid var(--border)',
+  background: '#fff',
+  color: 'var(--green-700)',
+  fontSize: 12,
+  fontWeight: 700,
+  cursor: 'pointer',
 }

@@ -1,4 +1,5 @@
 // Importador masivo de productos. El cliente parsea CSV/Excel y envia JSON.
+import { ensureProductoMkNotification } from './mkNotifications.js'
 
 const MAX_IMPORT_ROWS = 1000
 const VALID_BODEGAS = ['Inventario', 'Taller']
@@ -55,6 +56,20 @@ function parseBool(value, field, rowIndex, errors) {
   if (['0', 'false', 'no', 'n'].includes(raw)) return false
   errors.push({ fila: rowIndex, error: `${field} debe ser si/no, true/false o 1/0` })
   return undefined
+}
+
+function parseUrl(value, field, rowIndex, errors) {
+  if (!hasValue(value)) return null
+  const raw = String(value).trim()
+  if (!raw) return null
+  try {
+    const url = new URL(raw)
+    if (['http:', 'https:'].includes(url.protocol)) return raw
+  } catch {
+    // Validated below with a row-level import error.
+  }
+  errors.push({ fila: rowIndex, error: `${field} debe ser URL http(s) valida` })
+  return null
 }
 
 function precioHistorialData(productoId, precioAnterior, precioNuevo, usuarioNombre) {
@@ -138,6 +153,11 @@ function buildNuevoRow(row, rowIndex, errors) {
     bodega,
     codigoBarra: read(row, ['codigoBarra', 'codigo barra', 'cod barra']) || null,
     descripcion: read(row, ['descripcion', 'detalle']) || null,
+    descripcionLicitacion: read(row, ['descripcionLicitacion', 'descripcion licitacion']) || null,
+    linkCompra: parseUrl(read(row, ['linkCompra', 'link compra', 'url compra']), 'linkCompra', rowIndex, errors),
+    edad: read(row, ['edad']) || null,
+    materialidad: read(row, ['materialidad', 'material']) || null,
+    ubicacion: read(row, ['ubicacion', 'ubicacion fisica']) || null,
     idMarco: read(row, ['idMarco', 'id marco']) || null,
     visibleWeb: parseBool(read(row, ['visibleWeb', 'mostrarWeb', 'mostrar web', 'web']), 'visibleWeb', rowIndex, errors) ?? false,
     activo: true,
@@ -304,7 +324,12 @@ export default async function importarRoute(fastify) {
     if (!request.body?.confirm) return reply.code(400).send({ error: 'confirmacion requerida', errores: errors })
     if (errors.length) return reply.code(400).send({ error: 'archivo con errores', errores: errors })
 
-    await fastify.prisma.$transaction(createRows.map(row => fastify.prisma.producto.create({ data: row })))
+    await fastify.prisma.$transaction(async (tx) => {
+      for (const row of createRows) {
+        const created = await tx.producto.create({ data: row })
+        await ensureProductoMkNotification(tx, created, request.user)
+      }
+    })
     return { creados: createRows.length, ignorados, total: rows.length, errores: [] }
   })
 }

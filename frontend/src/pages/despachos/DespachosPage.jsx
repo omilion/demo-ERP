@@ -436,7 +436,7 @@ export default function DespachosPage() {
         {ordenIdParam && <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)' }}><Badge tone="blue">Orden #{ordenIdParam}</Badge></div>}
         {currentLoading
           ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table key={tab} columns={columns} rows={rows} emptyMessage={tab === 'matriz' ? 'Sin ventas para despacho' : 'Sin registros'} keyboard ariaLabel="Despachos" columnPrefsKey={`despachos-${tab}`} getRowKey={(row, index) => row.id || row.ordenId || row.numeroGuia || index} />
+          : <Table key={tab} columns={columns} rows={rows} emptyMessage={tab === 'matriz' ? 'Sin ventas para despacho' : 'Sin registros'} keyboard ariaLabel="Despachos" columnPrefsKey={`despachos-${tab}`} getRowKey={(row, index) => row.id || row.ordenId || row.numeroGuia || index} onRowDoubleClick={tab === 'matriz' ? row => row.ordenId && navigate(ventaPath(row.ordenId, user)) : undefined} />
         }
         <Pager page={page} pages={pages} total={total} limit={limit} shown={rows.length} onChange={setPage} disabled={currentLoading} />
       </div>

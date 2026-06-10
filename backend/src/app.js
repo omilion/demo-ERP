@@ -18,6 +18,7 @@ import crmRoutes from './routes/crm/index.js'
 import cobranzaHistoricoRoutes from './routes/cobranza/index.js'
 import locationsRoutes from './routes/locations/index.js'
 import categoriasRoutes from './routes/categorias/index.js'
+import ubicacionesRoutes from './routes/ubicaciones/index.js'
 import cotizacionesRoutes from './routes/cotizaciones/index.js'
 import ordenesCompraRoutes from './routes/ordenes-compra/index.js'
 import pagosProveedoresRoutes from './routes/pagos-proveedores/index.js'
@@ -81,6 +82,7 @@ export function buildApp(opts = {}) {
   app.register(cobranzaHistoricoRoutes, { prefix: '/api/cobranza-historico' })
   app.register(locationsRoutes, { prefix: '/api/locations' })
   app.register(categoriasRoutes, { prefix: '/api/categorias' })
+  app.register(ubicacionesRoutes, { prefix: '/api/ubicaciones' })
   app.register(cotizacionesRoutes, { prefix: '/api/cotizaciones' })
   app.register(ordenesCompraRoutes, { prefix: '/api/ordenes-compra' })
   app.register(pagosProveedoresRoutes, { prefix: '/api/pagos-proveedores' })

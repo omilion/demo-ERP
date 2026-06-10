@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs } from '../../components/shared'
 import { useDeleteProducto, useProductos } from '../../api/productos'
 import { useCategorias } from '../../api/categorias'
+import { useProveedores } from '../../api/proveedores'
+import { useUbicaciones } from '../../api/ubicaciones'
 import { downloadFromBackend, parseTabularFile } from '../../utils/csv'
 import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
 import api from '../../api/client'
@@ -40,18 +42,20 @@ export default function BodegaPage() {
   const qc = useQueryClient()
   const deleteProducto = useDeleteProducto()
   const { data: categoriasApi = [] } = useCategorias()
+  const { data: proveedoresResult = { items: [] } } = useProveedores()
+  const { data: ubicacionesResult = { items: [] } } = useUbicaciones()
   const [tab, setTab] = useState(searchParams.get('tab') === 'taller' ? 'taller' : 'inventario')
   const [importing, setImporting] = useState(false)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [filter, setFilter] = useState(searchParams.get('filtro') === 'critico' ? 'critico' : searchParams.get('filtro') === 'sin-stock' ? 'sin-stock' : 'all')
-  const [proveedor, setProveedor] = useState('')
+  const [proveedorId, setProveedorId] = useState('')
   const [categoriaId, setCategoriaId] = useState('')
   const [subcategoriaId, setSubcategoriaId] = useState('')
   const [visibleWeb, setVisibleWeb] = useState('all')
   const [estadoInventario, setEstadoInventario] = useState('')
   const [estadoOperativo, setEstadoOperativo] = useState('')
-  const [ubicacion, setUbicacion] = useState('')
+  const [ubicacionId, setUbicacionId] = useState('')
   const [idMarco, setIdMarco] = useState('')
   const debounceRef = useRef(null)
 
@@ -64,12 +68,12 @@ export default function BodegaPage() {
   const bodegaParam = tab === 'taller' ? 'Taller' : 'Inventario'
   const queryParams = { bodega: bodegaParam }
   if (debouncedSearch) queryParams.search = debouncedSearch
-  if (proveedor) queryParams.proveedor = proveedor
+  if (proveedorId) queryParams.proveedorId = proveedorId
   if (categoriaId) queryParams.categoriaId = categoriaId
   if (subcategoriaId) queryParams.subcategoriaId = subcategoriaId
   if (visibleWeb !== 'all') queryParams.visibleWeb = visibleWeb
   if (estadoInventario) queryParams.estadoInventario = estadoInventario
-  if (ubicacion) queryParams.ubicacion = ubicacion
+  if (ubicacionId) queryParams.ubicacionId = ubicacionId
   if (idMarco) queryParams.idMarco = idMarco
   if (filter === 'critico') queryParams.estado = 'critico'
   else if (filter === 'sin-stock') queryParams.estado = 'sin-stock'
@@ -194,8 +198,18 @@ export default function BodegaPage() {
               <option value="">Estado operativo</option>
               {estadoOperativoOptions.filter(Boolean).map(v => <option key={v} value={v}>{v}</option>)}
             </select>
-            <input value={proveedor} onChange={e => setProveedor(e.target.value)} placeholder="Proveedor" style={miniInput} />
-            <input value={ubicacion} onChange={e => setUbicacion(e.target.value)} placeholder="Ubicación" style={miniInput} />
+            <select value={proveedorId} onChange={e => setProveedorId(e.target.value)} style={{ ...selectStyle, minWidth: 180 }}>
+              <option value="">Todos los proveedores</option>
+              {(proveedoresResult.items || []).map(p => (
+                <option key={p.id} value={p.id}>{p.nombre}</option>
+              ))}
+            </select>
+            <select value={ubicacionId} onChange={e => setUbicacionId(e.target.value)} style={{ ...selectStyle, minWidth: 170 }}>
+              <option value="">Todas las ubicaciones</option>
+              {(ubicacionesResult.items || []).map(u => (
+                <option key={u.id} value={u.id}>{u.nombre}</option>
+              ))}
+            </select>
             <input value={idMarco} onChange={e => setIdMarco(e.target.value)} placeholder="ID Marco" style={miniInput} />
             <SearchBar placeholder="Buscar código, barra o producto..." value={search} onChange={setSearch} style={{ width: 260 }} />
           </div>
@@ -289,7 +303,7 @@ function ImportModal({ canWriteBodega, onClose, onDone }) {
   const cols = tipo === 'precios' ? 'codigo, precioLista|precio costo, precioMarco, precioWeb, descuento'
     : tipo === 'stock' ? 'codigo, stock, stockCritico'
     : tipo === 'web' ? 'codigo, visibleWeb|mostrarWeb|web'
-    : 'codigo, nombre, unidadMedida, categoria, proveedor, precioLista, stock, stockCritico, codigoBarra, bodega, visibleWeb'
+    : 'codigo, nombre, unidadMedida, categoria, proveedor, precioLista, stock, stockCritico, codigoBarra, bodega, visibleWeb, descripcionLicitacion, linkCompra, edad, materialidad, ubicacion'
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>

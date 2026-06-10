@@ -60,12 +60,10 @@ export default function ConsultaPreciosPage() {
   const params = useMemo(() => {
     const next = { sort: 'nombre', page }
     if (bodega) next.bodega = bodega
-    if (mode === 'proveedor') {
-      if (proveedorId) next.proveedorId = proveedorId
-    } else if (mode === 'categoria') {
-      if (categoriaId) next.categoriaId = categoriaId
-      if (subcategoriaId) next.subcategoriaId = subcategoriaId
-    } else if (debouncedTerm) {
+    if (proveedorId) next.proveedorId = proveedorId
+    if (categoriaId) next.categoriaId = categoriaId
+    if (subcategoriaId) next.subcategoriaId = subcategoriaId
+    if (debouncedTerm) {
       next[mode === 'general' ? 'search' : mode] = debouncedTerm
     }
     return next
@@ -89,9 +87,6 @@ export default function ConsultaPreciosPage() {
   function changeMode(nextMode) {
     setMode(nextMode)
     setTerm('')
-    setProveedorId('')
-    setCategoriaId('')
-    setSubcategoriaId('')
     setPage(1)
   }
 
@@ -143,6 +138,7 @@ export default function ConsultaPreciosPage() {
     { key: 'codigoInterno', label: 'Cod interno', render: v => mono(v) },
     { key: 'idMarco', label: 'ID Marco', render: v => mono(v) },
     { key: 'codigoBarra', label: 'Cod barra', render: v => mono(v) },
+    { key: 'visibleWeb', label: 'Web', render: v => <Badge tone={v ? 'green' : 'gray'}>{v ? 'Si' : 'No'}</Badge> },
     { key: 'nombre', label: 'Nombre', wrap: true },
     { key: 'categoriaPrecio', label: 'Categoría', render: (_, row) => row.consultaPrecios?.categoriaNombre ? <Badge tone="gray">{row.consultaPrecios.categoriaNombre}</Badge> : '-' },
     { key: 'subcategoriaPrecio', label: 'Subcategoría', render: (_, row) => row.consultaPrecios?.subcategoriaNombre || '-' },
@@ -217,6 +213,28 @@ export default function ConsultaPreciosPage() {
               <option value="Inventario">Inventario</option>
               <option value="Taller">Taller</option>
             </select>
+
+            {mode !== 'proveedor' && (
+              <select value={proveedorId} onChange={e => { setProveedorId(e.target.value); setPage(1) }} style={{ ...selectStyle, minWidth: 240 }}>
+                <option value="">Todos los proveedores</option>
+                {(proveedores.items || []).map(p => (
+                  <option key={p.id} value={p.id}>{p.nombre}{p.rut ? ` (${p.rut})` : ''}</option>
+                ))}
+              </select>
+            )}
+
+            {mode !== 'categoria' && (
+              <>
+                <select value={categoriaId} onChange={e => { setCategoriaId(e.target.value); setSubcategoriaId(''); setPage(1) }} style={{ ...selectStyle, minWidth: 200 }}>
+                  <option value="">Todas las categorias</option>
+                  {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+                <select value={subcategoriaId} onChange={e => { setSubcategoriaId(e.target.value); setPage(1) }} style={{ ...selectStyle, minWidth: 200 }} disabled={!subcategorias.length}>
+                  <option value="">Todas las subcategorias</option>
+                  {subcategorias.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                </select>
+              </>
+            )}
 
             {mode === 'proveedor' ? (
               <select value={proveedorId} onChange={e => { setProveedorId(e.target.value); setPage(1) }} style={{ ...selectStyle, minWidth: 260 }}>

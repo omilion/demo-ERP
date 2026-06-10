@@ -1,12 +1,24 @@
 import { z } from 'zod'
 import { can } from '../../middleware/rbac.js'
-import { computeEstado, computeEstadoOperacional, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos, sanitizeProductoCosto, syncProductoCategoriaText, validateProductoClasificacion } from './helpers.js'
+import { computeEstado, computeEstadoOperacional, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos, sanitizeProductoCosto, syncProductoCategoriaText, syncProductoUbicacionText, validateProductoClasificacion } from './helpers.js'
+import { ensureProductoMkNotification } from './mkNotifications.js'
 
 const FotoUrlSchema = z.string().refine(isProductoFotoUrl, {
   message: 'fotoUrl debe ser URL o ruta /uploads valida',
 })
 
+const LinkCompraSchema = z.string().nullable().optional().refine((value) => {
+  if (value == null || value === '') return true
+  try {
+    const url = new URL(value)
+    return ['http:', 'https:'].includes(url.protocol)
+  } catch {
+    return false
+  }
+}, { message: 'linkCompra debe ser URL http(s) valida' })
+
 const Schema = z.object({
+  codigoInterno: z.string().min(1).optional(),
   nombre: z.string().min(1).optional(),
   codigoBarra: z.string().optional(),
   descripcion: z.string().optional(),
@@ -21,6 +33,7 @@ const Schema = z.object({
   precioMarco: z.number().min(0).optional(),
   porcDesc: z.number().min(0).max(100).optional(),
   ubicacion: z.string().optional(),
+  ubicacionId: z.number().int().positive().nullable().optional(),
   unidadMedida: z.string().optional(),
   idMarco: z.string().optional(),
   estadoInventario: z.string().optional(),
@@ -28,6 +41,10 @@ const Schema = z.object({
   fotoUrl: FotoUrlSchema.optional(),
   fotoUrlGrande: FotoUrlSchema.optional(),
   fotosGaleria: z.array(FotoUrlSchema).optional(),
+  descripcionLicitacion: z.string().optional(),
+  linkCompra: LinkCompraSchema,
+  edad: z.string().optional(),
+  materialidad: z.string().optional(),
   descripcionWeb: z.string().optional(),
   precioWeb: z.number().min(0).optional(),
   ordenWeb: z.number().int().optional(),
@@ -85,6 +102,8 @@ export default async function updateProducto(fastify) {
 
     const categoriaTextError = await syncProductoCategoriaText(fastify.prisma, data)
     if (categoriaTextError) return reply.code(categoriaTextError.status).send({ error: categoriaTextError.error })
+    const ubicacionTextError = await syncProductoUbicacionText(fastify.prisma, data)
+    if (ubicacionTextError) return reply.code(ubicacionTextError.status).send({ error: ubicacionTextError.error })
 
     const clasificacionError = await validateProductoClasificacion(fastify.prisma, {
       categoriaId: hasOwn(data, 'categoriaId') ? data.categoriaId : existing.categoriaId,
@@ -94,18 +113,26 @@ export default async function updateProducto(fastify) {
 
     const priceChanged = hasOwn(data, 'precioLista') && Number(data.precioLista) !== Number(existing.precioLista)
     const usuarioNombre = request.user?.email || request.user?.name || request.user?.role || 'sistema'
-    const [p] = await fastify.prisma.$transaction([
-      fastify.prisma.producto.update({
-        where: { id },
-        data,
-        include: { subcategoria: true },
-      }),
-      ...(priceChanged ? [
-        fastify.prisma.precioHistorial.create({
-          data: precioHistorialData(id, Number(existing.precioLista), Number(data.precioLista), usuarioNombre),
-        }),
-      ] : []),
-    ])
+    let p
+    try {
+      p = await fastify.prisma.$transaction(async (tx) => {
+        const updated = await tx.producto.update({
+          where: { id },
+          data,
+          include: { subcategoria: true },
+        })
+        if (priceChanged) {
+          await tx.precioHistorial.create({
+            data: precioHistorialData(id, Number(existing.precioLista), Number(data.precioLista), usuarioNombre),
+          })
+        }
+        await ensureProductoMkNotification(tx, updated, request.user)
+        return updated
+      })
+    } catch (error) {
+      if (error.code === 'P2002') return reply.code(409).send({ error: 'codigoInterno duplicado' })
+      throw error
+    }
     const canReadCosto = can(request.user?.role, 'bodega', 'read', request.user?.permisosExtra)
     return sanitizeProductoCosto(normalizeProductoFotos({ ...p, estado: computeEstado(p), estadoOperacional: computeEstadoOperacional(p) }), canReadCosto)
   })

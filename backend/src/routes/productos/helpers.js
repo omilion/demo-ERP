@@ -103,6 +103,21 @@ export async function syncProductoCategoriaText(prisma, data) {
   return null
 }
 
+export async function syncProductoUbicacionText(prisma, data) {
+  const hasUbicacionId = Object.prototype.hasOwnProperty.call(data, 'ubicacionId')
+  if (!hasUbicacionId) return null
+
+  if (data.ubicacionId == null) {
+    data.ubicacion = null
+    return null
+  }
+
+  const ubicacion = await prisma.ubicacion.findFirst({ where: { id: data.ubicacionId, activo: true } })
+  if (!ubicacion) return { status: 404, error: 'Ubicacion no encontrada' }
+  data.ubicacion = ubicacion.nombre
+  return null
+}
+
 export function normalizeProductoFotoFields(data) {
   if (!data || typeof data !== 'object') return data
   const out = { ...data }
