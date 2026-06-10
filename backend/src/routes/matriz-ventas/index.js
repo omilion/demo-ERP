@@ -5,11 +5,7 @@ import { parseDate, parsePage, parsePositiveInt } from '../operational-utils.js'
 import { computeVentaFinancialState } from '../ventas/financial.js'
 
 const LIMIT = 100
-const ACTIVE_FILTERS = [
-  'tipo', 'desde', 'hasta', 'rut', 'nombre', 'nInterno', 'oc', 'idLicitacion',
-  'guia', 'odt', 'nc', 'nd', 'estadoPago', 'estadoEntrega', 'search',
-  'ventasHoy', 'noPagada', 'pendienteEntrega', 'entregada',
-]
+const MAX_PAGE_SIZE = 500
 const NC_DOCS = ['NC Plast', 'NC Laura', 'NC', 'Nota Credito', 'Nota de Credito']
 const ND_DOCS = ['ND Plast', 'ND Laura', 'ND', 'Nota Debito', 'Nota de Debito']
 
@@ -17,8 +13,9 @@ function hasValue(value) {
   return value !== undefined && value !== null && value !== ''
 }
 
-function hasActiveFilters(query) {
-  return ACTIVE_FILTERS.some(key => hasValue(query[key]))
+function parsePageSize(value, fallback) {
+  const n = parsePositiveInt(value)
+  return n ? Math.min(n, MAX_PAGE_SIZE) : fallback
 }
 
 function todayIso() {
@@ -236,11 +233,9 @@ async function resolveOrdenIdsByIdLicitacion(prisma, idLicitacion, user) {
 
 async function buildContext(fastify, query, user) {
   const effective = { ...query }
+  // Solo el filtro rapido "ventas hoy" acota a la fecha actual. Sin filtros la matriz
+  // muestra todo el set (operacional por defecto) paginado, no solo las ventas de hoy.
   if (hasValue(effective.ventasHoy)) {
-    effective.desde = todayIso()
-    effective.hasta = todayIso()
-    effective.defaultVentasHoy = true
-  } else if (!hasActiveFilters(query)) {
     effective.desde = todayIso()
     effective.hasta = todayIso()
     effective.defaultVentasHoy = true
@@ -325,12 +320,16 @@ function applyCommonOrdenFilters(where, ctx, user) {
 async function buildOrdenWhere(fastify, ctx, user) {
   let where = applyCommonOrdenFilters({ eliminada: false }, ctx, user)
   const corte = await getPrimerRegistroInterno(fastify.prisma)
-  where = mergeWhere(where, buildOrdenScopeWhere(ctx.scope, corte))
+  // El filtro por fecha es autonomo: cuando hay rango de fechas, la busqueda abarca todo
+  // el historial (no solo el set operacional). El corte solo aplica cuando se navega sin
+  // fecha o el usuario eligio explicitamente un scope distinto de "operacional".
+  const hasDateFilter = Boolean(ctx.dateDesde || ctx.dateHasta)
+  const effectiveScope = (hasDateFilter && ctx.scope === 'operacional') ? 'todos' : ctx.scope
+  where = mergeWhere(where, buildOrdenScopeWhere(effectiveScope, corte))
   return where
 }
 
-async function getOrdenRows(fastify, ctx, user) {
-  const where = await buildOrdenWhere(fastify, ctx, user)
+async function getOrdenRowsByWhere(fastify, where) {
   const ordenes = await fastify.prisma.orden.findMany({
     where,
     include: { items: { where: { eliminado: false } }, cargos: true },
@@ -437,9 +436,8 @@ async function getOrdenRows(fastify, ctx, user) {
   })
 }
 
-async function getOcOnlineRows(fastify, ctx, user) {
+function buildOcOnlineWhere(ctx, user) {
   const q = ctx.query
-  if (q.rut || q.nInterno || q.idLicitacion || q.odt || q.guia || q.nc || q.nd) return []
   const where = scopedWhere(user)
   if (ctx.dateDesde || ctx.dateHasta) where.fechaHora = {}
   if (ctx.dateDesde) where.fechaHora.gte = ctx.dateDesde
@@ -453,6 +451,10 @@ async function getOcOnlineRows(fastify, ctx, user) {
       ...(isNum ? [{ id: parseInt(q.search, 10) }] : []),
     ]
   }
+  return where
+}
+
+async function getOcOnlineRowsByWhere(fastify, where) {
   const ocs = await fastify.prisma.ordenCompraOnline.findMany({ where, orderBy: { fechaHora: 'desc' } })
   return ocs.map(o => ({
     fuente: 'oc-online',
@@ -473,7 +475,7 @@ async function getOcOnlineRows(fastify, ctx, user) {
   }))
 }
 
-async function getLicitacionRows(fastify, ctx, user) {
+function buildLicitacionWhere(ctx, user) {
   const q = ctx.query
   const where = scopedWhere(user, { ordenId: null })
   if (ctx.dateDesde || ctx.dateHasta) where.fecha = {}
@@ -481,7 +483,7 @@ async function getLicitacionRows(fastify, ctx, user) {
   if (ctx.dateHasta) where.fecha.lte = ctx.dateHasta
   if (q.rut) where.rutCliente = { contains: q.rut, mode: 'insensitive' }
   if (ctx.rutsByNombre) {
-    if (!ctx.rutsByNombre.length) return []
+    if (!ctx.rutsByNombre.length) { where.id = -1; return where }
     where.rutCliente = { in: ctx.rutsByNombre }
   }
   if (q.idLicitacion) where.idLicitacion = { contains: q.idLicitacion, mode: 'insensitive' }
@@ -495,6 +497,10 @@ async function getLicitacionRows(fastify, ctx, user) {
       ...(isNum ? [{ id: parseInt(q.search, 10) }] : []),
     ]
   }
+  return where
+}
+
+async function getLicitacionRowsByWhere(fastify, where) {
   const lics = await fastify.prisma.cotizacionLicitacion.findMany({
     where,
     include: { items: true },
@@ -532,18 +538,118 @@ async function getLicitacionRows(fastify, ctx, user) {
   })
 }
 
+function matrizSourceFlags(ctx) {
+  const q = ctx.query
+  const restrictToOrden = Boolean(q.nInterno || q.odt || q.guia || q.nc || q.nd || q.estadoPago || q.estadoEntrega || q.noPagada || q.pendienteEntrega || q.entregada || ctx.scope === 'historico')
+  const tipo = q.tipo
+  const inOrden = !tipo || ['venta-sala', 'venta-directa', 'convenio-marco', 'licitacion'].includes(tipo) || restrictToOrden
+  const inOcOnline = !restrictToOrden && !q.rut && !q.nombre && !q.idLicitacion && (!tipo || tipo === 'venta-web')
+  const inLicitacion = !restrictToOrden && (!tipo || tipo === 'licitacion' || q.idLicitacion)
+  return { inOrden, inOcOnline, inLicitacion }
+}
+
+async function matrizWheres(fastify, ctx, user) {
+  const { inOrden, inOcOnline, inLicitacion } = matrizSourceFlags(ctx)
+  const ordenWhere = inOrden ? await buildOrdenWhere(fastify, ctx, user) : null
+  const ocWhere = inOcOnline ? buildOcOnlineWhere(ctx, user) : null
+  const licWhere = inLicitacion ? buildLicitacionWhere(ctx, user) : null
+  return { ordenWhere, ocWhere, licWhere }
+}
+
+// Paginacion a nivel de BD: por cada fuente se traen solo (id, fecha) de los primeros
+// skip+limit registros (ordenados desc) y el count() exacto. Se mezclan las llaves, se
+// corta la pagina y solo se hidratan las <=limit filas visibles. Nunca se materializan
+// todas las filas en memoria.
+async function getMatrizPage(fastify, query, user, { page, limit }) {
+  const ctx = await buildContext(fastify, query, user)
+  if (ctx.error) return ctx
+  const { ordenWhere, ocWhere, licWhere } = await matrizWheres(fastify, ctx, user)
+  const skip = (page - 1) * limit
+  const take = skip + limit
+  const [ordenKeys, ordenCount, ocKeys, ocCount, licKeys, licCount] = await Promise.all([
+    ordenWhere ? fastify.prisma.orden.findMany({ where: ordenWhere, select: { id: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take }) : [],
+    ordenWhere ? fastify.prisma.orden.count({ where: ordenWhere }) : 0,
+    ocWhere ? fastify.prisma.ordenCompraOnline.findMany({ where: ocWhere, select: { id: true, fechaHora: true }, orderBy: { fechaHora: 'desc' }, take }) : [],
+    ocWhere ? fastify.prisma.ordenCompraOnline.count({ where: ocWhere }) : 0,
+    licWhere ? fastify.prisma.cotizacionLicitacion.findMany({ where: licWhere, select: { id: true, fecha: true }, orderBy: { fecha: 'desc' }, take }) : [],
+    licWhere ? fastify.prisma.cotizacionLicitacion.count({ where: licWhere }) : 0,
+  ])
+  const keys = [
+    ...ordenKeys.map(k => ({ fuente: 'orden', id: k.id, fecha: k.createdAt })),
+    ...ocKeys.map(k => ({ fuente: 'oc-online', id: k.id, fecha: k.fechaHora })),
+    ...licKeys.map(k => ({ fuente: 'licitacion', id: k.id, fecha: k.fecha })),
+  ].sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0))
+  const pageKeys = keys.slice(skip, skip + limit)
+  const ordenIds = pageKeys.filter(k => k.fuente === 'orden').map(k => k.id)
+  const ocIds = pageKeys.filter(k => k.fuente === 'oc-online').map(k => k.id)
+  const licIds = pageKeys.filter(k => k.fuente === 'licitacion').map(k => k.id)
+  const [ordenRows, ocRows, licRows] = await Promise.all([
+    ordenIds.length ? getOrdenRowsByWhere(fastify, { id: { in: ordenIds } }) : [],
+    ocIds.length ? getOcOnlineRowsByWhere(fastify, { id: { in: ocIds } }) : [],
+    licIds.length ? getLicitacionRowsByWhere(fastify, { id: { in: licIds } }) : [],
+  ])
+  const byKey = new Map()
+  for (const r of [...ordenRows, ...ocRows, ...licRows]) byKey.set(`${r.fuente}:${r.id}`, r)
+  const items = pageKeys.map(k => byKey.get(`${k.fuente}:${k.id}`)).filter(Boolean)
+  return { items, total: ordenCount + ocCount + licCount, ctx }
+}
+
+async function aggOrdenMonto(fastify, where) {
+  const ordenes = await fastify.prisma.orden.findMany({
+    where,
+    select: {
+      abono: true,
+      descuentoPct: true,
+      descuentoMonto: true,
+      items: { where: { eliminado: false }, select: { cantidad: true, precioUnitario: true, cargoTransporte: true } },
+      cargos: { select: { valor: true } },
+    },
+  })
+  let total = 0
+  for (const o of ordenes) total += computeVentaFinancialState(o, {}).total
+  return { count: ordenes.length, total }
+}
+
+async function aggOcMonto(fastify, where) {
+  const [agg, count] = await Promise.all([
+    fastify.prisma.ordenCompraOnline.aggregate({ where, _sum: { total: true } }),
+    fastify.prisma.ordenCompraOnline.count({ where }),
+  ])
+  return { count, total: agg._sum.total || 0 }
+}
+
+async function aggLicMonto(fastify, where) {
+  const lics = await fastify.prisma.cotizacionLicitacion.findMany({
+    where,
+    select: { items: { select: { cantAdjudicados: true, cantidad: true, precio: true } } },
+  })
+  let total = 0
+  for (const l of lics) total += (l.items || []).reduce((s, i) => s + Number(i.cantAdjudicados || i.cantidad || 0) * Number(i.precio || 0), 0)
+  return { count: lics.length, total }
+}
+
+async function getMatrizTotales(fastify, query, user) {
+  const ctx = await buildContext(fastify, query, user)
+  if (ctx.error) return ctx
+  const { ordenWhere, ocWhere, licWhere } = await matrizWheres(fastify, ctx, user)
+  const [ordenes, ocOnline, licitaciones] = await Promise.all([
+    ordenWhere ? aggOrdenMonto(fastify, ordenWhere) : { count: 0, total: 0 },
+    ocWhere ? aggOcMonto(fastify, ocWhere) : { count: 0, total: 0 },
+    licWhere ? aggLicMonto(fastify, licWhere) : { count: 0, total: 0 },
+  ])
+  return { ordenes, ocOnline, licitaciones, gran: ordenes.total + ocOnline.total + licitaciones.total }
+}
+
+// Materializa todas las filas filtradas (solo para export CSV, donde la descarga es completa
+// por definicion). El listado paginado usa getMatrizPage.
 async function getMatrizRows(fastify, query, user) {
   const ctx = await buildContext(fastify, query, user)
   if (ctx.error) return ctx
-  const restrictToOrden = Boolean(ctx.query.nInterno || ctx.query.odt || ctx.query.guia || ctx.query.nc || ctx.query.nd || ctx.query.estadoPago || ctx.query.estadoEntrega || ctx.query.noPagada || ctx.query.pendienteEntrega || ctx.query.entregada || ctx.scope === 'historico')
-  const tipo = ctx.query.tipo
-  const inOrden = !tipo || ['venta-sala', 'venta-directa', 'convenio-marco', 'licitacion'].includes(tipo) || restrictToOrden
-  const inOcOnline = !restrictToOrden && !ctx.query.rut && !ctx.query.nombre && !ctx.query.idLicitacion && (!tipo || tipo === 'venta-web')
-  const inLicitacion = !restrictToOrden && (!tipo || tipo === 'licitacion' || ctx.query.idLicitacion)
+  const { ordenWhere, ocWhere, licWhere } = await matrizWheres(fastify, ctx, user)
   const parts = await Promise.all([
-    inOrden ? getOrdenRows(fastify, ctx, user) : [],
-    inOcOnline ? getOcOnlineRows(fastify, ctx, user) : [],
-    inLicitacion ? getLicitacionRows(fastify, ctx, user) : [],
+    ordenWhere ? getOrdenRowsByWhere(fastify, ordenWhere) : [],
+    ocWhere ? getOcOnlineRowsByWhere(fastify, ocWhere) : [],
+    licWhere ? getLicitacionRowsByWhere(fastify, licWhere) : [],
   ])
   const rows = parts.flat().sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0))
   return { rows, ctx }
@@ -650,17 +756,13 @@ export default async function matrizVentasRoutes(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request, reply) => {
     const page = parsePage(request.query.page || '1')
-    const result = await getMatrizRows(fastify, request.query, request.user)
+    const limit = parsePageSize(request.query.pageSize, LIMIT)
+    const result = await getMatrizPage(fastify, request.query, request.user, { page, limit })
     if (result.error) return reply.code(400).send({ error: result.error })
-    const skip = (page - 1) * LIMIT
-    const rows = result.rows
-    const items = rows.slice(skip, skip + LIMIT)
-    const totalMonto = rows.reduce((s, r) => s + Number(r.total || 0), 0)
     return {
-      items,
-      total: rows.length,
-      limit: LIMIT,
-      totalMonto,
+      items: result.items,
+      total: result.total,
+      limit,
       defaultVentasHoy: Boolean(result.ctx?.query?.defaultVentasHoy),
     }
   })
@@ -701,23 +803,8 @@ export default async function matrizVentasRoutes(fastify) {
   fastify.get('/totales', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request, reply) => {
-    const result = await getMatrizRows(fastify, request.query, request.user)
+    const result = await getMatrizTotales(fastify, request.query, request.user)
     if (result.error) return reply.code(400).send({ error: result.error })
-    const sumByFuente = fuente => {
-      const rows = result.rows.filter(row => row.fuente === fuente)
-      return {
-        count: rows.length,
-        total: rows.reduce((sum, row) => sum + Number(row.total || 0), 0),
-      }
-    }
-    const ordenes = sumByFuente('orden')
-    const ocOnline = sumByFuente('oc-online')
-    const licitaciones = sumByFuente('licitacion')
-    return {
-      ordenes,
-      ocOnline,
-      licitaciones,
-      gran: ordenes.total + ocOnline.total + licitaciones.total,
-    }
+    return result
   })
 }

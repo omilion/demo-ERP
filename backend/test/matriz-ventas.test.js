@@ -44,7 +44,7 @@ async function createOrder(app, marker, overrides = {}) {
       activo: true,
     },
   })
-  const nInterno = 910000000 + seq++
+  const nInterno = ('nInterno' in overrides) ? overrides.nInterno : (910000000 + seq++)
   const orden = await app.prisma.orden.create({
     data: {
       nInterno,
@@ -97,7 +97,7 @@ describe('matriz ventas legacy parity', () => {
     await app.close()
   })
 
-  it('defaults to ventas hoy, scopes by sucursal and totals cargos', async () => {
+  it('sin filtros muestra todo el set operacional de la sucursal (no solo hoy) y totaliza cargos', async () => {
     const marker = `today-${Date.now()}`
     const todayOrder = await createOrder(app, `${marker}-a`, { sucursalId: 9101, cargo: 500 })
     const otherSucursal = await createOrder(app, `${marker}-b`, { sucursalId: 9102, cargo: 900 })
@@ -113,11 +113,11 @@ describe('matriz ventas legacy parity', () => {
       })
       expect(res.statusCode).toBe(200)
       const body = JSON.parse(res.body)
-      expect(body.defaultVentasHoy).toBe(true)
+      expect(body.defaultVentasHoy).toBeFalsy()
       const ids = body.items.map(item => item.id)
       expect(ids).toContain(todayOrder.orden.id)
+      expect(ids).toContain(oldOrder.orden.id)
       expect(ids).not.toContain(otherSucursal.orden.id)
-      expect(ids).not.toContain(oldOrder.orden.id)
       const row = body.items.find(item => item.id === todayOrder.orden.id)
       expect(row.total).toBe(2500)
 
@@ -410,6 +410,90 @@ describe('matriz ventas legacy parity', () => {
       expect(JSON.parse(totalsRes.body).ordenes.count).toBe(1)
     } finally {
       await cleanup(app, fixture)
+    }
+  })
+})
+
+describe('matriz ventas - fecha autonoma, estado inicial y paginacion', () => {
+  let app
+
+  beforeAll(async () => {
+    app = buildApp({ logger: false })
+    await app.ready()
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('el filtro por fecha es autonomo: encuentra ordenes fuera del scope operacional', async () => {
+    const marker = `fecha-${Date.now()}`
+    // Orden historica: sin nInterno y fecha antigua -> normalmente excluida por scope operacional
+    const hist = await createOrder(app, marker, {
+      nInterno: null,
+      createdAt: new Date('2018-06-15T12:00:00Z'),
+      licitacion: `HIST-${marker}`,
+    })
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/matriz-ventas?desde=2018-01-01&hasta=2018-12-31',
+        headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.items.map(i => i.id)).toContain(hist.orden.id)
+    } finally {
+      await cleanup(app, hist)
+    }
+  })
+
+  it('sin filtros muestra ordenes pasadas (no solo hoy)', async () => {
+    const marker = `all-${Date.now()}`
+    const viejo = await createOrder(app, marker, {
+      createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+    })
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/matriz-ventas',
+        headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.defaultVentasHoy).toBeFalsy()
+      expect(body.items.map(i => i.id)).toContain(viejo.orden.id)
+    } finally {
+      await cleanup(app, viejo)
+    }
+  })
+
+  it('pagina a nivel de consulta: respeta pageSize, total y no solapa paginas', async () => {
+    const token = `pag-${Date.now()}`
+    const a = await createOrder(app, `${token}-a`, { licitacion: token, createdAt: new Date(Date.now() - 5000) })
+    const b = await createOrder(app, `${token}-b`, { licitacion: token, createdAt: new Date() })
+    try {
+      const fetchPage = async page => JSON.parse((await app.inject({
+        method: 'GET',
+        url: `/api/matriz-ventas?oc=${token}&pageSize=1&page=${page}`,
+        headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+      })).body)
+      const p1 = await fetchPage(1)
+      const p2 = await fetchPage(2)
+      expect(p1.total).toBe(2)
+      expect(p2.total).toBe(2)
+      expect(p1.limit).toBe(1)
+      expect(p1.items).toHaveLength(1)
+      expect(p2.items).toHaveLength(1)
+      const ids = [...p1.items.map(i => i.id), ...p2.items.map(i => i.id)]
+      expect(new Set(ids).size).toBe(2)
+      expect(ids).toContain(a.orden.id)
+      expect(ids).toContain(b.orden.id)
+      // Orden por fecha desc: la mas reciente (b) en la primera pagina
+      expect(p1.items[0].id).toBe(b.orden.id)
+    } finally {
+      await cleanup(app, a)
+      await cleanup(app, b)
     }
   })
 })

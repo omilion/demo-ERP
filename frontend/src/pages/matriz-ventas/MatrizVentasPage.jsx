@@ -272,7 +272,7 @@ export default function MatrizVentasPage() {
     <main className="page page-wide">
       <PageHeader
         title="Matriz de Ventas"
-        subtitle={`${data.defaultVentasHoy ? 'Ventas hoy - ' : ''}${total.toLocaleString('es-CL')} registros (${fmt(data.totalMonto || 0)})`}
+        subtitle={`${data.defaultVentasHoy ? 'Ventas hoy - ' : ''}${total.toLocaleString('es-CL')} registros (${fmt(tot?.gran || 0)})`}
         breadcrumb={['Inicio', 'Ventas', 'Matriz']}
         actions={(
           <>
