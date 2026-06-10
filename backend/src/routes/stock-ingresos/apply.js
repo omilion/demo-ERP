@@ -1,3 +1,5 @@
+import { recomputeProductoCosteo } from '../productos/costeo.js'
+
 const DESTINOS = new Set(['producto', 'material', 'tela'])
 const CREDIT_NOTE_DOCS = new Set(['nota', 'nota credito', 'nota de credito', 'nc', 'n/c'])
 
@@ -31,6 +33,46 @@ function precioHistorialData(productoId, precioAnterior, precioNuevo, usuarioNom
     ? 0
     : Number((precioAnterior === 0 ? 100 : ((precioNuevo - precioAnterior) / precioAnterior) * 100).toFixed(1))
   return { productoId, precioAnterior, precioNuevo, pct, usuarioNombre }
+}
+
+function productoProveedorWhere(productoId, proveedorId) {
+  return { productoId_proveedorId: { productoId, proveedorId } }
+}
+
+async function upsertProductoProveedorStock({ tx, productoId, proveedorId, signedQty, precio, reverse }) {
+  const where = productoProveedorWhere(productoId, proveedorId)
+  if (signedQty < 0) {
+    const existing = await tx.productoProveedor.findUnique({
+      where,
+      select: { cantidad: true },
+    })
+    const nextCantidad = Math.max(0, Number(existing?.cantidad || 0) - Math.abs(signedQty))
+    await tx.productoProveedor.upsert({
+      where,
+      update: { cantidad: nextCantidad, activo: true },
+      create: { productoId, proveedorId, cantidad: 0, costo: 0, activo: true },
+    })
+    return
+  }
+
+  const now = new Date()
+  const update = {
+    cantidad: { increment: signedQty },
+    activo: true,
+    ...(!reverse && precio > 0 ? { costo: precio, ultimaCompra: now } : {}),
+  }
+  await tx.productoProveedor.upsert({
+    where,
+    update,
+    create: {
+      productoId,
+      proveedorId,
+      cantidad: signedQty,
+      costo: precio > 0 ? precio : 0,
+      ultimaCompra: !reverse ? now : null,
+      activo: true,
+    },
+  })
 }
 
 export function isCreditNotePago(pago = {}) {
@@ -222,12 +264,30 @@ async function applyStockMovements({ tx, normalized, maps, pago, userId, directi
     if (d.destino === 'producto') {
       const prod = maps.producto.get(d.codigoInterno)
       const updateData = { stock: { increment: signedQty } }
-      if (!reverse && direction > 0 && d.precio > 0) updateData.precioLista = d.precio
+      const provId = d.proveedorId ?? parseOptionalInt(pago?.proveedorId)
+      let precioNuevoHistorial = null
+      if (!provId && !reverse && direction > 0 && d.precio > 0) {
+        updateData.precioLista = d.precio
+        precioNuevoHistorial = d.precio
+      }
       await tx.producto.update({ where: { id: prod.id }, data: updateData })
-      if (!reverse && direction > 0 && d.precio > 0 && Number(prod.precioLista) !== Number(d.precio)) {
-        await tx.precioHistorial.create({
-          data: precioHistorialData(prod.id, Number(prod.precioLista || 0), Number(d.precio), pago.usuario || 'Sistema'),
+      if (provId) {
+        await upsertProductoProveedorStock({
+          tx,
+          productoId: prod.id,
+          proveedorId: provId,
+          signedQty,
+          precio: d.precio,
+          reverse,
         })
+        const costeo = await recomputeProductoCosteo(tx, prod.id)
+        if (costeo.stockTotal > 0) precioNuevoHistorial = costeo.costoPonderado
+      }
+      if (precioNuevoHistorial !== null && Number(prod.precioLista) !== Number(precioNuevoHistorial)) {
+        await tx.precioHistorial.create({
+          data: precioHistorialData(prod.id, Number(prod.precioLista || 0), Number(precioNuevoHistorial), pago.usuario || 'Sistema'),
+        })
+        prod.precioLista = precioNuevoHistorial
       }
       await tx.movimientoBodega.create({
         data: {

@@ -32,3 +32,18 @@ export function computeCosteoPonderado(rows = []) {
   const costoPonderado = stockTotal > 0 ? Math.round(acum / stockTotal) : 0
   return { stockTotal, costoPonderado }
 }
+
+export async function recomputeProductoCosteo(tx, productoId) {
+  const rows = await tx.productoProveedor.findMany({
+    where: { productoId, activo: true },
+    select: { costo: true, cantidad: true },
+  })
+  const { stockTotal, costoPonderado } = computeCosteoPonderado(rows)
+  if (stockTotal > 0) {
+    await tx.producto.update({
+      where: { id: productoId },
+      data: { precioLista: costoPonderado },
+    })
+  }
+  return { stockTotal, costoPonderado }
+}

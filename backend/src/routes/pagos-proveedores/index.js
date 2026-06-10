@@ -89,6 +89,7 @@ function normalizeDetalles(rawDetalles) {
       unidadMedida: cleanText(d.unidadMedida),
       categoriaId: parseOptionalInt(d.categoriaId),
       subcategoriaId: parseOptionalInt(d.subcategoriaId),
+      proveedorId: parseOptionalInt(d.proveedorId),
     }))
     .filter(d => d.codigoInterno)
 }

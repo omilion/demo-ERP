@@ -570,6 +570,71 @@ describe('Bodega product safeguards', () => {
     }
   })
 
+  it('reduces provider quantities proportionally on manual egreso', async () => {
+    const marker = Date.now() + Math.floor(Math.random() * 100000)
+    const proveedorA = await app.prisma.proveedor.create({
+      data: {
+        nombre: `Proveedor Costeo A ${marker}`,
+        rut: `costeo-a-${marker}`,
+        codigoProveedor: 97000000 + (marker % 100000),
+      },
+    })
+    const proveedorB = await app.prisma.proveedor.create({
+      data: {
+        nombre: `Proveedor Costeo B ${marker}`,
+        rut: `costeo-b-${marker}`,
+        codigoProveedor: 97100000 + (marker % 100000),
+      },
+    })
+    const producto = await app.prisma.producto.create({
+      data: {
+        codigoInterno: testCode(),
+        nombre: 'Producto Egreso Proporcional',
+        bodega: 'Inventario',
+        stock: 40,
+        stockCritico: 1,
+        precioLista: 115,
+      },
+    })
+
+    try {
+      await app.prisma.productoProveedor.createMany({
+        data: [
+          { productoId: producto.id, proveedorId: proveedorA.id, cantidad: 10, costo: 100 },
+          { productoId: producto.id, proveedorId: proveedorB.id, cantidad: 30, costo: 120 },
+        ],
+      })
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/productos/${producto.id}/movimientos`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          tipo: 'egreso',
+          cantidad: 4,
+          motivoCategoria: 'Merma',
+          motivo: 'prorrata test',
+        },
+      })
+
+      expect(res.statusCode).toBe(201)
+      expect(JSON.parse(res.body).stockFinal).toBe(36)
+      const rows = await app.prisma.productoProveedor.findMany({
+        where: { productoId: producto.id },
+        orderBy: { proveedorId: 'asc' },
+      })
+      expect(rows.map(row => row.cantidad)).toEqual([9, 27])
+      const reloaded = await app.prisma.producto.findUnique({ where: { id: producto.id } })
+      expect(reloaded.stock).toBe(36)
+      expect(reloaded.precioLista).toBe(115)
+    } finally {
+      await app.prisma.movimientoBodega.deleteMany({ where: { productoId: producto.id } })
+      await app.prisma.productoProveedor.deleteMany({ where: { productoId: producto.id } })
+      await app.prisma.producto.deleteMany({ where: { id: producto.id } })
+      await app.prisma.proveedor.deleteMany({ where: { id: { in: [proveedorA.id, proveedorB.id] } } })
+    }
+  })
+
   it('does not allow soft delete or reactivation through generic update', async () => {
     const producto = await app.prisma.producto.create({
       data: {

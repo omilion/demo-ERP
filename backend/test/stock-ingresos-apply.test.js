@@ -1,12 +1,185 @@
 import { describe, expect, it, vi } from 'vitest'
 import { normalizeDetalleDestino, reverseStockIngreso, validateAndApplyStockIngreso } from '../src/routes/stock-ingresos/apply.js'
 
+function applyData(row, data) {
+  for (const [key, value] of Object.entries(data || {})) {
+    if (value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, 'increment')) {
+      row[key] = Number(row[key] || 0) + value.increment
+    } else {
+      row[key] = value
+    }
+  }
+}
+
+function selectFields(row, select) {
+  if (!select) return { ...row }
+  return Object.fromEntries(Object.keys(select).map(key => [key, row[key]]))
+}
+
+function buildStockTx({ productos = [], productoProveedores = [] } = {}) {
+  const productRows = new Map(productos.map(producto => [producto.codigoInterno, { ...producto }]))
+  const providerRows = productoProveedores.map((row, index) => ({
+    id: row.id ?? index + 1,
+    activo: row.activo ?? true,
+    ...row,
+  }))
+  let nextProviderRowId = providerRows.length + 1
+
+  function findProviderRow(where) {
+    const key = where?.productoId_proveedorId
+    if (!key) return null
+    return providerRows.find(row => row.productoId === key.productoId && row.proveedorId === key.proveedorId) || null
+  }
+
+  const tx = {
+    producto: {
+      findMany: vi.fn(async (args = {}) => {
+        const codes = args.where?.codigoInterno?.in || []
+        return codes.map(code => productRows.get(code)).filter(Boolean).map(row => selectFields(row, args.select))
+      }),
+      update: vi.fn(async ({ where, data }) => {
+        const product = [...productRows.values()].find(row => row.id === where.id)
+        if (!product) return {}
+        applyData(product, data)
+        return { ...product }
+      }),
+    },
+    bodegaTaller: { findMany: vi.fn().mockResolvedValue([]) },
+    tela: { findMany: vi.fn().mockResolvedValue([]) },
+    productoProveedor: {
+      findMany: vi.fn(async (args = {}) => {
+        let rows = providerRows
+        if (args.where?.productoId !== undefined) rows = rows.filter(row => row.productoId === args.where.productoId)
+        if (args.where?.activo !== undefined) rows = rows.filter(row => row.activo === args.where.activo)
+        if (args.where?.cantidad?.gt !== undefined) rows = rows.filter(row => row.cantidad > args.where.cantidad.gt)
+        return rows.map(row => selectFields(row, args.select))
+      }),
+      findUnique: vi.fn(async ({ where, select }) => {
+        const row = findProviderRow(where)
+        return row ? selectFields(row, select) : null
+      }),
+      upsert: vi.fn(async ({ where, update, create }) => {
+        let row = findProviderRow(where)
+        if (row) {
+          applyData(row, update)
+        } else {
+          row = { id: nextProviderRowId++, ...create }
+          providerRows.push(row)
+        }
+        return { ...row }
+      }),
+      update: vi.fn(async ({ where, data }) => {
+        const row = providerRows.find(item => item.id === where.id)
+        if (!row) return {}
+        applyData(row, data)
+        return { ...row }
+      }),
+    },
+    precioHistorial: { create: vi.fn().mockResolvedValue({}) },
+    movimientoBodega: { create: vi.fn().mockResolvedValue({}) },
+  }
+
+  tx.__state = { productRows, providerRows }
+  return tx
+}
+
 describe('stock ingresos apply helper', () => {
   it('normalizes supported destinations', () => {
     expect(normalizeDetalleDestino('producto')).toBe('producto')
     expect(normalizeDetalleDestino('material')).toBe('material')
     expect(normalizeDetalleDestino('tela')).toBe('tela')
     expect(normalizeDetalleDestino('otro')).toBe('producto')
+  })
+
+  it('ingresa dos proveedores y recalcula precioLista con costo ponderado', async () => {
+    const tx = buildStockTx({
+      productos: [{ id: 1, codigoInterno: 'P1', stock: 0, precioLista: 0 }],
+    })
+
+    await validateAndApplyStockIngreso({
+      tx,
+      detalles: [{ codigoInterno: 'P1', destino: 'producto', cantidad: 10, precio: 100 }],
+      pago: { id: 20, proveedorId: 1, documento: 'Factura', nDoc: 'F-A', usuario: 'QA' },
+      userId: 7,
+    })
+    await validateAndApplyStockIngreso({
+      tx,
+      detalles: [{ codigoInterno: 'P1', destino: 'producto', cantidad: 30, precio: 120 }],
+      pago: { id: 21, proveedorId: 2, documento: 'Factura', nDoc: 'F-B', usuario: 'QA' },
+      userId: 7,
+    })
+
+    const product = tx.__state.productRows.get('P1')
+    expect(product.stock).toBe(40)
+    expect(product.precioLista).toBe(115)
+    expect(tx.__state.providerRows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ productoId: 1, proveedorId: 1, cantidad: 10, costo: 100 }),
+      expect.objectContaining({ productoId: 1, proveedorId: 2, cantidad: 30, costo: 120 }),
+    ]))
+  })
+
+  it('acumula cantidad del mismo proveedor y usa costo de ultima compra', async () => {
+    const tx = buildStockTx({
+      productos: [{ id: 1, codigoInterno: 'P1', stock: 0, precioLista: 0 }],
+    })
+
+    await validateAndApplyStockIngreso({
+      tx,
+      detalles: [{ codigoInterno: 'P1', destino: 'producto', cantidad: 10, precio: 100 }],
+      pago: { id: 22, proveedorId: 1, documento: 'Factura', nDoc: 'F-1', usuario: 'QA' },
+      userId: 7,
+    })
+    await validateAndApplyStockIngreso({
+      tx,
+      detalles: [{ codigoInterno: 'P1', destino: 'producto', cantidad: 5, precio: 130 }],
+      pago: { id: 23, proveedorId: 1, documento: 'Factura', nDoc: 'F-2', usuario: 'QA' },
+      userId: 7,
+    })
+
+    expect(tx.__state.providerRows).toHaveLength(1)
+    expect(tx.__state.providerRows[0]).toMatchObject({ productoId: 1, proveedorId: 1, cantidad: 15, costo: 130 })
+    expect(tx.__state.productRows.get('P1')).toMatchObject({ stock: 15, precioLista: 130 })
+  })
+
+  it('nota de credito reduce cantidad del proveedor y recalcula ponderado', async () => {
+    const tx = buildStockTx({
+      productos: [{ id: 1, codigoInterno: 'P1', stock: 40, precioLista: 115 }],
+      productoProveedores: [
+        { id: 1, productoId: 1, proveedorId: 1, cantidad: 10, costo: 100 },
+        { id: 2, productoId: 1, proveedorId: 2, cantidad: 30, costo: 120 },
+      ],
+    })
+
+    const result = await validateAndApplyStockIngreso({
+      tx,
+      detalles: [{ codigoInterno: 'P1', destino: 'producto', cantidad: 10, precio: 120 }],
+      pago: { id: 24, proveedorId: 2, documento: 'Nota', nDoc: 'NC-1', usuario: 'QA' },
+      userId: 7,
+    })
+
+    expect(result.aplicados).toEqual([{ codigoInterno: 'P1', destino: 'producto', ok: true, cantidad: -10 }])
+    expect(tx.__state.providerRows.find(row => row.proveedorId === 2)).toMatchObject({ cantidad: 20, costo: 120 })
+    expect(tx.__state.productRows.get('P1')).toMatchObject({ stock: 30, precioLista: 113 })
+  })
+
+  it('reversa de factura reduce cantidad del proveedor sin cambiar su costo', async () => {
+    const tx = buildStockTx({
+      productos: [{ id: 1, codigoInterno: 'P1', stock: 40, precioLista: 115 }],
+      productoProveedores: [
+        { id: 1, productoId: 1, proveedorId: 1, cantidad: 10, costo: 100 },
+        { id: 2, productoId: 1, proveedorId: 2, cantidad: 30, costo: 120 },
+      ],
+    })
+
+    await reverseStockIngreso({
+      tx,
+      detalles: [{ codigoInterno: 'P1', destino: 'producto', cantidad: 10, precio: 999 }],
+      pago: { id: 25, proveedorId: 2, documento: 'Factura', nDoc: 'F-REV', usuario: 'QA' },
+      userId: 7,
+    })
+
+    expect(tx.__state.providerRows.find(row => row.proveedorId === 2)).toMatchObject({ cantidad: 20, costo: 120 })
+    expect(tx.__state.productRows.get('P1')).toMatchObject({ stock: 30, precioLista: 113 })
   })
 
   it('rejects decimal quantities for commercial products only', async () => {
@@ -269,6 +442,11 @@ describe('stock ingresos apply helper', () => {
       },
       bodegaTaller: { findMany: vi.fn().mockResolvedValue([]) },
       tela: { findMany: vi.fn().mockResolvedValue([]) },
+      productoProveedor: {
+        upsert: vi.fn().mockResolvedValue({}),
+        findMany: vi.fn().mockResolvedValue([{ costo: 500, cantidad: 3 }]),
+      },
+      precioHistorial: { create: vi.fn() },
       movimientoBodega: { create: vi.fn().mockResolvedValue({}) },
     }
     const result = await validateAndApplyStockIngreso({
@@ -284,7 +462,16 @@ describe('stock ingresos apply helper', () => {
     })
     expect(tx.producto.update).toHaveBeenCalledWith({
       where: { id: 4 },
-      data: { stock: { increment: 3 }, precioLista: 500 },
+      data: { stock: { increment: 3 } },
+    })
+    expect(tx.productoProveedor.upsert).toHaveBeenCalledWith({
+      where: { productoId_proveedorId: { productoId: 4, proveedorId: 2 } },
+      update: expect.objectContaining({ cantidad: { increment: 3 }, costo: 500, activo: true }),
+      create: expect.objectContaining({ productoId: 4, proveedorId: 2, cantidad: 3, costo: 500, activo: true }),
+    })
+    expect(tx.producto.update).toHaveBeenCalledWith({
+      where: { id: 4 },
+      data: { precioLista: 500 },
     })
   })
 })

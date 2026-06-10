@@ -1,6 +1,7 @@
 // Movimientos manuales de stock por producto (ingreso / egreso / ajuste)
 import { resolveOdtForWrite, resolveOrdenForWrite } from '../relation-guards.js'
 import { can } from '../../middleware/rbac.js'
+import { recomputeProductoCosteo } from './costeo.js'
 
 const TIPOS = ['ingreso', 'egreso', 'ajuste']
 const MOTIVO_CATEGORIAS = [
@@ -35,6 +36,57 @@ export function normalizeMotivoCategoria(value) {
   if (!normalized) return null
   const found = MOTIVO_CATEGORIAS.find(([key]) => key === normalized)
   return found?.[1] || null
+}
+
+function buildProportionalReductions(rows, cantidad) {
+  const quantities = rows.map(row => Math.max(0, Number.parseInt(row.cantidad, 10) || 0))
+  const total = quantities.reduce((sum, qty) => sum + qty, 0)
+  const target = Math.min(Math.max(0, Number.parseInt(cantidad, 10) || 0), total)
+  if (!target || !total) return []
+
+  let remaining = target
+  const reductions = quantities.map((qty) => {
+    const reduction = Math.min(qty, Math.floor((target * qty) / total))
+    remaining -= reduction
+    return reduction
+  })
+
+  const order = rows
+    .map((row, index) => ({ index, id: row.id, cantidad: quantities[index] }))
+    .sort((a, b) => b.cantidad - a.cantidad || a.id - b.id)
+
+  for (const item of order) {
+    if (remaining <= 0) break
+    if (reductions[item.index] >= quantities[item.index]) continue
+    reductions[item.index] += 1
+    remaining -= 1
+  }
+
+  return rows
+    .map((row, index) => ({
+      id: row.id,
+      cantidad: quantities[index],
+      reduccion: reductions[index],
+    }))
+    .filter(row => row.reduccion > 0)
+}
+
+async function reduceProductoProveedorStock(tx, productoId, cantidad) {
+  const rows = await tx.productoProveedor.findMany({
+    where: { productoId, activo: true, cantidad: { gt: 0 } },
+    select: { id: true, cantidad: true },
+    orderBy: [{ cantidad: 'desc' }, { id: 'asc' }],
+  })
+  if (!rows.length) return
+
+  const reductions = buildProportionalReductions(rows, cantidad)
+  for (const row of reductions) {
+    await tx.productoProveedor.update({
+      where: { id: row.id },
+      data: { cantidad: row.cantidad - row.reduccion },
+    })
+  }
+  await recomputeProductoCosteo(tx, productoId)
 }
 
 export function buildMovimientoMotivo({ tipo, cantidad, stockActual, motivo, motivoCategoria } = {}) {
@@ -162,9 +214,12 @@ export default async function movimientosProductoRoutes(fastify) {
     const newStock = prod.stock + delta
     const userId = request.user?.id || 1
 
-    const [, mov] = await fastify.prisma.$transaction([
-      fastify.prisma.producto.update({ where: { id }, data: { stock: newStock } }),
-      fastify.prisma.movimientoBodega.create({
+    const result = await fastify.prisma.$transaction(async (tx) => {
+      await tx.producto.update({ where: { id }, data: { stock: newStock } })
+      if (delta < 0) {
+        await reduceProductoProveedorStock(tx, id, Math.abs(delta))
+      }
+      const movimiento = await tx.movimientoBodega.create({
         data: {
           productoId: id,
           tipo,
@@ -173,8 +228,9 @@ export default async function movimientosProductoRoutes(fastify) {
           userId,
           ...traceability,
         },
-      }),
-    ])
-    return reply.code(201).send({ movimiento: mov, stockFinal: newStock })
+      })
+      return { movimiento, stockFinal: newStock }
+    })
+    return reply.code(201).send(result)
   })
 }
