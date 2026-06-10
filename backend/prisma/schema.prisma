@@ -273,11 +273,30 @@ model Producto {
   activo           Boolean       @default(true)
   subcategoria     Subcategoria? @relation(fields: [subcategoriaId], references: [id])
   ubicacionCatalogo Ubicacion?   @relation(fields: [ubicacionId], references: [id])
+  proveedores      ProductoProveedor[]
 
   @@index([subcategoriaId])
   @@index([categoriaId])
   @@index([ubicacionId])
   @@map("productos")
+  @@schema("catalogo")
+}
+
+model ProductoProveedor {
+  id           Int       @id @default(autoincrement())
+  productoId   Int       @map("producto_id")
+  proveedorId  Int       @map("proveedor_id")
+  costo        Float     @default(0)
+  cantidad     Int       @default(0)
+  ultimaCompra DateTime? @map("ultima_compra")
+  activo       Boolean   @default(true)
+  producto     Producto  @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  proveedor    Proveedor @relation(fields: [proveedorId], references: [id])
+
+  @@unique([productoId, proveedorId])
+  @@index([productoId])
+  @@index([proveedorId])
+  @@map("producto_proveedores")
   @@schema("catalogo")
 }
 
@@ -308,6 +327,7 @@ model Proveedor {
   porcLicitacion  Int     @default(0) @map("porc_licitacion")
   pagoFactura     String? @map("pago_factura")
   activo          Boolean @default(true)
+  productoProveedores ProductoProveedor[]
 
   @@map("proveedores")
   @@schema("catalogo")
