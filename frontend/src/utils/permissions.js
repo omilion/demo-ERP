@@ -88,9 +88,9 @@ export function hasRole(user, roles = []) {
   return roles.includes(getUserRole(user))
 }
 
-export function ventaPath(id, user) {
+export function ventaPath(id) {
   const safeId = encodeURIComponent(String(id ?? ''))
-  return can(user, 'ventas', 'write') ? `/ventas/${safeId}/editar` : `/ventas?search=${safeId}`
+  return `/ventas/${safeId}`
 }
 
 export function odtPath(id, user) {

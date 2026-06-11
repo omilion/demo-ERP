@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon, Badge, PageHeader, Btn, SearchBar, Table, Tabs, StatusDot, Pager } from '../../components/shared'
-import { ViewVentaPanel } from '../../components/forms/ViewVentaPanel'
 import { useVentas } from '../../api/ventas'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
@@ -44,16 +43,12 @@ export default function VentasPage() {
   const [searchParams] = useSearchParams()
   const initialFiltro = URL_FILTERS[searchParams.get('filtro')] || 'all'
   const initialSearch = searchParams.get('search') || ''
-  const initialOpen = searchParams.get('open') || ''
   const { user } = useAuthStore()
   const canWriteVentas = can(user, 'ventas', 'write')
-  const canDeleteVentas = can(user, 'ventas', 'delete')
   const [tab, setTab] = useState(initialFiltro)
   const [search, setSearch] = useState(initialSearch)
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch)
   const [pageState, setPageState] = useState({ key: '', page: 1 })
-  const [selected, setSelected] = useState(null)
-  const [openVentaId, setOpenVentaId] = useState(initialOpen)
   const debounceRef = useRef(null)
 
   useEffect(() => {
@@ -86,18 +81,8 @@ export default function VentasPage() {
     ? ventas.filter(v => new Date(v.createdAt).toLocaleDateString('es-CL') === today)
     : ventas
 
-  useEffect(() => {
-    if (!openVentaId || isLoading || selected) return
-    const venta = filtered.find(v => String(v.id) === String(openVentaId))
-    if (!venta) return
-    const timer = setTimeout(() => {
-      setSelected(venta)
-      setOpenVentaId('')
-    }, 0)
-    return () => clearTimeout(timer)
-  }, [filtered, isLoading, openVentaId, selected])
-
   const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
+  const openVenta = row => navigate(`/ventas/${encodeURIComponent(String(row.id))}`)
 
   const cols = [
     { key: 'id', label: 'Nro. Interno', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{v}</span> },
@@ -123,7 +108,7 @@ export default function VentasPage() {
     { key: 'createdAt', label: 'Fecha', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-3)' }}>{new Date(v).toLocaleDateString('es-CL')}</span> },
     { key: 'creadorNombre', label: 'Vendedor', render: v => <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{v || '-'}</span> },
     { key: '_actions', label: '', render: (_, row) => (
-      <button onClick={e => { e.stopPropagation(); setSelected(row) }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}>Ver</button>
+      <button onClick={e => { e.stopPropagation(); openVenta(row) }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}>Ver</button>
     )},
   ]
 
@@ -163,12 +148,10 @@ export default function VentasPage() {
         </div>
         {isLoading
           ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={filtered} onRowClick={row => setSelected(row)} emptyMessage="Sin ventas" ariaLabel="Ventas" getRowKey={row => row.id} />
+          : <Table columns={cols} rows={filtered} onRowDoubleClick={openVenta} emptyMessage="Sin ventas" ariaLabel="Ventas" getRowKey={row => row.id} />
         }
         <Pager page={page} pages={pages} total={total} limit={LIMIT} shown={ventas.length} onChange={setPagerPage} disabled={isLoading} />
       </div>
-
-      {selected && <ViewVentaPanel venta={selected} canWrite={canWriteVentas} canDelete={canDeleteVentas} onClose={() => setSelected(null)} onEdit={() => { navigate('/ventas/' + selected.id + '/editar'); setSelected(null) }} />}
     </main>
   )
 }

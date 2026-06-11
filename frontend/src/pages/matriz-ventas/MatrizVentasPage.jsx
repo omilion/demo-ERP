@@ -337,7 +337,7 @@ export default function MatrizVentasPage() {
         </div>
         {isLoading
           ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={data.items} emptyMessage="Sin ventas" onRowClick={openVenta} ariaLabel="Matriz de ventas" getRowKey={row => row.id} toolbarExtra={paginationControls} />
+          : <Table columns={cols} rows={data.items} emptyMessage="Sin ventas" onRowDoubleClick={openVenta} ariaLabel="Matriz de ventas" getRowKey={row => row.id} toolbarExtra={paginationControls} />
         }
       </div>
     </main>

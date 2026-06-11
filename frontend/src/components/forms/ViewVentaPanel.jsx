@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Badge, Icon } from '../shared'
+import { Badge, Btn, Icon } from '../shared'
 import { ViewPanel, FormDivider } from './index'
 import { useVenta, useDeleteVenta } from '../../api/ventas'
 
@@ -366,7 +366,7 @@ function TabDocumentos({ v, pagos }) {
 }
 
 // ── Main panel ─────────────────────────────────────────────────────────────────
-export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDelete = false }) {
+export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDelete = false, variant = 'drawer' }) {
   const navigate = useNavigate()
   const [tab, setTab] = useState('detalle')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -388,10 +388,74 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
     })
   }
 
+  if (variant === 'page') {
+    const pageTitle = <span>Venta <span style={{ fontFamily: "'DM Mono',monospace", color: 'var(--green-700)' }}>#{v.id}</span></span>
+    const pageSubtitle = `${fecha} - ${v.creadorNombre || 'Sin vendedor'}`
+
+    return (
+      <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+        <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--text-1)', letterSpacing: -0.3 }}>{pageTitle}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>{pageSubtitle}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {canWrite && onEdit && <Btn variant="primary" icon="edit" onClick={onEdit}>Editar</Btn>}
+            <Btn variant="secondary" icon="printer" onClick={() => window.print()}>Imprimir</Btn>
+            {canDelete && <Btn variant="ghost" icon="trash" onClick={() => setConfirmDelete(true)} style={{ color: 'var(--red)' }}>Eliminar</Btn>}
+          </div>
+        </div>
+        <div style={{ padding: '22px', maxWidth: 1180 }}>
+          <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 16, marginTop: -6 }}>
+            <TabBtn active={tab === 'detalle'}    onClick={() => setTab('detalle')}>Detalle</TabBtn>
+            <TabBtn active={tab === 'taller'}     onClick={() => setTab('taller')}  badge={odts.length}>Taller</TabBtn>
+            <TabBtn active={tab === 'pagos'}      onClick={() => setTab('pagos')}   badge={pagos.length}>Pagos</TabBtn>
+            <TabBtn active={tab === 'documentos'} onClick={() => setTab('documentos')} badge={documentosCount}>Documentos</TabBtn>
+          </div>
+
+          {isLoading && !full && (
+            <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Cargando detalles...</div>
+          )}
+
+          {tab === 'detalle'    && <TabDetalle v={v} />}
+          {tab === 'taller'     && <TabTaller odts={odts} onGoTaller={() => navigate('/taller')} />}
+          {tab === 'pagos'      && <TabPagos pagos={pagos} />}
+          {tab === 'documentos' && <TabDocumentos v={v} pagos={pagos} />}
+        </div>
+
+        {confirmDelete && canDelete && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'oklch(0 0 0/0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: '#fff', borderRadius: 14, padding: '24px 28px', maxWidth: 360, width: '90%', boxShadow: '0 16px 48px oklch(0 0 0/0.2)' }}>
+              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, color: 'var(--text-1)' }}>Eliminar Venta #{v.id}?</div>
+              <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 20 }}>
+                Esta accion eliminara la venta y todos sus items asociados. No se puede deshacer.
+              </div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button onClick={() => setConfirmDelete(false)} style={{ padding: '8px 16px', fontSize: 13, borderRadius: 8, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', fontWeight: 500 }}>
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleteVenta.isPending}
+                  style={{ padding: '8px 16px', fontSize: 13, borderRadius: 8, border: 'none', background: 'var(--red)', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: deleteVenta.isPending ? 0.6 : 1 }}
+                >
+                  {deleteVenta.isPending ? 'Eliminando...' : 'Eliminar definitivamente'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+    )
+  }
+
+  const title = <span>Venta <span style={{ fontFamily: "'DM Mono',monospace", color: 'var(--green-700)' }}>#{v.id}</span></span>
+  const subtitle = `${fecha} Â· ${v.creadorNombre || 'Sin vendedor'}`
+
   return (
     <ViewPanel
-      title={<span>Venta <span style={{ fontFamily: "'DM Mono',monospace", color: 'var(--green-700)' }}>#{v.id}</span></span>}
-      subtitle={`${fecha} · ${v.creadorNombre || 'Sin vendedor'}`}
+      title={title}
+      subtitle={subtitle}
       onClose={onClose}
       onEdit={canWrite ? onEdit : undefined}
       onDelete={canDelete ? () => setConfirmDelete(true) : undefined}

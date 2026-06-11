@@ -1,10 +1,11 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Shell } from './components/Shell'
-import { OdtLegacyRedirect, VentaLegacyRedirect } from './components/LegacyRedirects'
+import { OdtLegacyRedirect } from './components/LegacyRedirects'
 import LoginPage from './pages/login/LoginPage'
 import DashboardPage, { DashboardOperativoPage } from './pages/dashboard/DashboardPage'
 import VentasPage from './pages/ventas/VentasPage'
+import VentaDetallePage from './pages/ventas/VentaDetallePage'
 import VentasFormPage from './pages/ventas/VentasFormPage'
 import VentaPrintPage from './pages/ventas/VentaPrintPage'
 import BodegaPage from './pages/bodega/BodegaPage'
@@ -68,7 +69,7 @@ export const router = createBrowserRouter([
       { path: 'dashboard', element: <DashboardPage /> },
       { path: 'dashboard/operativo', element: <DashboardOperativoPage /> },
       { path: 'ventas', element: protect(<VentasPage />, { module: 'ventas' }) },
-      { path: 'ventas/:id', element: protect(<VentaLegacyRedirect />, { module: 'ventas' }) },
+      { path: 'ventas/:id', element: protect(<VentaDetallePage />, { module: 'ventas' }) },
       { path: 'ventas/nueva', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
       { path: 'ventas/:id/editar', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
       { path: 'ventas/:id/imprimir', element: protect(<VentaPrintPage />, { module: 'ventas' }) },
