@@ -407,8 +407,8 @@ function DescuentosDisponiblesPanel({ venta, items, subtotal, cargosTotal, total
 
   useEffect(() => {
     if (!hasContext) {
-      setEvaluacion(null)
-      return
+      const timer = setTimeout(() => setEvaluacion(null), 0)
+      return () => clearTimeout(timer)
     }
     const timer = setTimeout(() => evaluate(), 450)
     return () => clearTimeout(timer)
@@ -929,8 +929,11 @@ export default function VentasFormPage() {
 
   useEffect(() => {
     if (selectedDiscountRule?.draftKey && selectedDiscountRule.draftKey !== discountDraftKey) {
-      setSelectedDiscountRule(null)
-      set('descuentoPct', '')
+      const timer = setTimeout(() => {
+        setSelectedDiscountRule(null)
+        set('descuentoPct', '')
+      }, 0)
+      return () => clearTimeout(timer)
     }
   }, [discountDraftKey, selectedDiscountRule, set])
 

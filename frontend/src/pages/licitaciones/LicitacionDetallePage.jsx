@@ -158,8 +158,8 @@ function LicitacionDescuentoPanel({ cotizacion, items, subtotal, totalAdjudicado
 
   useEffect(() => {
     if (!hasContext) {
-      setEvaluacion(null)
-      return
+      const timer = setTimeout(() => setEvaluacion(null), 0)
+      return () => clearTimeout(timer)
     }
     const timer = setTimeout(() => evaluate(), 450)
     return () => clearTimeout(timer)

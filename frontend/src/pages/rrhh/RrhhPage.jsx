@@ -623,7 +623,6 @@ export default function RrhhPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const canWriteRrhh = can(user, 'rrhh', 'write')
-  const canDeleteRrhh = can(user, 'rrhh', 'delete')
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
   const [empresa, setEmpresa] = useState('')
