@@ -10,10 +10,11 @@ describe('computeConsultaPrecios - precio licitacion', () => {
     expect(r.precioLicitacionManual).toBe(false)
   })
 
-  it('el manual sobrescribe al calculado', () => {
+  it('el manual sobrescribe al calculado pero expone el calculado de referencia', () => {
     const r = computeConsultaPrecios({ precioLista: 1000, precioLicitacion: 1500 }, null, proveedor)
     expect(r.precioLicitacion).toBe(1500)
     expect(r.precioLicitacionManual).toBe(true)
+    expect(r.precioLicitacionCalculado).toBe(1200)
   })
 
   it('manual en 0 es valido y se respeta', () => {

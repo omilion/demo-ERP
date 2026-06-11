@@ -85,6 +85,8 @@ export function computeConsultaPrecios(producto, categoria, proveedor) {
       ? toNumber(producto.precioLicitacion)
       : legacyMarkedPrice(precioBase, pctLicitacion),
     precioLicitacionManual: producto.precioLicitacion != null,
+    // Siempre el calculado, como referencia para la UI (aunque haya manual).
+    precioLicitacionCalculado: legacyMarkedPrice(precioBase, pctLicitacion),
   }
 }
 

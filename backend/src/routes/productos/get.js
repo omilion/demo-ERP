@@ -1,5 +1,6 @@
 import { can } from '../../middleware/rbac.js'
 import { computeEstado, computeEstadoOperacional, normalizeProductoFotos, sanitizeProductoCosto } from './helpers.js'
+import { attachConsultaPreciosData } from './pricing.js'
 
 export default async function getProducto(fastify) {
   fastify.get('/:id', {
@@ -13,6 +14,9 @@ export default async function getProducto(fastify) {
     })
     if (!p) return reply.code(404).send({ error: 'Producto no encontrado' })
     const canReadCosto = can(request.user?.role, 'bodega', 'read', request.user?.permisosExtra)
-    return sanitizeProductoCosto(normalizeProductoFotos({ ...p, estado: computeEstado(p), estadoOperacional: computeEstadoOperacional(p) }), canReadCosto)
+    const [withPrecios] = await attachConsultaPreciosData(fastify.prisma, [
+      normalizeProductoFotos({ ...p, estado: computeEstado(p), estadoOperacional: computeEstadoOperacional(p) }),
+    ])
+    return sanitizeProductoCosto(withPrecios, canReadCosto)
   })
 }
