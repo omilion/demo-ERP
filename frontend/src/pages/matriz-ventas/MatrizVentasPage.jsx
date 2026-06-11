@@ -211,17 +211,17 @@ export default function MatrizVentasPage() {
     const list = row.detalleProductos || []
     if (!list.length) return <span style={{ color: 'var(--text-3)' }}>-</span>
     return (
-      <div style={{ minWidth: 320, border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 70px 58px', background: 'var(--text-2)', color: '#fff', fontSize: 10, fontWeight: 700 }}>
+      <div style={{ width: '100%', minWidth: 360, border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '24px minmax(230px, 1fr) 52px 38px', background: 'var(--text-2)', color: '#fff', fontSize: 7, fontWeight: 700 }}>
           <span style={detailHeadCell}>Cant.</span>
           <span style={detailHeadCell}>Producto</span>
           <span style={{ ...detailHeadCell, textAlign: 'right' }}>Total</span>
           <span style={{ ...detailHeadCell, textAlign: 'center' }}>Entreg.</span>
         </div>
         {list.map(item => (
-          <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '42px 1fr 70px 58px', borderTop: '1px solid var(--border)', background: Number(item.nEntregados || 0) >= Number(item.cantidad || 0) ? 'var(--green-50)' : '#fff' }}>
+          <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '24px minmax(230px, 1fr) 52px 38px', borderTop: '1px solid var(--border)', background: Number(item.nEntregados || 0) >= Number(item.cantidad || 0) ? 'var(--green-50)' : '#fff' }}>
             <span style={detailCell}>{item.cantidad || 0}</span>
-            <span style={{ ...detailCell, whiteSpace: 'normal', fontWeight: 600 }}>{item.nombre || item.codigoInterno || 'Item'}</span>
+            <span style={{ ...detailCell, whiteSpace: 'normal', overflowWrap: 'anywhere', fontWeight: 600, lineHeight: 1.15 }}>{item.nombre || item.codigoInterno || 'Item'}</span>
             <span style={{ ...detailCell, textAlign: 'right', ...mono }}>{fmt(item.total)}</span>
             <span style={{ ...detailCell, textAlign: 'center', ...mono }}>{item.nEntregados ?? '-'}</span>
           </div>
@@ -277,7 +277,7 @@ export default function MatrizVentasPage() {
           {row.fechaEstadoEntrega && <span style={{ ...mono, fontSize: 10, color: 'var(--text-3)' }}>{formatDate(row.fechaEstadoEntrega)}</span>}
         </div>
       ) : '-' },
-    { key: 'detalleProductos', label: 'Detalle', wrap: true, render: (_, row) => renderDetalle(row) },
+    { key: 'detalleProductos', label: 'Detalle', width: 430, wrap: true, render: (_, row) => renderDetalle(row) },
     { key: 'fecha', label: 'Fecha Creacion', render: v => <span style={{ ...mono, fontSize: 11 }}>{formatDateTime(v)}</span> },
     { key: 'creadorNombre', label: 'Creada por', render: v => <span style={{ fontSize: 12 }}>{v || '-'}</span> },
     { key: 'odtCount', label: 'ODTs', render: (_, row) => renderLinkedList(row.odts, odt => `#${odt.id} ${odt.estado || ''}`) },
@@ -378,8 +378,8 @@ const operationBtn = background => ({
   fontWeight: 700,
   textAlign: 'left',
 })
-const detailHeadCell = { padding: '5px 6px', borderRight: '1px solid oklch(1 0 0 / 0.25)' }
-const detailCell = { padding: '6px', fontSize: 11, borderRight: '1px solid var(--border)' }
+const detailHeadCell = { padding: '3px 4px', borderRight: '1px solid oklch(1 0 0 / 0.25)', lineHeight: 1.1 }
+const detailCell = { padding: '4px', fontSize: 7, borderRight: '1px solid var(--border)', lineHeight: 1.15 }
 const pagerBtn = disabled => ({ padding: '5px 10px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1 })
 const exportFilteredBtn = disabled => ({
   padding: '5px 10px',
