@@ -8,7 +8,6 @@ import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../u
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
-import { ColumnSelector, useColumnPreferences } from '../../components/ColumnSelector'
 
 const SEARCH_MODES = [
   { id: 'general', label: 'Todos' },
@@ -175,8 +174,6 @@ export default function ConsultaPreciosPage() {
     { key: 'precioLicitacion', label: 'Licitación', align: 'right', render: (_, row) => price(row.consultaPrecios?.precioLicitacion) },
     { key: 'stock', label: 'Stock', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
   ]
-  const { selected, setSelected, reset, visibleColumns, required } = useColumnPreferences('consulta-precios', cols, user)
-
   return (
     <main className="page page-wide">
       <PageHeader
@@ -186,7 +183,6 @@ export default function ConsultaPreciosPage() {
         actions={<>
           <Btn variant="secondary" icon="download" size="sm" onClick={exportarPrecios}>Exportar Excel</Btn>
           <Btn variant="secondary" icon="printer" size="sm" onClick={() => window.print()}>PDF/Imprimir</Btn>
-          <ColumnSelector columns={cols} selected={selected} onChange={setSelected} onReset={reset} required={required} />
         </>}
       />
 
@@ -277,14 +273,14 @@ export default function ConsultaPreciosPage() {
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando productos...</div>
           : <Table
-              columns={visibleColumns}
+              columns={cols}
               rows={items}
               emptyMessage="No hay productos con ese criterio"
               onRowDoubleClick={canEditPrecio ? row => navigate('/bodega/' + row.id + '/editar') : undefined}
               autoFocus
               ariaLabel="Consulta de precios de productos"
               getRowKey={row => row.id}
-              columnPrefs={false}
+              columnPrefsKey="consulta-precios"
             />
         }
         <Pager

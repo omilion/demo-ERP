@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { DndContext, DragOverlay, PointerSensor, pointerWithin, rectIntersection, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon, Badge, KpiCard, PageHeader, Btn, SearchBar, Tabs, Pager, Table } from '../../components/shared'
-import { ColumnSelector, useColumnPreferences } from '../../components/ColumnSelector'
 import { useOdts, useOdtKanban, useOdt, useOdtEstado, useAddBitacora, useDeleteBitacora, useAnularOdt, useCerrarOdt, useOdtOperarios, useOdtCargaOperarios, useOdtProductividad } from '../../api/odts'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
@@ -721,7 +720,7 @@ export default function TallerPage() {
   const [fechaDesde, setFechaDesde] = useState(initialFechaDesde)
   const [fechaHasta, setFechaHasta] = useState(initialFechaHasta)
   const [selected, setSelected]     = useState(null)
-  const [viewMode, setViewMode]     = useState('kanban')
+  const [viewMode, setViewMode]     = useState('tabla')
   const debRef = useRef(null)
   const cambiarEstado = useOdtEstado()
   const cerrarOdt = useCerrarOdt()
@@ -804,8 +803,6 @@ export default function TallerPage() {
       <Btn variant="ghost" size="sm" icon="eye" onClick={e => { e.stopPropagation(); setSelected(row) }}>Ver</Btn>
     ) },
   ]
-  const { selected: selectedColumns, setSelected: setSelectedColumns, reset: resetColumns, visibleColumns, required: requiredColumns } = useColumnPreferences('taller-odts', odtColumns, user)
-
   function handleEstadoChange(id, estado) {
     cambiarEstado.mutate({ id, estado }, {
       onSuccess: updated => {
@@ -870,6 +867,13 @@ export default function TallerPage() {
     downloadFromBackend('/reportes/export/odts', `odts-${new Date().toISOString().slice(0,10)}.csv`, filterParams)
   }
 
+  const crmToggle = (
+    <button type="button" className="table-tool-btn" onClick={() => setViewMode('kanban')} title="Abrir vista CRM">
+      <Icon name="grid" size={13} />
+      Vista CRM
+    </button>
+  )
+
   return (
     <main className="page page-wide">
       <PageHeader
@@ -877,10 +881,6 @@ export default function TallerPage() {
         subtitle={`${total.toLocaleString('es-CL')} ODTs en total`}
         breadcrumb={['Inicio', 'Taller', 'ODTs']}
         actions={<>
-          <Btn variant="secondary" icon={viewMode === 'kanban' ? 'list' : 'grid'} size="sm" onClick={() => setViewMode(viewMode === 'kanban' ? 'tabla' : 'kanban')}>
-            {viewMode === 'kanban' ? 'Tabla' : 'Kanban'}
-          </Btn>
-          {viewMode === 'tabla' && <ColumnSelector columns={odtColumns} selected={selectedColumns} onChange={setSelectedColumns} onReset={resetColumns} required={requiredColumns} />}
           <Btn variant="secondary" icon="download" size="sm" onClick={handleExport}>Exportar</Btn>
           {canWriteTaller && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/taller/nueva')}>Nueva ODT</Btn>}
         </>}
@@ -1025,6 +1025,14 @@ export default function TallerPage() {
 
 
         <div style={{ padding: 16 }}>
+          {viewMode === 'kanban' && (
+            <div className="table-tools" aria-label="Controles de vista CRM" style={{ margin: '-16px -16px 12px' }}>
+              <button type="button" className="table-tool-btn" onClick={() => setViewMode('tabla')} title="Volver a lista">
+                <Icon name="list" size={13} />
+                Lista
+              </button>
+            </div>
+          )}
           {viewMode === 'kanban' && kanbanResult.truncated && (
             <div style={{ marginBottom: 12, padding: '9px 12px', border: '1px solid var(--amber-bg)', borderRadius: 8, background: 'var(--amber-bg)', color: 'oklch(0.42 0.12 68)', fontSize: 12, fontWeight: 600 }}>
               Mostrando {kanbanOdts.length.toLocaleString('es-CL')} de {kanbanResult.total.toLocaleString('es-CL')} ODTs. Ajusta filtros para acotar.
@@ -1049,7 +1057,7 @@ export default function TallerPage() {
               onEstadoDrop={handleKanbanDrop}
             />
           ) : (
-            <Table columns={visibleColumns} rows={odts} onRowClick={setSelected} columnPrefs={false} />
+            <Table columns={odtColumns} rows={odts} onRowClick={setSelected} columnPrefsKey="taller-odts" ariaLabel="Taller ODTs" getRowKey={row => row.id} toolbarExtra={crmToggle} />
           )}
         </div>
         {viewMode === 'tabla' && <Pager page={page} pages={pages} total={total} limit={LIMIT} shown={odts.length} onChange={setPagerPage} disabled={isLoading} />}
