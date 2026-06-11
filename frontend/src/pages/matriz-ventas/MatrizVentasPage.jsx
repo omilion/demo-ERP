@@ -168,104 +168,126 @@ export default function MatrizVentasPage() {
   }
 
   const toneEntrega = v => v === 'Entregada' ? 'green' : v === 'Parcial' ? 'amber' : v === 'En despacho' ? 'blue' : 'gray'
+  const formatDate = value => value ? new Date(value).toLocaleDateString('es-CL') : '-'
+  const formatDateTime = value => value
+    ? new Date(value).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '-'
+  const getIdLicitacion = row => row.cotizacion?.idLicitacion || (row.fuente === 'licitacion' ? row.ref : '')
+  const ocValue = row => row.fuente === 'licitacion' ? '' : row.ref
+
+  const renderOperations = row => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 112 }}>
+      {row.fuente === 'orden' ? (
+        <>
+          <button onClick={e => { e.stopPropagation(); openVenta(row) }} style={operationBtn('#2563eb')} title="Ver venta">
+            Ver Venta sala
+          </button>
+          <button onClick={e => { e.stopPropagation(); navigate(`/odt?ordenId=${row.id}`) }} style={operationBtn('#0ea5e9')} title="Informe taller">
+            Inf. Taller
+          </button>
+          {row.nInterno && (
+            <button onClick={e => { e.stopPropagation(); navigate(`/caja?nInterno=${row.nInterno}`) }} style={operationBtn('#16a34a')} title="Ver pagos">
+              Ver pagos
+            </button>
+          )}
+          <button onClick={e => { e.stopPropagation(); navigate(`/ventas/${row.id}/imprimir`) }} style={operationBtn('#ef4444')} title="Nota de venta">
+            Nota Venta
+          </button>
+          {canDeleteVentas && (
+            <button onClick={e => { e.stopPropagation(); eliminarFila(row) }} style={operationBtn('#dc2626')} title="Eliminar venta">
+              Eliminar Venta
+            </button>
+          )}
+        </>
+      ) : (
+        <button onClick={e => { e.stopPropagation(); openVenta(row) }} style={operationBtn('#2563eb')} title="Ver detalle">
+          Ver detalle
+        </button>
+      )}
+    </div>
+  )
+
+  const renderDetalle = row => {
+    const list = row.detalleProductos || []
+    if (!list.length) return <span style={{ color: 'var(--text-3)' }}>-</span>
+    return (
+      <div style={{ minWidth: 320, border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 70px 58px', background: 'var(--text-2)', color: '#fff', fontSize: 10, fontWeight: 700 }}>
+          <span style={detailHeadCell}>Cant.</span>
+          <span style={detailHeadCell}>Producto</span>
+          <span style={{ ...detailHeadCell, textAlign: 'right' }}>Total</span>
+          <span style={{ ...detailHeadCell, textAlign: 'center' }}>Entreg.</span>
+        </div>
+        {list.map(item => (
+          <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '42px 1fr 70px 58px', borderTop: '1px solid var(--border)', background: Number(item.nEntregados || 0) >= Number(item.cantidad || 0) ? 'var(--green-50)' : '#fff' }}>
+            <span style={detailCell}>{item.cantidad || 0}</span>
+            <span style={{ ...detailCell, whiteSpace: 'normal', fontWeight: 600 }}>{item.nombre || item.codigoInterno || 'Item'}</span>
+            <span style={{ ...detailCell, textAlign: 'right', ...mono }}>{fmt(item.total)}</span>
+            <span style={{ ...detailCell, textAlign: 'center', ...mono }}>{item.nEntregados ?? '-'}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  const renderLinkedList = (items, getLabel) => {
+    if (!items?.length) return <span style={{ color: 'var(--text-3)' }}>-</span>
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 92 }}>
+        {items.map(item => <span key={item.id || getLabel(item)} style={{ fontSize: 11 }}>{getLabel(item)}</span>)}
+      </div>
+    )
+  }
+
+  const renderDocumentos = row => {
+    const docs = row.documentos || []
+    if (!docs.length) return row.documentosLegacy || '-'
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 130 }}>
+        {docs.map(doc => (
+          <div key={doc.id} style={{ fontSize: 11, lineHeight: 1.25 }}>
+            <div>{doc.documento || doc.tipoDocumento || 'Documento'} {doc.nDoc || doc.numeroNCInterna || ''}</div>
+            <Badge tone={doc.estadoPagoDoc === 'Pagada' ? 'green' : 'gray'}>{doc.estadoPagoDoc || doc.estadoDoc || 'Activa'}</Badge>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   const cols = [
-    { key: 'fecha', label: 'Fecha',
-      render: v => <span style={{ ...mono, fontSize: 11 }}>{v ? new Date(v).toLocaleDateString('es-CL') : '-'}</span> },
-    { key: 'nInterno', label: 'N Int',
-      render: v => <span style={{ ...mono, fontWeight: 600 }}>{v || '-'}</span> },
-    { key: 'tipo', label: 'Tipo',
-      render: v => <Badge tone={v?.includes('Licit') ? 'blue' : v === 'Venta Web' ? 'amber' : v === 'Convenio Marco' ? 'neutral' : 'gray'}>{v || '-'}</Badge> },
-    { key: 'ref', label: 'OC / ID',
-      render: (_, row) => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 150 }}>
-          <span style={{ fontSize: 12, whiteSpace: 'normal' }}>{row.ref || '-'}</span>
-          {row.cotizacion?.idLicitacion && <span style={{ ...mono, fontSize: 10, color: 'var(--text-3)' }}>LIC {row.cotizacion.idLicitacion}</span>}
-        </div>
-      ) },
-    { key: 'cliente', label: 'Cliente', wrap: true,
-      render: (_, row) => (
-        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, minWidth: 140, maxWidth: 220 }}>
-          <span style={{ fontSize: 12, fontWeight: 500 }}>{row.nombreCliente || '-'}</span>
-          <span style={{ ...mono, fontSize: 10, color: 'var(--text-3)' }}>{row.cliente || ''}</span>
-        </div>
-      ) },
-    { key: 'detalleProductos', label: 'Detalle', wrap: true,
-      render: (_, row) => {
-        const list = row.detalleProductos || []
-        if (!list.length) return <span style={{ color: 'var(--text-3)' }}>-</span>
-        const shown = list.slice(0, 2)
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 190, maxWidth: 260 }}>
-            {shown.map(item => (
-              <span key={item.id} style={{ fontSize: 11, lineHeight: 1.25 }}>
-                <strong>{item.cantidad}x</strong> {item.nombre || item.codigoInterno || 'Item'} <span style={{ color: 'var(--text-3)' }}>{fmt(item.total)}</span>
-              </span>
-            ))}
-            {list.length > shown.length && <span style={{ fontSize: 10, color: 'var(--text-3)' }}>+{list.length - shown.length} mas</span>}
-          </div>
-        )
-      } },
+    { key: '_acc', label: 'Operaciones', render: (_, row) => renderOperations(row) },
+    { key: 'nInterno', label: 'Nro. Interno', render: v => <span style={{ ...mono, fontWeight: 700 }}>{v || '-'}</span> },
+    { key: 'nombreCliente', label: 'Nombre', wrap: true, render: v => <span style={{ fontWeight: 600 }}>{v || '-'}</span> },
+    { key: 'ref', label: 'OC', wrap: true, render: (_, row) => <span style={{ fontSize: 12, whiteSpace: 'normal' }}>{ocValue(row) || '-'}</span> },
     { key: 'total', label: 'Total', align: 'right',
       render: v => <span style={{ ...mono, fontWeight: 600, color: 'var(--green-700)' }}>{fmt(v)}</span> },
     { key: 'abono', label: 'Abono', align: 'right',
       render: v => <span style={{ ...mono, fontSize: 11 }}>{v ? fmt(v) : '-'}</span> },
-    { key: 'facturado', label: 'Fact.', align: 'right',
-      render: v => <span style={{ ...mono, fontSize: 11 }}>{v ? fmt(v) : '-'}</span> },
-    { key: 'ncTotal', label: 'NC', align: 'right',
-      render: v => <span style={{ ...mono, fontSize: 11 }}>{v ? fmt(v) : '-'}</span> },
-    { key: 'ndTotal', label: 'ND', align: 'right',
+    { key: 'facturado', label: 'Total Facturado', align: 'right',
       render: v => <span style={{ ...mono, fontSize: 11 }}>{v ? fmt(v) : '-'}</span> },
     { key: 'saldo', label: 'Saldo', align: 'right',
       render: v => <span style={{ ...mono, fontSize: 11, color: v > 0 ? 'var(--red)' : 'var(--text-3)' }}>{v != null ? fmt(v) : '-'}</span> },
-    { key: 'pago', label: 'Pago',
+    { key: 'estado', label: 'Estado', render: v => v ? <Badge tone={v === 'Activa' ? 'green' : 'gray'}>{v}</Badge> : '-' },
+    { key: 'pago', label: 'Estado Pago',
       render: v => v ? <Badge tone={v === 'Pagada' ? 'green' : v === 'Parcial' ? 'amber' : 'red'}>{v}</Badge> : '-' },
-    { key: 'estadoEntrega', label: 'Entrega',
-      render: v => v ? <Badge tone={toneEntrega(v)}>{v}</Badge> : '-' },
-    { key: 'odtCount', label: 'ODT', align: 'center',
-      render: (_, row) => {
-        const list = row.odts || []
-        if (!list.length) return '-'
-        return <span title={list.map(o => `#${o.id} ${o.estado || ''}`).join('\n')} style={{ ...mono, fontSize: 11, fontWeight: 600 }}>{list.length}x #{list[0]?.id}</span>
-      } },
-    { key: 'guiasCount', label: 'Guias', align: 'center',
-      render: (_, row) => {
-        const list = row.guias || []
-        if (!list.length) return row.guiasLegacy ? <span style={{ fontSize: 11 }}>#{row.guiasLegacy}</span> : '-'
-        const tip = list.map(g => `${g.nGuia} (${new Date(g.fechaGuia).toLocaleDateString('es-CL')})`).join('\n')
-        return <span title={tip} style={{ ...mono, fontSize: 11, fontWeight: 600 }}>{list.length}x {list[0]?.nGuia}</span>
-      } },
-    { key: 'documentosCount', label: 'Docs', align: 'center',
-      render: (_, row) => {
-        const list = row.documentos || []
-        if (!list.length) return '-'
-        const tipos = [...new Set(list.map(d => d.tipoDocumento || d.documento).filter(Boolean))].join(', ')
-        const tip = list.map(d => `${d.tipoDocumento || d.documento || '?'} ${d.nDoc || ''} ${d.estadoPagoDoc || ''}`).join('\n')
-        return <span title={tip} style={{ fontSize: 11, fontWeight: 600 }}>{list.length} <span style={{ color: 'var(--text-3)', fontSize: 10 }}>{tipos}</span></span>
-      } },
-    { key: '_acc', label: 'Acciones', render: (_, row) => (
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-        <button onClick={e => { e.stopPropagation(); openVenta(row) }} style={btnSm('var(--green-700)')} title="Ver detalle">Ver</button>
-        {row.fuente === 'orden' && row.cotizacion && (
-          <button onClick={e => { e.stopPropagation(); navigate(`/licitaciones/${row.cotizacion.id}`) }} style={btnSm('var(--blue)')} title={`Licitacion ${row.cotizacion.idLicitacion}`}>Lic</button>
-        )}
-        {row.fuente === 'licitacion' && row.ordenVinculadaId && (
-          <button onClick={e => { e.stopPropagation(); navigate(ventaPath(row.ordenVinculadaId, user)) }} style={btnSm('var(--green-700)')} title="Ver venta vinculada">Venta</button>
-        )}
-        {row.fuente === 'orden' && row.odtCount > 0 && (
-          <button onClick={e => { e.stopPropagation(); navigate(`/odt?ordenId=${row.id}`) }} style={btnSm('var(--amber)')} title={`${row.odtCount} ODT`}>ODT {row.odtCount}</button>
-        )}
-        {row.fuente === 'orden' && row.guiasCount > 0 && (
-          <button onClick={e => { e.stopPropagation(); navigate(`/despachos?ordenId=${row.id}`) }} style={btnSm('var(--blue)')} title={`${row.guiasCount} guia(s)`}>Guias</button>
-        )}
-        {row.fuente === 'orden' && row.nInterno && (
-          <button onClick={e => { e.stopPropagation(); navigate(`/caja?nInterno=${row.nInterno}`) }} style={btnSm('var(--text-2)')} title="Pagos / facturacion">Pagos</button>
-        )}
-        {canDeleteVentas && row.fuente === 'orden' && (
-          <button onClick={e => { e.stopPropagation(); eliminarFila(row) }} style={btnSm('var(--red)')} title="Anular">Anular</button>
-        )}
-      </div>
-    )},
+    { key: 'estadoEntrega', label: 'Estado Entrega',
+      render: (_, row) => row.estadoEntrega ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <Badge tone={toneEntrega(row.estadoEntrega)}>{row.estadoEntrega}</Badge>
+          {row.fechaEstadoEntrega && <span style={{ ...mono, fontSize: 10, color: 'var(--text-3)' }}>{formatDate(row.fechaEstadoEntrega)}</span>}
+        </div>
+      ) : '-' },
+    { key: 'detalleProductos', label: 'Detalle', wrap: true, render: (_, row) => renderDetalle(row) },
+    { key: 'fecha', label: 'Fecha Creacion', render: v => <span style={{ ...mono, fontSize: 11 }}>{formatDateTime(v)}</span> },
+    { key: 'creadorNombre', label: 'Creada por', render: v => <span style={{ fontSize: 12 }}>{v || '-'}</span> },
+    { key: 'odtCount', label: 'ODTs', render: (_, row) => renderLinkedList(row.odts, odt => `#${odt.id} ${odt.estado || ''}`) },
+    { key: 'guiasCount', label: 'Guias Desp.', render: (_, row) => row.guias?.length ? renderLinkedList(row.guias, guia => `#${guia.nGuia || guia.id}`) : (row.guiasLegacy ? <span style={{ ...mono, fontSize: 11 }}>#{row.guiasLegacy}</span> : '-') },
+    { key: 'documentosCount', label: 'Documentos', wrap: true, render: (_, row) => renderDocumentos(row) },
+    { key: 'cliente', label: 'Cliente', render: v => <span style={{ ...mono, fontSize: 11 }}>{v || '-'}</span> },
+    { key: 'cotizacion', label: 'ID Licitacion', render: (_, row) => <span style={{ ...mono, fontSize: 11 }}>{getIdLicitacion(row) || '-'}</span> },
+    { key: 'tipo', label: 'Tipo Venta', defaultHidden: true, render: v => <Badge tone={v?.includes('Licit') ? 'blue' : v === 'Venta Web' ? 'amber' : v === 'Convenio Marco' ? 'neutral' : 'gray'}>{v || '-'}</Badge> },
+    { key: 'ncTotal', label: 'NC', defaultHidden: true, align: 'right', render: v => <span style={{ ...mono, fontSize: 11 }}>{v ? fmt(v) : '-'}</span> },
+    { key: 'ndTotal', label: 'ND', defaultHidden: true, align: 'right', render: v => <span style={{ ...mono, fontSize: 11 }}>{v ? fmt(v) : '-'}</span> },
   ]
 
   return (
@@ -344,7 +366,20 @@ export default function MatrizVentasPage() {
   )
 }
 
-const btnSm = color => ({ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color, fontWeight: 500 })
+const operationBtn = background => ({
+  width: '100%',
+  padding: '5px 8px',
+  fontSize: 11,
+  borderRadius: 5,
+  border: 'none',
+  background,
+  color: '#fff',
+  cursor: 'pointer',
+  fontWeight: 700,
+  textAlign: 'left',
+})
+const detailHeadCell = { padding: '5px 6px', borderRight: '1px solid oklch(1 0 0 / 0.25)' }
+const detailCell = { padding: '6px', fontSize: 11, borderRight: '1px solid var(--border)' }
 const pagerBtn = disabled => ({ padding: '5px 10px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1 })
 const exportFilteredBtn = disabled => ({
   padding: '5px 10px',
