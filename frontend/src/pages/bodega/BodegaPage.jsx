@@ -11,7 +11,6 @@ import api from '../../api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
-import { ColumnSelector, useColumnPreferences } from '../../components/ColumnSelector'
 
 const estadoInventarioOptions = ['', 'Inventariado', 'Transitorio', 'Activo', 'Descontinuado', 'En transito', 'Reserva']
 const estadoOperativoOptions = ['', 'Disponible', 'Stock crítico', 'Sin stock', 'Incompleto', 'Descontinuado', 'Transitorio', 'En transito', 'Reserva']
@@ -111,7 +110,7 @@ export default function BodegaPage() {
     { key: 'porcDesc', label: 'Desc.', align: 'right', render: v => `${Number(v || 0).toLocaleString('es-CL')}%` },
     { key: 'precioLista', label: 'P. costo/lista', align: 'right', render: v => mono(money(v)) },
     { key: 'precioWeb', label: 'P. venta/web', align: 'right', render: (v, row) => mono(money(v ?? row.precioLista)) },
-    { key: 'precioMarco', label: 'P. licitación', align: 'right', render: v => mono(money(v)) },
+    { key: 'precioMarco', label: 'P. licitación', align: 'right', render: (v, row) => mono(money(row.consultaPrecios?.precioLicitacion ?? v)) },
     { key: 'stockCritico', label: 'Stock crit.', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
     { key: 'stock', label: 'Stock', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
     { key: 'proveedor', label: 'Proveedor', render: v => v || '-' },
@@ -128,8 +127,6 @@ export default function BodegaPage() {
       </div>
     )},
   ]
-
-  const { selected, setSelected, reset, visibleColumns, required } = useColumnPreferences(`bodega-${tab}`, cols, user)
 
   const resetEstadoFilters = () => {
     setFilter('all')
@@ -153,7 +150,6 @@ export default function BodegaPage() {
             onClick={() => downloadFromBackend('/reportes/export/productos', `productos_${new Date().toISOString().slice(0, 10)}.csv`, queryParams)}
           >Exportar Excel</Btn>
           {canWriteBodega && <Btn variant="secondary" icon="upload" size="sm" onClick={() => setImporting(true)}>Importar</Btn>}
-          <ColumnSelector columns={cols} selected={selected} onChange={setSelected} onReset={reset} required={required} />
           {canWriteCatalogo && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/bodega/nuevo')}>Crear nuevo</Btn>}
         </>}
       />
@@ -222,7 +218,8 @@ export default function BodegaPage() {
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando productos...</div>
           : <Table
-              columns={visibleColumns}
+              key={tab}
+              columns={cols}
               rows={productos}
               emptyMessage="No hay productos con ese criterio"
               onRowDoubleClick={canWriteCatalogo ? row => navigate('/bodega/' + row.id + '/editar') : undefined}
@@ -231,7 +228,7 @@ export default function BodegaPage() {
               stickyHeader
               ariaLabel="Productos de bodega"
               getRowKey={row => row.id}
-              columnPrefs={false}
+              columnPrefsKey={`bodega-${tab}`}
             />
         }
       </div>

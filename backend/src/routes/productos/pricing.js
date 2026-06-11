@@ -79,7 +79,12 @@ export function computeConsultaPrecios(producto, categoria, proveedor) {
     precioNormalSalaVentaIva: withIva(precioSalaNeto),
     precioConDescuento: withIva(precioConDescuentoNeto),
     precioConvMarco: toNumber(producto.precioMarco),
-    precioLicitacion: legacyMarkedPrice(precioBase, pctLicitacion),
+    // Precio licitacion: manual editable por producto si esta definido; si no,
+    // el calculado legacy (costo + % licitacion del proveedor).
+    precioLicitacion: producto.precioLicitacion != null
+      ? toNumber(producto.precioLicitacion)
+      : legacyMarkedPrice(precioBase, pctLicitacion),
+    precioLicitacionManual: producto.precioLicitacion != null,
   }
 }
 

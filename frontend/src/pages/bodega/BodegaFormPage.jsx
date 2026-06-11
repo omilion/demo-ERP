@@ -131,7 +131,7 @@ export default function BodegaFormPage() {
 
   const { data, set, errors, validate } = useForm({
     cod: '', nombre: '', cat: '', bodega: 'Inventario', stock: '', minimo: '', precio: '',
-    codigoBarra: '', proveedor: '', ubicacion: '', ubicacionId: '', descripcion: '', precioMarco: '',
+    codigoBarra: '', proveedor: '', ubicacion: '', ubicacionId: '', descripcion: '', precioMarco: '', precioLicitacion: '',
     categoriaId: '', subcategoriaId: '', porcDesc: '',
     idMarco: '', unidadMedida: '', estadoInventario: 'Inventariado',
     descripcionLicitacion: '', linkCompra: '', edad: '', materialidad: '',
@@ -169,6 +169,7 @@ export default function BodegaFormPage() {
       set('edad', found.edad || '')
       set('materialidad', found.materialidad || '')
       set('precioMarco', found.precioMarco != null ? String(found.precioMarco) : '')
+      set('precioLicitacion', found.precioLicitacion != null ? String(found.precioLicitacion) : '')
       set('idMarco', found.idMarco || '')
       set('unidadMedida', found.unidadMedida || '')
       set('estadoInventario', found.estadoInventario || 'Inventariado')
@@ -261,6 +262,7 @@ export default function BodegaFormPage() {
       edad: isEdit ? data.edad : data.edad || undefined,
       materialidad: isEdit ? data.materialidad : data.materialidad || undefined,
       precioMarco: data.precioMarco !== '' ? Number(data.precioMarco) : undefined,
+      precioLicitacion: data.precioLicitacion !== '' ? Number(data.precioLicitacion) : (isEdit ? null : undefined),
       idMarco: data.idMarco || undefined,
       unidadMedida: data.unidadMedida || undefined,
       estadoInventario: data.estadoInventario || 'Inventariado',
@@ -400,6 +402,12 @@ export default function BodegaFormPage() {
         <FormField label="Precio marco" hint="Convenio">
           <Input value={data.precioMarco} onChange={v => set('precioMarco', v)} type="number" prefix="$" placeholder="0" />
         </FormField>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <FormField label="Precio licitación" hint="Manual. Vacío = se calcula con el % del proveedor.">
+          <Input value={data.precioLicitacion} onChange={v => set('precioLicitacion', v)} type="number" prefix="$" placeholder="Calculado automático" />
+        </FormField>
+        <div />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
       <FormField label="Descuento (%)" hint="Equivalente a descuento legacy">

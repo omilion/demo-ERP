@@ -252,6 +252,7 @@ model Producto {
   idMarco          String?       @map("id_marco")
   precioLista      Float         @default(0) @map("precio_lista")
   precioMarco      Float         @default(0) @map("precio_marco")
+  precioLicitacion Float?        @map("precio_licitacion")
   porcDesc         Float         @default(0) @map("porc_desc")
   stock            Int           @default(0)
   stockCritico     Int           @default(0) @map("stock_critico")
