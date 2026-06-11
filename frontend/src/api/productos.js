@@ -76,6 +76,49 @@ export const useAddMovimiento = () => {
   })
 }
 
+export const useProductoProveedores = (productoId) =>
+  useQuery({
+    queryKey: ['producto-proveedores', productoId],
+    queryFn: () => api.get(`/productos/${productoId}/proveedores`).then(r => r.data),
+    enabled: !!productoId,
+  })
+
+export const useUpsertProductoProveedor = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ productoId, proveedorId, costo, cantidad }) =>
+      api.post(`/productos/${productoId}/proveedores`, { proveedorId, costo, cantidad }).then(r => r.data),
+    onSuccess: (_, { productoId }) => {
+      qc.invalidateQueries({ queryKey: ['producto-proveedores', productoId] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+    },
+  })
+}
+
+export const useUpdateProductoProveedor = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ productoId, proveedorId, costo, cantidad }) =>
+      api.put(`/productos/${productoId}/proveedores/${proveedorId}`, { costo, cantidad }).then(r => r.data),
+    onSuccess: (_, { productoId }) => {
+      qc.invalidateQueries({ queryKey: ['producto-proveedores', productoId] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+    },
+  })
+}
+
+export const useDeleteProductoProveedor = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ productoId, proveedorId }) =>
+      api.delete(`/productos/${productoId}/proveedores/${proveedorId}`).then(r => r.data),
+    onSuccess: (_, { productoId }) => {
+      qc.invalidateQueries({ queryKey: ['producto-proveedores', productoId] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+    },
+  })
+}
+
 export const useUploadProductoImagen = () =>
   useMutation({
     mutationFn: ({ dataUrl, size = 'chica' }) =>

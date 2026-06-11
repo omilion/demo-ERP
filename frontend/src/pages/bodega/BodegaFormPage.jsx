@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, FormSection, Input, Select, Textarea, useForm } from '../../components/forms/index'
-import { useProducto, useUpdateProducto, useCreateProducto, useHistorialPrecios, useMovimientos, useAddMovimiento, useUploadProductoImagen } from '../../api/productos'
+import { useProducto, useUpdateProducto, useCreateProducto, useHistorialPrecios, useMovimientos, useAddMovimiento, useUploadProductoImagen, useProductoProveedores, useUpsertProductoProveedor, useUpdateProductoProveedor, useDeleteProductoProveedor } from '../../api/productos'
 import { useCategorias } from '../../api/categorias'
+import { useProveedores } from '../../api/proveedores'
 import { useCreateUbicacion, useUbicaciones } from '../../api/ubicaciones'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
@@ -491,10 +492,108 @@ export default function BodegaFormPage() {
       )}
       </FormSection>
 
+      {isEdit && found && <ProveedoresSection productoId={found.id} />}
+
       {isEdit && found && <div id="movimientos"><MovimientosSection productoId={found.id} stockActual={found.stock} /></div>}
 
       <PrecioHistorial historial={historial} />
     </FormPage>
+  )
+}
+
+function ProveedoresSection({ productoId }) {
+  const { data = { items: [], stockTotal: 0, costoPonderado: 0 } } = useProductoProveedores(productoId)
+  const { data: proveedoresData = { items: [] } } = useProveedores()
+  const upsert = useUpsertProductoProveedor()
+  const update = useUpdateProductoProveedor()
+  const remove = useDeleteProductoProveedor()
+  const [proveedorId, setProveedorId] = useState('')
+  const [costo, setCosto] = useState('')
+  const [cantidad, setCantidad] = useState('')
+
+  const money = n => '$' + Number(n || 0).toLocaleString('es-CL')
+  const proveedorOptions = proveedoresData.items || []
+
+  const add = () => {
+    if (!proveedorId) { alert('Selecciona un proveedor'); return }
+    upsert.mutate(
+      { productoId, proveedorId: Number(proveedorId), costo: Number(costo || 0), cantidad: Number(cantidad || 0) },
+      {
+        onSuccess: () => { setProveedorId(''); setCosto(''); setCantidad('') },
+        onError: e => alert(e.response?.data?.error || 'No se pudo guardar el proveedor'),
+      },
+    )
+  }
+
+  const setRow = (row, field, value) => {
+    const payload = { productoId, proveedorId: row.proveedorId, costo: row.costo, cantidad: row.cantidad, [field]: Number(value || 0) }
+    update.mutate(payload, { onError: e => alert(e.response?.data?.error || 'No se pudo actualizar') })
+  }
+
+  const del = (row) => {
+    if (!window.confirm(`Quitar proveedor ${row.proveedorNombre || row.proveedorId}?`)) return
+    remove.mutate({ productoId, proveedorId: row.proveedorId }, { onError: e => alert(e.response?.data?.error || 'No se pudo quitar') })
+  }
+
+  return (
+    <>
+      <FormDivider label="Proveedores y costos" />
+      <div style={{ background: 'var(--bg)', padding: 12, borderRadius: 8, marginBottom: 10, fontSize: 12, color: 'var(--text-2)', display: 'flex', gap: 24 }}>
+        <span>Stock total: <b style={{ color: 'var(--text-1)', fontFamily: "'DM Mono', monospace" }}>{Number(data.stockTotal || 0).toLocaleString('es-CL')}</b></span>
+        <span>Costo ponderado: <b style={{ color: 'var(--text-1)', fontFamily: "'DM Mono', monospace" }}>{money(data.costoPonderado)}</b></span>
+        <span style={{ color: 'var(--text-3)' }}>El costo ponderado alimenta el precio costo. El precio de venta es único.</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: 8, marginBottom: 12, alignItems: 'end' }}>
+        <FormField label="Proveedor">
+          <Select
+            value={proveedorId}
+            onChange={setProveedorId}
+            options={[{ value: '', label: 'Seleccionar...' }, ...proveedorOptions.map(p => ({ value: String(p.id), label: `${p.nombre}${p.rut ? ` (${p.rut})` : ''}` }))]}
+          />
+        </FormField>
+        <FormField label="Costo">
+          <Input value={costo} onChange={setCosto} type="number" prefix="$" placeholder="0" />
+        </FormField>
+        <FormField label="Cantidad">
+          <Input value={cantidad} onChange={setCantidad} type="number" placeholder="0" />
+        </FormField>
+        <button onClick={add} disabled={upsert.isPending} style={{ padding: '8px 14px', borderRadius: 6, border: 'none', background: 'var(--green-700)', color: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer', height: 38 }}>
+          {upsert.isPending ? '…' : 'Agregar'}
+        </button>
+      </div>
+      {data.items.length > 0 && (
+        <div style={{ borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: 'var(--bg)' }}>
+                {['Proveedor', 'Costo', 'Cantidad', ''].map(h => (
+                  <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--text-3)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.3, borderBottom: '1px solid var(--border)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.items.map((row, i) => (
+                <tr key={row.id} style={{ borderBottom: i < data.items.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                  <td style={{ padding: '8px 14px' }}>
+                    <div style={{ fontWeight: 600 }}>{row.proveedorNombre || `#${row.proveedorId}`}</div>
+                    {row.proveedorRut && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>{row.proveedorRut}</div>}
+                  </td>
+                  <td style={{ padding: '6px 14px' }}>
+                    <Input value={String(row.costo)} onChange={v => setRow(row, 'costo', v)} type="number" prefix="$" />
+                  </td>
+                  <td style={{ padding: '6px 14px' }}>
+                    <Input value={String(row.cantidad)} onChange={v => setRow(row, 'cantidad', v)} type="number" />
+                  </td>
+                  <td style={{ padding: '8px 14px', textAlign: 'right' }}>
+                    <button onClick={() => del(row)} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--red)', fontWeight: 500 }}>Quitar</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
   )
 }
 
