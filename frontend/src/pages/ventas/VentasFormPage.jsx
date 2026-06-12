@@ -834,6 +834,129 @@ function MultasSection({ ordenId }) {
   )
 }
 
+function SearchableSelect({ value, onChange, options, disabled, placeholder }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const ref = useRef()
+
+  const selectedOption = options.find(o => String(o.value) === String(value))
+
+  useEffect(() => {
+    if (selectedOption) {
+      setSearchTerm(selectedOption.value ? selectedOption.label : '')
+    } else {
+      setSearchTerm('')
+    }
+  }, [value, selectedOption])
+
+  useEffect(() => {
+    const handler = e => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setIsOpen(false)
+        if (selectedOption) {
+          setSearchTerm(selectedOption.value ? selectedOption.label : '')
+        } else {
+          setSearchTerm('')
+        }
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [selectedOption])
+
+  const filteredOptions = options.filter(o => {
+    if (!o.value) return false
+    const term = searchTerm.toLowerCase()
+    return o.label.toLowerCase().includes(term) || (o.value && String(o.value).includes(term))
+  })
+
+  function select(opt) {
+    onChange(opt.value)
+    setSearchTerm(opt.label)
+    setIsOpen(false)
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input
+        type="text"
+        value={searchTerm}
+        disabled={disabled}
+        placeholder={placeholder || "Escribe para buscar cliente..."}
+        onFocus={() => !disabled && setIsOpen(true)}
+        onChange={e => {
+          setSearchTerm(e.target.value)
+          setIsOpen(true)
+          if (!e.target.value) {
+            onChange('')
+          }
+        }}
+        style={{
+          width: '100%',
+          padding: '9px 32px 9px 12px',
+          borderRadius: 8,
+          border: '1px solid var(--border)',
+          fontSize: 13,
+          fontFamily: 'inherit',
+          outline: 'none',
+          background: disabled ? 'var(--bg)' : '#fff',
+          color: disabled ? 'var(--text-3)' : 'inherit',
+          boxSizing: 'border-box',
+          cursor: disabled ? 'not-allowed' : 'text',
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'calc(100% - 12px) center',
+        }}
+      />
+      {isOpen && !disabled && (
+        <div style={{
+          position: 'absolute',
+          top: 'calc(100% + 4px)',
+          left: 0,
+          right: 0,
+          zIndex: 300,
+          background: '#fff',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          boxShadow: 'var(--shadow-md)',
+          maxHeight: 260,
+          overflowY: 'auto'
+        }}>
+          {filteredOptions.length === 0 ? (
+            <div style={{ padding: '9px 12px', fontSize: 13, color: 'var(--text-3)' }}>
+              Sin resultados
+            </div>
+          ) : (
+            filteredOptions.map(o => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => select(o)}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '9px 12px',
+                  textAlign: 'left',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: '1px solid var(--border)',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  color: 'var(--text-1)',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--green-50)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+              >
+                {o.label}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function VentasFormPage() {
   const navigate = useNavigate()
   const { id } = useParams()
@@ -1095,7 +1218,7 @@ export default function VentasFormPage() {
 
       <FormDivider label="Cliente" />
       <FormField label="Cliente / Organismo">
-        <Select value={data.clienteId} onChange={v => { set('clienteId', v); set('clienteSucursalId', '') }} options={clienteOptions} />
+        <SearchableSelect value={data.clienteId} onChange={v => { set('clienteId', v); set('clienteSucursalId', '') }} options={clienteOptions} />
       </FormField>
       <FormField label="Sucursal / Direccion de entrega">
         <Select value={data.clienteSucursalId} onChange={v => set('clienteSucursalId', v)} options={sucursalOptions} disabled={!selectedClienteId || !sucursalesCliente.length} />
