@@ -6,6 +6,7 @@ import { Badge, Btn, Icon } from '../../components/shared'
 import { useVenta, useCreateVenta, useUpdateVenta, useAnularVenta, useActivarVenta, useVentaCargos, useAddCargo, useDeleteCargo, useUpdateItemEntregados } from '../../api/ventas'
 import { useAuthStore } from '../../store/auth'
 import { useClientes, useClienteSucursales } from '../../api/clientes'
+import { FormCliente } from '../../components/forms/FormCliente'
 import { useProductos } from '../../api/productos'
 import { useMultas, useCreateMulta, useDeleteMulta } from '../../api/multas'
 import { useCrearDocumentoVenta } from '../../api/caja'
@@ -1002,6 +1003,7 @@ export default function VentasFormPage() {
   const [items, setItems] = useState([])
   const [selectedDiscountRule, setSelectedDiscountRule] = useState(null)
   const [initializedId, setInitializedId] = useState(null)
+  const [showNewCliente, setShowNewCliente] = useState(false)
 
   useEffect(() => {
     if (found && initializedId !== found.id) {
@@ -1179,7 +1181,20 @@ export default function VentasFormPage() {
     >
       <FormDivider label="Tipo de Venta" />
       <FormField label="Tipo de Venta">
-        <Select value={data.tipo} onChange={v => set('tipo', v)} options={TIPOS} />
+        <Select 
+          value={data.tipo} 
+          onChange={v => set('tipo', v)} 
+          options={TIPOS} 
+          style={{ 
+            backgroundColor: '#fffbeb', // Soft yellow background
+            borderColor: '#fcd34d',     // Warm golden border
+            fontSize: '15.6px',         // 20% larger font size (default is 13px)
+            fontWeight: '600',          // slightly bolder
+            height: '42px',             // more height/padding
+            color: '#78350f',           // contrast color
+            width: '100%',
+          }}
+        />
       </FormField>
 
       {data.tipo === 'Licitación' && (
@@ -1218,7 +1233,39 @@ export default function VentasFormPage() {
 
       <FormDivider label="Cliente" />
       <FormField label="Cliente / Organismo">
-        <SearchableSelect value={data.clienteId} onChange={v => { set('clienteId', v); set('clienteSucursalId', '') }} options={clienteOptions} />
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div style={{ flex: 1 }}>
+            <SearchableSelect value={data.clienteId} onChange={v => { set('clienteId', v); set('clienteSucursalId', '') }} options={clienteOptions} />
+          </div>
+          <button 
+            type="button" 
+            onClick={() => setShowNewCliente(true)}
+            style={{
+              padding: '9px 14px',
+              borderRadius: 8,
+              border: '1px solid var(--green-600)',
+              background: 'var(--green-50, #f0fdf4)',
+              color: 'var(--green-700, #15803d)',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              whiteSpace: 'nowrap',
+              height: '38px', // matches SearchableSelect height
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'var(--green-100)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'var(--green-50)'
+            }}
+          >
+            <Icon name="plus" size={14} />
+            Nuevo Cliente
+          </button>
+        </div>
       </FormField>
       <FormField label="Sucursal / Direccion de entrega">
         <Select value={data.clienteSucursalId} onChange={v => set('clienteSucursalId', v)} options={sucursalOptions} disabled={!selectedClienteId || !sucursalesCliente.length} />
@@ -1380,6 +1427,16 @@ export default function VentasFormPage() {
       <FormField label="Notas internas">
         <Textarea value={data.observaciones || ''} onChange={v => set('observaciones', v)} placeholder="Instrucciones especiales, condiciones de entrega, etc." rows={3} />
       </FormField>
+
+      {showNewCliente && (
+        <FormCliente 
+          onClose={() => setShowNewCliente(false)}
+          onSaved={(newCliente) => {
+            set('clienteId', String(newCliente.id))
+            set('clienteSucursalId', '')
+          }}
+        />
+      )}
     </FormPage>
   )
 }

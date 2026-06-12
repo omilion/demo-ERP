@@ -105,11 +105,12 @@ export const Input = ({ value, onChange, placeholder, type = 'text', error, disa
   </div>
 )
 
-export const Select = ({ value, onChange, options, error, disabled }) => (
+export const Select = ({ value, onChange, options, error, disabled, style, ...props }) => (
   <select value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
-    style={{ ...inputBase(error), cursor: 'pointer', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'calc(100% - 12px) center', paddingRight: 32 }}
+    style={{ ...inputBase(error), cursor: 'pointer', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'calc(100% - 12px) center', paddingRight: 32, ...style }}
     onFocus={e => !error && (e.target.style.borderColor = 'var(--green-600)')}
     onBlur={e => !error && (e.target.style.borderColor = 'var(--border)')}
+    {...props}
   >
     {options.map(o => typeof o === 'string' ? <option key={o} value={o}>{o}</option> : <option key={o.value} value={o.value}>{o.label}</option>)}
   </select>

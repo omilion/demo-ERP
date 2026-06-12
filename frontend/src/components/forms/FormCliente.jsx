@@ -1,21 +1,78 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FormPanel, ViewPanel, FormField, FormDivider, DetailRow, Input, Select, useForm, useSave } from './index'
+import { FormPanel, ViewPanel, FormField, FormDivider, DetailRow, Input, Select, useForm } from './index'
 import { Badge } from '../shared'
-import { useCliente } from '../../api/clientes'
+import { useCliente, useCreateCliente, useUpdateCliente } from '../../api/clientes'
 import { useAuthStore } from '../../store/auth'
 import { odtPath, ventaPath } from '../../utils/permissions'
 
 // ── FormCliente ────────────────────────────────────────────────────────────────
 export function FormCliente({ initial, onClose, onSaved }) {
   const isEdit = !!initial
-  const { data, set, errors, validate } = useForm(initial || {
-    rut: '', nombre: '', tipo: 'Empresa', ciudad: '', email: '', tel: '', credito: '',
+  const { data, set, errors, validate } = useForm(initial ? {
+    rut: initial.rut || '',
+    nombre: initial.nombre || '',
+    razonSocial: initial.razonSocial || '',
+    giro: initial.giro || '',
+    tipo: initial.tipo || 'Empresa',
+    direccion: initial.direccion || '',
+    region: initial.region || '',
+    comuna: initial.comuna || '',
+    ciudad: initial.ciudad || '',
+    email: initial.email || '',
+    tel: initial.telefono || initial.tel || '',
+    credito: initial.limiteCredito != null ? String(initial.limiteCredito) : '',
+  } : {
+    rut: '', nombre: '', razonSocial: '', giro: '', tipo: 'Empresa',
+    direccion: '', region: '', comuna: '', ciudad: '',
+    email: '', tel: '', credito: '',
   })
-  const { saving, save } = useSave(() => { onSaved && onSaved(data); onClose() })
+
+  const createMutation = useCreateCliente()
+  const updateMutation = useUpdateCliente()
+  const saving = createMutation.isPending || updateMutation.isPending
+
   const handleSave = () => {
     if (!validate({ nombre: { required: true }, rut: { required: true } })) return
-    save()
+
+    const payload = {
+      rut: data.rut,
+      nombre: data.nombre,
+      razonSocial: data.razonSocial || undefined,
+      giro: data.giro || undefined,
+      tipo: data.tipo || undefined,
+      direccion: data.direccion || undefined,
+      region: data.region || undefined,
+      comuna: data.comuna || undefined,
+      ciudad: data.ciudad || undefined,
+      email: data.email || undefined,
+      telefono: data.tel || undefined,
+      limiteCredito: data.credito ? Number(data.credito) : undefined,
+    }
+
+    if (isEdit) {
+      updateMutation.mutate(
+        { id: initial.id, data: payload },
+        {
+          onSuccess: (saved) => {
+            onSaved && onSaved(saved)
+            onClose()
+          },
+          onError: (err) => alert(err?.response?.data?.error || 'Error al guardar'),
+        }
+      )
+    } else {
+      createMutation.mutate(
+        payload,
+        {
+          onSuccess: (saved) => {
+            onSaved && onSaved(saved)
+            onClose()
+          },
+          onError: (err) => alert(err?.response?.data?.error || 'Error al crear'),
+        }
+      )
+    }
   }
 
   return (
@@ -25,27 +82,52 @@ export function FormCliente({ initial, onClose, onSaved }) {
       onClose={onClose} onSave={handleSave} saving={saving}
     >
       <FormDivider label="Identificación" />
-      <FormField label="RUT / Identificador" required error={errors.rut}>
-        <Input value={data.rut} onChange={v => set('rut', v)} placeholder="76123456-7" error={errors.rut} />
-      </FormField>
-      <FormField label="Nombre / Razón Social" required error={errors.nombre}>
-        <Input value={data.nombre} onChange={v => set('nombre', v)} placeholder="Razón social completa" error={errors.nombre} />
-      </FormField>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <FormField label="RUT / Identificador" required error={errors.rut}>
+          <Input value={data.rut} onChange={v => set('rut', v)} placeholder="76123456-7" error={errors.rut} />
+        </FormField>
         <FormField label="Tipo de Cliente">
           <Select value={data.tipo} onChange={v => set('tipo', v)} options={['Empresa', 'Institucional', 'Municipal', 'Gobierno', 'Distribuidor']} />
         </FormField>
-        <FormField label="Ciudad">
-          <Input value={data.ciudad} onChange={v => set('ciudad', v)} placeholder="Ciudad" />
+      </div>
+      <FormField label="Nombre / Nombre Comercial" required error={errors.nombre}>
+        <Input value={data.nombre} onChange={v => set('nombre', v)} placeholder="Nombre o Razón social corta" error={errors.nombre} />
+      </FormField>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <FormField label="Razón Social (SII)">
+          <Input value={data.razonSocial} onChange={v => set('razonSocial', v)} placeholder="Razón social legal completa" />
+        </FormField>
+        <FormField label="Giro">
+          <Input value={data.giro} onChange={v => set('giro', v)} placeholder="Giro / Actividad" />
         </FormField>
       </div>
+
+      <FormDivider label="Dirección" />
+      <FormField label="Dirección (Sucursal Principal)">
+        <Input value={data.direccion} onChange={v => set('direccion', v)} placeholder="Calle, número, depto/oficina" />
+      </FormField>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.2fr', gap: 14 }}>
+        <FormField label="Región">
+          <Input value={data.region} onChange={v => set('region', v)} placeholder="Ej: Metropolitana" />
+        </FormField>
+        <FormField label="Comuna">
+          <Input value={data.comuna} onChange={v => set('comuna', v)} placeholder="Ej: Santiago" />
+        </FormField>
+        <FormField label="Ciudad">
+          <Input value={data.ciudad} onChange={v => set('ciudad', v)} placeholder="Ej: Santiago" />
+        </FormField>
+      </div>
+
       <FormDivider label="Contacto" />
-      <FormField label="Email">
-        <Input value={data.email} onChange={v => set('email', v)} type="email" placeholder="correo@empresa.cl" />
-      </FormField>
-      <FormField label="Teléfono">
-        <Input value={data.tel} onChange={v => set('tel', v)} placeholder="+56 32 000 0000" />
-      </FormField>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 14 }}>
+        <FormField label="Email">
+          <Input value={data.email} onChange={v => set('email', v)} type="email" placeholder="correo@empresa.cl" />
+        </FormField>
+        <FormField label="Teléfono">
+          <Input value={data.tel} onChange={v => set('tel', v)} placeholder="+56 9 1234 5678" />
+        </FormField>
+      </div>
+
       <FormDivider label="Crédito" />
       <FormField label="Límite de Crédito" hint="Dejar en 0 para sin límite">
         <Input value={data.credito} onChange={v => set('credito', v)} type="number" prefix="$" placeholder="0" />
