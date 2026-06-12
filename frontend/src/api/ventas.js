@@ -19,7 +19,11 @@ export const useCreateVenta = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data) => api.post('/ventas', data).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ventas'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+    },
   })
 }
 
@@ -30,6 +34,7 @@ export const useUpdateVenta = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
 }
@@ -53,6 +58,7 @@ export const useAnularVenta = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
 }
@@ -64,6 +70,7 @@ export const useActivarVenta = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
 }
@@ -81,7 +88,10 @@ export const useAddCargo = () => {
     mutationFn: ({ ordenId, nombre, valor }) => api.post(`/ventas/${ordenId}/cargos`, { nombre, valor }).then(r => r.data),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['ventas', vars.ordenId, 'cargos'] })
+      qc.invalidateQueries({ queryKey: ['ventas', Number(vars.ordenId)] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
 }
@@ -92,7 +102,10 @@ export const useDeleteCargo = () => {
     mutationFn: ({ cargoId }) => api.delete(`/ventas/cargos/${cargoId}`),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['ventas', vars.ordenId, 'cargos'] })
+      qc.invalidateQueries({ queryKey: ['ventas', Number(vars.ordenId)] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
 }
@@ -104,6 +117,7 @@ export const useUpdateItemEntregados = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
 }
