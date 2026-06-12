@@ -732,8 +732,8 @@ export const Pager = ({ page = 1, pages = 1, total = 0, limit = 0, shown = 0, on
 }
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
-export const Tabs = ({ tabs, active, onChange }) => (
-  <div style={{ display: 'flex', gap: 2, borderBottom: '2px solid var(--border)', marginBottom: 20 }}>
+export const Tabs = ({ tabs, active, onChange, style }) => (
+  <div style={{ display: 'flex', gap: 2, borderBottom: '2px solid var(--border)', marginBottom: 20, ...style }}>
     {tabs.map(t => (
       <button key={t.id} onClick={() => onChange(t.id)} style={{
         padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer',

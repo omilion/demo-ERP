@@ -96,19 +96,33 @@ export default function MatrizVentasPage() {
     estadoPago || estadoEntrega || scope !== 'operacional'
   )
   const paginationControls = (
-    <>
-      <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={pagerBtn(page <= 1)}>Anterior</button>
-      <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{page} / {pages}</span>
-      <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} style={pagerBtn(page >= pages)}>Siguiente</button>
-      <button
-        disabled={!hasUserFilters || isLoading}
-        onClick={() => exportar('resumen')}
-        style={exportFilteredBtn(!hasUserFilters || isLoading)}
-        title={hasUserFilters ? 'Exporta todos los resultados filtrados, no solo esta pagina' : 'Aplica un filtro para activar este export'}
-      >
-        Exportar filtrado
-      </button>
-    </>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', width: '100%' }}>
+      <Tabs 
+        tabs={TABS} 
+        active={tab} 
+        onChange={t => { setTab(t); setPage(1) }} 
+        style={{ marginBottom: 0, borderBottom: 'none', gap: 1 }} 
+      />
+      <SearchBar
+        placeholder="Buscar por cliente, ODT, guía, OC..."
+        value={search}
+        onChange={setFilter(setSearch)}
+        style={{ width: 220 }}
+      />
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+        <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={pagerBtn(page <= 1)}>Anterior</button>
+        <span style={{ fontSize: 12, color: 'var(--text-2)', fontFamily: "'DM Mono', monospace", minWidth: 46, textAlign: 'center' }}>{page} / {pages}</span>
+        <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} style={pagerBtn(page >= pages)}>Siguiente</button>
+        <button
+          disabled={!hasUserFilters || isLoading}
+          onClick={() => exportar('resumen')}
+          style={exportFilteredBtn(!hasUserFilters || isLoading)}
+          title={hasUserFilters ? 'Exporta todos los resultados filtrados, no solo esta pagina' : 'Aplica un filtro para activar este export'}
+        >
+          Exportar
+        </button>
+      </div>
+    </div>
   )
 
   function openVenta(row) {
@@ -348,15 +362,7 @@ export default function MatrizVentasPage() {
             </FormField>
           </div>
         </div>
-        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <Tabs tabs={TABS} active={tab} onChange={t => { setTab(t); setPage(1) }} />
-          <SearchBar
-            placeholder="Buscar por cliente, ODT, guía, OC, licitación..."
-            value={search}
-            onChange={setFilter(setSearch)}
-            style={{ width: 280 }}
-          />
-        </div>
+
         {isLoading
           ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
           : <Table columns={cols} rows={data.items} emptyMessage="Sin ventas" onRowDoubleClick={openVenta} ariaLabel="Matriz de ventas" getRowKey={row => row.id} toolbarExtra={paginationControls} />
