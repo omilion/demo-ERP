@@ -31,7 +31,12 @@ function rewriteLegacyFotoPath(path) {
 export function normalizeProductoFotoUrl(value) {
   if (typeof value !== 'string' || value === '') return value
 
-  if (value.startsWith('/')) return rewriteLegacyFotoPath(value)
+  let path = value
+  if (path.startsWith('catalogo/')) {
+    path = '/uploads/' + path.slice('catalogo/'.length)
+  }
+
+  if (path.startsWith('/')) return rewriteLegacyFotoPath(path)
 
   try {
     const url = new URL(value)

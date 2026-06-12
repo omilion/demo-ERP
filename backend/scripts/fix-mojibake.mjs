@@ -61,7 +61,7 @@ for (const { table, cols } of targets) {
   console.log(`\n── ${table} ──`)
   for (const col of cols) {
     try {
-      const checkSql = `SELECT count(*)::int AS n FROM ${table} WHERE "${col}" ~ 'Ã[¡©­³ºñ¨]|Ã'`
+      const checkSql = `SELECT count(*)::int AS n FROM ${table} WHERE "${col}" ~ '[ÃÂâ]'`
       const [{ n }] = await prisma.$queryRawUnsafe(checkSql)
       if (!n) { console.log(`  ${col}: clean`); continue }
 
@@ -74,7 +74,7 @@ for (const { table, cols } of targets) {
 DO $$
 DECLARE r record; new_val text; ok int := 0; skip int := 0;
 BEGIN
-  FOR r IN SELECT ctid AS rid, "${col}" AS val FROM ${table} WHERE "${col}" ~ 'Ã' LOOP
+  FOR r IN SELECT ctid AS rid, "${col}" AS val FROM ${table} WHERE "${col}" ~ '[ÃÂâ]' LOOP
     BEGIN
       new_val := convert_from(convert_to(r.val, 'WIN1252'), 'UTF8');
       UPDATE ${table} SET "${col}" = new_val WHERE ctid = r.rid;

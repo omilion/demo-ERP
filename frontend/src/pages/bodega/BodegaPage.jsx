@@ -12,7 +12,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 
-const estadoInventarioOptions = ['', 'Inventariado', 'Transitorio', 'Activo', 'Descontinuado', 'En transito', 'Reserva']
+const estadoInventarioOptions = ['', 'Inventariado', 'Externo', 'Transitorio']
 const estadoOperativoOptions = ['', 'Disponible', 'Stock crítico', 'Sin stock', 'Incompleto', 'Descontinuado', 'Transitorio', 'En transito', 'Reserva']
 
 function money(value) {

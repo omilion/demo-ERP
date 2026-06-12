@@ -25,6 +25,8 @@ describe('producto foto URL helpers', () => {
   it('normalizes legacy upload paths', () => {
     expect(normalizeProductoFotoUrl('/uploads/productos/chicas/abc.jpg')).toBe('/uploads/fotos_chicas/abc.jpg')
     expect(normalizeProductoFotoUrl('/uploads/productos/grandes/abc.jpg')).toBe('/uploads/fotos_grandes/abc.jpg')
+    expect(normalizeProductoFotoUrl('catalogo/fotos_chicas/abc.jpg')).toBe('/uploads/fotos_chicas/abc.jpg')
+    expect(normalizeProductoFotoUrl('catalogo/fotos_grandes/abc.jpg')).toBe('/uploads/fotos_grandes/abc.jpg')
   })
 
   it('leaves current paths and external URLs unchanged', () => {
