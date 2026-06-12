@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Btn } from '../shared'
 
-export function FormPage({ title, subtitle, breadcrumb, onSave, saving, children }) {
+export function FormPage({ title, subtitle, breadcrumb, onSave, saving, children, headerActions, footerActions }) {
   const navigate = useNavigate()
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px' }}>
@@ -22,10 +22,14 @@ export function FormPage({ title, subtitle, breadcrumb, onSave, saving, children
           {subtitle && <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 4 }}>{subtitle}</p>}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Btn variant="ghost" onClick={() => navigate(-1)}>Cancelar</Btn>
-          <Btn variant="primary" icon={saving ? 'refreshCw' : 'check'} onClick={onSave} disabled={saving}>
-            {saving ? 'Guardando…' : 'Guardar'}
-          </Btn>
+          {headerActions ? headerActions : (
+            <>
+              <Btn variant="ghost" onClick={() => navigate(-1)}>Cancelar</Btn>
+              <Btn variant="primary" icon={saving ? 'refreshCw' : 'check'} onClick={onSave} disabled={saving}>
+                {saving ? 'Guardando…' : 'Guardar'}
+              </Btn>
+            </>
+          )}
         </div>
       </div>
 
@@ -36,10 +40,14 @@ export function FormPage({ title, subtitle, breadcrumb, onSave, saving, children
 
       {/* Footer actions */}
       <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
-        <Btn variant="ghost" onClick={() => navigate(-1)}>Cancelar</Btn>
-        <Btn variant="primary" icon={saving ? 'refreshCw' : 'check'} onClick={onSave} disabled={saving}>
-          {saving ? 'Guardando…' : 'Guardar'}
-        </Btn>
+        {footerActions ? footerActions : (
+          <>
+            <Btn variant="ghost" onClick={() => navigate(-1)}>Cancelar</Btn>
+            <Btn variant="primary" icon={saving ? 'refreshCw' : 'check'} onClick={onSave} disabled={saving}>
+              {saving ? 'Guardando…' : 'Guardar'}
+            </Btn>
+          </>
+        )}
       </div>
     </main>
   )

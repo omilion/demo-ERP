@@ -52,7 +52,9 @@ export default async function getOdt(fastify) {
     const withOperario = await attachOperarios(fastify.prisma, o)
     const withMetrics = attachOdtMetrics(withOperario)
     const withCosteo = await attachOdtCosteos(fastify.prisma, withMetrics)
-    const clienteNombre = o.clienteNombre || orden?.cliente?.nombre || null
+    const cleanNombre = (o.clienteNombre || '').trim()
+    const hasValidNombre = cleanNombre && cleanNombre !== '-' && cleanNombre !== 'Busqueda N Interno'
+    const clienteNombre = hasValidNombre ? cleanNombre : (orden?.cliente?.nombre || null)
     const clienteRut = orden?.cliente?.rut ?? null
     return { ...withCosteo, orden, talleres, clienteNombre, clienteRut }
   })

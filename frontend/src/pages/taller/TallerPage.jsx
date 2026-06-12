@@ -126,7 +126,7 @@ const OdtCard = ({ odt, onSelect }) => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 600, color: 'var(--green-700)' }}>
-            ODT #{odtNumeroOperativo(odt)}
+            OT #{odtNumeroOperativo(odt)}
           </span>
           {odt.nInterno && (
             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-3)' }}>
@@ -280,7 +280,7 @@ function OdtKanbanCardContent({ odt, canWrite, pending, onEstadoChange, isDraggi
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start', marginBottom: 7 }}>
         <div>
           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--green-700)', fontWeight: 700 }}>
-            ODT #{odtNumeroOperativo(odt)}
+            OT #{odtNumeroOperativo(odt)}
           </div>
           {odt.nInterno && <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: 'var(--text-3)' }}>N {odt.nInterno}</div>}
         </div>
@@ -396,7 +396,7 @@ function KanbanColumn({ column, items, canWrite, pending, onSelect, onEstadoChan
       </div>
       <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 9, flex: 1 }}>
         {items.length === 0 ? (
-          <div style={{ color: 'var(--text-3)', fontSize: 12, padding: '18px 8px', textAlign: 'center', border: isOver ? '1px dashed var(--green-600)' : '1px dashed transparent', borderRadius: 8 }}>Sin ODTs</div>
+          <div style={{ color: 'var(--text-3)', fontSize: 12, padding: '18px 8px', textAlign: 'center', border: isOver ? '1px dashed var(--green-600)' : '1px dashed transparent', borderRadius: 8 }}>Sin OTs</div>
         ) : items.map(odt => (
           <DraggableOdtCard
             key={odt.id}
@@ -529,7 +529,7 @@ function ProductividadPanel({ items = [], totalOdts = 0, onSelectOperario }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Productividad reciente</div>
-          <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 2 }}>{totalOdts.toLocaleString('es-CL')} ODTs cerradas en el rango</div>
+          <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 2 }}>{totalOdts.toLocaleString('es-CL')} OTs cerradas en el rango</div>
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(238px, 1fr))', gap: 10 }}>
@@ -549,7 +549,7 @@ function ProductividadPanel({ items = [], totalOdts = 0, onSelectOperario }) {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start', marginBottom: 7 }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>{item.responsable}</span>
-              <Badge tone={item.alertas?.materialesSinPrecio || item.alertas?.manoObraSinSueldo ? 'amber' : 'green'}>{item.odts} ODT</Badge>
+              <Badge tone={item.alertas?.materialesSinPrecio || item.alertas?.manoObraSinSueldo ? 'amber' : 'green'}>{item.odts} OT</Badge>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: 11 }}>
               <span style={{ color: 'var(--text-3)' }}>Unidades <b style={{ color: 'var(--text-1)' }}>{item.unidades}</b></span>
@@ -640,9 +640,13 @@ export default function TallerPage() {
     ? `${odt.operario.nombres || ''} ${odt.operario.apellidoPaterno || ''}`.trim()
     : ''
   const odtColumns = [
-    { key: 'id', label: 'ODT', required: true, render: (_, row) => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>#{odtNumeroOperativo(row)}</span> },
-    { key: 'nInterno', label: 'N interno', render: v => v || '-' },
-    { key: 'clienteNombre', label: 'Cliente', required: true, render: v => v || '-' },
+    { key: 'id', label: 'OT', required: true, render: (_, row) => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>#{odtNumeroOperativo(row)}</span> },
+    { key: 'nInterno', label: 'N interno', defaultHidden: true, render: v => v || '-' },
+    { key: 'clienteNombre', label: 'Cliente', required: true, render: (_, row) => {
+      const name = row.clienteNombre || row.orden?.cliente?.nombre || ''
+      const clean = name.trim()
+      return (clean && clean !== '-' && clean !== 'Busqueda N Interno') ? clean : '-'
+    } },
     { key: 'descripcion', label: 'Trabajo', render: v => <span title={v}>{v || '-'}</span> },
     { key: 'tipo', label: 'Taller', render: (_, row) => tallerLabel(row) },
     { key: 'estado', label: 'Estado', required: true, render: v => <Badge tone={estadoOperativoTone(v)}>{estadoOperativoOdt(v)}</Badge> },
@@ -680,7 +684,7 @@ export default function TallerPage() {
     const current = odt.estado || 'Sin estado'
     if (current === estado) return
     const odtNumero = odtNumeroOperativo(odt)
-    if (!confirm(`Confirmas mover la ODT #${odtNumero} de ${current} a ${estado}?`)) return
+    if (!confirm(`Confirmas mover la OT #${odtNumero} de ${current} a ${estado}?`)) return
     handleEstadoChange(odt.id, estado)
   }
 
@@ -699,11 +703,11 @@ export default function TallerPage() {
     <main className="page page-wide">
       <PageHeader
         title="Taller - Ordenes de Trabajo"
-        subtitle={`${total.toLocaleString('es-CL')} ODTs en total`}
-        breadcrumb={['Inicio', 'Taller', 'ODTs']}
+        subtitle={`${total.toLocaleString('es-CL')} OTs en total`}
+        breadcrumb={['Inicio', 'Taller', 'OTs']}
         actions={<>
           <Btn variant="secondary" icon="download" size="sm" onClick={handleExport}>Exportar</Btn>
-          {canWriteTaller && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/taller/nueva')}>Nueva ODT</Btn>}
+          {canWriteTaller && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/taller/nueva')}>Nueva OT</Btn>}
         </>}
       />
 
@@ -721,7 +725,7 @@ export default function TallerPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
             <div>
               <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Carga por responsable</div>
-              <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 2 }}>ODTs abiertas asignadas</div>
+              <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 2 }}>OTs abiertas asignadas</div>
             </div>
             <button
               onClick={() => setOperarioFilter('all')}
@@ -839,7 +843,7 @@ export default function TallerPage() {
                   <Icon name="x" size={13} />
                 </button>
               )}
-              <SearchBar placeholder="Buscar ODT, N interno, cliente..." value={search} onChange={setSearch} style={{ width: 260 }} />
+              <SearchBar placeholder="Buscar OT, N interno, cliente..." value={search} onChange={setSearch} style={{ width: 260 }} />
             </div>
           </div>
         </div>
@@ -856,17 +860,17 @@ export default function TallerPage() {
           )}
           {viewMode === 'kanban' && kanbanResult.truncated && (
             <div style={{ marginBottom: 12, padding: '9px 12px', border: '1px solid var(--amber-bg)', borderRadius: 8, background: 'var(--amber-bg)', color: 'oklch(0.42 0.12 68)', fontSize: 12, fontWeight: 600 }}>
-              Mostrando {kanbanOdts.length.toLocaleString('es-CL')} de {kanbanResult.total.toLocaleString('es-CL')} ODTs. Ajusta filtros para acotar.
+              Mostrando {kanbanOdts.length.toLocaleString('es-CL')} de {kanbanResult.total.toLocaleString('es-CL')} OTs. Ajusta filtros para acotar.
             </div>
           )}
           {(viewMode === 'kanban' ? kanbanLoading : isLoading) ? (
             <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>
-              Cargando ODTs...
+              Cargando OTs...
             </div>
           ) : (viewMode === 'kanban' ? kanbanOdts : odts).length === 0 ? (
             <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>
               <Icon name="info" size={24} color="var(--border)" />
-              <p style={{ marginTop: 12 }}>Sin ODTs con ese criterio</p>
+              <p style={{ marginTop: 12 }}>Sin OTs con ese criterio</p>
             </div>
           ) : viewMode === 'kanban' ? (
             <KanbanBoard
@@ -878,7 +882,7 @@ export default function TallerPage() {
               onEstadoDrop={handleKanbanDrop}
             />
           ) : (
-            <Table columns={odtColumns} rows={odts} onRowClick={row => navigate('/taller/' + row.id)} columnPrefsKey="taller-odts" ariaLabel="Taller ODTs" getRowKey={row => row.id} toolbarExtra={crmToggle} />
+            <Table columns={odtColumns} rows={odts} onRowClick={row => navigate('/taller/' + row.id)} columnPrefsKey="taller-ots" ariaLabel="Taller OTs" getRowKey={row => row.id} toolbarExtra={crmToggle} />
           )}
         </div>
         {viewMode === 'tabla' && <Pager page={page} pages={pages} total={total} limit={LIMIT} shown={odts.length} onChange={setPagerPage} disabled={isLoading} />}

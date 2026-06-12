@@ -2,13 +2,29 @@ import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../components/forms/index'
-import { useOdt, useCreateOdt, useUpdateOdt, useOdtOperarios, useOdtItemTallerEstado, useOdtTallerEstadoMasivo, useCreateOdtConsumo, useOdtMateriales, useDeleteOdtMaterial } from '../../api/odts'
+import {
+  useOdt,
+  useCreateOdt,
+  useUpdateOdt,
+  useOdtOperarios,
+  useOdtItemTallerEstado,
+  useOdtTallerEstadoMasivo,
+  useCreateOdtConsumo,
+  useOdtMateriales,
+  useDeleteOdtMaterial,
+  useOdtEstado,
+  useAddBitacora,
+  useDeleteBitacora,
+  useAnularOdt,
+  useCerrarOdt
+} from '../../api/odts'
 import { useProductos } from '../../api/productos'
 import { useBodegaTallerAutocomplete } from '../../api/bodegaTaller'
 import { useTelas } from '../../api/telas'
 import { useHistorialMateriales } from '../../api/historialMateriales'
 import { useAuthStore } from '../../store/auth'
-import { can } from '../../utils/permissions'
+import { can, ventaPath } from '../../utils/permissions'
+import { Icon, Badge, Btn } from '../../components/shared'
 
 const ESTADOS_ODT = [
   { value: 'Pendiente', label: 'Pendiente' },
@@ -22,21 +38,181 @@ function normalizeOdtFormEstado(estado) {
   return 'Pendiente'
 }
 
+const getErrorMessage = err => err?.response?.data?.error || err?.message || 'No se pudo completar la accion'
+
+function formatDuration(hours) {
+  if (hours == null) return '-'
+  if (hours < 24) return `${hours.toLocaleString('es-CL', { maximumFractionDigits: 1 })} h`
+  return `${(hours / 24).toLocaleString('es-CL', { maximumFractionDigits: 1 })} d`
+}
+
+function fmtMoney(value) {
+  if (value == null) return '-'
+  return '$' + Math.round(Number(value || 0)).toLocaleString('es-CL')
+}
+
+function formatAtraso(tiempos) {
+  if (!tiempos?.atrasoHoras) return '-'
+  return formatDuration(tiempos.atrasoHoras)
+}
+
+function odtNumeroOperativo(odt) {
+  return odt?.nInterno || odt?.orden?.nInterno || odt?.id
+}
+
+function OdtCosteoPanel({ costeo }) {
+  if (!costeo) return null
+  const alertas = []
+  if (costeo.alertas?.materialesSinPrecio) alertas.push(`${costeo.alertas.materialesSinPrecio} material(es) sin precio`)
+  if (costeo.alertas?.manoObraSinSueldo) alertas.push('Responsable sin sueldo liquido')
+  if (costeo.alertas?.sinHorasProduccion) alertas.push('Sin horas de produccion')
+
+  return (
+    <div style={{ marginTop: 12, padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-muted)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Costeo estimado</div>
+        {alertas.length > 0 && <Badge tone="amber">Datos incompletos</Badge>}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        {[
+          ['Materiales', fmtMoney(costeo.costoMateriales)],
+          ['Mano obra', fmtMoney(costeo.costoManoObra)],
+          ['Total costo', fmtMoney(costeo.costoTotal)],
+          ['Costo unit.', fmtMoney(costeo.costoPorUnidad)],
+          ['Unid./hora', costeo.unidadesPorHora == null ? '-' : `${costeo.unidadesPorHora}`],
+          ['Margen est.', fmtMoney(costeo.margenEstimado)],
+        ].map(([label, value]) => (
+          <div key={label} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px' }}>
+            <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 3 }}>{label}</div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>{value}</div>
+          </div>
+        ))}
+      </div>
+      {alertas.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 9 }}>
+          {alertas.map(alerta => <Badge key={alerta} tone="amber">{alerta}</Badge>)}
+        </div>
+      )}
+      {(costeo.materiales || []).length > 0 && (
+        <div style={{ marginTop: 10, maxHeight: 138, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {(costeo.materiales || []).slice(0, 8).map((material, index) => (
+            <div key={`${material.codigoInterno || material.nombre}-${index}`} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, fontSize: 11, alignItems: 'center', padding: '5px 0', borderTop: index ? '1px dashed var(--border)' : 'none' }}>
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{material.nombre || material.codigoInterno || '-'}</span>
+              <span style={{ color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>{material.cantidad} {material.unidad || ''}</span>
+              <span style={{ fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>{fmtMoney(material.costo)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BitacoraSection({ odtId, entries = [], canWrite, canDelete }) {
+  const [texto, setTexto] = useState('')
+  const addBitacora = useAddBitacora()
+  const delBitacora = useDeleteBitacora()
+
+  const handleAdd = () => {
+    if (!texto.trim()) return
+    addBitacora.mutate(
+      { odtId, texto },
+      {
+        onSuccess: () => setTexto(''),
+        onError: err => alert(getErrorMessage(err)),
+      }
+    )
+  }
+
+  const handleDelete = entryId => {
+    if (!confirm('¿Eliminar esta entrada de bitacora? Esta accion no se puede deshacer.')) return
+    delBitacora.mutate(
+      { odtId, entryId },
+      { onError: err => alert(getErrorMessage(err)) }
+    )
+  }
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>
+        Bitacora ({entries.length})
+      </div>
+
+      {entries.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+          {entries.map(e => (
+            <div key={e.id} style={{ background: 'var(--bg-muted)', borderRadius: 8, padding: '9px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 3, alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)' }}>{e.usuario}</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>
+                    {new Date(e.createdAt).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.5 }}>{e.texto}</div>
+              </div>
+              {canDelete && <button
+                type="button"
+                onClick={() => handleDelete(e.id)}
+                style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', padding: '2px 4px', marginLeft: 8, flexShrink: 0, cursor: 'pointer' }}
+                title="Eliminar entrada"
+              >
+                <Icon name="x" size={13} />
+              </button>}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12, padding: '8px 0' }}>Sin entradas de bitacora</div>
+      )}
+
+      {canWrite && <div style={{ display: 'flex', gap: 8 }}>
+        <input
+          value={texto}
+          onChange={e => setTexto(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleAdd()}
+          placeholder="Agregar nota..."
+          style={{ flex: 1, padding: '8px 12px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
+        />
+        <button
+          type="button"
+          onClick={handleAdd}
+          disabled={!texto.trim() || addBitacora.isPending}
+          style={{ padding: '8px 14px', borderRadius: 7, background: 'var(--green-600)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: !texto.trim() ? 0.5 : 1 }}
+        >
+          {addBitacora.isPending ? '...' : 'Agregar'}
+        </button>
+      </div>}
+    </div>
+  )
+}
+
 export default function TallerFormPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { id } = useParams()
   const isEdit = !!id
-  const ordenIdParam = new URLSearchParams(location.search).get('ordenId') || ''
+
+  const isUrlEdit = location.pathname.endsWith('/editar')
+  const [isEditMode, setIsEditMode] = useState(!id || isUrlEdit)
+
   const { data: found } = useOdt(isEdit ? Number(id) : null)
   const { data: operariosMeta = { items: [] } } = useOdtOperarios()
   const createOdt = useCreateOdt()
   const updateOdt = useUpdateOdt()
 
+  const cambiarEstado = useOdtEstado()
+  const cerrarOdt = useCerrarOdt()
+  const anularOdt = useAnularOdt()
+
+  const user = useAuthStore(s => s.user)
+  const canWriteTaller = can(user, 'taller', 'write')
+  const canDeleteTaller = can(user, 'taller', 'delete')
+
   const { data, set, errors, validate } = useForm({
     tipo: 'Espumas', clienteNombre: '', descripcion: '',
     obsGeneral: '', estado: 'Pendiente', prioridad: 'normal', plazo: '', fechaIngreso: '',
-    fechaInicio: '', fechaTermino: '', ordenId: ordenIdParam, operarioId: '',
+    fechaInicio: '', fechaTermino: '', ordenId: '', operarioId: '',
   })
 
   const initializedRef = useRef(false)
@@ -57,6 +233,12 @@ export default function TallerFormPage() {
       initializedRef.current = true
     }
   }, [found, set])
+
+  useEffect(() => {
+    // If the id changes or URL mode changes, update edit mode
+    setIsEditMode(!id || isUrlEdit)
+    initializedRef.current = false
+  }, [id, isUrlEdit])
 
   const operarioOptions = [
     { value: '', label: 'Sin responsable asignado' },
@@ -84,73 +266,237 @@ export default function TallerFormPage() {
     }
     if (isEdit) {
       updateOdt.mutate({ id: Number(id), data: payload }, {
-        onSuccess: () => navigate('/taller'),
-        onError: () => alert('Error al guardar la ODT'),
+        onSuccess: () => {
+          initializedRef.current = false
+          setIsEditMode(false)
+          navigate(`/taller/${id}`)
+        },
+        onError: () => alert('Error al guardar la OT'),
       })
     } else {
       createOdt.mutate(payload, {
         onSuccess: () => navigate('/taller'),
-        onError: () => alert('Error al crear la ODT'),
+        onError: () => alert('Error al crear la OT'),
       })
     }
   }
 
+  const handleCancelEdit = () => {
+    if (id) {
+      set('tipo', found.tipo || 'Espumas')
+      set('clienteNombre', found.clienteNombre ?? '')
+      set('descripcion', found.descripcion ?? '')
+      set('obsGeneral', found.obsGeneral ?? '')
+      set('estado', normalizeOdtFormEstado(found.estado))
+      set('prioridad', found.prioridad || 'normal')
+      set('plazo', found.plazo ? new Date(found.plazo).toISOString().slice(0, 10) : '')
+      set('fechaIngreso', found.fechaIngreso ? new Date(found.fechaIngreso).toISOString().slice(0, 10) : '')
+      set('fechaInicio', found.fechaInicio ? new Date(found.fechaInicio).toISOString().slice(0, 10) : '')
+      set('fechaTermino', found.fechaTermino ? new Date(found.fechaTermino).toISOString().slice(0, 10) : '')
+      set('ordenId', found.ordenId ? String(found.ordenId) : '')
+      set('operarioId', found.operarioId ? String(found.operarioId) : '')
+      setIsEditMode(false)
+      navigate(`/taller/${id}`)
+    } else {
+      navigate('/taller')
+    }
+  }
+
+  function handleCloseOdt(estado) {
+    const isReopen = estado === 'Pendiente'
+    const action = isReopen ? 'reabrir' : 'cerrar'
+    const odtNumero = odtNumeroOperativo(found)
+    const detail = isReopen
+      ? 'La OT volvera a Pendiente y quedara disponible para trabajo operativo.'
+      : 'La OT pasara a Terminada y se registrara fecha de termino si aun no existe.'
+    if (!confirm(`¿Confirmas ${action} la OT #${odtNumero}?\n\n${detail}`)) return
+    if (isReopen) {
+      cambiarEstado.mutate(
+        { id: Number(id), estado },
+        {
+          onError: err => alert(getErrorMessage(err)),
+        }
+      )
+      return
+    }
+    cerrarOdt.mutate(
+      { id: Number(id), estado },
+      {
+        onError: err => alert(getErrorMessage(err)),
+      }
+    )
+  }
+
+  function handleAnularOdt() {
+    const odtNumero = odtNumeroOperativo(found)
+    const razon = prompt(`Motivo para anular la OT #${odtNumero}`)
+    if (razon == null) return
+    if (!razon.trim()) { alert('Debes indicar un motivo para anular la OT.'); return }
+    if (!confirm(`¿Confirmas anular la OT #${odtNumero}?\n\nEsta accion la sacara del flujo operativo y conservara trazabilidad en bitacora.`)) return
+    anularOdt.mutate(
+      { id: Number(id), razon: razon.trim() },
+      {
+        onSuccess: () => navigate('/taller'),
+        onError: err => alert(getErrorMessage(err)),
+      }
+    )
+  }
+
+  // Lifecycle Transitions calculation
+  const estadoActions = [
+    { from: ['Pendiente', 'Asignada'], to: 'En proceso', label: 'Iniciar trabajo', tone: 'blue' },
+    { from: ['Prioritaria'], to: 'En proceso', label: 'Volver a En proceso', tone: 'blue' },
+    { from: ['En proceso', 'Prioritaria'], to: 'Control calidad', label: 'Dejar pendiente', tone: 'amber' },
+    { from: ['Pendiente', 'Asignada', 'En proceso', 'Prioritaria', 'Control calidad'], to: 'Terminada', label: 'Marcar lista', tone: 'green' },
+    { from: ['Terminada'], to: 'Pendiente', label: 'Reabrir OT', tone: 'amber' },
+    { from: ['Entregada'], to: 'Terminada', label: 'Reabrir entrega', tone: 'amber' },
+  ]
+  const available = found ? estadoActions.filter(a => a.from.includes(found.estado)) : []
+  const canReopenOdt = found ? ['Terminada', 'Entregada'].includes(found.estado) : false
+  const canAnularOdt = found ? !['Anulada'].includes(found.estado) : false
+  const lifecyclePending = cambiarEstado.isPending || cerrarOdt.isPending || anularOdt.isPending
+
+  const orden = found?.orden ?? null
+  const bitacora = found?.bitacora ?? []
+
+  // Action layouts
+  const editActions = (
+    <>
+      <Btn variant="ghost" onClick={handleCancelEdit}>Cancelar</Btn>
+      <Btn variant="primary" icon={updateOdt.isPending || createOdt.isPending ? 'refreshCw' : 'check'} onClick={handleSave} disabled={updateOdt.isPending || createOdt.isPending}>
+        {updateOdt.isPending || createOdt.isPending ? 'Guardando…' : 'Guardar'}
+      </Btn>
+    </>
+  )
+
+  const viewActions = (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <Btn variant="ghost" onClick={() => navigate('/taller')}>Volver</Btn>
+      <Btn variant="ghost" icon="printer" onClick={() => window.print()}>Imprimir</Btn>
+      {canWriteTaller && <Btn variant="primary" icon="edit" onClick={() => { setIsEditMode(true); navigate(`/taller/${id}/editar`) }}>Editar</Btn>}
+      {canWriteTaller && available.map(a => (
+        <Btn
+          key={a.to}
+          variant="secondary"
+          onClick={() => handleCloseOdt(a.to)}
+          disabled={lifecyclePending}
+          style={{
+            background: a.tone === 'green' ? 'var(--green-600)' : a.tone === 'blue' ? 'var(--blue)' : 'var(--amber)',
+            color: '#fff',
+            borderColor: 'transparent'
+          }}
+        >
+          {a.label}
+        </Btn>
+      ))}
+      {canDeleteTaller && canAnularOdt && (
+        <Btn variant="ghost" icon="xCircle" onClick={handleAnularOdt} disabled={lifecyclePending} style={{ color: 'var(--red)' }}>
+          Anular OT
+        </Btn>
+      )}
+    </div>
+  )
+
   return (
     <FormPage
-      title={isEdit ? 'Editar ODT' : 'Nueva ODT'}
-      subtitle={isEdit ? `Editando ODT #${id}` : 'Crear orden de trabajo'}
-      breadcrumb={['Inicio', 'Taller', isEdit ? 'Editar ODT' : 'Nueva ODT']}
+      title={isEdit ? (isEditMode ? 'Editar OT' : 'Detalle OT') : 'Nueva OT'}
+      subtitle={isEdit ? (isEditMode ? `Editando OT #${id}` : `Visualizando OT #${id}`) : 'Crear orden de trabajo'}
+      breadcrumb={['Inicio', 'Taller', isEdit ? 'Ver/Editar OT' : 'Nueva OT']}
       onSave={handleSave}
       saving={createOdt.isPending || updateOdt.isPending}
+      headerActions={isEditMode ? editActions : viewActions}
+      footerActions={isEditMode ? editActions : viewActions}
     >
-      <FormDivider label="Resumen ODT" />
+      {isEdit && orden && (
+        <div style={{ background: 'var(--green-50)', border: '1px solid var(--green-100)', borderRadius: 8, padding: '10px 14px', marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--green-700)', marginBottom: 3 }}>Venta origen</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>
+              #{orden.nInterno || orden.id} - {orden.cliente?.nombre || 'Sin cliente'}
+            </div>
+            {orden.cliente?.rut && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>{orden.cliente.rut}</div>}
+          </div>
+          <Btn variant="secondary" onClick={() => navigate(ventaPath(orden.id, user))} style={{ background: '#fff' }}>
+            Ver Venta
+          </Btn>
+        </div>
+      )}
+
+      <FormDivider label="Resumen OT" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
         <FormField label="Orden vinculada" required error={errors.ordenId}>
-          <Input type="number" value={data.ordenId} onChange={v => set('ordenId', v)} placeholder="ID de venta/orden" error={errors.ordenId} />
+          <Input type="number" value={data.ordenId} onChange={v => set('ordenId', v)} placeholder="ID de venta/orden" error={errors.ordenId} disabled={!isEditMode} />
         </FormField>
         <FormField label="Tipo de Trabajo">
-          <Select value={data.tipo} onChange={v => set('tipo', v)} options={['Espumas', 'Confecciones', 'Madera', 'Externo']} />
+          <Select value={data.tipo} onChange={v => set('tipo', v)} options={['Espumas', 'Confecciones', 'Madera', 'Externo']} disabled={!isEditMode} />
         </FormField>
         <FormField label="Estado">
-          <Select value={data.estado} onChange={v => set('estado', v)} options={ESTADOS_ODT} />
+          <Select value={data.estado} onChange={v => set('estado', v)} options={ESTADOS_ODT} disabled={!isEditMode} />
         </FormField>
         <FormField label="Prioridad">
           <Select value={data.prioridad} onChange={v => set('prioridad', v)} options={[
             { value: 'normal', label: 'Normal' },
             { value: 'alta', label: 'Alta' },
             { value: 'urgente', label: 'Urgente' },
-          ]} />
+          ]} disabled={!isEditMode} />
         </FormField>
         <FormField label="Responsable operativo">
-          <Select value={data.operarioId} onChange={v => set('operarioId', v)} options={operarioOptions} />
+          <Select value={data.operarioId} onChange={v => set('operarioId', v)} options={operarioOptions} disabled={!isEditMode} />
         </FormField>
       </div>
+
       <FormDivider label="Cliente / venta origen" />
       <FormField label="Cliente">
-        <Input value={data.clienteNombre} onChange={v => set('clienteNombre', v)} placeholder="Nombre del cliente" />
+        <Input value={data.clienteNombre} onChange={v => set('clienteNombre', v)} placeholder="Nombre del cliente" disabled={!isEditMode} />
       </FormField>
+
       <FormDivider label="Trabajo solicitado" />
       <FormField label="Descripción del trabajo" required error={errors.descripcion}>
-        <Textarea value={data.descripcion} onChange={v => set('descripcion', v)} placeholder="Detalle del trabajo a realizar" rows={3} error={errors.descripcion} />
+        <Textarea value={data.descripcion} onChange={v => set('descripcion', v)} placeholder="Detalle del trabajo a realizar" rows={3} error={errors.descripcion} disabled={!isEditMode} />
       </FormField>
       <FormField label="Obs OT / observacion general">
-        <Textarea value={data.obsGeneral} onChange={v => set('obsGeneral', v)} placeholder="Observaciones internas de produccion" rows={3} />
+        <Textarea value={data.obsGeneral} onChange={v => set('obsGeneral', v)} placeholder="Observaciones internas de produccion" rows={3} disabled={!isEditMode} />
       </FormField>
+
       <FormDivider label="Produccion y fechas" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
         <FormField label="Fecha ingreso">
-          <Input type="date" value={data.fechaIngreso} onChange={v => set('fechaIngreso', v)} />
+          <Input type="date" value={data.fechaIngreso} onChange={v => set('fechaIngreso', v)} disabled={!isEditMode} />
         </FormField>
         <FormField label="Fecha inicio">
-          <Input type="date" value={data.fechaInicio} onChange={v => set('fechaInicio', v)} />
+          <Input type="date" value={data.fechaInicio} onChange={v => set('fechaInicio', v)} disabled={!isEditMode} />
         </FormField>
         <FormField label="Fecha termino">
-          <Input type="date" value={data.fechaTermino} onChange={v => set('fechaTermino', v)} />
+          <Input type="date" value={data.fechaTermino} onChange={v => set('fechaTermino', v)} disabled={!isEditMode} />
         </FormField>
         <FormField label="Plazo de entrega">
-          <Input type="date" value={data.plazo} onChange={v => set('plazo', v)} />
+          <Input type="date" value={data.plazo} onChange={v => set('plazo', v)} disabled={!isEditMode} />
         </FormField>
       </div>
+
+      {isEdit && found && (
+        <>
+          <FormDivider label="Tiempos y Métricas de Producción" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 20 }}>
+            {[
+              ['Creada', new Date(found.createdAt).toLocaleDateString('es-CL')],
+              ['Fecha Ingreso', found.fechaIngreso ? new Date(found.fechaIngreso).toLocaleDateString('es-CL') : '-'],
+              ['Plazo de Entrega', found.plazo ? new Date(found.plazo).toLocaleDateString('es-CL') : '-'],
+              ['Fecha Inicio', found.fechaInicio ? new Date(found.fechaInicio).toLocaleDateString('es-CL') : '-'],
+              ['Fecha Término', found.fechaTermino ? new Date(found.fechaTermino).toLocaleDateString('es-CL') : '-'],
+              ['Tiempo Producción', formatDuration(found.tiempos?.produccionHoras)],
+              ['Ciclo', formatDuration(found.tiempos?.cicloHoras)],
+              ['Atraso', formatAtraso(found.tiempos)],
+            ].map(([l, v], i) => (
+              <div key={i} style={{ background: 'var(--bg-muted)', borderRadius: 8, padding: '10px 12px', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>{l}</div>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+          <OdtCosteoPanel costeo={found.costeo} />
+        </>
+      )}
 
       {isEdit && <OdtConsumosSection odtId={Number(id)} />}
 
@@ -158,6 +504,13 @@ export default function TallerFormPage() {
         <>
           <FormDivider label={`Items en proceso (${found.items.length})`} />
           <OdtItemsTable odtId={Number(id)} items={found.items} />
+        </>
+      )}
+
+      {isEdit && found && (
+        <>
+          <FormDivider label="Bitácora" />
+          <BitacoraSection odtId={Number(id)} entries={bitacora} canWrite={canWriteTaller} canDelete={canDeleteTaller} />
         </>
       )}
     </FormPage>
@@ -282,7 +635,7 @@ function OdtConsumosSection({ odtId }) {
   const disabled = createConsumo.isPending || !itemId || !cantidad
 
   const handleDeleteMaterial = material => {
-    if (!confirm(`Eliminar material ${material.nombre || material.codigoInterno || material.id} de la ODT?`)) return
+    if (!confirm(`Eliminar material ${material.nombre || material.codigoInterno || material.id} de la OT?`)) return
     deleteMaterial.mutate({ odtId, materialId: material.id }, {
       onError: error => alert(error?.response?.data?.error || 'Error al eliminar material'),
     })
@@ -309,7 +662,7 @@ function OdtConsumosSection({ odtId }) {
             <Input value={taller} onChange={setTaller} placeholder="Corte, costura..." disabled={createConsumo.isPending} />
           </FormField>
           <FormField label="Motivo">
-            <Input value={motivo} onChange={setMotivo} placeholder="Produccion ODT" disabled={createConsumo.isPending} />
+            <Input value={motivo} onChange={setMotivo} placeholder="Produccion OT" disabled={createConsumo.isPending} />
           </FormField>
           <div style={{ marginBottom: 18 }}>
             <button
@@ -336,7 +689,7 @@ function OdtConsumosSection({ odtId }) {
           {loadingMateriales ? (
             <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '6px 0' }}>Cargando materiales...</div>
           ) : materialesActuales.length === 0 ? (
-            <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '6px 0' }}>Sin materiales asignados a esta ODT</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '6px 0' }}>Sin materiales asignados a esta OT</div>
           ) : (
             <div style={{ display: 'grid', gap: 4, marginBottom: 12 }}>
               {materialesActuales.map(material => (
@@ -369,7 +722,7 @@ function OdtConsumosSection({ odtId }) {
           {loadingHistorial ? (
             <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '6px 0' }}>Cargando historial...</div>
           ) : recent.length === 0 ? (
-            <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '6px 0' }}>Sin consumos registrados para esta ODT</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '6px 0' }}>Sin consumos registrados para esta OT</div>
           ) : (
             <div style={{ display: 'grid', gap: 4 }}>
               {recent.map(entry => {

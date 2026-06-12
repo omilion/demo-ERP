@@ -78,7 +78,7 @@ export const router = createBrowserRouter([
       { path: 'bodega/:id/editar', element: protect(<BodegaFormPage />, { module: 'bodega', permission: 'write' }) },
       { path: 'taller', element: protect(<TallerPage />, { module: 'taller' }) },
       { path: 'taller/nueva', element: protect(<TallerFormPage />, { module: 'taller', permission: 'write' }) },
-      { path: 'taller/:id', element: protect(<OdtLegacyRedirect />, { module: 'taller' }) },
+      { path: 'taller/:id', element: protect(<TallerFormPage />, { module: 'taller' }) },
       { path: 'taller/:id/editar', element: protect(<TallerFormPage />, { module: 'taller', permission: 'write' }) },
       { path: 'odt', element: protect(<OdtLegacyRedirect />, { module: 'taller' }) },
       { path: 'odts/:id', element: protect(<OdtLegacyRedirect />, { module: 'taller' }) },

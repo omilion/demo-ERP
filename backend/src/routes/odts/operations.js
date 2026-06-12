@@ -167,8 +167,9 @@ export async function attachOrdenes(prisma, odts) {
   const map = Object.fromEntries(ordenes.map(o => [o.id, { ...o, cliente: o.clienteId ? (clienteMap[o.clienteId] || null) : null }]))
   const enriched = list.map(o => {
     const orden = o.ordenId ? (map[o.ordenId] || null) : null
-    // Muchas ODT migradas no tienen clienteNombre propio pero si la orden ligada.
-    const clienteNombre = o.clienteNombre || orden?.cliente?.nombre || null
+    const cleanNombre = (o.clienteNombre || '').trim()
+    const hasValidNombre = cleanNombre && cleanNombre !== '-' && cleanNombre !== 'Busqueda N Interno'
+    const clienteNombre = hasValidNombre ? cleanNombre : (orden?.cliente?.nombre || null)
     return { ...o, orden, nInterno: orden?.nInterno ?? null, clienteNombre, clienteRut: orden?.cliente?.rut ?? null }
   })
   return Array.isArray(odts) ? enriched : enriched[0]
