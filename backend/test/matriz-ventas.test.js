@@ -496,4 +496,128 @@ describe('matriz ventas - fecha autonoma, estado inicial y paginacion', () => {
       await cleanup(app, b)
     }
   })
+
+  it('filtro search unificado busca en multiples campos (cliente, ODT, guia, documento, licitacion/OC, nInterno)', async () => {
+    const marker = `search-${Date.now()}`
+    const fixture = await createOrder(app, marker, { sucursalId: 9107, licitacion: `LIC-${marker}` })
+    const odtNum = 12345000 + seq++
+    const guiaNum = `G-${marker}`
+    const ncNum = `NC-${marker}`
+    let odt, guia, mov, cotizacion
+    try {
+      // 1. Create ODT
+      odt = await app.prisma.odt.create({
+        data: { id: odtNum, ordenId: fixture.orden.id, sucursalId: 9107, estado: 'Pendiente' }
+      })
+      // 2. Create Guia
+      guia = await app.prisma.guiaDespacho.create({
+        data: { nGuia: guiaNum, fechaGuia: new Date(), orden: { connect: { id: fixture.orden.id } } }
+      })
+      // 3. Create NC Document (MovimientoCaja)
+      mov = await app.prisma.movimientoCaja.create({
+        data: {
+          tipo: 'Ingreso',
+          monto: -500,
+          medioPago: 'Referencial',
+          ordenId: fixture.orden.id,
+          sucursalId: 9107,
+          documento: 'NC Plast',
+          nDoc: ncNum,
+          fecha: new Date(),
+        }
+      })
+      // 4. Create CotizacionLicitacion
+      cotizacion = await app.prisma.cotizacionLicitacion.create({
+        data: {
+          idLicitacion: `COTLIC-${marker}`,
+          rutCliente: fixture.cliente.rut,
+          estado: 'Adjudicada',
+          ordenId: fixture.orden.id,
+          sucursalId: 9107,
+        }
+      })
+
+      // Test searching by client name
+      const resName = await app.inject({
+        method: 'GET',
+        url: `/api/matriz-ventas?search=${encodeURIComponent(`Cliente ${marker}`)}`,
+        headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` }
+      })
+      expect(JSON.parse(resName.body).items.map(i => i.id)).toContain(fixture.orden.id)
+
+      // Test searching by ODT (must be numeric)
+      const resOdt = await app.inject({
+        method: 'GET',
+        url: `/api/matriz-ventas?search=${odtNum}`,
+        headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` }
+      })
+      expect(JSON.parse(resOdt.body).items.map(i => i.id)).toContain(fixture.orden.id)
+
+      // Test searching by Guia (can be non-numeric or numeric)
+      const numericGuiaNum = String(23456000 + seq++)
+      const guia2 = await app.prisma.guiaDespacho.create({
+        data: { nGuia: numericGuiaNum, fechaGuia: new Date(), orden: { connect: { id: fixture.orden.id } } }
+      })
+      const resGuia = await app.inject({
+        method: 'GET',
+        url: `/api/matriz-ventas?search=${numericGuiaNum}`,
+        headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` }
+      })
+      expect(JSON.parse(resGuia.body).items.map(i => i.id)).toContain(fixture.orden.id)
+      await app.prisma.guiaDespacho.delete({ where: { id: guia2.id } }).catch(() => {})
+
+      // Test searching by Document (NC)
+      const resNC = await app.inject({
+        method: 'GET',
+        url: `/api/matriz-ventas?search=${encodeURIComponent(ncNum)}`,
+        headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` }
+      })
+      expect(JSON.parse(resNC.body).items.map(i => i.id)).toContain(fixture.orden.id)
+
+      // Test searching by Licitacion ID / OC
+      const resLic = await app.inject({
+        method: 'GET',
+        url: `/api/matriz-ventas?search=${encodeURIComponent(`COTLIC-${marker}`)}`,
+        headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` }
+      })
+      expect(JSON.parse(resLic.body).items.map(i => i.id)).toContain(fixture.orden.id)
+
+    } finally {
+      if (odt) await app.prisma.odt.delete({ where: { id: odt.id } }).catch(() => {})
+      if (guia) await app.prisma.guiaDespacho.delete({ where: { id: guia.id } }).catch(() => {})
+      if (mov) await app.prisma.movimientoCaja.delete({ where: { id: mov.id } }).catch(() => {})
+      if (cotizacion) await app.prisma.cotizacionLicitacion.delete({ where: { id: cotizacion.id } }).catch(() => {})
+      await cleanup(app, fixture)
+    }
+  })
+
+  it('kpis calcula correctamente hoy, mes, ytd y comparativo anual', async () => {
+    const marker = `kpis-${Date.now()}`
+    const today = new Date()
+    const lastYear = new Date()
+    lastYear.setFullYear(today.getFullYear() - 1)
+
+    const f1 = await createOrder(app, `${marker}-hoy`, { sucursalId: 9108, createdAt: today, precioUnitario: 5000, cantidad: 1 })
+    const f2 = await createOrder(app, `${marker}-ly`, { sucursalId: 9108, createdAt: lastYear, precioUnitario: 4000, cantidad: 1 })
+
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/matriz-ventas/totales',
+        headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` }
+      })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body).toHaveProperty('kpis')
+      expect(body.kpis.hoy.gran).toBeGreaterThanOrEqual(5000)
+      expect(body.kpis.mes.gran).toBeGreaterThanOrEqual(5000)
+      expect(body.kpis.ytd.total).toBeGreaterThanOrEqual(5000)
+      expect(body.kpis.prevYtd.total).toBeGreaterThanOrEqual(4000)
+      expect(body.kpis.variacionYtd).toBeDefined()
+    } finally {
+      await cleanup(app, f1)
+      await cleanup(app, f2)
+    }
+  })
 })
+

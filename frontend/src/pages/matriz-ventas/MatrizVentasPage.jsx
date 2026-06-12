@@ -56,15 +56,6 @@ export default function MatrizVentasPage() {
   const [search, setSearch] = useState(searchParams.get('search') || '')
   const [desde, setDesde] = useState(searchParams.get('desde') || '')
   const [hasta, setHasta] = useState(searchParams.get('hasta') || '')
-  const [rut, setRut] = useState(searchParams.get('rut') || '')
-  const [nombre, setNombre] = useState(searchParams.get('nombre') || '')
-  const [oc, setOc] = useState(searchParams.get('oc') || '')
-  const [idLicitacion, setIdLicitacion] = useState(searchParams.get('idLicitacion') || '')
-  const [nInterno, setNInterno] = useState(searchParams.get('nInterno') || '')
-  const [odt, setOdt] = useState(searchParams.get('odt') || '')
-  const [guia, setGuia] = useState(searchParams.get('guia') || '')
-  const [nc, setNc] = useState(searchParams.get('nc') || '')
-  const [nd, setNd] = useState(searchParams.get('nd') || '')
   const [estadoPago, setEstadoPago] = useState(searchParams.get('estadoPago') || '')
   const [estadoEntrega, setEstadoEntrega] = useState(searchParams.get('estadoEntrega') || '')
   const [scope, setScope] = useState(searchParams.get('scope') || 'operacional')
@@ -81,17 +72,14 @@ export default function MatrizVentasPage() {
   if (search) params.search = search
   if (desde) params.desde = desde
   if (hasta) params.hasta = hasta
-  if (rut) params.rut = rut
-  if (nombre) params.nombre = nombre
-  if (oc) params.oc = oc
-  if (idLicitacion) params.idLicitacion = idLicitacion
-  if (nInterno) params.nInterno = nInterno
-  if (odt) params.odt = odt
-  if (guia) params.guia = guia
-  if (nc) params.nc = nc
-  if (nd) params.nd = nd
   if (estadoPago) params.estadoPago = estadoPago
   if (estadoEntrega) params.estadoEntrega = estadoEntrega
+
+  // Forward legacy URL params if present (for backward compatibility / deep links)
+  for (const key of ['rut', 'nombre', 'oc', 'idLicitacion', 'nInterno', 'odt', 'guia', 'nc', 'nd']) {
+    const val = searchParams.get(key)
+    if (val) params[key] = val
+  }
 
   const totalParams = { ...params }
   delete totalParams.page
@@ -104,8 +92,8 @@ export default function MatrizVentasPage() {
   const pages = Math.max(1, Math.ceil(total / LIMIT))
   const suffix = todayIso()
   const hasUserFilters = Boolean(
-    tab !== 'all' || quick || search || desde || hasta || rut || nombre || oc || idLicitacion ||
-    nInterno || odt || guia || nc || nd || estadoPago || estadoEntrega || scope !== 'operacional'
+    tab !== 'all' || quick || search || desde || hasta ||
+    estadoPago || estadoEntrega || scope !== 'operacional'
   )
   const paginationControls = (
     <>
@@ -142,15 +130,6 @@ export default function MatrizVentasPage() {
     setSearch('')
     setDesde('')
     setHasta('')
-    setRut('')
-    setNombre('')
-    setOc('')
-    setIdLicitacion('')
-    setNInterno('')
-    setOdt('')
-    setGuia('')
-    setNc('')
-    setNd('')
     setEstadoPago('')
     setEstadoEntrega('')
     setScope('operacional')
@@ -307,10 +286,33 @@ export default function MatrizVentasPage() {
         )}
       />
       <div className="kpi-strip">
-        <KpiCard label="Ventas sala/marco" value={tot?.ordenes?.count || 0} sublabel={fmt(tot?.ordenes?.total || 0)} icon="package" />
-        <KpiCard label="Ventas web" value={tot?.ocOnline?.count || 0} sublabel={fmt(tot?.ocOnline?.total || 0)} icon="cloud" />
-        <KpiCard label="Licitaciones" value={tot?.licitaciones?.count || 0} sublabel={fmt(tot?.licitaciones?.total || 0)} icon="briefcase" />
-        <KpiCard label="Total periodo" value={fmt(tot?.gran || 0)} icon="dollarSign" tone="green" sublabel="Suma filtrada" />
+        <KpiCard
+          label="Ventas sala/marco (Hoy)"
+          value={fmt(tot?.kpis?.hoy?.ordenes?.total || 0)}
+          sublabel={`Mes: ${fmt(tot?.kpis?.mes?.ordenes?.total || 0)} (${tot?.kpis?.mes?.ordenes?.count || 0} vts)`}
+          icon="package"
+        />
+        <KpiCard
+          label="Ventas web (Hoy)"
+          value={fmt(tot?.kpis?.hoy?.ocOnline?.total || 0)}
+          sublabel={`Mes: ${fmt(tot?.kpis?.mes?.ocOnline?.total || 0)} (${tot?.kpis?.mes?.ocOnline?.count || 0} vts)`}
+          icon="cloud"
+        />
+        <KpiCard
+          label="Licitaciones (Hoy)"
+          value={fmt(tot?.kpis?.hoy?.licitaciones?.total || 0)}
+          sublabel={`Mes: ${fmt(tot?.kpis?.mes?.licitaciones?.total || 0)} (${tot?.kpis?.mes?.licitaciones?.count || 0} vts)`}
+          icon="briefcase"
+        />
+        <KpiCard
+          label="YTD (Acumulado año)"
+          value={fmt(tot?.kpis?.ytd?.total || 0)}
+          sublabel={`vs Año anterior: ${fmt(tot?.kpis?.prevYtd?.total || 0)}`}
+          icon="dollarSign"
+          tone="green"
+          trend={tot?.kpis?.variacionYtd}
+          trendTone="green-good"
+        />
       </div>
 
       <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
@@ -323,39 +325,37 @@ export default function MatrizVentasPage() {
           <button onClick={limpiarFiltros} style={quickBtn(false)}>Limpiar</button>
         </div>
 
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 8 }}>
-          <FormField label="Desde"><Input type="date" value={desde} onChange={setFilter(setDesde)} /></FormField>
-          <FormField label="Hasta"><Input type="date" value={hasta} onChange={setFilter(setHasta)} /></FormField>
-          <FormField label="RUT cliente"><Input value={rut} onChange={setFilter(setRut)} placeholder="11.111.111-1" /></FormField>
-          <FormField label="Nombre cliente"><Input value={nombre} onChange={setFilter(setNombre)} /></FormField>
-          <FormField label="N interno"><Input value={nInterno} onChange={setFilter(setNInterno)} type="number" /></FormField>
-          <FormField label="ID licitacion"><Input value={idLicitacion} onChange={setFilter(setIdLicitacion)} /></FormField>
-          <FormField label="OC"><Input value={oc} onChange={setFilter(setOc)} /></FormField>
-          <FormField label="ODT"><Input value={odt} onChange={setFilter(setOdt)} type="number" /></FormField>
-          <FormField label="N guia"><Input value={guia} onChange={setFilter(setGuia)} /></FormField>
-          <FormField label="NC"><Input value={nc} onChange={setFilter(setNc)} /></FormField>
-          <FormField label="ND"><Input value={nd} onChange={setFilter(setNd)} /></FormField>
-          <FormField label="Estado pago">
-            <select value={estadoPago} onChange={e => setFilter(setEstadoPago)(e.target.value)} style={selectStyle}>
-              {ESTADO_PAGO_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
-            </select>
-          </FormField>
-          <FormField label="Estado entrega">
-            <select value={estadoEntrega} onChange={e => setFilter(setEstadoEntrega)(e.target.value)} style={selectStyle}>
-              {ESTADO_ENTREGA_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
-            </select>
-          </FormField>
-          <FormField label="Alcance">
-            <select value={scope} onChange={e => setFilter(setScope)(e.target.value)} style={selectStyle}>
-              <option value="operacional">Operacional</option>
-              <option value="historico">Historico</option>
-              <option value="todos">Todos</option>
-            </select>
-          </FormField>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 8 }}>
+            <FormField label="Desde"><Input type="date" value={desde} onChange={setFilter(setDesde)} /></FormField>
+            <FormField label="Hasta"><Input type="date" value={hasta} onChange={setFilter(setHasta)} /></FormField>
+            <FormField label="Estado pago">
+              <select value={estadoPago} onChange={e => setFilter(setEstadoPago)(e.target.value)} style={selectStyle}>
+                {ESTADO_PAGO_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Estado entrega">
+              <select value={estadoEntrega} onChange={e => setFilter(setEstadoEntrega)(e.target.value)} style={selectStyle}>
+                {ESTADO_ENTREGA_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Alcance">
+              <select value={scope} onChange={e => setFilter(setScope)(e.target.value)} style={selectStyle}>
+                <option value="operacional">Operacional</option>
+                <option value="historico">Historico</option>
+                <option value="todos">Todos</option>
+              </select>
+            </FormField>
+          </div>
         </div>
         <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <Tabs tabs={TABS} active={tab} onChange={t => { setTab(t); setPage(1) }} />
-          <SearchBar placeholder="Buscar libre" value={search} onChange={setFilter(setSearch)} style={{ width: 280 }} />
+          <SearchBar
+            placeholder="Buscar por cliente, ODT, guía, OC, licitación..."
+            value={search}
+            onChange={setFilter(setSearch)}
+            style={{ width: 280 }}
+          />
         </div>
         {isLoading
           ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>

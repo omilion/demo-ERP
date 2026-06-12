@@ -213,6 +213,22 @@ async function resolveOrdenIdsByDocumento(prisma, query, user) {
   return [...new Set(docs.map(d => d.ordenId).filter(Boolean))]
 }
 
+async function resolveOrdenIdsBySearchDocs(prisma, search, user) {
+  if (!search) return null
+  const where = scopedMovimientoCajaWhere(user, {
+    eliminado: false,
+    OR: [
+      { nDoc: { contains: search, mode: 'insensitive' } },
+      { numeroNCInterna: { contains: search, mode: 'insensitive' } },
+      { documento: { contains: search, mode: 'insensitive' } },
+      { tipoDocumento: { contains: search, mode: 'insensitive' } },
+    ],
+  })
+  const docWhere = mergeWhere(where, ACTIVE_DOCUMENT_WHERE)
+  const docs = await prisma.movimientoCaja.findMany({ where: docWhere, select: { ordenId: true } })
+  return [...new Set(docs.map(d => d.ordenId).filter(Boolean))]
+}
+
 async function resolveOrdenIdsByIdLicitacion(prisma, idLicitacion, user) {
   if (!idLicitacion) return null
   const [cotizaciones, ordenes] = await Promise.all([
@@ -249,14 +265,32 @@ async function buildContext(fastify, query, user) {
   const parsedNInterno = effective.nInterno ? parsePositiveInt(effective.nInterno) : null
   if (effective.nInterno && !parsedNInterno) return { error: 'nInterno invalido' }
 
-  const [rutsByNombre, ordenIdsByOdt, guiaCondition, ordenIdsByDocs, ordenIdsByLic] = await Promise.all([
+  const isSearchNum = effective.search ? /^\d+$/.test(effective.search.trim()) : false
+
+  const [
+    rutsByNombre,
+    ordenIdsByOdt,
+    guiaCondition,
+    ordenIdsByDocs,
+    ordenIdsByLic,
+    rutsByNombreSearch,
+    ordenIdsByOdtSearch,
+    guiaConditionSearch,
+    ordenIdsByDocsSearch,
+    ordenIdsByLicSearch,
+  ] = await Promise.all([
     resolveRutsByNombre(fastify.prisma, effective.nombre),
     resolveOrdenIdsByOdt(fastify.prisma, effective.odt, user),
     resolveOrdenConditionByGuia(fastify.prisma, effective.guia, user),
     resolveOrdenIdsByDocumento(fastify.prisma, effective, user),
     resolveOrdenIdsByIdLicitacion(fastify.prisma, effective.idLicitacion, user),
+    effective.search ? resolveRutsByNombre(fastify.prisma, effective.search) : null,
+    effective.search && isSearchNum ? resolveOrdenIdsByOdt(fastify.prisma, effective.search, user) : null,
+    effective.search && isSearchNum ? resolveOrdenConditionByGuia(fastify.prisma, effective.search, user) : null,
+    effective.search ? resolveOrdenIdsBySearchDocs(fastify.prisma, effective.search, user) : null,
+    effective.search ? resolveOrdenIdsByIdLicitacion(fastify.prisma, effective.search, user) : null,
   ])
-  for (const value of [ordenIdsByOdt, guiaCondition]) {
+  for (const value of [ordenIdsByOdt, guiaCondition, ordenIdsByOdtSearch, guiaConditionSearch]) {
     if (value?.error) return { error: value.error }
   }
   return {
@@ -270,6 +304,11 @@ async function buildContext(fastify, query, user) {
     guiaCondition,
     ordenIdsByDocs,
     ordenIdsByLic,
+    rutsByNombreSearch,
+    ordenIdsByOdtSearch,
+    guiaConditionSearch,
+    ordenIdsByDocsSearch,
+    ordenIdsByLicSearch,
   }
 }
 
@@ -301,14 +340,31 @@ function applyCommonOrdenFilters(where, ctx, user) {
   if (q.estadoEntrega) where.estadoEntrega = q.estadoEntrega
   if (q.search) {
     const isNum = /^\d+$/.test(q.search.trim())
-    where = mergeWhere(where, {
-      OR: [
-        { creadorNombre: { contains: q.search, mode: 'insensitive' } },
-        { rutCliente: { contains: q.search, mode: 'insensitive' } },
-        { observaciones: { contains: q.search, mode: 'insensitive' } },
-        ...(isNum ? [{ nInterno: parseInt(q.search, 10) }, { id: parseInt(q.search, 10) }] : []),
-      ],
-    })
+    const searchOr = [
+      { creadorNombre: { contains: q.search, mode: 'insensitive' } },
+      { rutCliente: { contains: q.search, mode: 'insensitive' } },
+      { observaciones: { contains: q.search, mode: 'insensitive' } },
+      { licitacion: { contains: q.search, mode: 'insensitive' } },
+      ...(isNum ? [{ nInterno: parseInt(q.search, 10) }, { id: parseInt(q.search, 10) }] : []),
+    ]
+
+    if (ctx.rutsByNombreSearch?.length) {
+      searchOr.push({ rutCliente: { in: ctx.rutsByNombreSearch } })
+    }
+    if (ctx.ordenIdsByOdtSearch?.length) {
+      searchOr.push({ id: { in: ctx.ordenIdsByOdtSearch } })
+    }
+    if (ctx.guiaConditionSearch?.OR?.length) {
+      searchOr.push(...ctx.guiaConditionSearch.OR)
+    }
+    if (ctx.ordenIdsByDocsSearch?.length) {
+      searchOr.push({ id: { in: ctx.ordenIdsByDocsSearch } })
+    }
+    if (ctx.ordenIdsByLicSearch?.length) {
+      searchOr.push({ id: { in: ctx.ordenIdsByLicSearch } })
+    }
+
+    where = mergeWhere(where, { OR: searchOr })
   }
   if (ctx.guiaCondition) where = mergeWhere(where, ctx.guiaCondition)
   if (ctx.ordenIdsByOdt) where = mergeIdCondition(where, ctx.ordenIdsByOdt)
@@ -490,12 +546,17 @@ function buildLicitacionWhere(ctx, user) {
   if (q.oc) where.ordenCompra = { contains: q.oc, mode: 'insensitive' }
   if (q.search) {
     const isNum = /^\d+$/.test(q.search.trim())
-    where.OR = [
+    const searchOr = [
       { idLicitacion: { contains: q.search, mode: 'insensitive' } },
       { rutCliente: { contains: q.search, mode: 'insensitive' } },
       { referencia: { contains: q.search, mode: 'insensitive' } },
+      { ordenCompra: { contains: q.search, mode: 'insensitive' } },
       ...(isNum ? [{ id: parseInt(q.search, 10) }] : []),
     ]
+    if (ctx.rutsByNombreSearch?.length) {
+      searchOr.push({ rutCliente: { in: ctx.rutsByNombreSearch } })
+    }
+    where.OR = searchOr
   }
   return where
 }
@@ -628,6 +689,44 @@ async function aggLicMonto(fastify, where) {
   return { count: lics.length, total }
 }
 
+async function getTotalsForPeriod(fastify, start, end, user) {
+  const ordenesWhere = {
+    eliminada: false,
+    createdAt: { gte: start, lte: end },
+    tipo: { in: ['Venta sala', 'Venta directa', 'Venta Sala', 'Normal', 'Convenio Marco'] },
+    ...userSucursalWhere(user)
+  }
+  const ordenes = await aggOrdenMonto(fastify, ordenesWhere)
+
+  const ocWhere = {
+    fechaHora: { gte: start, lte: end },
+    ...scopedWhere(user)
+  }
+  const ocOnline = await aggOcMonto(fastify, ocWhere)
+
+  const licWhere = {
+    fecha: { gte: start, lte: end },
+    ordenId: null,
+    ...scopedWhere(user)
+  }
+  const licDirect = await aggLicMonto(fastify, licWhere)
+
+  const ordenLicWhere = {
+    eliminada: false,
+    createdAt: { gte: start, lte: end },
+    tipo: { contains: 'Licit', mode: 'insensitive' },
+    ...userSucursalWhere(user)
+  }
+  const ordenLic = await aggOrdenMonto(fastify, ordenLicWhere)
+
+  const licitaciones = {
+    count: licDirect.count + ordenLic.count,
+    total: licDirect.total + ordenLic.total
+  }
+
+  return { ordenes, ocOnline, licitaciones, gran: ordenes.total + ocOnline.total + licitaciones.total }
+}
+
 async function getMatrizTotales(fastify, query, user) {
   const ctx = await buildContext(fastify, query, user)
   if (ctx.error) return ctx
@@ -637,7 +736,49 @@ async function getMatrizTotales(fastify, query, user) {
     ocWhere ? aggOcMonto(fastify, ocWhere) : { count: 0, total: 0 },
     licWhere ? aggLicMonto(fastify, licWhere) : { count: 0, total: 0 },
   ])
-  return { ordenes, ocOnline, licitaciones, gran: ordenes.total + ocOnline.total + licitaciones.total }
+
+  // Get fixed dashboard KPIs (Today, Monthly, YTD)
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth()
+  const day = now.getDate()
+
+  const todayStart = new Date(year, month, day, 0, 0, 0, 0)
+  const todayEnd = new Date(year, month, day, 23, 59, 59, 999)
+  const monthStart = new Date(year, month, 1, 0, 0, 0, 0)
+  const yearStart = new Date(year, 0, 1, 0, 0, 0, 0)
+  const lastYearStart = new Date(year - 1, 0, 1, 0, 0, 0, 0)
+  const lastYearEnd = new Date(year - 1, month, day, 23, 59, 59, 999)
+
+  const [hoy, mes, ytd, prevYtd] = await Promise.all([
+    getTotalsForPeriod(fastify, todayStart, todayEnd, user),
+    getTotalsForPeriod(fastify, monthStart, todayEnd, user),
+    getTotalsForPeriod(fastify, yearStart, todayEnd, user),
+    getTotalsForPeriod(fastify, lastYearStart, lastYearEnd, user)
+  ])
+
+  const ytdTotal = ytd.gran
+  const prevYtdTotal = prevYtd.gran
+  let variacionYtd = 0
+  if (prevYtdTotal > 0) {
+    variacionYtd = Number(((ytdTotal - prevYtdTotal) / prevYtdTotal * 100).toFixed(2))
+  } else if (ytdTotal > 0) {
+    variacionYtd = 100
+  }
+
+  return {
+    ordenes,
+    ocOnline,
+    licitaciones,
+    gran: ordenes.total + ocOnline.total + licitaciones.total,
+    kpis: {
+      hoy,
+      mes,
+      ytd: { total: ytdTotal },
+      prevYtd: { total: prevYtdTotal },
+      variacionYtd
+    }
+  }
 }
 
 // Materializa todas las filas filtradas (solo para export CSV, donde la descarga es completa

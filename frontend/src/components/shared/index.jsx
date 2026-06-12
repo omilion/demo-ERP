@@ -97,7 +97,7 @@ export const Badge = ({ children, tone = 'neutral', size = 'sm' }) => {
 }
 
 // ── KpiCard ───────────────────────────────────────────────────────────────────
-export const KpiCard = ({ label, value, sublabel, icon, tone = 'neutral', onClick, trend }) => {
+export const KpiCard = ({ label, value, sublabel, icon, tone = 'neutral', onClick, trend, trendTone }) => {
   const tones = {
     neutral: { accent: 'var(--green-600)', badge: 'var(--green-50)' },
     amber:   { accent: 'var(--amber)',     badge: 'var(--amber-bg)' },
@@ -106,6 +106,10 @@ export const KpiCard = ({ label, value, sublabel, icon, tone = 'neutral', onClic
   }
   const t = tones[tone] || tones.neutral
   const [hov, setHov] = useState(false)
+  const isPositiveGood = trendTone !== 'red-good'
+  const trendColor = (trend >= 0)
+    ? (isPositiveGood ? 'var(--green-600)' : 'var(--red)')
+    : (isPositiveGood ? 'var(--red)' : 'var(--green-600)')
   return (
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{
       background: '#fff', borderRadius: 10, padding: '16px 20px',
@@ -121,8 +125,8 @@ export const KpiCard = ({ label, value, sublabel, icon, tone = 'neutral', onClic
           <Icon name={icon} size={16} color={t.accent} />
         </div>
         {trend !== undefined && (
-          <span style={{ fontSize: 11, color: trend >= 0 ? 'var(--red)' : 'var(--green-600)', display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Icon name={trend >= 0 ? 'trendingUp' : 'trendingDown'} size={12} color={trend >= 0 ? 'var(--red)' : 'var(--green-600)'} />
+          <span style={{ fontSize: 11, color: trendColor, display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Icon name={trend >= 0 ? 'trendingUp' : 'trendingDown'} size={12} color={trendColor} />
             {Math.abs(trend)}%
           </span>
         )}
@@ -403,6 +407,7 @@ export const Table = ({
   columnPrefsKey,
   columnPrefs = true,
   toolbarExtra,
+  pager,
 }) => {
   const user = useAuthStore(s => s.user)
   const [hovRow, setHovRow] = useState(null)
@@ -516,6 +521,31 @@ export const Table = ({
     <div className={`table-shell${isFullscreen ? ' table-shell-fullscreen' : ''}`}>
       <div className="table-tools" aria-label="Controles de tabla">
         {toolbarExtra && <div className="table-tools-extra">{toolbarExtra}</div>}
+        {pager && pager.pages > 1 && (
+          <div className="table-tools-pager" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 4 }}>
+            <button
+              type="button"
+              className="table-tool-btn"
+              title="Página anterior"
+              aria-label="Página anterior"
+              disabled={pager.disabled || pager.page <= 1}
+              onClick={() => pager.onChange(Math.max(1, pager.page - 1))}
+            >
+              <Icon name="chevronLeft" size={13} />
+            </button>
+            <span style={{ fontSize: 12, color: 'var(--text-2)', fontFamily: "'DM Mono', monospace", whiteSpace: 'nowrap' }}>{pager.page} / {pager.pages}</span>
+            <button
+              type="button"
+              className="table-tool-btn"
+              title="Página siguiente"
+              aria-label="Página siguiente"
+              disabled={pager.disabled || pager.page >= pager.pages}
+              onClick={() => pager.onChange(Math.min(pager.pages, pager.page + 1))}
+            >
+              <Icon name="chevronRight" size={13} />
+            </button>
+          </div>
+        )}
         {prefsKey && (
           <TableColumnSelector
             columns={columns}
