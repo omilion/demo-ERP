@@ -5,7 +5,7 @@ import { useDashboardStats } from '../../api/dashboard'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 
-const TALLER_ICONS = { Espumas: 'layers', Confecciones: 'scissors', Madera: 'box' }
+const TALLER_ICONS = { Espumas: 'layers', Confecciones: 'scissors', Madera: 'box', Externo: 'truck' }
 
 function TallerBar({ tipo, activas, urgentes = 0, max }) {
   const [hov, setHov] = useState(false)

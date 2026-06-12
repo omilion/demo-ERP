@@ -2,6 +2,20 @@ import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere } from '../h
 import { getUserSucursalId } from '../caja/scope.js'
 import { buildCobranzaHistoricoScopeWhere } from '../cobranza/scope.js'
 
+// El taller real vive en los items (items.talleres.taller.nombre); Odt.tipo es
+// "Legacy" en los datos migrados, asi que contar por `tipo` daba siempre 0.
+function tallerWhere(nombre, extra = {}) {
+  return {
+    ...extra,
+    items: {
+      some: {
+        eliminado: false,
+        talleres: { some: { taller: { is: { nombre: { contains: nombre, mode: 'insensitive' } } } } },
+      },
+    },
+  }
+}
+
 export default async function dashboardStats(fastify) {
   fastify.get('/stats', {
     preHandler: [fastify.authenticate],
@@ -22,9 +36,11 @@ export default async function dashboardStats(fastify) {
       espumasPendientes,
       confeccionesPendientes,
       maderaPendientes,
+      externoPendientes,
       espumasUrgentes,
       confeccionesUrgentes,
       maderaUrgentes,
+      externoUrgentes,
       stockRows,
       crmPendientes,
       crmEnGestion,
@@ -41,12 +57,14 @@ export default async function dashboardStats(fastify) {
       p.odt.count({ where: { estado: 'Pendiente' } }),
       p.odt.count({ where: { estado: 'En proceso' } }),
       p.odt.count({ where: { OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] } }),
-      p.odt.count({ where: { tipo: 'Espumas', estado: { in: ['Pendiente', 'En proceso'] } } }),
-      p.odt.count({ where: { tipo: 'Confecciones', estado: { in: ['Pendiente', 'En proceso'] } } }),
-      p.odt.count({ where: { tipo: 'Madera', estado: { in: ['Pendiente', 'En proceso'] } } }),
-      p.odt.count({ where: { tipo: 'Espumas', estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] } }),
-      p.odt.count({ where: { tipo: 'Confecciones', estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] } }),
-      p.odt.count({ where: { tipo: 'Madera', estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] } }),
+      p.odt.count({ where: tallerWhere('espuma', { estado: { in: ['Pendiente', 'En proceso'] } }) }),
+      p.odt.count({ where: tallerWhere('confe', { estado: { in: ['Pendiente', 'En proceso'] } }) }),
+      p.odt.count({ where: tallerWhere('madera', { estado: { in: ['Pendiente', 'En proceso'] } }) }),
+      p.odt.count({ where: tallerWhere('externo', { estado: { in: ['Pendiente', 'En proceso'] } }) }),
+      p.odt.count({ where: tallerWhere('espuma', { estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] }) }),
+      p.odt.count({ where: tallerWhere('confe', { estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] }) }),
+      p.odt.count({ where: tallerWhere('madera', { estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] }) }),
+      p.odt.count({ where: tallerWhere('externo', { estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] }) }),
       p.$queryRaw`
         SELECT
           bodega,
@@ -117,6 +135,7 @@ export default async function dashboardStats(fastify) {
         { tipo: 'Espumas',      activas: espumasPendientes,      urgentes: espumasUrgentes },
         { tipo: 'Confecciones', activas: confeccionesPendientes, urgentes: confeccionesUrgentes },
         { tipo: 'Madera',       activas: maderaPendientes,       urgentes: maderaUrgentes },
+        { tipo: 'Externo',      activas: externoPendientes,      urgentes: externoUrgentes },
       ],
       stock: stockByBodega,
       crm: {
