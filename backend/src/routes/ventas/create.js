@@ -7,6 +7,7 @@ import { canApplyDescuento, requiresDescuentoPermission } from './descuentos-per
 import { validateVentaDescuentoCatalogForWrite } from './descuentos-catalog.js'
 import { assertDiscountAuthorizationForDraft } from '../descuentos/rules-engine.js'
 
+
 const ItemSchema = z.object({
   productoId: z.number().int(),
   cantidad: z.number().int().min(1),
@@ -28,6 +29,10 @@ const Schema = z.object({
   estadoPago: z.enum(ESTADO_PAGO_VALUES).optional(),
   estadoEntrega: z.enum(ESTADO_ENTREGA_VALUES).optional(),
   items: z.array(ItemSchema).min(1),
+  licitacionFecha: z.string().optional().nullable(),
+  licitacionPlazo: z.string().optional().nullable(),
+  licitacionReferencia: z.string().optional().nullable(),
+  licitacionOC: z.string().optional().nullable(),
 })
 
 export default async function createVenta(fastify) {
@@ -37,14 +42,25 @@ export default async function createVenta(fastify) {
     try {
     const parsed = Schema.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
-    const { items, abono, estadoPago, facturado, descuentoAutorizacionId, ...rest } = parsed.data
+    const {
+      items,
+      abono,
+      estadoPago,
+      facturado,
+      descuentoAutorizacionId,
+      licitacionFecha,
+      licitacionPlazo,
+      licitacionReferencia,
+      licitacionOC,
+      ...rest
+    } = parsed.data
     if (abono > 0 || facturado !== undefined || (estadoPago && estadoPago !== 'No pagada')) {
       return reply.code(400).send({ error: 'Los abonos, facturado y estado de pago se registran desde Cobranza/Caja' })
     }
     if (!descuentoAutorizacionId && requiresDescuentoPermission(rest.descuentoPct) && !canApplyDescuento(request.user)) {
       return reply.code(403).send({ error: 'No tiene permiso para aplicar descuentos' })
     }
-    const cliente = await fastify.prisma.cliente.findUnique({ where: { id: rest.clienteId }, select: { id: true, activo: true } })
+    const cliente = await fastify.prisma.cliente.findUnique({ where: { id: rest.clienteId }, select: { id: true, activo: true, rut: true } })
     if (!cliente) return reply.code(404).send({ error: 'Cliente no encontrado' })
     if (!cliente.activo) return reply.code(409).send({ error: 'Cliente inactivo no puede generar ventas' })
     if (rest.clienteSucursalId) {
@@ -123,6 +139,51 @@ export default async function createVenta(fastify) {
         },
         include: { items: true },
       })
+
+      if (rest.tipo === 'Licitación') {
+        const licId = rest.licitacion || 'S/N'
+        let cot = await tx.cotizacionLicitacion.findFirst({
+          where: { idLicitacion: licId }
+        })
+        if (cot) {
+          await tx.cotizacionLicitacion.update({
+            where: { id: cot.id },
+            data: {
+              ordenId: created.id,
+              estado: 'Adjudicada',
+              fecha: licitacionFecha ? new Date(licitacionFecha) : undefined,
+              plazo: licitacionPlazo || undefined,
+              referencia: licitacionReferencia || undefined,
+              ordenCompra: licitacionOC || undefined,
+            }
+          })
+        } else {
+          await tx.cotizacionLicitacion.create({
+            data: {
+              idLicitacion: licId,
+              fecha: licitacionFecha ? new Date(licitacionFecha) : new Date(),
+              rutCliente: cliente.rut || '',
+              estado: 'Adjudicada',
+              plazo: licitacionPlazo || '',
+              referencia: licitacionReferencia || '',
+              ordenCompra: licitacionOC || '',
+              ordenId: created.id,
+              sucursalId: created.sucursalId,
+              usuario: request.user.nombre || 'Sistema',
+              items: {
+                create: itemsData.map(item => ({
+                  codigoInterno: item.codigoInterno,
+                  nombre: item.nombre,
+                  cantidad: item.cantidad,
+                  cantAdjudicados: item.cantidad,
+                  precio: item.precioUnitario,
+                }))
+              }
+            }
+          })
+        }
+      }
+
       const stock = await applyVentaStockDeltas(tx, {
         deltas: isVentaDirectaStockTipo(created.tipo) ? buildStockDeltasFromItems(itemsData, 1) : new Map(),
         ordenId: created.id,

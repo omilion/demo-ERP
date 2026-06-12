@@ -13,7 +13,10 @@ try {
   const env = readFileSync(resolve(__dirname, '../.env'), 'utf8')
   for (const line of env.split('\n')) {
     const m = line.match(/^([^#=]+)=(.*)$/)
-    if (m) process.env[m[1].trim()] = m[2].trim().replace(/^["']|["']$/g, '')
+    // No pisar variables ya presentes en el entorno (p.ej. DATABASE_URL via túnel).
+    if (m && process.env[m[1].trim()] === undefined) {
+      process.env[m[1].trim()] = m[2].trim().replace(/^["']|["']$/g, '')
+    }
   }
 } catch {}
 

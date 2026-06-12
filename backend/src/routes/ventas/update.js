@@ -32,6 +32,10 @@ const Schema = z.object({
   items: z.array(ItemSchema).min(1).refine(items => new Set(items.map(i => i.productoId)).size === items.length, {
     message: 'No se permiten productos duplicados en la venta',
   }).optional(),
+  licitacionFecha: z.string().optional().nullable(),
+  licitacionPlazo: z.string().optional().nullable(),
+  licitacionReferencia: z.string().optional().nullable(),
+  licitacionOC: z.string().optional().nullable(),
 }).refine(data => Object.keys(data).length > 0, { message: 'El cuerpo no puede estar vacío' })
 
 const DESTRUCTIVE_ESTADOS = new Set(['nula', 'anulada', 'cancelada'])
@@ -64,7 +68,15 @@ export default async function updateVenta(fastify) {
     const parsed = Schema.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     try {
-      const { items, descuentoAutorizacionId, ...ordenData } = parsed.data
+      const {
+        items,
+        descuentoAutorizacionId,
+        licitacionFecha,
+        licitacionPlazo,
+        licitacionReferencia,
+        licitacionOC,
+        ...ordenData
+      } = parsed.data
       const sucursalId = getUserSucursalId(request.user)
       const current = await fastify.prisma.orden.findFirst({
         where: { id, ...(sucursalId ? { sucursalId } : {}) },
@@ -323,6 +335,84 @@ export default async function updateVenta(fastify) {
             data: itemsData.map(item => ({ ...item, ordenId: id })),
           })
         }
+
+        if (nextTipo === 'Licitación') {
+          const licId = (ordenData.licitacion !== undefined ? ordenData.licitacion : lockedCurrent.licitacion) || 'S/N'
+          let cot = await tx.cotizacionLicitacion.findFirst({
+            where: { ordenId: id }
+          })
+          if (!cot) {
+            cot = await tx.cotizacionLicitacion.findFirst({
+              where: { idLicitacion: licId }
+            })
+          }
+
+          if (cot) {
+            const dataToUpdate = {
+              ordenId: id,
+              idLicitacion: licId,
+              estado: 'Adjudicada',
+            }
+            if (licitacionFecha !== undefined) dataToUpdate.fecha = licitacionFecha ? new Date(licitacionFecha) : null
+            if (licitacionPlazo !== undefined) dataToUpdate.plazo = licitacionPlazo
+            if (licitacionReferencia !== undefined) dataToUpdate.referencia = licitacionReferencia
+            if (licitacionOC !== undefined) dataToUpdate.ordenCompra = licitacionOC
+
+            await tx.cotizacionLicitacion.update({
+              where: { id: cot.id },
+              data: dataToUpdate
+            })
+
+            if (itemsData) {
+              await tx.cotizacionLicitacionItem.deleteMany({ where: { cotizacionId: cot.id } })
+              await tx.cotizacionLicitacionItem.createMany({
+                data: itemsData.map(item => ({
+                  cotizacionId: cot.id,
+                  codigoInterno: item.codigoInterno,
+                  nombre: item.nombre,
+                  cantidad: item.cantidad,
+                  cantAdjudicados: item.cantidad,
+                  precio: item.precioUnitario,
+                }))
+              })
+            }
+          } else {
+            const clientObj = await tx.cliente.findUnique({
+              where: { id: lockedCurrent.clienteId },
+              select: { rut: true }
+            })
+            const currentItems = itemsData || lockedCurrent.items
+            const createdCot = await tx.cotizacionLicitacion.create({
+              data: {
+                idLicitacion: licId,
+                fecha: licitacionFecha ? new Date(licitacionFecha) : new Date(),
+                rutCliente: clientObj?.rut || '',
+                estado: 'Adjudicada',
+                plazo: licitacionPlazo || '',
+                referencia: licitacionReferencia || '',
+                ordenCompra: licitacionOC || '',
+                ordenId: id,
+                sucursalId: lockedCurrent.sucursalId,
+                usuario: request.user.nombre || 'Sistema',
+                items: {
+                  create: currentItems.map(item => ({
+                    codigoInterno: item.codigoInterno,
+                    nombre: item.nombre,
+                    cantidad: item.cantidad,
+                    cantAdjudicados: item.cantidad,
+                    precio: item.precioUnitario,
+                  }))
+                }
+              }
+            })
+          }
+        } else {
+          await tx.cotizacionLicitacion.updateMany({
+            where: { ordenId: id },
+            data: { ordenId: null }
+          })
+        }
+
         return tx.orden.findUnique({ where: { id }, include: { items: true, cargos: true } })
       })
       orden.items = await attachProductos(fastify, orden.items)

@@ -29,7 +29,7 @@ export default async function getVenta(fastify) {
       fastify.prisma.cobranzaHistorico.findMany({ where: { ordenId: id }, orderBy: { fechaFactura: 'desc' } }).catch(ignoreMissingLegacyColumn),
       fastify.prisma.cotizacionLicitacion.findMany({
         where: { ordenId: id },
-        select: { id: true, idLicitacion: true, estado: true, referencia: true, ordenCompra: true, rutCliente: true },
+        select: { id: true, idLicitacion: true, estado: true, referencia: true, ordenCompra: true, rutCliente: true, fecha: true, plazo: true },
         orderBy: { fechaCreacion: 'desc' },
       }),
     ])

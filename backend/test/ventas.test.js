@@ -1624,4 +1624,66 @@ describe('Venta directa stock, lifecycle and sucursal scope', () => {
       await cleanup(created)
     }
   })
+
+  it('permite crear y actualizar ventas de tipo Licitacion con campos de metadata y los sincroniza con cotizacion_licitacion', async () => {
+    const marker = `TEST-VENTA-LICITACION-${Date.now()}`
+    const token = await loginAs(app, 'admin')
+    const producto = await createInventariado(marker, 5)
+    const created = { ordenIds: [], productoIds: [producto.id], cotIds: [] }
+    try {
+      const firstCliente = await app.prisma.cliente.findFirst()
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/ventas',
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          tipo: 'Licitación',
+          clienteId: firstCliente?.id,
+          licitacion: marker,
+          licitacionFecha: '2026-05-27',
+          licitacionPlazo: '30 días',
+          licitacionReferencia: 'Escuela A-100',
+          licitacionOC: 'OC-123',
+          items: [{ productoId: producto.id, cantidad: 2, precioUnitario: 1000 }],
+        },
+      })
+      expect(res.statusCode).toBe(201)
+      const body = JSON.parse(res.body)
+      created.ordenIds.push(body.id)
+
+      const cot = await app.prisma.cotizacionLicitacion.findFirst({
+        where: { idLicitacion: marker }
+      })
+      expect(cot).toBeDefined()
+      expect(cot.ordenId).toBe(body.id)
+      expect(new Date(cot.fecha).toISOString().slice(0, 10)).toBe('2026-05-27')
+      expect(cot.plazo).toBe('30 días')
+      expect(cot.referencia).toBe('Escuela A-100')
+      expect(cot.ordenCompra).toBe('OC-123')
+
+      const updateRes = await app.inject({
+        method: 'PUT',
+        url: `/api/ventas/${body.id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          licitacionFecha: '2026-05-28',
+          licitacionPlazo: '45 días',
+          licitacionReferencia: 'Escuela A-101',
+          licitacionOC: 'OC-124',
+        }
+      })
+      expect(updateRes.statusCode).toBe(200)
+
+      const cotUpdated = await app.prisma.cotizacionLicitacion.findUnique({
+        where: { id: cot.id }
+      })
+      expect(new Date(cotUpdated.fecha).toISOString().slice(0, 10)).toBe('2026-05-28')
+      expect(cotUpdated.plazo).toBe('45 días')
+      expect(cotUpdated.referencia).toBe('Escuela A-101')
+      expect(cotUpdated.ordenCompra).toBe('OC-124')
+    } finally {
+      await app.prisma.cotizacionLicitacion.deleteMany({ where: { idLicitacion: marker } }).catch(() => {})
+      await cleanup(created)
+    }
+  })
 })

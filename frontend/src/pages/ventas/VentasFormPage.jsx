@@ -871,6 +871,7 @@ export default function VentasFormPage() {
     clienteId: '', clienteSucursalId: '', tipo: searchParams.get('tipo') || 'Normal', estado: 'Activa',
     estadoPago: 'No pagada', estadoEntrega: 'Pendiente entrega',
     abono: '', guias: '', facturado: '', descuentoPct: '', licitacion: searchParams.get('oc') || '', observaciones: searchParams.get('obs') || '',
+    licitacionFecha: '', licitacionPlazo: '', licitacionReferencia: '', licitacionOC: '',
   })
   const selectedClienteId = data.clienteId ? Number(data.clienteId) : null
   const { data: sucursalesCliente = [] } = useClienteSucursales(selectedClienteId)
@@ -893,6 +894,13 @@ export default function VentasFormPage() {
       set('descuentoPct', found.descuentoPct != null ? String(found.descuentoPct) : '')
       set('licitacion', found.licitacion || '')
       set('observaciones', found.observaciones || '')
+      
+      const firstCot = found.cotizaciones?.[0]
+      set('licitacionFecha', firstCot?.fecha ? new Date(firstCot.fecha).toISOString().slice(0, 10) : '')
+      set('licitacionPlazo', firstCot?.plazo || '')
+      set('licitacionReferencia', firstCot?.referencia || '')
+      set('licitacionOC', firstCot?.ordenCompra || '')
+
       const initialItems = found.items?.length
         ? found.items.map(i => ({
           productoId: i.productoId,
@@ -956,6 +964,16 @@ export default function VentasFormPage() {
       alert('Ingresa la OC de Convenio Marco')
       return
     }
+    if (data.tipo === 'Licitación') {
+      if (!String(data.licitacion || '').trim()) {
+        alert('Ingresa el ID de Licitación')
+        return
+      }
+      if (!data.licitacionFecha) {
+        alert('Ingresa la Fecha de la Licitación')
+        return
+      }
+    }
 
     const normalizedItems = shouldSendItems ? normalizeItems(items) : null
     const payload = {
@@ -963,6 +981,12 @@ export default function VentasFormPage() {
       estadoEntrega: data.estadoEntrega,
       licitacion: data.licitacion || undefined,
       observaciones: data.observaciones || undefined,
+    }
+    if (data.tipo === 'Licitación') {
+      payload.licitacionFecha = data.licitacionFecha || undefined
+      payload.licitacionPlazo = data.licitacionPlazo || undefined
+      payload.licitacionReferencia = data.licitacionReferencia || undefined
+      payload.licitacionOC = data.licitacionOC || undefined
     }
     if (data.clienteId) payload.clienteId = Number(data.clienteId)
     payload.clienteSucursalId = data.clienteSucursalId ? Number(data.clienteSucursalId) : null
@@ -1030,6 +1054,45 @@ export default function VentasFormPage() {
       onSave={handleSave}
       saving={saving}
     >
+      <FormDivider label="Tipo de Venta" />
+      <FormField label="Tipo de Venta">
+        <Select value={data.tipo} onChange={v => set('tipo', v)} options={TIPOS} />
+      </FormField>
+
+      {data.tipo === 'Licitación' && (
+        <>
+          <FormDivider label="Detalles de la Licitación" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <FormField label="ID Licitación (Requerido)" hint="Ej: 61602954-LE15-1">
+              <Input value={data.licitacion || ''} onChange={v => set('licitacion', v)} placeholder="Codigo de seguimiento" />
+            </FormField>
+            <FormField label="Fecha Licitación (Requerido)">
+              <Input type="date" value={data.licitacionFecha || ''} onChange={v => set('licitacionFecha', v)} />
+            </FormField>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 14 }}>
+            <FormField label="Plazo">
+              <Input value={data.licitacionPlazo || ''} onChange={v => set('licitacionPlazo', v)} placeholder="Ej: 30 días" />
+            </FormField>
+            <FormField label="Referencia">
+              <Input value={data.licitacionReferencia || ''} onChange={v => set('licitacionReferencia', v)} placeholder="Ej: Escuela Municipal" />
+            </FormField>
+            <FormField label="Orden de Compra">
+              <Input value={data.licitacionOC || ''} onChange={v => set('licitacionOC', v)} placeholder="Ej: 12345-67-SE16" />
+            </FormField>
+          </div>
+        </>
+      )}
+
+      {isConvenioMarco(data.tipo) && (
+        <>
+          <FormDivider label="Detalles del Convenio Marco" />
+          <FormField label="N OC Convenio Marco (Requerido)" hint="Obligatorio y no duplicable">
+            <Input value={data.licitacion || ''} onChange={v => set('licitacion', v)} placeholder="Numero OC" />
+          </FormField>
+        </>
+      )}
+
       <FormDivider label="Cliente" />
       <FormField label="Cliente / Organismo">
         <Select value={data.clienteId} onChange={v => { set('clienteId', v); set('clienteSucursalId', '') }} options={clienteOptions} />
@@ -1059,24 +1122,16 @@ export default function VentasFormPage() {
         </div>
       )}
 
-      <FormDivider label="Tipo y estado" />
+      <FormDivider label="Estados de la Orden" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
-        <FormField label="Tipo de Venta">
-          <Select value={data.tipo} onChange={v => set('tipo', v)} options={TIPOS} />
+        <FormField label="Estado de la orden">
+          <Select value={data.estado} onChange={v => set('estado', v)} options={['Activa', 'Cerrada', 'Nula', 'Completada', 'En proceso']} />
         </FormField>
         <FormField label="Estado Pago">
           <Input value={data.estadoPago} onChange={() => null} disabled />
         </FormField>
         <FormField label="Estado Entrega">
           <Select value={data.estadoEntrega} onChange={v => set('estadoEntrega', v)} options={['Pendiente entrega', 'Entregada', 'En despacho', 'Parcial']} />
-        </FormField>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <FormField label="Estado de la orden">
-          <Select value={data.estado} onChange={v => set('estado', v)} options={['Activa', 'Cerrada', 'Nula', 'Completada', 'En proceso']} />
-        </FormField>
-        <FormField label={isConvenioMarco(data.tipo) ? 'N OC Convenio Marco' : 'ID Licitacion / N OC'} hint={isConvenioMarco(data.tipo) ? 'Obligatorio y no duplicable' : 'Ej: 61602954-LE15-1'}>
-          <Input value={data.licitacion || ''} onChange={v => set('licitacion', v)} placeholder={isConvenioMarco(data.tipo) ? 'Numero OC' : 'Codigo de seguimiento'} />
         </FormField>
       </div>
 
