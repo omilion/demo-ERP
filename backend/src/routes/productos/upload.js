@@ -27,7 +27,10 @@ function parseImageDataUrl(body = {}) {
 export default async function uploadProductoRoute(fastify) {
   fastify.post('/upload-imagen', {
     preHandler: [fastify.authenticate, fastify.rbac('catalogo', 'write')],
-    bodyLimit: 6 * 1024 * 1024,
+    // A 4 MB image becomes ~5.5 MB as base64, plus the data-URL prefix and JSON
+    // overhead. Allow generous headroom so the handler's own 4 MB check (with a
+    // friendly message) runs instead of Fastify rejecting with a raw 413.
+    bodyLimit: 8 * 1024 * 1024,
   }, async (request, reply) => {
     const parsed = parseImageDataUrl(request.body || {})
     if (parsed.error) return reply.code(400).send({ error: parsed.error })

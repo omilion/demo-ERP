@@ -36,6 +36,17 @@ function odtNumeroOperativo(odt) {
   return odt?.nInterno || odt?.orden?.nInterno || odt?.id
 }
 
+// El taller real viene en odt.talleres (derivado de los items). Odt.tipo es
+// "Legacy" en los datos migrados, asi que solo se usa como ultimo recurso.
+function tallerLabel(odt) {
+  const talleres = Array.isArray(odt?.talleres) ? odt.talleres.filter(Boolean) : []
+  if (talleres.length) {
+    return talleres.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(', ')
+  }
+  if (odt?.tipo && odt.tipo.toLowerCase() !== 'legacy') return odt.tipo
+  return '-'
+}
+
 const TALLER_TABS = [
   { id: 'all',          label: 'Todos' },
   { id: 'Espumas',      label: 'Espumas' },
@@ -130,9 +141,14 @@ const OdtCard = ({ odt, onSelect }) => {
           <Badge tone={ESTADO_TONE[odt.estado]}>{odt.estado}</Badge>
         </div>
       </div>
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', marginBottom: 5, lineHeight: 1.3 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', marginBottom: odt.clienteRut ? 1 : 5, lineHeight: 1.3 }}>
         {odt.clienteNombre || '-'}
       </div>
+      {odt.clienteRut && (
+        <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace", marginBottom: 5, lineHeight: 1.3 }}>
+          {odt.clienteRut}
+        </div>
+      )}
       <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 10, lineHeight: 1.4 }}>
         {odt.descripcion}
       </div>
@@ -145,9 +161,9 @@ const OdtCard = ({ odt, onSelect }) => {
             <Icon name="user" size={12} /> {responsable}
           </span>
         )}
-        {odt.tipo && (
+        {tallerLabel(odt) !== '-' && (
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Icon name="tag" size={12} /> {odt.tipo}
+            <Icon name="tag" size={12} /> {tallerLabel(odt)}
           </span>
         )}
         <span style={{
@@ -548,155 +564,6 @@ function ProductividadPanel({ items = [], totalOdts = 0, onSelectOperario }) {
   )
 }
 
-function OdtModal({ odt, onClose, onEdit, onEstadoChange, onCloseOdt, onAnularOdt, canWrite, canDelete, lifecyclePending }) {
-  const navigate = useNavigate()
-  const user = useAuthStore(s => s.user)
-  const { data: full } = useOdt(odt.id)
-  const o = full || odt
-  const orden = full?.orden ?? null
-  const bitacora = full?.bitacora ?? []
-  const responsable = o.operario
-    ? `${o.operario.nombres || ''} ${o.operario.apellidoPaterno || ''}`.trim()
-    : ''
-
-  const handleImprimir = () => window.print()
-
-  const estadoActions = [
-    { from: ['Pendiente', 'Asignada'], to: 'En proceso', label: 'Iniciar trabajo', tone: 'blue' },
-    { from: ['Prioritaria'], to: 'En proceso', label: 'Volver a En proceso', tone: 'blue' },
-    { from: ['En proceso', 'Prioritaria'], to: 'Control calidad', label: 'Dejar pendiente', tone: 'amber' },
-    { from: ['Pendiente', 'Asignada', 'En proceso', 'Prioritaria', 'Control calidad'], to: 'Terminada', label: 'Marcar lista', tone: 'green' },
-    { from: ['Terminada'], to: 'Pendiente', label: 'Reabrir ODT', tone: 'amber' },
-    { from: ['Entregada'], to: 'Terminada', label: 'Reabrir entrega', tone: 'amber' },
-  ]
-  const available = estadoActions.filter(a => a.from.includes(o.estado))
-  const canCloseOdt = !['Terminada', 'Entregada'].includes(o.estado)
-  const canReopenOdt = ['Terminada', 'Entregada'].includes(o.estado)
-  const canAnularOdt = !['Anulada'].includes(o.estado)
-
-  const fmtDate = d => d ? new Date(d).toLocaleDateString('es-CL') : '-'
-
-  return (
-    <div
-      style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'oklch(0 0 0 / 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onClick={onClose}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{ background: '#fff', borderRadius: 16, width: 540, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 20px 60px oklch(0 0 0 / 0.20)', animation: 'dropIn 0.18s ease' }}
-      >
-        <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <span style={{ fontWeight: 700, fontSize: 16 }}>ODT #{odtNumeroOperativo(o)}</span>
-            {o.prioridad && o.prioridad !== 'normal' && (
-              <Badge tone={o.prioridad === 'urgente' ? 'red' : 'amber'}>{o.prioridad}</Badge>
-            )}
-            <Badge tone={estadoOperativoTone(o.estado)}>{estadoOperativoOdt(o.estado)}</Badge>
-          </div>
-          <button onClick={onClose} style={{ color: 'var(--text-3)', padding: 4 }}><Icon name="x" size={18} /></button>
-        </div>
-
-        <div style={{ padding: '20px 22px' }}>
-          {/* Venta origen */}
-          {orden && (
-            <div style={{ background: 'var(--green-50)', border: '1px solid var(--green-100)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--green-700)', marginBottom: 3 }}>Venta origen</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>
-                  #{orden.nInterno || orden.id} - {orden.cliente?.nombre || 'Sin cliente'}
-                </div>
-                {orden.cliente?.rut && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>{orden.cliente.rut}</div>}
-              </div>
-              <button onClick={() => { navigate(ventaPath(orden.id, user)); onClose() }} style={{ fontSize: 11, color: 'var(--green-700)', background: '#fff', border: '1px solid var(--green-600)', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                Ver Venta
-              </button>
-            </div>
-          )}
-
-          <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Cliente</div>
-          <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 14 }}>{o.clienteNombre || '-'}</div>
-
-          <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Descripcion</div>
-          <div style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.6, marginBottom: 18, background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
-            {o.descripcion || '-'}
-          </div>
-
-          {o.obsGeneral && (
-            <>
-              <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Obs OT</div>
-              <div style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.6, marginBottom: 18, background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
-                {o.obsGeneral}
-              </div>
-            </>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
-            {[
-              ['Tipo',         o.tipo || '-'],
-              ['Responsable',  responsable || '-'],
-              ['Prioridad',    o.prioridad || 'normal'],
-              ['Creada',       fmtDate(o.createdAt)],
-              ['Ingreso',      fmtDate(o.fechaIngreso)],
-              ['Plazo',        fmtDate(o.plazo)],
-              ['Inicio',       fmtDate(o.fechaInicio)],
-              ['Termino',      fmtDate(o.fechaTermino)],
-              ['Tiempo prod.',  formatDuration(o.tiempos?.produccionHoras)],
-              ['Ciclo',         formatDuration(o.tiempos?.cicloHoras)],
-              ['Atraso',        formatAtraso(o.tiempos)],
-            ].map(([l, v], i) => (
-              <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
-                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>{l}</div>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{v}</div>
-              </div>
-            ))}
-          </div>
-
-          <OdtCosteoPanel costeo={o.costeo} />
-
-          {/* Estado transitions */}
-          {canWrite && available.length > 0 && (
-            <div style={{ marginTop: 8, padding: '12px 14px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)' }}>
-              <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
-                Cambiar estado
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {available.map(a => (
-                  <button
-                    key={a.to}
-                    onClick={() => { onEstadoChange(odt.id, a.to); onClose() }}
-                    style={{
-                      padding: '6px 14px', fontSize: 12, borderRadius: 7, cursor: 'pointer', fontWeight: 600,
-                      background: a.tone === 'green' ? 'var(--green-600)' : a.tone === 'red' ? 'var(--red)' : a.tone === 'blue' ? 'var(--blue)' : 'var(--amber)',
-                      color: '#fff', border: 'none',
-                    }}
-                  >
-                    {a.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Bitacora */}
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16 }}>
-            <BitacoraSection odtId={o.id} entries={bitacora} canWrite={canWrite} canDelete={canDelete} />
-          </div>
-        </div>
-
-        <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {canWrite && <Btn variant="primary" icon="edit" onClick={onEdit}>Editar ODT</Btn>}
-            <Btn variant="ghost" icon="printer" onClick={handleImprimir}>Imprimir</Btn>
-          </div>
-          {canWrite && canCloseOdt && <Btn variant="ghost" icon="checkCircle" onClick={() => onCloseOdt(o, 'Terminada')} disabled={lifecyclePending} style={{ color: 'var(--green-700)' }}>Marcar lista</Btn>}
-          {canWrite && canReopenOdt && <Btn variant="ghost" icon="refreshCw" onClick={() => onCloseOdt(o, 'Pendiente')} disabled={lifecyclePending} style={{ color: 'var(--amber)' }}>Reabrir ODT</Btn>}
-          {canDelete && canAnularOdt && <Btn variant="ghost" icon="xCircle" onClick={() => onAnularOdt(o)} disabled={lifecyclePending} style={{ color: 'var(--red)' }}>Anular ODT</Btn>}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function TallerPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -719,7 +586,6 @@ export default function TallerPage() {
   const [fechaCampo, setFechaCampo] = useState(initialFechaCampo)
   const [fechaDesde, setFechaDesde] = useState(initialFechaDesde)
   const [fechaHasta, setFechaHasta] = useState(initialFechaHasta)
-  const [selected, setSelected]     = useState(null)
   const [viewMode, setViewMode]     = useState('tabla')
   const debRef = useRef(null)
   const cambiarEstado = useOdtEstado()
@@ -778,7 +644,7 @@ export default function TallerPage() {
     { key: 'nInterno', label: 'N interno', render: v => v || '-' },
     { key: 'clienteNombre', label: 'Cliente', required: true, render: v => v || '-' },
     { key: 'descripcion', label: 'Trabajo', render: v => <span title={v}>{v || '-'}</span> },
-    { key: 'tipo', label: 'Taller', render: v => v || '-' },
+    { key: 'tipo', label: 'Taller', render: (_, row) => tallerLabel(row) },
     { key: 'estado', label: 'Estado', required: true, render: v => <Badge tone={estadoOperativoTone(v)}>{estadoOperativoOdt(v)}</Badge> },
     { key: 'prioridad', label: 'Prioridad', render: v => <Badge tone={v === 'urgente' ? 'red' : v === 'alta' ? 'amber' : 'gray'}>{v || 'normal'}</Badge> },
     { key: 'responsable', label: 'Responsable', render: (_, row) => responsableDe(row) || '-' },
@@ -800,14 +666,11 @@ export default function TallerPage() {
       </span>
     ) },
     { key: '_acc', label: '', required: true, render: (_, row) => (
-      <Btn variant="ghost" size="sm" icon="eye" onClick={e => { e.stopPropagation(); setSelected(row) }}>Ver</Btn>
+      <Btn variant="ghost" size="sm" icon="eye" onClick={e => { e.stopPropagation(); navigate('/taller/' + row.id) }}>Ver</Btn>
     ) },
   ]
   function handleEstadoChange(id, estado) {
     cambiarEstado.mutate({ id, estado }, {
-      onSuccess: updated => {
-        if (selected?.id === id) setSelected(updated)
-      },
       onError: err => alert(getErrorMessage(err)),
     })
   }
@@ -819,48 +682,6 @@ export default function TallerPage() {
     const odtNumero = odtNumeroOperativo(odt)
     if (!confirm(`Confirmas mover la ODT #${odtNumero} de ${current} a ${estado}?`)) return
     handleEstadoChange(odt.id, estado)
-  }
-
-  function handleCloseOdt(odt, estado) {
-    const isReopen = estado === 'Pendiente'
-    const action = isReopen ? 'reabrir' : 'cerrar'
-    const odtNumero = odtNumeroOperativo(odt)
-    const detail = isReopen
-      ? 'La ODT volvera a Pendiente y quedara disponible para trabajo operativo.'
-      : 'La ODT pasara a Terminada y se registrara fecha de termino si aun no existe.'
-    if (!confirm(`¿Confirmas ${action} la ODT #${odtNumero}?\n\n${detail}`)) return
-    if (isReopen) {
-      cambiarEstado.mutate(
-        { id: odt.id, estado },
-        {
-          onSuccess: updated => setSelected(updated),
-          onError: err => alert(getErrorMessage(err)),
-        }
-      )
-      return
-    }
-    cerrarOdt.mutate(
-      { id: odt.id, estado },
-      {
-        onSuccess: updated => setSelected(updated),
-        onError: err => alert(getErrorMessage(err)),
-      }
-    )
-  }
-
-  function handleAnularOdt(odt) {
-    const odtNumero = odtNumeroOperativo(odt)
-    const razon = prompt(`Motivo para anular la ODT #${odtNumero}`)
-    if (razon == null) return
-    if (!razon.trim()) { alert('Debes indicar un motivo para anular la ODT.'); return }
-    if (!confirm(`¿Confirmas anular la ODT #${odtNumero}?\n\nEsta accion la sacara del flujo operativo y conservara trazabilidad en bitacora.`)) return
-    anularOdt.mutate(
-      { id: odt.id, razon: razon.trim() },
-      {
-        onSuccess: () => setSelected(null),
-        onError: err => alert(getErrorMessage(err)),
-      }
-    )
   }
 
   function handleExport() {
@@ -917,7 +738,7 @@ export default function TallerPage() {
               const active = operarioFilter === String(item.operarioId)
               return (
                 <button
-                  key={item.operarioId}
+                   key={item.operarioId}
                   onClick={() => setOperarioFilter(String(item.operarioId))}
                   style={{
                     textAlign: 'left',
@@ -1052,30 +873,16 @@ export default function TallerPage() {
               odts={kanbanOdts}
               canWrite={canWriteTaller}
               pending={cambiarEstado.isPending}
-              onSelect={setSelected}
+              onSelect={odt => navigate('/taller/' + odt.id)}
               onEstadoChange={handleEstadoChange}
               onEstadoDrop={handleKanbanDrop}
             />
           ) : (
-            <Table columns={odtColumns} rows={odts} onRowClick={setSelected} columnPrefsKey="taller-odts" ariaLabel="Taller ODTs" getRowKey={row => row.id} toolbarExtra={crmToggle} />
+            <Table columns={odtColumns} rows={odts} onRowClick={row => navigate('/taller/' + row.id)} columnPrefsKey="taller-odts" ariaLabel="Taller ODTs" getRowKey={row => row.id} toolbarExtra={crmToggle} />
           )}
         </div>
         {viewMode === 'tabla' && <Pager page={page} pages={pages} total={total} limit={LIMIT} shown={odts.length} onChange={setPagerPage} disabled={isLoading} />}
       </div>
-
-      {selected && (
-        <OdtModal
-          odt={selected}
-          onClose={() => setSelected(null)}
-          onEdit={() => { navigate('/taller/' + selected.id + '/editar'); setSelected(null) }}
-          onEstadoChange={handleEstadoChange}
-          onCloseOdt={handleCloseOdt}
-          onAnularOdt={handleAnularOdt}
-          canWrite={canWriteTaller}
-          canDelete={canDeleteTaller}
-          lifecyclePending={cerrarOdt.isPending || anularOdt.isPending || cambiarEstado.isPending}
-        />
-      )}
     </main>
   )
 }

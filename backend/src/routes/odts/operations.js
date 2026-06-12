@@ -152,18 +152,53 @@ export async function attachOrdenes(prisma, odts) {
   const list = Array.isArray(odts) ? odts : [odts]
   const ids = [...new Set(list.map(o => o?.ordenId).filter(Boolean))]
   if (!ids.length) {
-    const enrichedEmpty = list.map(o => ({ ...o, orden: null, nInterno: null }))
+    const enrichedEmpty = list.map(o => ({ ...o, orden: null, nInterno: null, clienteRut: null }))
     return Array.isArray(odts) ? enrichedEmpty : enrichedEmpty[0]
   }
   const ordenes = await prisma.orden.findMany({
     where: { id: { in: ids } },
-    select: { id: true, nInterno: true, tipo: true },
+    select: { id: true, nInterno: true, tipo: true, clienteId: true },
   })
-  const map = Object.fromEntries(ordenes.map(o => [o.id, o]))
+  const clienteIds = [...new Set(ordenes.map(o => o.clienteId).filter(Boolean))]
+  const clientes = clienteIds.length
+    ? await prisma.cliente.findMany({ where: { id: { in: clienteIds } }, select: { id: true, nombre: true, rut: true } })
+    : []
+  const clienteMap = Object.fromEntries(clientes.map(c => [c.id, c]))
+  const map = Object.fromEntries(ordenes.map(o => [o.id, { ...o, cliente: o.clienteId ? (clienteMap[o.clienteId] || null) : null }]))
   const enriched = list.map(o => {
     const orden = o.ordenId ? (map[o.ordenId] || null) : null
-    return { ...o, orden, nInterno: orden?.nInterno ?? null }
+    // Muchas ODT migradas no tienen clienteNombre propio pero si la orden ligada.
+    const clienteNombre = o.clienteNombre || orden?.cliente?.nombre || null
+    return { ...o, orden, nInterno: orden?.nInterno ?? null, clienteNombre, clienteRut: orden?.cliente?.rut ?? null }
   })
+  return Array.isArray(odts) ? enriched : enriched[0]
+}
+
+// Deriva el/los taller(es) real(es) de cada ODT desde sus items.
+// El campo Odt.tipo viene como "Legacy" en los datos migrados y no sirve para
+// mostrar; el taller verdadero (Espumas/Confecciones/Madera/Externo) vive en
+// odtItem.talleres[].taller.nombre. Resuelve en batch (una query) para evitar N+1.
+export async function attachTalleres(prisma, odts) {
+  const list = Array.isArray(odts) ? odts : [odts]
+  const ids = [...new Set(list.map(o => o?.id).filter(Boolean))]
+  if (!ids.length) {
+    const empty = list.map(o => ({ ...o, talleres: [] }))
+    return Array.isArray(odts) ? empty : empty[0]
+  }
+  const items = await prisma.odtItem.findMany({
+    where: { odtId: { in: ids }, eliminado: false },
+    select: { odtId: true, talleres: { select: { taller: { select: { nombre: true } } } } },
+  })
+  const byOdt = new Map()
+  for (const it of items) {
+    const set = byOdt.get(it.odtId) || new Set()
+    for (const t of it.talleres) {
+      const nombre = t?.taller?.nombre
+      if (nombre) set.add(nombre)
+    }
+    byOdt.set(it.odtId, set)
+  }
+  const enriched = list.map(o => ({ ...o, talleres: o?.id ? [...(byOdt.get(o.id) || [])] : [] }))
   return Array.isArray(odts) ? enriched : enriched[0]
 }
 

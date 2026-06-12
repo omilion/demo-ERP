@@ -90,7 +90,16 @@ Requisito de despliegue:
 - Frontend dev: Vite proxya `/uploads` hacia `http://localhost:3001`.
 - Produccion: nginx debe enrutar `/uploads/` al backend o servir el mismo `UPLOADS_DIR` como alias estatico.
 
-Ejemplo proxy nginx si los archivos los sirve Fastify:
+### Configuracion vigente en el VPS (verificada 2026-06-12)
+
+- Directorio persistente real: **`/var/lib/plastimar-uploads/`** (contiene `fotos_chicas/`, `fotos_grandes/` legacy y `productos/{chicas,grandes}/` nuevas). Vive fuera de `/var/www/plastimar-erp` para sobrevivir al `rsync --delete` del deploy.
+- nginx (`/etc/nginx/sites-enabled/plastimar`, server 443) sirve `/uploads/` como estatico: `alias /var/lib/plastimar-uploads/`.
+  - **Nota:** `sites-enabled/plastimar` es un archivo independiente, NO un symlink a `sites-available/plastimar`. Editar el que esta en `sites-enabled`.
+- El backend DEBE escribir en ese mismo directorio. Se setea `UPLOADS_DIR=/var/lib/plastimar-uploads` en `backend/ecosystem.config.cjs` (bloque `env`). Ese archivo se excluye del rsync de deploy (`--exclude=ecosystem.config.cjs`), asi que el valor persiste.
+
+> Bug historico (resuelto 2026-06-12): sin `UPLOADS_DIR`, el backend escribia en `process.cwd()/uploads` = `/var/www/plastimar-erp/backend/uploads/`, mientras nginx leia desde `/var/lib/plastimar-uploads/`. Resultado: las imagenes recien subidas (y las legacy) daban 404 y el `<img onError>` las ocultaba -> "no se sube/no se ve la foto".
+
+Si en cambio se quiere que los archivos los sirva Fastify por proxy:
 
 ```nginx
 location /uploads/ {

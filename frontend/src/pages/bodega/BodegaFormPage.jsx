@@ -79,13 +79,20 @@ function ImageUploadField({ label, value, onUploaded, size = 'chica', append = f
   const handleFile = async event => {
     const file = event.target.files?.[0]
     if (!file) return
+    if (file.size > 4 * 1024 * 1024) {
+      alert('La imagen supera el máximo de 4 MB. Reduce su tamaño e inténtalo de nuevo.')
+      event.target.value = ''
+      return
+    }
     try {
       const dataUrl = await readAsDataUrl(file)
       const uploaded = await upload.mutateAsync({ dataUrl, size })
       onUploaded(uploaded.url, append)
       event.target.value = ''
     } catch (error) {
-      alert(error?.response?.data?.error || error.message || 'No se pudo subir la imagen')
+      const data = error?.response?.data
+      alert(data?.error || data?.message || error.message || 'No se pudo subir la imagen')
+      event.target.value = ''
     }
   }
 

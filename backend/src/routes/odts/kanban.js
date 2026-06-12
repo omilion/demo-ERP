@@ -1,5 +1,5 @@
 import { parsePositiveInt } from '../operational-utils.js'
-import { ODT_ESTADOS_ABIERTOS, attachOdtMetrics, attachOperarios, attachOrdenes } from './operations.js'
+import { ODT_ESTADOS_ABIERTOS, attachOdtMetrics, attachOperarios, attachOrdenes, attachTalleres } from './operations.js'
 import { buildOdtListWhere, sortOdtsOperativas } from './list.js'
 import { attachOdtCosteos } from './costeo.js'
 
@@ -59,7 +59,8 @@ export default async function kanbanOdts(fastify) {
     const stats = Object.fromEntries(ODT_ESTADOS_ABIERTOS.map(estado => [estado, 0]))
     for (const g of byEstado) stats[g.estado] = g._count._all
     const withOrdenes = await attachOrdenes(fastify.prisma, odts)
-    const withOperarios = await attachOperarios(fastify.prisma, withOrdenes)
+    const withTalleres = await attachTalleres(fastify.prisma, withOrdenes)
+    const withOperarios = await attachOperarios(fastify.prisma, withTalleres)
     const withMetrics = attachOdtMetrics(withOperarios)
     const withCosteo = await attachOdtCosteos(fastify.prisma, withMetrics)
 

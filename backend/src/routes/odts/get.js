@@ -40,9 +40,20 @@ export default async function getOdt(fastify) {
         orden = { ...orden, cliente }
       }
     }
+    // Taller(es) real(es) derivados de los items (Odt.tipo es "Legacy" en migrados).
+    const talleresSet = new Set()
+    for (const it of o.items || []) {
+      for (const t of it.talleres || []) {
+        if (t?.taller?.nombre) talleresSet.add(t.taller.nombre)
+      }
+    }
+    const talleres = [...talleresSet]
+
     const withOperario = await attachOperarios(fastify.prisma, o)
     const withMetrics = attachOdtMetrics(withOperario)
     const withCosteo = await attachOdtCosteos(fastify.prisma, withMetrics)
-    return { ...withCosteo, orden }
+    const clienteNombre = o.clienteNombre || orden?.cliente?.nombre || null
+    const clienteRut = orden?.cliente?.rut ?? null
+    return { ...withCosteo, orden, talleres, clienteNombre, clienteRut }
   })
 }
