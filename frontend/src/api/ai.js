@@ -1,0 +1,74 @@
+import { useAuthStore } from '../store/auth'
+
+// Streaming SSE contra POST /api/ai/chat. fetch + ReadableStream (EventSource no
+// soporta POST). Llama a los callbacks por cada evento del backend:
+// onText(delta), onTool({name}), onDocument({name,url,tipo}), onDone(), onError(msg).
+export async function streamChat({ messages, signal, onText, onTool, onDocument, onDone, onError }) {
+  const token = useAuthStore.getState().token
+  let res
+  try {
+    res = await fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ messages }),
+      signal,
+    })
+  } catch (e) {
+    if (e.name !== 'AbortError') onError?.('No se pudo conectar con el asistente.')
+    return
+  }
+
+  if (!res.ok || !res.body) {
+    if (res.status === 403) onError?.('No tienes acceso al asistente IA.')
+    else onError?.('El asistente no está disponible en este momento.')
+    return
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      // Procesar bloques SSE completos (separados por línea en blanco).
+      let idx
+      while ((idx = buffer.indexOf('\n\n')) !== -1) {
+        const block = buffer.slice(0, idx)
+        buffer = buffer.slice(idx + 2)
+        let event = 'message'
+        let dataLine = ''
+        for (const line of block.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim()
+          else if (line.startsWith('data:')) dataLine += line.slice(5).trim()
+        }
+        if (!dataLine) continue
+        let data
+        try { data = JSON.parse(dataLine) } catch { continue }
+        if (event === 'text') onText?.(data.delta)
+        else if (event === 'tool') onTool?.(data)
+        else if (event === 'document') onDocument?.(data)
+        else if (event === 'done') onDone?.(data)
+        else if (event === 'error') onError?.(data.message)
+      }
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') onError?.('Se interrumpió la respuesta.')
+  }
+}
+
+export async function fetchAiStatus() {
+  const token = useAuthStore.getState().token
+  try {
+    const res = await fetch('/api/ai/status', { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    if (!res.ok) return { configured: false }
+    return await res.json()
+  } catch {
+    return { configured: false }
+  }
+}

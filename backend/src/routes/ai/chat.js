@@ -1,0 +1,155 @@
+import { randomUUID } from 'node:crypto'
+import { getAnthropic, isAiConfigured, buildSystemPrompt, AI_MODEL, AI_MAX_TOKENS, AI_EFFORT } from './llm.js'
+import { getToolDefinitions, runTool } from './tools/index.js'
+import { documentToolDefinitions, runDocumentTool, DOCUMENT_TOOL_NAMES } from './documents.js'
+
+const MAX_ITERATIONS = 8
+
+// Todas las definiciones de herramientas (consulta + documentos) que ve el LLM.
+function allToolDefinitions() {
+  return [...getToolDefinitions(), ...documentToolDefinitions]
+}
+
+// Ejecuta una herramienta por nombre, enrutando a consulta o documentos.
+async function executeTool(name, input, ctx) {
+  if (DOCUMENT_TOOL_NAMES.has(name)) {
+    const r = await runDocumentTool(name, input)
+    return r || { error: `Documento no generado: ${name}` }
+  }
+  return runTool(name, input, ctx)
+}
+
+// Normaliza los mensajes entrantes del frontend a la forma del SDK.
+function normalizeMessages(raw) {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+    .map(m => ({ role: m.role, content: m.content }))
+    .slice(-20) // ventana de contexto acotada
+}
+
+export default async function aiChatRoute(fastify) {
+  // Estado de configuración (para que el frontend sepa si mostrar el chat).
+  fastify.get('/status', {
+    preHandler: [fastify.authenticate, fastify.rbac('ai', 'read')],
+  }, async () => ({ configured: isAiConfigured(), model: AI_MODEL }))
+
+  // Chat principal — SSE. El loop de tool-use corre server-side; al cliente se
+  // le envían eventos: tool (consultando), text (delta), done, error.
+  fastify.post('/chat', {
+    preHandler: [fastify.authenticate, fastify.rbac('ai', 'read')],
+  }, async (request, reply) => {
+    const requestId = randomUUID()
+    const startedAt = Date.now()
+    const messages = normalizeMessages(request.body?.messages)
+    const lastUser = [...messages].reverse().find(m => m.role === 'user')?.content || ''
+
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    })
+    const send = (event, data) => {
+      reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+    }
+
+    if (!isAiConfigured()) {
+      send('error', { message: 'El asistente IA no está configurado (falta ANTHROPIC_API_KEY).' })
+      reply.raw.end()
+      return reply
+    }
+    if (!messages.length) {
+      send('error', { message: 'No hay mensajes para procesar.' })
+      reply.raw.end()
+      return reply
+    }
+
+    const ctx = { prisma: fastify.prisma, user: request.user }
+    const usedTools = []
+    let answerText = ''
+    let totalUsage = { input_tokens: 0, output_tokens: 0 }
+    let status = 'ok'
+    let errorMsg = null
+
+    try {
+      const client = getAnthropic()
+      const system = [{ type: 'text', text: buildSystemPrompt(request.user), cache_control: { type: 'ephemeral' } }]
+      const tools = allToolDefinitions()
+      const convo = [...messages]
+
+      for (let i = 0; i < MAX_ITERATIONS; i++) {
+        // Streaming de cada paso del loop. Acumulamos el mensaje final con el helper.
+        const stream = client.messages.stream({
+          model: AI_MODEL,
+          max_tokens: AI_MAX_TOKENS,
+          system,
+          tools,
+          thinking: { type: 'adaptive' },
+          output_config: { effort: AI_EFFORT },
+          messages: convo,
+        })
+
+        stream.on('text', delta => { answerText += delta; send('text', { delta }) })
+
+        const msg = await stream.finalMessage()
+        if (msg.usage) {
+          totalUsage.input_tokens += msg.usage.input_tokens || 0
+          totalUsage.output_tokens += msg.usage.output_tokens || 0
+        }
+
+        if (msg.stop_reason !== 'tool_use') break
+
+        // Ejecutar todas las tool_use del turno.
+        const toolUses = msg.content.filter(b => b.type === 'tool_use')
+        convo.push({ role: 'assistant', content: msg.content })
+        const results = []
+        for (const tu of toolUses) {
+          send('tool', { name: tu.name })
+          usedTools.push(tu.name)
+          const result = await executeTool(tu.name, tu.input, ctx)
+          // Si es un documento generado, avisar al cliente del link.
+          if (DOCUMENT_TOOL_NAMES.has(tu.name) && result?.url) {
+            send('document', { name: tu.name, url: result.url, tipo: result.tipo })
+          }
+          results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(result) })
+        }
+        convo.push({ role: 'user', content: results })
+
+        if (i === MAX_ITERATIONS - 1) {
+          send('text', { delta: '\n\n(Se alcanzó el límite de pasos de consulta.)' })
+        }
+      }
+
+      send('done', { requestId })
+    } catch (e) {
+      status = 'error'
+      errorMsg = e.message
+      send('error', { message: e?.code === 'AI_NOT_CONFIGURED' ? 'Asistente no configurado.' : 'Ocurrió un error procesando la consulta.' })
+    } finally {
+      reply.raw.end()
+      // Auditoría — no bloquea la respuesta.
+      fastify.prisma.aiQueryLog.create({
+        data: {
+          requestId,
+          userId: request.user?.id ?? null,
+          userEmail: request.user?.email ?? null,
+          userNombre: request.user?.nombre ?? null,
+          role: request.user?.role ?? null,
+          question: lastUser || '(vacío)',
+          usedTools: usedTools.length ? usedTools : undefined,
+          status,
+          answerPreview: answerText ? answerText.slice(0, 500) : null,
+          model: AI_MODEL,
+          tokenUsage: totalUsage,
+          latencyMs: Date.now() - startedAt,
+          error: errorMsg,
+          ip: request.ip ?? null,
+          userAgent: request.headers['user-agent'] ?? null,
+        },
+      }).catch(err => fastify.log.warn({ err }, 'ai query_log insert failed'))
+    }
+
+    return reply
+  })
+}

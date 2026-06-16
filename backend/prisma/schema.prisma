@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["auth", "clientes", "catalogo", "ventas", "caja", "taller", "bodega", "config", "rrhh"]
+  schemas  = ["auth", "clientes", "catalogo", "ventas", "caja", "taller", "bodega", "config", "rrhh", "ai"]
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────────
@@ -1716,4 +1716,42 @@ model LibroRemuneracion {
   @@index([anio, mes])
   @@map("libros_remuneracion")
   @@schema("rrhh")
+}
+
+// ── AI (asistente gerencial) ──────────────────────────────────────────
+// Registro de cada consulta al asistente IA: auditoria, costo y trazabilidad.
+// La tabla ya existe en produccion (schema ai) — este modelo la versiona en Prisma.
+model AiQueryLog {
+  id                Int       @id @default(autoincrement())
+  requestId         String?   @unique @map("request_id")
+  userId            Int?      @map("user_id")
+  userEmail         String?   @map("user_email")
+  userNombre        String?   @map("user_nombre")
+  role              String?
+  sucursalId        Int?      @map("sucursal_id")
+  permisosExtraHash String?   @map("permisos_extra_hash")
+  question          String
+  questionHash      String?   @map("question_hash")
+  normalizedQuery   String?   @map("normalized_query")
+  requestedModules  Json?     @map("requested_modules")
+  allowedModules    Json?     @map("allowed_modules")
+  deniedModules     Json?     @map("denied_modules")
+  scope             String    @default("operacional")
+  usedTools         Json?     @map("used_tools")
+  citations         Json?
+  status            String    @default("ok")
+  refusalReason     String?   @map("refusal_reason")
+  answerPreview     String?   @map("answer_preview")
+  model             String?
+  tokenUsage        Json?     @map("token_usage")
+  latencyMs         Int?      @map("latency_ms")
+  error             String?
+  ip                String?
+  userAgent         String?   @map("user_agent")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("query_logs")
+  @@schema("ai")
 }
