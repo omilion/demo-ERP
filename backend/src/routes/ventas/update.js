@@ -6,6 +6,7 @@ import { validateConvenioMarcoOcForWrite } from './convenio-marco.js'
 import { canApplyDescuento } from './descuentos-permissions.js'
 import { getVentaDescuentoCatalogKind, validateVentaDescuentoCatalogForWrite } from './descuentos-catalog.js'
 import { assertDiscountAuthorizationForDraft } from '../descuentos/rules-engine.js'
+import { autoNotifyTaller } from '../pasar-taller/service.js'
 
 export const ESTADO_PAGO_VALUES = ['No pagada', 'Pagada', 'Parcial']
 export const ESTADO_ENTREGA_VALUES = ['Pendiente entrega', 'En despacho', 'Entregada', 'Parcial']
@@ -36,6 +37,14 @@ const Schema = z.object({
   licitacionPlazo: z.string().optional().nullable(),
   licitacionReferencia: z.string().optional().nullable(),
   licitacionOC: z.string().optional().nullable(),
+  enviosParciales: z.boolean().optional(),
+  montoDespacho: z.number().min(0).optional(),
+  fechaPlazo: z.string().optional().nullable(),
+  direccionDespacho: z.string().optional().nullable(),
+  contactoDespacho: z.string().optional().nullable(),
+  regionDespacho: z.string().optional().nullable(),
+  comunaDespacho: z.string().optional().nullable(),
+  ciudadDespacho: z.string().optional().nullable(),
 }).refine(data => Object.keys(data).length > 0, { message: 'El cuerpo no puede estar vacío' })
 
 const DESTRUCTIVE_ESTADOS = new Set(['nula', 'anulada', 'cancelada'])
@@ -68,13 +77,21 @@ export default async function updateVenta(fastify) {
     const parsed = Schema.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     try {
-      const {
+       const {
         items,
         descuentoAutorizacionId,
         licitacionFecha,
         licitacionPlazo,
         licitacionReferencia,
         licitacionOC,
+        enviosParciales,
+        montoDespacho,
+        fechaPlazo,
+        direccionDespacho,
+        contactoDespacho,
+        regionDespacho,
+        comunaDespacho,
+        ciudadDespacho,
         ...ordenData
       } = parsed.data
       const sucursalId = getUserSucursalId(request.user)
@@ -139,6 +156,15 @@ export default async function updateVenta(fastify) {
       if (ordenData.estadoEntrega !== undefined && ordenData.estadoEntrega !== current.estadoEntrega) {
         ordenData.fechaEstadoEntrega = new Date()
       }
+
+      if (enviosParciales !== undefined) ordenData.enviosParciales = enviosParciales
+      if (montoDespacho !== undefined) ordenData.montoDespacho = montoDespacho
+      if (fechaPlazo !== undefined) ordenData.fechaPlazo = fechaPlazo ? new Date(fechaPlazo) : null
+      if (direccionDespacho !== undefined) ordenData.direccionDespacho = direccionDespacho
+      if (contactoDespacho !== undefined) ordenData.contactoDespacho = contactoDespacho
+      if (regionDespacho !== undefined) ordenData.regionDespacho = regionDespacho
+      if (comunaDespacho !== undefined) ordenData.comunaDespacho = comunaDespacho
+      if (ciudadDespacho !== undefined) ordenData.ciudadDespacho = ciudadDespacho
 
       if (ordenData.clienteSucursalId) {
         const sucursal = await fastify.prisma.clienteSucursal.findFirst({
@@ -357,6 +383,9 @@ export default async function updateVenta(fastify) {
             if (licitacionPlazo !== undefined) dataToUpdate.plazo = licitacionPlazo
             if (licitacionReferencia !== undefined) dataToUpdate.referencia = licitacionReferencia
             if (licitacionOC !== undefined) dataToUpdate.ordenCompra = licitacionOC
+            if (fechaPlazo !== undefined) dataToUpdate.fechaPlazo = fechaPlazo ? new Date(fechaPlazo) : null
+            if (enviosParciales !== undefined) dataToUpdate.enviosParciales = enviosParciales
+            if (montoDespacho !== undefined) dataToUpdate.montoDespacho = montoDespacho
 
             await tx.cotizacionLicitacion.update({
               where: { id: cot.id },
@@ -382,7 +411,7 @@ export default async function updateVenta(fastify) {
               select: { rut: true }
             })
             const currentItems = itemsData || lockedCurrent.items
-            const createdCot = await tx.cotizacionLicitacion.create({
+          await tx.cotizacionLicitacion.create({
               data: {
                 idLicitacion: licId,
                 fecha: licitacionFecha ? new Date(licitacionFecha) : new Date(),
@@ -394,6 +423,9 @@ export default async function updateVenta(fastify) {
                 ordenId: id,
                 sucursalId: lockedCurrent.sucursalId,
                 usuario: request.user.nombre || 'Sistema',
+                fechaPlazo: fechaPlazo ? new Date(fechaPlazo) : null,
+                enviosParciales: enviosParciales ?? false,
+                montoDespacho: montoDespacho ?? 0,
                 items: {
                   create: currentItems.map(item => ({
                     codigoInterno: item.codigoInterno,
@@ -413,6 +445,9 @@ export default async function updateVenta(fastify) {
           })
         }
 
+        // Automatically notify/create ODT for workshop if there are transitorio items
+        await autoNotifyTaller(tx, id, request.user, fastify.log)
+
         return tx.orden.findUnique({ where: { id }, include: { items: true, cargos: true } })
       })
       orden.items = await attachProductos(fastify, orden.items)
@@ -421,6 +456,22 @@ export default async function updateVenta(fastify) {
     } catch (e) {
       if (e.statusCode) return reply.code(e.statusCode).send({ error: e.message })
       if (e.code === 'P2025') return reply.code(404).send({ error: 'Venta no encontrada' })
+      throw e
+    }
+  })
+
+  fastify.post('/:id/forzar-taller', {
+    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
+    try {
+      await fastify.prisma.$transaction(async (tx) => {
+        await autoNotifyTaller(tx, id, request.user, fastify.log)
+      })
+      return { ok: true }
+    } catch (e) {
+      if (e.statusCode) return reply.code(e.statusCode).send({ error: e.message })
       throw e
     }
   })

@@ -112,8 +112,8 @@ export const useAnularOdt = () => {
 export const useOdtItemTallerEstado = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ odtId, itemId, tallerItemId, estado }) =>
-      api.put(`/odts/${odtId}/items/${itemId}/talleres/${tallerItemId}/estado`, { estado }).then(r => r.data),
+    mutationFn: ({ odtId, itemId, tallerItemId, estado, operarioResponsableId, obs }) =>
+      api.put(`/odts/${odtId}/items/${itemId}/talleres/${tallerItemId}/estado`, { estado, operarioResponsableId, obs }).then(r => r.data),
     onSuccess: (_, { odtId }) => {
       qc.invalidateQueries({ queryKey: ['odts'] })
       qc.invalidateQueries({ queryKey: ['odts', odtId] })
@@ -185,3 +185,10 @@ export const useDeleteBitacora = () => {
     onSuccess: (_, { odtId }) => qc.invalidateQueries({ queryKey: ['odts', odtId] }),
   })
 }
+
+export const useOdtTallerItems = (tallerKind) =>
+  useQuery({
+    queryKey: ['odts', 'taller-items', tallerKind],
+    queryFn: () => api.get('/odts/taller-items', { params: { tallerKind } }).then(r => r.data),
+    enabled: !!tallerKind,
+  })

@@ -408,6 +408,7 @@ export const Table = ({
   columnPrefs = true,
   toolbarExtra,
   pager,
+  getRowStyle,
 }) => {
   const user = useAuthStore(s => s.user)
   const [hovRow, setHovRow] = useState(null)
@@ -654,6 +655,7 @@ export const Table = ({
                 cursor: (onRowClick || onRowDoubleClick) ? 'pointer' : 'default', transition: 'background 0.1s',
                 outline: clampedActiveRow === ri && keyboardEnabled && hasKeyboardFocus ? '1px solid var(--green-600)' : 'none',
                 outlineOffset: -1,
+                ...getRowStyle?.(row, ri),
               }}>
               {effectiveColumns.map((col, ci) => {
                 const rawValue = row[col.key]

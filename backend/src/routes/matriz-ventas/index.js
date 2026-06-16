@@ -396,7 +396,7 @@ async function getOrdenRowsByWhere(fastify, where) {
   const [clientesArr, odtsArr, cotizArr, guiasArr, movsArr, multasArr] = await Promise.all([
     ruts.length ? fastify.prisma.cliente.findMany({
       where: { rut: { in: ruts } },
-      select: { rut: true, razonSocial: true, nombre: true, email: true },
+      select: { rut: true, razonSocial: true, nombre: true, email: true, conflictivo: true, conflictivoDetalle: true },
     }) : [],
     ordenIds.length ? fastify.prisma.odt.findMany({
       where: { ordenId: { in: ordenIds }, eliminado: false },
@@ -464,6 +464,8 @@ async function getOrdenRowsByWhere(fastify, where) {
       cliente: o.rutCliente,
       nombreCliente: cliente?.razonSocial || cliente?.nombre || null,
       emailCliente: cliente?.email || null,
+      clienteConflictivo: cliente?.conflictivo || false,
+      clienteConflictivoDetalle: cliente?.conflictivoDetalle || null,
       ref: o.licitacion || '',
       total,
       abono,
@@ -488,6 +490,14 @@ async function getOrdenRowsByWhere(fastify, where) {
       documentosLegacy,
       cotizacion: cotizMap[o.id] || null,
       detalleProductos: detalleProductos(o.items || []),
+      enviosParciales: o.enviosParciales,
+      montoDespacho: o.montoDespacho,
+      fechaPlazo: o.fechaPlazo,
+      direccionDespacho: o.direccionDespacho,
+      contactoDespacho: o.contactoDespacho,
+      regionDespacho: o.regionDespacho,
+      comunaDespacho: o.comunaDespacho,
+      ciudadDespacho: o.ciudadDespacho,
     }
   })
 }
@@ -727,7 +737,7 @@ async function getTotalsForPeriod(fastify, start, end, user) {
   return { ordenes, ocOnline, licitaciones, gran: ordenes.total + ocOnline.total + licitaciones.total }
 }
 
-async function getMatrizTotales(fastify, query, user) {
+export async function getMatrizTotales(fastify, query, user) {
   const ctx = await buildContext(fastify, query, user)
   if (ctx.error) return ctx
   const { ordenWhere, ocWhere, licWhere } = await matrizWheres(fastify, ctx, user)

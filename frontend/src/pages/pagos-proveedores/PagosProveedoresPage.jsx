@@ -243,7 +243,21 @@ export default function PagosProveedoresPage() {
         )}
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={items} onRowClick={row => navigate('/pagos-proveedores/' + row.id)} emptyMessage="Sin pagos" ariaLabel="Pagos a proveedores" getRowKey={row => row.id} />
+          : <Table
+              columns={cols}
+              rows={items}
+              onRowClick={row => navigate('/pagos-proveedores/' + row.id)}
+              emptyMessage="Sin pagos"
+              ariaLabel="Pagos a proveedores"
+              getRowKey={row => row.id}
+              getRowStyle={row => {
+                const todayStr = new Date().toISOString().slice(0, 10)
+                if (row.estado === 'Pendiente' && row.fechaVencimiento && row.fechaVencimiento < todayStr) {
+                  return { color: 'var(--red)', background: '#fee2e2' }
+                }
+                return {}
+              }}
+            />
         }
       </div>
       {showCreate && (

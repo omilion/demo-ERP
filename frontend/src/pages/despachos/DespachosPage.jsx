@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, Pager, SearchBar, Table, Tabs } from '../../components/shared'
 import { useDespachoMatriz, useDespachos, useGuias, useDespachoPacking, useDespachoTracking, useCreateDespacho, useUpdateDespacho, useCreateDespachoTrackingEvento, useUpdateDespachoPacking, useDeleteDespacho, useCreateGuia, useUpdateGuia, useDeleteGuia } from '../../api/despachos'
@@ -110,6 +110,35 @@ export default function DespachosPage() {
   const [tracking, setTracking] = useState(null)
   const [creatingGuia, setCreatingGuia] = useState(null)
   const [editingGuia, setEditingGuia] = useState(null)
+
+  useEffect(() => {
+    const action = searchParams.get('action')
+    if (action === 'new') {
+      const ordenIdVal = searchParams.get('ordenId') || ''
+      const nInternoVal = searchParams.get('nInterno') || ''
+      const direccionVal = searchParams.get('direccion') || ''
+      const regionVal = searchParams.get('region') || ''
+      const comunaVal = searchParams.get('comuna') || ''
+      setCreating({
+        ...emptyDespacho,
+        ordenId: ordenIdVal,
+        interno: nInternoVal,
+        direccion: direccionVal,
+        region: regionVal,
+        comuna: comunaVal,
+      })
+      // Clear URL params to avoid re-triggering
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev)
+        next.delete('action')
+        next.delete('nInterno')
+        next.delete('direccion')
+        next.delete('region')
+        next.delete('comuna')
+        return next
+      }, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   const setFilter = setter => value => {
     setter(value)

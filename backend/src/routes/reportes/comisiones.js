@@ -170,6 +170,18 @@ function ruleScope(rule) {
   return 'global_todos'
 }
 
+function isNcDoc(doc) {
+  const text = String(doc || '').toLowerCase()
+  return text.includes('nota de credito') || text.includes('nota credito')
+}
+
+function isNcMovimiento(mov) {
+  // Fuente principal: campo dedicado numeroNCInterna (si esta presente, es una NC).
+  // Fallback: tipoDocumento/documento con etiqueta explicita de nota de credito.
+  if (mov.numeroNCInterna) return true
+  return isNcDoc(mov.documento) || isNcDoc(mov.tipoDocumento)
+}
+
 function addSummary(bucket, key, row) {
   const normalized = key || 'Sin dato'
   if (!bucket[normalized]) {
@@ -177,12 +189,16 @@ function addSummary(bucket, key, row) {
       count: 0,
       totalVendido: 0,
       totalCobrado: 0,
+      totalMultas: 0,
+      totalNC: 0,
       totalComision: 0,
     }
   }
   bucket[normalized].count += 1
   bucket[normalized].totalVendido += row.totalVendido
   bucket[normalized].totalCobrado += row.totalCobrado
+  bucket[normalized].totalMultas += row.totalMultas
+  bucket[normalized].totalNC += row.totalNC
   bucket[normalized].totalComision += row.comisionEstimada
 }
 
@@ -190,17 +206,34 @@ function roundMoney(value) {
   return Math.round(Number(value || 0) * 100) / 100
 }
 
-function mapOrdenComision(orden, rules, cobradoByOrden = new Map()) {
+function mapOrdenComision(orden, rules, cobradoByOrden = new Map(), multasByOrden = new Map(), ncByOrden = new Map()) {
   const tipoVenta = normalizeOrdenTipoVenta(orden.tipo)
   const totalVendido = roundMoney(computeTotal(orden.items || [], orden.descuentoPct, orden.cargos || [], orden.descuentoMonto))
   const totalCobrado = roundMoney(Math.max(0, Math.min(totalVendido, cobradoByOrden.get(orden.id) || 0)))
+
+  const totalMultas = roundMoney(multasByOrden.get(orden.id) || 0)
+  const totalNC = roundMoney(ncByOrden.get(orden.id) || 0)
+
   const rule = findApplicableRule(rules, {
     vendedorId: orden.userId,
     tipoVenta,
     fecha: orden.createdAt,
   })
-  const baseComision = rule?.base === 'COBRADO' ? totalCobrado : totalVendido
-  const commission = commissionFromRule(rule, baseComision)
+
+  // base of commission depends on rule's base (COBRADO vs VENDIDO)
+  const baseMonto = rule?.base === 'COBRADO' ? totalCobrado : totalVendido
+  const baseAjustada = Math.max(0, roundMoney(baseMonto - totalMultas - totalNC))
+
+  // Restricted eligibility check:
+  // "una comisión solo debe pagarse si la venta está despachada, facturada y completamente pagada."
+  const isPaid = orden.estadoPago === 'Pagada'
+  const isDelivered = orden.estadoEntrega === 'Entregada'
+  const isBilled = Number(orden.facturado || 0) > 0
+  const isEligible = isPaid && isDelivered && isBilled
+
+  // Commission is only paid (calculated) if the order is eligible
+  const commissionBase = isEligible ? baseAjustada : 0
+  const commission = commissionFromRule(rule, commissionBase)
 
   return {
     ordenId: orden.id,
@@ -211,8 +244,10 @@ function mapOrdenComision(orden, rules, cobradoByOrden = new Map()) {
     vendedorNombre: orden.creadorNombre || orden.vendedor?.nombre || null,
     totalVendido,
     totalCobrado,
+    totalMultas,
+    totalNC,
     baseRegla: rule?.base || null,
-    baseComision: roundMoney(baseComision),
+    baseComision: roundMoney(baseAjustada),
     comisionEstimada: roundMoney(commission.comisionEstimada),
     porcentajeAplicado: commission.porcentajeAplicado,
     tramoId: commission.tramoId,
@@ -225,6 +260,8 @@ function mapOrdenComision(orden, rules, cobradoByOrden = new Map()) {
     modalidad: rule?.modalidad || null,
     estadoPago: orden.estadoPago,
     estadoEntrega: orden.estadoEntrega,
+    isEligible,
+    facturado: Number(orden.facturado || 0),
   }
 }
 
@@ -235,24 +272,30 @@ function buildSummary(rows) {
     count: rows.length,
     totalVendido: 0,
     totalCobrado: 0,
+    totalMultas: 0,
+    totalNC: 0,
     totalComision: 0,
   }
 
   for (const row of rows) {
     totales.totalVendido += row.totalVendido
     totales.totalCobrado += row.totalCobrado
+    totales.totalMultas += row.totalMultas
+    totales.totalNC += row.totalNC
     totales.totalComision += row.comisionEstimada
     addSummary(byVendedor, row.vendedorNombre || String(row.vendedorId || ''), row)
     addSummary(byTipo, row.tipoVenta, row)
   }
 
-  for (const key of ['totalVendido', 'totalCobrado', 'totalComision']) {
+  for (const key of ['totalVendido', 'totalCobrado', 'totalMultas', 'totalNC', 'totalComision']) {
     totales[key] = roundMoney(totales[key])
   }
   for (const bucket of [byVendedor, byTipo]) {
     for (const item of Object.values(bucket)) {
       item.totalVendido = roundMoney(item.totalVendido)
       item.totalCobrado = roundMoney(item.totalCobrado)
+      item.totalMultas = roundMoney(item.totalMultas || 0)
+      item.totalNC = roundMoney(item.totalNC || 0)
       item.totalComision = roundMoney(item.totalComision)
     }
   }
@@ -306,7 +349,7 @@ export async function buildComisionesReporte(fastify, query = {}, { exportAll = 
     if (cobroRange.lte) pagosWhere.fecha.lte = cobroRange.lte
   }
 
-  const [rules, pagos] = await Promise.all([
+  const [rules, pagos, multas, ncMovements] = await Promise.all([
     fastify.prisma.comisionRegla.findMany({
       where: {
         activo: true,
@@ -328,6 +371,17 @@ export async function buildComisionesReporte(fastify, query = {}, { exportAll = 
       where: pagosWhere,
       select: { ordenId: true, monto: true },
     }),
+    fastify.prisma.multa.findMany({
+      where: { ordenId: { in: ordenIds.length ? ordenIds : [-1] } },
+      select: { ordenId: true, monto: true }
+    }),
+    fastify.prisma.movimientoCaja.findMany({
+      where: {
+        ordenId: { in: ordenIds.length ? ordenIds : [-1] },
+        eliminado: false,
+      },
+      select: { ordenId: true, monto: true, documento: true, tipoDocumento: true, numeroNCInterna: true }
+    })
   ])
 
   const cobradoByOrden = new Map()
@@ -336,7 +390,19 @@ export async function buildComisionesReporte(fastify, query = {}, { exportAll = 
     cobradoByOrden.set(pago.ordenId, (cobradoByOrden.get(pago.ordenId) || 0) + Number(pago.monto || 0))
   }
 
-  const rows = ordenes.map(orden => mapOrdenComision(orden, rules, cobradoByOrden))
+  const multasByOrden = new Map()
+  for (const m of multas) {
+    if (!m.ordenId) continue
+    multasByOrden.set(m.ordenId, (multasByOrden.get(m.ordenId) || 0) + Number(m.monto || 0))
+  }
+
+  const ncByOrden = new Map()
+  for (const mov of ncMovements) {
+    if (!mov.ordenId || !isNcMovimiento(mov)) continue
+    ncByOrden.set(mov.ordenId, (ncByOrden.get(mov.ordenId) || 0) + Math.abs(Number(mov.monto || 0)))
+  }
+
+  const rows = ordenes.map(orden => mapOrdenComision(orden, rules, cobradoByOrden, multasByOrden, ncByOrden))
   const resumen = buildSummary(rows)
 
   return {
@@ -383,6 +449,8 @@ export function registerComisionesReportRoutes(fastify) {
       { key: 'vendedorNombre', label: 'Vendedor' },
       { key: 'totalVendido', label: 'Total vendido' },
       { key: 'totalCobrado', label: 'Total cobrado' },
+      { key: 'totalMultas', label: 'Multas' },
+      { key: 'totalNC', label: 'Notas Credito' },
       { key: 'baseRegla', label: 'Base regla' },
       { key: 'baseComision', label: 'Base comision' },
       { key: 'porcentajeAplicado', label: 'Porcentaje aplicado' },
@@ -391,6 +459,7 @@ export function registerComisionesReportRoutes(fastify) {
       { key: 'reglaScope', label: 'Alcance regla' },
       { key: 'estadoPago', label: 'Estado pago' },
       { key: 'estadoEntrega', label: 'Estado entrega' },
+      { key: 'isEligible', label: 'Elegible' },
     ])
     return sendCsv(reply, `comisiones_${new Date().toISOString().slice(0, 10)}.csv`, csv)
   })

@@ -456,6 +456,55 @@ export default async function cotizacionesRoutes(fastify) {
     return sendCsv(reply, `licitaciones_${formato}_${new Date().toISOString().slice(0, 10)}.csv`, csv)
   })
 
+  // ── Ficha Técnica y Económica ─────────────────────────────────────────────
+  fastify.get('/:id/ficha-tecnica-economica', {
+    preHandler: [fastify.authenticate, fastify.rbac('licitaciones', 'read')],
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
+    const c = await fastify.prisma.cotizacionLicitacion.findFirst({
+      where: scopedWhere(request.user, { id }),
+      include: { items: true },
+    })
+    if (!c) return reply.code(404).send({ error: 'Cotización no encontrada' })
+
+    let cliente = null
+    if (c.rutCliente) {
+      cliente = await fastify.prisma.cliente.findUnique({
+        where: { rut: c.rutCliente },
+        select: {
+          id: true,
+          nombre: true,
+          rut: true,
+          razonSocial: true,
+          giro: true,
+          direccion: true,
+          region: true,
+          comuna: true,
+          ciudad: true,
+        },
+      })
+    }
+
+    const totals = computeCotizacionTotals(c.items)
+
+    return {
+      idLicitacion: c.idLicitacion,
+      fecha: c.fecha,
+      rutCliente: c.rutCliente,
+      cliente,
+      plazo: c.plazo,
+      fechaPlazo: c.fechaPlazo,
+      enviosParciales: c.enviosParciales,
+      montoDespacho: c.montoDespacho,
+      obs: c.obs,
+      referencia: c.referencia,
+      ordenCompra: c.ordenCompra,
+      items: c.items,
+      totals,
+    }
+  })
+
   // ── Get by id ─────────────────────────────────────────────────────────────
   fastify.get('/:id', {
     preHandler: [fastify.authenticate, fastify.rbac('licitaciones', 'read')],
@@ -543,7 +592,7 @@ export default async function cotizacionesRoutes(fastify) {
   fastify.post('/', {
     preHandler: [fastify.authenticate, fastify.rbac('licitaciones', 'write')],
   }, async (request, reply) => {
-    const { idLicitacion, fecha, rutCliente, estado, obs, plazo, ordenCompra, sucursalId, referencia, items = [] } = request.body || {}
+    const { idLicitacion, fecha, rutCliente, estado, obs, plazo, ordenCompra, sucursalId, referencia, items = [], fechaPlazo, enviosParciales, montoDespacho } = request.body || {}
     if (!fecha) return reply.code(400).send({ error: 'fecha requerida' })
     if (!Array.isArray(items)) return reply.code(400).send({ error: 'items debe ser un arreglo' })
     const itemData = []
@@ -570,6 +619,9 @@ export default async function cotizacionesRoutes(fastify) {
             sucursalId: userSucursalId ?? (sucursalId ? parseInt(sucursalId, 10) : null),
             referencia,
             usuario,
+            fechaPlazo: fechaPlazo ? new Date(fechaPlazo) : null,
+            enviosParciales: enviosParciales || false,
+            montoDespacho: montoDespacho || 0,
             items: itemData.length > 0 ? {
               create: itemData,
             } : undefined,
@@ -592,6 +644,7 @@ export default async function cotizacionesRoutes(fastify) {
     if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
     const body = request.body || {}
     const data = {}
+    if (body.idLicitacion !== undefined) data.idLicitacion = body.idLicitacion
     if (body.estado !== undefined) data.estado = body.estado
     if (body.rutCliente !== undefined) data.rutCliente = body.rutCliente
     if (body.obs !== undefined) data.obs = body.obs
@@ -599,16 +652,42 @@ export default async function cotizacionesRoutes(fastify) {
     if (body.ordenCompra !== undefined) data.ordenCompra = body.ordenCompra
     if (body.referencia !== undefined) data.referencia = body.referencia
     if (body.fecha !== undefined) data.fecha = body.fecha ? new Date(body.fecha) : null
+    if (body.fechaPlazo !== undefined) data.fechaPlazo = body.fechaPlazo ? new Date(body.fechaPlazo) : null
+    if (body.enviosParciales !== undefined) data.enviosParciales = body.enviosParciales
+    if (body.montoDespacho !== undefined) data.montoDespacho = body.montoDespacho
     if (body.rutCliente !== undefined) Object.assign(data, clearCotizacionDiscountData())
+
     try {
       const current = await fastify.prisma.cotizacionLicitacion.findFirst({
         where: scopedWhere(request.user, { id }),
         select: { id: true },
       })
       if (!current) return reply.code(404).send({ error: 'Cotización no encontrada' })
-      const c = await fastify.prisma.cotizacionLicitacion.update({ where: { id }, data })
+
+      const c = await fastify.prisma.$transaction(async (tx) => {
+        if (body.items !== undefined && Array.isArray(body.items)) {
+          const itemData = []
+          for (const [idx, item] of body.items.entries()) {
+            const parsedItem = buildCotizacionItemCreateData(item, `item ${idx + 1}`)
+            if (parsedItem.error) {
+              const err = new Error(parsedItem.error)
+              err.statusCode = 400
+              throw err
+            }
+            itemData.push(parsedItem.data)
+          }
+          await tx.cotizacionLicitacionItem.deleteMany({ where: { cotizacionId: id } })
+          if (itemData.length > 0) {
+            await tx.cotizacionLicitacionItem.createMany({
+              data: itemData.map(it => ({ ...it, cotizacionId: id }))
+            })
+          }
+        }
+        return tx.cotizacionLicitacion.update({ where: { id }, data, include: { items: true } })
+      })
       return c
     } catch (e) {
+      if (e.statusCode) return reply.code(e.statusCode).send({ error: e.message })
       if (e.code === 'P2025') return reply.code(404).send({ error: 'Cotización no encontrada' })
       throw e
     }

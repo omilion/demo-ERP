@@ -21,6 +21,7 @@ const ESTADOS = ['Pendiente', 'En proceso', 'Adjudicada', 'No Adjudicada', 'Rech
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
 const licitacionForm = data => ({
+  idLicitacion: data.idLicitacion || '',
   estado: data.estado || 'Pendiente',
   rutCliente: data.rutCliente || '',
   obs: data.obs || '',
@@ -28,6 +29,9 @@ const licitacionForm = data => ({
   ordenCompra: data.ordenCompra || '',
   referencia: data.referencia || '',
   fecha: data.fecha ? data.fecha.slice(0, 10) : '',
+  fechaPlazo: data.fechaPlazo ? data.fechaPlazo.slice(0, 10) : '',
+  enviosParciales: !!data.enviosParciales,
+  montoDespacho: data.montoDespacho || 0,
 })
 
 function precioLicitacion(producto) {
@@ -268,8 +272,13 @@ function ProductoLookup({ onSelect }) {
                 setQ('')
                 setOpen(false)
               }}
-              style={{ display: 'grid', gridTemplateColumns: '120px 1fr 120px', gap: 8, width: '100%', padding: '8px 10px', border: 0, borderBottom: '1px solid var(--border)', background: '#fff', textAlign: 'left', cursor: 'pointer', fontSize: 12 }}
+              style={{ display: 'grid', gridTemplateColumns: '36px 120px 1fr 120px', gap: 8, width: '100%', padding: '8px 10px', border: 0, borderBottom: '1px solid var(--border)', background: '#fff', textAlign: 'left', cursor: 'pointer', fontSize: 12, alignItems: 'center' }}
             >
+              {producto.fotoUrl ? (
+                <img src={producto.fotoUrl} alt={producto.nombre} style={{ width: 30, height: 30, objectFit: 'cover', borderRadius: 4 }} />
+              ) : (
+                <div style={{ width: 30, height: 30, borderRadius: 4, background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
+              )}
               <span style={{ fontFamily: "'DM Mono', monospace", color: 'var(--text-3)' }}>{producto.codigoInterno || '-'}</span>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{producto.nombre}</span>
               <span style={{ fontFamily: "'DM Mono', monospace", textAlign: 'right' }}>{fmt(precioLicitacion(producto))}</span>
@@ -397,6 +406,16 @@ export default function LicitacionDetallePage() {
   ].filter(Boolean)
 
   const cols = [
+    {
+      key: 'fotoUrl',
+      label: '',
+      align: 'center',
+      render: (_, row) => row.fotoUrl ? (
+        <img src={row.fotoUrl} alt={row.nombre} style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4 }} />
+      ) : (
+        <div style={{ width: 32, height: 32, borderRadius: 4, background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
+      )
+    },
     { key: 'codigoInterno', label: 'Código', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{v || '—'}</span> },
     { key: 'nombre', label: 'Producto', wrap: true, render: v => <span style={{ fontSize: 13 }}>{v || '—'}</span> },
     { key: 'descripcion', label: 'Descripción', wrap: true,
@@ -454,14 +473,20 @@ export default function LicitacionDetallePage() {
       {editing ? (
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            <FormField label="ID Licitación">
+              <Input value={form.idLicitacion} onChange={v => setForm(f => ({ ...f, idLicitacion: v }))} />
+            </FormField>
             <FormField label="Estado">
               <Select value={form.estado} onChange={v => setForm(f => ({ ...f, estado: v }))} options={ESTADOS} />
             </FormField>
             <FormField label="Fecha">
               <Input type="date" value={form.fecha} onChange={v => setForm(f => ({ ...f, fecha: v }))} />
             </FormField>
-            <FormField label="Plazo">
+            <FormField label="Plazo de Entrega (Texto)">
               <Input value={form.plazo} onChange={v => setForm(f => ({ ...f, plazo: v }))} />
+            </FormField>
+            <FormField label="Fecha Límite Licitación">
+              <Input type="date" value={form.fechaPlazo} onChange={v => setForm(f => ({ ...f, fechaPlazo: v }))} />
             </FormField>
             <FormField label="OC">
               <Input value={form.ordenCompra} onChange={v => setForm(f => ({ ...f, ordenCompra: v }))} />
@@ -472,6 +497,15 @@ export default function LicitacionDetallePage() {
             <FormField label="Referencia">
               <Input value={form.referencia} onChange={v => setForm(f => ({ ...f, referencia: v }))} />
             </FormField>
+            <FormField label="Monto Despacho">
+              <Input type="number" value={form.montoDespacho} onChange={v => setForm(f => ({ ...f, montoDespacho: Number(v) || 0 }))} />
+            </FormField>
+            <div style={{ display: 'flex', alignItems: 'center', marginTop: 24 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                <input type="checkbox" checked={form.enviosParciales} onChange={e => setForm(f => ({ ...f, enviosParciales: e.target.checked }))} />
+                Permite envíos parciales
+              </label>
+            </div>
           </div>
           <div style={{ marginTop: 12 }}>
             <FormField label="Observaciones">
@@ -482,12 +516,14 @@ export default function LicitacionDetallePage() {
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
+            <InfoCard label="ID Licitación" value={data.idLicitacion || '—'} />
             <InfoCard label="Estado"><Badge tone={ESTADO_TONE[data.estado] || 'gray'}>{data.estado}</Badge></InfoCard>
             <InfoCard label="Fecha cotización" value={data.fecha ? new Date(data.fecha).toLocaleDateString('es-CL') : '—'} />
-            <InfoCard label="Fecha creación" value={data.fechaCreacion ? new Date(data.fechaCreacion).toLocaleDateString('es-CL') : '—'} />
-            <InfoCard label="Plazo" value={data.plazo || '—'} />
-            <InfoCard label="Vendedor" value={data.usuario || '—'} />
+            <InfoCard label="Fecha límite" value={data.fechaPlazo ? new Date(data.fechaPlazo).toLocaleDateString('es-CL') : '—'} />
+            <InfoCard label="Envíos Parciales" value={data.enviosParciales ? 'Permitido' : 'No permitido'} />
+            <InfoCard label="Monto Despacho" value={fmt(data.montoDespacho)} />
             <InfoCard label="OC" value={data.ordenCompra || '—'} />
+            <InfoCard label="Vendedor" value={data.usuario || '—'} />
           </div>
 
           {data.cliente && (

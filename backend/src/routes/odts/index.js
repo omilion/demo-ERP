@@ -26,6 +26,71 @@ export default async function odtsRoutes(fastify) {
   fastify.register(bitacoraRoute)
   fastify.register(itemWorkflowRoute)
   fastify.register(consumosRoute)
+
+  fastify.get('/taller-items', {
+    preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
+  }, async (request, reply) => {
+    const { tallerKind } = request.query || {}
+    if (!tallerKind) return reply.code(400).send({ error: 'tallerKind requerido' })
+
+    const sucursalId = getUserSucursalId(request.user)
+
+    const items = await fastify.prisma.odtItemTaller.findMany({
+      where: {
+        taller: {
+          nombre: { contains: tallerKind, mode: 'insensitive' }
+        },
+        estado: { notIn: ['cancelado', 'listo'] },
+        odtItem: {
+          eliminado: false,
+          odt: {
+            eliminado: false,
+            estado: { notIn: ['Anulada', 'Terminada', 'Entregada'] },
+            ...(sucursalId ? { OR: [{ sucursalId }, { sucursalId: null }] } : {})
+          }
+        }
+      },
+      include: {
+        odtItem: {
+          include: {
+            odt: {
+              include: {
+                orden: {
+                  select: {
+                    nInterno: true,
+                    observaciones: true,
+                    cliente: {
+                      select: {
+                        nombre: true,
+                        razonSocial: true,
+                        rut: true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        taller: true,
+        operarioResponsable: {
+          select: {
+            id: true,
+            nombre: true
+          }
+        }
+      },
+      orderBy: {
+        odtItem: {
+          odt: {
+            prioridad: 'asc'
+          }
+        }
+      }
+    })
+
+    return { items }
+  })
   fastify.get('/meta/operarios', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
   }, async (request) => {

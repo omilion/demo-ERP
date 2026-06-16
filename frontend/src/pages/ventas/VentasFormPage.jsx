@@ -996,6 +996,8 @@ export default function VentasFormPage() {
     estadoPago: 'No pagada', estadoEntrega: 'Pendiente entrega',
     abono: '', guias: '', facturado: '', descuentoPct: '', licitacion: searchParams.get('oc') || '', observaciones: searchParams.get('obs') || '',
     licitacionFecha: '', licitacionPlazo: '', licitacionReferencia: '', licitacionOC: '',
+    enviosParciales: false, montoDespacho: '', fechaPlazo: '',
+    direccionDespacho: '', contactoDespacho: '', regionDespacho: '', comunaDespacho: '', ciudadDespacho: '',
   })
   const selectedClienteId = data.clienteId ? Number(data.clienteId) : null
   const { data: sucursalesCliente = [] } = useClienteSucursales(selectedClienteId)
@@ -1019,7 +1021,16 @@ export default function VentasFormPage() {
       set('descuentoPct', found.descuentoPct != null ? String(found.descuentoPct) : '')
       set('licitacion', found.licitacion || '')
       set('observaciones', found.observaciones || '')
-      
+
+      set('enviosParciales', !!found.enviosParciales)
+      set('montoDespacho', found.montoDespacho != null ? String(found.montoDespacho) : '')
+      set('fechaPlazo', found.fechaPlazo ? new Date(found.fechaPlazo).toISOString().slice(0, 10) : '')
+      set('direccionDespacho', found.direccionDespacho || '')
+      set('contactoDespacho', found.contactoDespacho || '')
+      set('regionDespacho', found.regionDespacho || '')
+      set('comunaDespacho', found.comunaDespacho || '')
+      set('ciudadDespacho', found.ciudadDespacho || '')
+
       const firstCot = found.cotizaciones?.[0]
       set('licitacionFecha', firstCot?.fecha ? new Date(firstCot.fecha).toISOString().slice(0, 10) : '')
       set('licitacionPlazo', firstCot?.plazo || '')
@@ -1106,6 +1117,14 @@ export default function VentasFormPage() {
       estadoEntrega: data.estadoEntrega,
       licitacion: data.licitacion || undefined,
       observaciones: data.observaciones || undefined,
+      enviosParciales: !!data.enviosParciales,
+      montoDespacho: Number(data.montoDespacho) || 0,
+      fechaPlazo: data.fechaPlazo ? new Date(data.fechaPlazo) : null,
+      direccionDespacho: data.direccionDespacho || null,
+      contactoDespacho: data.contactoDespacho || null,
+      regionDespacho: data.regionDespacho || null,
+      comunaDespacho: data.comunaDespacho || null,
+      ciudadDespacho: data.ciudadDespacho || null,
     }
     if (data.tipo === 'Licitación') {
       payload.licitacionFecha = data.licitacionFecha || undefined
@@ -1280,6 +1299,41 @@ export default function VentasFormPage() {
           {selectedSucursal.direccion || 'Sin direccion'} {selectedSucursal.comuna ? `- ${selectedSucursal.comuna}` : ''} {selectedSucursal.contacto ? `- Contacto: ${selectedSucursal.contacto}` : ''}
         </div>
       )}
+
+      <FormDivider label="Información de Despacho" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+        <FormField label="Fecha Plazo de Entrega">
+          <Input type="date" value={data.fechaPlazo || ''} onChange={v => set('fechaPlazo', v)} />
+        </FormField>
+        <FormField label="Monto Despacho Cotizado">
+          <Input type="number" value={data.montoDespacho || ''} onChange={v => set('montoDespacho', v)} prefix="$" placeholder="0" />
+        </FormField>
+        <div style={{ display: 'flex', alignItems: 'center', marginTop: 20 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+            <input type="checkbox" checked={!!data.enviosParciales} onChange={e => set('enviosParciales', e.target.checked)} />
+            Permite envíos parciales
+          </label>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 14, marginTop: 14 }}>
+        <FormField label="Dirección de Despacho (Override)" hint="Dejar vacío para usar dirección por defecto del cliente">
+          <Input value={data.direccionDespacho || ''} onChange={v => set('direccionDespacho', v)} placeholder="Calle y número" />
+        </FormField>
+        <FormField label="Contacto de Despacho (Override)">
+          <Input value={data.contactoDespacho || ''} onChange={v => set('contactoDespacho', v)} placeholder="Nombre y teléfono contacto" />
+        </FormField>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 14 }}>
+        <FormField label="Región Despacho">
+          <Input value={data.regionDespacho || ''} onChange={v => set('regionDespacho', v)} placeholder="Región" />
+        </FormField>
+        <FormField label="Comuna Despacho">
+          <Input value={data.comunaDespacho || ''} onChange={v => set('comunaDespacho', v)} placeholder="Comuna" />
+        </FormField>
+        <FormField label="Ciudad Despacho">
+          <Input value={data.ciudadDespacho || ''} onChange={v => set('ciudadDespacho', v)} placeholder="Ciudad" />
+        </FormField>
+      </div>
       {isEdit && found?.cotizaciones?.length > 0 && (
         <div style={{ marginTop: 8, marginBottom: 8, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
           <div style={{ padding: '8px 10px', background: 'var(--bg)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>Cotizacion / licitacion vinculada</div>

@@ -6,6 +6,7 @@ import { validateConvenioMarcoOcForWrite } from './convenio-marco.js'
 import { canApplyDescuento, requiresDescuentoPermission } from './descuentos-permissions.js'
 import { validateVentaDescuentoCatalogForWrite } from './descuentos-catalog.js'
 import { assertDiscountAuthorizationForDraft } from '../descuentos/rules-engine.js'
+import { autoNotifyTaller } from '../pasar-taller/service.js'
 
 
 const ItemSchema = z.object({
@@ -33,6 +34,14 @@ const Schema = z.object({
   licitacionPlazo: z.string().optional().nullable(),
   licitacionReferencia: z.string().optional().nullable(),
   licitacionOC: z.string().optional().nullable(),
+  enviosParciales: z.boolean().optional().default(false),
+  montoDespacho: z.number().min(0).optional().default(0),
+  fechaPlazo: z.string().optional().nullable(),
+  direccionDespacho: z.string().optional().nullable(),
+  contactoDespacho: z.string().optional().nullable(),
+  regionDespacho: z.string().optional().nullable(),
+  comunaDespacho: z.string().optional().nullable(),
+  ciudadDespacho: z.string().optional().nullable(),
 })
 
 export default async function createVenta(fastify) {
@@ -52,6 +61,14 @@ export default async function createVenta(fastify) {
       licitacionPlazo,
       licitacionReferencia,
       licitacionOC,
+      enviosParciales,
+      montoDespacho,
+      fechaPlazo,
+      direccionDespacho,
+      contactoDespacho,
+      regionDespacho,
+      comunaDespacho,
+      ciudadDespacho,
       ...rest
     } = parsed.data
     if (abono > 0 || facturado !== undefined || (estadoPago && estadoPago !== 'No pagada')) {
@@ -130,6 +147,14 @@ export default async function createVenta(fastify) {
         data: {
           ...ordenData,
           ...descuentoData,
+          enviosParciales: enviosParciales || false,
+          montoDespacho: montoDespacho || 0,
+          fechaPlazo: fechaPlazo ? new Date(fechaPlazo) : null,
+          direccionDespacho: direccionDespacho || null,
+          contactoDespacho: contactoDespacho || null,
+          regionDespacho: regionDespacho || null,
+          comunaDespacho: comunaDespacho || null,
+          ciudadDespacho: ciudadDespacho || null,
           abono: 0,
           estadoPago: 'No pagada',
           userId: request.user.id,
@@ -155,6 +180,9 @@ export default async function createVenta(fastify) {
               plazo: licitacionPlazo || undefined,
               referencia: licitacionReferencia || undefined,
               ordenCompra: licitacionOC || undefined,
+              fechaPlazo: fechaPlazo ? new Date(fechaPlazo) : undefined,
+              enviosParciales: enviosParciales || undefined,
+              montoDespacho: montoDespacho || undefined,
             }
           })
         } else {
@@ -170,6 +198,9 @@ export default async function createVenta(fastify) {
               ordenId: created.id,
               sucursalId: created.sucursalId,
               usuario: request.user.nombre || 'Sistema',
+              fechaPlazo: fechaPlazo ? new Date(fechaPlazo) : null,
+              enviosParciales: enviosParciales || false,
+              montoDespacho: montoDespacho || 0,
               items: {
                 create: itemsData.map(item => ({
                   codigoInterno: item.codigoInterno,
@@ -183,6 +214,9 @@ export default async function createVenta(fastify) {
           })
         }
       }
+
+      // Automatically notify/create ODT for workshop if there are transitorio items
+      await autoNotifyTaller(tx, created.id, request.user, fastify.log)
 
       const stock = await applyVentaStockDeltas(tx, {
         deltas: isVentaDirectaStockTipo(created.tipo) ? buildStockDeltasFromItems(itemsData, 1) : new Map(),

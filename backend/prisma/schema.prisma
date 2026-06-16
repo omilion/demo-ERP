@@ -25,6 +25,7 @@ model User {
   sessions          Session[]
   accesos           AccesoLog[]
   comisionReglas    ComisionRegla[]
+  odtResponsabilidades OdtItemTaller[] @relation("OdtResponsable")
 
   @@index([codigoVendedor])
   @@map("users")
@@ -124,6 +125,7 @@ model EmpresaConfig {
   codigoEmpresa Int?     @map("codigo_empresa")
   logoUrl       String?  @map("logo_url")
   textoPie      String?  @map("texto_pie")
+  metaMensualVentas Float  @default(0) @map("meta_mensual_ventas")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   @@map("empresa")
@@ -171,6 +173,8 @@ model Cliente {
   diasInactivoAlerta Int?    @map("dias_inactivo_alerta")
   segmento           String? @default("C")
   activo             Boolean @default(true)
+  conflictivo        Boolean @default(false) @map("conflictivo")
+  conflictivoDetalle String? @map("conflictivo_detalle")
   sucursales         ClienteSucursal[]
 
   @@map("clientes")
@@ -272,9 +276,12 @@ model Producto {
   destacadoWeb     Boolean       @default(false) @map("destacado_web")
   estadoInventario String?       @map("estado_inventario")
   activo           Boolean       @default(true)
+  tallerId         Int?          @map("taller_id")
+  tiempoTeorico    Int?          @map("tiempo_teorico")
   subcategoria     Subcategoria? @relation(fields: [subcategoriaId], references: [id])
   ubicacionCatalogo Ubicacion?   @relation(fields: [ubicacionId], references: [id])
   proveedores      ProductoProveedor[]
+  taller           Taller?       @relation("ProductoTaller", fields: [tallerId], references: [id])
 
   @@index([subcategoriaId])
   @@index([categoriaId])
@@ -483,6 +490,14 @@ model Orden {
   userMod            String?        @map("user_mod")
   fecham             DateTime?
   createdAt          DateTime       @default(now()) @map("created_at")
+  enviosParciales    Boolean        @default(false) @map("envios_parciales")
+  montoDespacho      Float          @default(0) @map("monto_despacho")
+  fechaPlazo         DateTime?      @map("fecha_plazo")
+  direccionDespacho  String?        @map("direccion_despacho")
+  contactoDespacho   String?        @map("contacto_despacho")
+  regionDespacho     String?        @map("region_despacho")
+  comunaDespacho     String?        @map("comuna_despacho")
+  ciudadDespacho     String?        @map("ciudad_despacho")
   items              OrdenItem[]
   cargos             OrdenCargo[]
   despachos          Despacho[]
@@ -586,6 +601,9 @@ model CotizacionLicitacion {
   descuentoSolicitudId Int?                       @unique @map("descuento_solicitud_id")
   descuentoMonto       Float?                     @map("descuento_monto")
   descuentoSnapshot    Json?                      @map("descuento_snapshot")
+  fechaPlazo           DateTime?                  @map("fecha_plazo")
+  enviosParciales      Boolean                    @default(false) @map("envios_parciales")
+  montoDespacho        Float                      @default(0) @map("monto_despacho")
   items                CotizacionLicitacionItem[]
   descuentoSolicitud   DescuentoSolicitud?        @relation("CotizacionDescuentoSolicitud", fields: [descuentoSolicitudId], references: [id], onDelete: SetNull)
 
@@ -989,6 +1007,7 @@ model Odt {
   operarioId    Int?             @map("operario_id")
   eliminado     Boolean          @default(false)
   createdAt     DateTime         @default(now()) @map("created_at")
+  fechaEntregaCompromiso DateTime? @map("fecha_entrega_compromiso")
   items         OdtItem[]
   bitacora      BitacoraTaller[]
   movimientosBodega MovimientoBodega[]
@@ -1144,10 +1163,11 @@ model TallerHistorialMaterial {
 }
 
 model Taller {
-  id      Int             @id @default(autoincrement())
-  nombre  String          @unique
-  activo  Boolean         @default(true)
-  estados OdtItemTaller[]
+  id        Int             @id @default(autoincrement())
+  nombre    String          @unique
+  activo    Boolean         @default(true)
+  estados   OdtItemTaller[]
+  productos Producto[]      @relation("ProductoTaller")
 
   @@map("talleres")
   @@schema("taller")
@@ -1174,17 +1194,19 @@ model OdtItem {
 }
 
 model OdtItemTaller {
-  id           Int       @id @default(autoincrement())
-  odtItemId    Int       @map("odt_item_id")
-  tallerId     Int       @map("taller_id")
-  estado       String    @default("pendiente")
-  obs          String?
-  fechaInicio  DateTime? @map("fecha_inicio")
-  fechaListo   DateTime? @map("fecha_listo")
-  usuario      String?
-  usuarioListo String?   @map("usuario_listo")
-  odtItem      OdtItem   @relation(fields: [odtItemId], references: [id], onDelete: Cascade)
-  taller       Taller    @relation(fields: [tallerId], references: [id])
+  id                    Int       @id @default(autoincrement())
+  odtItemId             Int       @map("odt_item_id")
+  tallerId              Int       @map("taller_id")
+  estado                String    @default("pendiente")
+  obs                   String?
+  fechaInicio           DateTime? @map("fecha_inicio")
+  fechaListo            DateTime? @map("fecha_listo")
+  usuario               String?
+  usuarioListo          String?   @map("usuario_listo")
+  operarioResponsableId Int?      @map("operario_responsable_id")
+  odtItem               OdtItem   @relation(fields: [odtItemId], references: [id], onDelete: Cascade)
+  taller                Taller    @relation(fields: [tallerId], references: [id])
+  operarioResponsable   User?     @relation("OdtResponsable", fields: [operarioResponsableId], references: [id])
 
   @@unique([odtItemId, tallerId])
   @@index([tallerId])
@@ -1429,6 +1451,8 @@ model Trabajador {
   user               String?
   estado             Boolean       @default(true)
   foto               String?
+  sueldoBase         Int?          @map("sueldo_base")
+  valorHoraExtra     Int?          @map("valor_hora_extra")
   createdAt          DateTime?     @default(now()) @map("created_at")
   updatedAt          DateTime?     @updatedAt @map("updated_at")
   contratos          Contrato[]

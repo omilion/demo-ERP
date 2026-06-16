@@ -74,6 +74,9 @@ export default function LicitacionFichaPage() {
           </div>
           <div style={{ alignSelf: 'end' }}>
             <Info label="Plazo entrega" value={data.plazo || '-'} />
+            <Info label="Plazo límite" value={fmtDate(data.fechaPlazo)} />
+            <Info label="Envíos parciales" value={data.enviosParciales ? 'Permitido' : 'No'} />
+            <Info label="Monto despacho" value={fmt(data.montoDespacho)} />
             <Info label="Ejecutivo(a)" value={data.usuario || '-'} />
             <Info label="Creacion" value={fmtDate(data.fechaCreacion, true)} />
           </div>

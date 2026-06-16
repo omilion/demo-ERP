@@ -166,8 +166,22 @@ export default async function itemWorkflowRoutes(fastify) {
     const parsedParams = parseWorkflowParams(request.params)
     if (parsedParams.error) return reply.code(400).send({ error: parsedParams.error })
 
-    const estado = normalizeTallerItemEstado(request.body?.estado)
-    if (!estado) return reply.code(400).send({ error: ODT_ITEM_TALLER_ESTADOS_ERROR })
+    const bodyEstado = request.body?.estado
+    const estado = bodyEstado ? normalizeTallerItemEstado(bodyEstado) : null
+    if (bodyEstado && !estado) return reply.code(400).send({ error: ODT_ITEM_TALLER_ESTADOS_ERROR })
+
+    const operarioResponsableId = request.body?.operarioResponsableId !== undefined
+      ? (request.body.operarioResponsableId === null ? null : parseInt(request.body.operarioResponsableId, 10))
+      : undefined
+    if (operarioResponsableId !== undefined && operarioResponsableId !== null && isNaN(operarioResponsableId)) {
+      return reply.code(400).send({ error: 'operarioResponsableId invalido' })
+    }
+
+    const obs = request.body?.obs !== undefined ? String(request.body.obs) : undefined
+
+    if (!estado && operarioResponsableId === undefined && obs === undefined) {
+      return reply.code(400).send({ error: 'Cuerpo vacio o invalido' })
+    }
 
     const { tallerItemId } = parsedParams
     const sucursalId = getUserSucursalId(request.user)
@@ -180,7 +194,7 @@ export default async function itemWorkflowRoutes(fastify) {
     if (!isOdtWorkflowWritable(current.odtItem?.odt)) {
       return reply.code(409).send({ error: 'ODT cerrada o anulada' })
     }
-    if (!canChangeTallerItemEstado(request.user, estado, current)) {
+    if (estado && !canChangeTallerItemEstado(request.user, estado, current)) {
       return reply.code(403).send({ error: 'Forbidden' })
     }
 
@@ -200,17 +214,32 @@ export default async function itemWorkflowRoutes(fastify) {
           error.statusCode = 409
           throw error
         }
-        if (!canChangeTallerItemEstado(request.user, estado, txCurrent)) {
+        if (estado && !canChangeTallerItemEstado(request.user, estado, txCurrent)) {
           const error = new Error('Forbidden')
           error.statusCode = 403
           throw error
         }
+
+        const data = {}
+        if (estado) {
+          Object.assign(data, buildTallerItemEstadoUpdate({ estado, current: txCurrent, user: request.user }))
+        }
+        if (operarioResponsableId !== undefined) {
+          data.operarioResponsableId = operarioResponsableId
+        }
+        if (obs !== undefined) {
+          data.obs = obs
+        }
+
         const updated = await tx.odtItemTaller.update({
           where: { id: tallerItemId },
-          data: buildTallerItemEstadoUpdate({ estado, current: txCurrent, user: request.user }),
+          data,
         })
-        const bitacoraEntry = buildTallerItemEstadoBitacoraEntry({ current: txCurrent, estado, user: request.user })
-        if (bitacoraEntry.odtId && estado !== txCurrent.estado) await tx.bitacoraTaller.create({ data: bitacoraEntry })
+
+        if (estado && estado !== txCurrent.estado) {
+          const bitacoraEntry = buildTallerItemEstadoBitacoraEntry({ current: txCurrent, estado, user: request.user })
+          if (bitacoraEntry.odtId) await tx.bitacoraTaller.create({ data: bitacoraEntry })
+        }
         return updated
       })
     } catch (error) {

@@ -602,6 +602,10 @@ export function pickTrabajador(b, partial = false) {
   set('user', b.user)
   if (b.estado !== undefined) d.estado = toBool(b.estado)
   set('foto', b.foto)
+  if (b.sueldoBase !== undefined) d.sueldoBase = toInt(b.sueldoBase)
+  else if (!partial) d.sueldoBase = null
+  if (b.valorHoraExtra !== undefined) d.valorHoraExtra = toInt(b.valorHoraExtra)
+  else if (!partial) d.valorHoraExtra = null
   return d
 }
 

@@ -1,6 +1,7 @@
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere } from '../historico/corte.js'
 import { getUserSucursalId } from '../caja/scope.js'
 import { buildCobranzaHistoricoScopeWhere } from '../cobranza/scope.js'
+import { getMatrizTotales } from '../matriz-ventas/index.js'
 
 // El taller real vive en los items (items.talleres.taller.nombre); Odt.tipo es
 // "Legacy" en los datos migrados, asi que contar por `tipo` daba siempre 0.
@@ -51,6 +52,7 @@ export default async function dashboardStats(fastify) {
       facturasProvNoPagadas,
       boletasProvNoPagadas,
       productosCalidadRows,
+      matrizTotales,
     ] = await Promise.all([
       p.orden.count({ where: mergeWhere({ estadoPago: 'No pagada', eliminada: false }, ordenOperacionalWhere) }),
       p.orden.count({ where: mergeWhere({ estadoEntrega: 'Pendiente entrega', eliminada: false }, ordenOperacionalWhere) }),
@@ -96,6 +98,7 @@ export default async function dashboardStats(fastify) {
           COUNT(*) FILTER (WHERE proveedor_id IS NULL AND activo = true)::int AS sin_proveedor
         FROM catalogo.productos
       `,
+      getMatrizTotales(fastify, {}, request.user).catch(() => ({ kpis: {} })),
     ])
 
     const stockByBodega = {}
@@ -110,6 +113,7 @@ export default async function dashboardStats(fastify) {
     const cobranzaByEstado = Object.fromEntries(cobranzaStats.map(g => [String(g.estado || '').toUpperCase(), g]))
     const cal = productosCalidadRows[0]
     return {
+      kpis: matrizTotales?.kpis || {},
       ventas: {
         noPagadas: ventasNoPagadas,
         pendienteEntrega: ventasPendienteEntrega,

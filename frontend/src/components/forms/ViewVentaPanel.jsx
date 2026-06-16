@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, Icon } from '../shared'
 import { ViewPanel, FormDivider } from './index'
-import { useVenta, useDeleteVenta } from '../../api/ventas'
+import { useVenta, useDeleteVenta, useForzarTaller } from '../../api/ventas'
 
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
@@ -68,7 +68,7 @@ function TabBtn({ active, onClick, children, badge }) {
 }
 
 // ── Tab: Detalle ───────────────────────────────────────────────────────────────
-function TabDetalle({ v }) {
+function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespacho }) {
   const items = v.items || []
   const total = v.total || 0
   const abono = v.abono || 0
@@ -188,6 +188,58 @@ function TabDetalle({ v }) {
             <span style={{ fontFamily: "'DM Mono',monospace", color: saldo > 0 ? 'var(--red)' : 'var(--green-700)' }}>{fmt(saldo)}</span>
           </div>
         )}
+      </div>
+
+      {/* Acciones Rápidas */}
+      <FormDivider label="Acciones rápidas" />
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        <button
+          onClick={handleCreateDespacho}
+          style={{
+            flex: '1 1 140px',
+            padding: '10px 12px',
+            fontSize: 12,
+            fontWeight: 600,
+            color: '#fff',
+            background: 'var(--blue)',
+            border: 'none',
+            borderRadius: 8,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            transition: 'opacity 0.1s'
+          }}
+        >
+          <Icon name="truck" size={14} />
+          Crear Despacho
+        </button>
+
+        <button
+          onClick={handleForzarTaller}
+          disabled={forzarTallerMut.isPending}
+          style={{
+            flex: '1 1 140px',
+            padding: '10px 12px',
+            fontSize: 12,
+            fontWeight: 600,
+            color: '#fff',
+            background: 'var(--amber)',
+            border: 'none',
+            borderRadius: 8,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            opacity: forzarTallerMut.isPending ? 0.7 : 1,
+            transition: 'opacity 0.1s'
+          }}
+        >
+          <Icon name="tool" size={14} />
+          {forzarTallerMut.isPending ? 'Enviando...' : 'Gatillar Taller / ODT'}
+        </button>
       </div>
     </>
   )
@@ -373,6 +425,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
 
   const { data: full, isLoading } = useVenta(venta.id)
   const deleteVenta = useDeleteVenta()
+  const forzarTallerMut = useForzarTaller()
 
   const v = full || venta
   const odts  = full?.odts  ?? []
@@ -381,6 +434,29 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const fecha = v.createdAt
     ? new Date(v.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—'
+
+  const handleForzarTaller = () => {
+    forzarTallerMut.mutate(v.id, {
+      onSuccess: () => {
+        alert('Orden de Trabajo (ODT) procesada correctamente.')
+      },
+      onError: (err) => {
+        alert('Error al forzar taller: ' + (err.response?.data?.error || err.message))
+      }
+    })
+  }
+
+  const handleCreateDespacho = () => {
+    const params = new URLSearchParams({
+      action: 'new',
+      ordenId: String(v.id),
+      nInterno: String(v.nInterno || ''),
+      direccion: v.direccionDespacho || '',
+      region: v.regionDespacho || '',
+      comuna: v.comunaDespacho || ''
+    })
+    navigate(`/despachos?${params.toString()}`)
+  }
 
   function handleDelete() {
     deleteVenta.mutate(venta.id, {
@@ -417,7 +493,14 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
             <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Cargando detalles...</div>
           )}
 
-          {tab === 'detalle'    && <TabDetalle v={v} />}
+          {tab === 'detalle'    && (
+            <TabDetalle
+              v={v}
+              handleForzarTaller={handleForzarTaller}
+              forzarTallerMut={forzarTallerMut}
+              handleCreateDespacho={handleCreateDespacho}
+            />
+          )}
           {tab === 'taller'     && <TabTaller odts={odts} onGoTaller={() => navigate('/taller')} />}
           {tab === 'pagos'      && <TabPagos pagos={pagos} />}
           {tab === 'documentos' && <TabDocumentos v={v} pagos={pagos} />}
@@ -472,7 +555,14 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
         <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Cargando detalles…</div>
       )}
 
-      {tab === 'detalle'    && <TabDetalle v={v} />}
+      {tab === 'detalle'    && (
+        <TabDetalle
+          v={v}
+          handleForzarTaller={handleForzarTaller}
+          forzarTallerMut={forzarTallerMut}
+          handleCreateDespacho={handleCreateDespacho}
+        />
+      )}
       {tab === 'taller'     && <TabTaller odts={odts} onGoTaller={() => navigate('/taller')} />}
       {tab === 'pagos'      && <TabPagos pagos={pagos} />}
       {tab === 'documentos' && <TabDocumentos v={v} pagos={pagos} />}

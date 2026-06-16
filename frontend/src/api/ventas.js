@@ -121,3 +121,16 @@ export const useUpdateItemEntregados = () => {
     },
   })
 }
+
+export const useForzarTaller = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.post(`/ventas/${id}/forzar-taller`).then(r => r.data),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: ['ventas', id] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+}

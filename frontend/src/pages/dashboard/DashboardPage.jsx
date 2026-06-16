@@ -421,6 +421,75 @@ export function DashboardOperativoPage() {
       </div>
 
       <div className="dash-grid">
+        {canReadVentas && (
+          <SectionCard title="Ventas & Cumplimiento Metas" icon="trendingUp">
+            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {/* YoY YTD Comparison */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2, #64748b)' }}>Ventas YoY YTD (Acumulado Anual)</span>
+                  {stats?.kpis?.variacionYtd !== undefined && (
+                    <span style={{
+                      fontSize: 12, fontWeight: 700,
+                      color: stats.kpis.variacionYtd >= 0 ? '#10b981' : '#ef4444',
+                      background: stats.kpis.variacionYtd >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                      padding: '2px 8px', borderRadius: 4
+                    }}>
+                      {stats.kpis.variacionYtd >= 0 ? '▲' : '▼'} {Math.abs(stats.kpis.variacionYtd)}% vs YTD Anterior
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={{ background: 'var(--bg, #f8fafc)', padding: 12, borderRadius: 8, border: '1px solid var(--border, #e2e8f0)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-3, #94a3b8)', fontWeight: 600, textTransform: 'uppercase' }}>Este Año YTD</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-1)', fontFamily: "'DM Mono', monospace", marginTop: 4 }}>
+                      {isLoading ? '...' : (stats?.kpis?.ytd?.total || 0).toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })}
+                    </div>
+                  </div>
+                  <div style={{ background: 'var(--bg, #f8fafc)', padding: 12, borderRadius: 8, border: '1px solid var(--border, #e2e8f0)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-3, #94a3b8)', fontWeight: 600, textTransform: 'uppercase' }}>Año Anterior YTD</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-2)', fontFamily: "'DM Mono', monospace", marginTop: 4 }}>
+                      {isLoading ? '...' : (stats?.kpis?.prevYtd?.total || 0).toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Monthly Meta Progress */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2, #64748b)' }}>Meta Mensual de Ventas</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)' }}>
+                    {isLoading ? '...' : (stats?.kpis?.mes?.gran || 0).toLocaleString('es-CL', { maximumFractionDigits: 0 })} / {isLoading ? '...' : (stats?.kpis?.metaMensualVentas || 0).toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+                {(() => {
+                  const actual = stats?.kpis?.mes?.gran || 0
+                  const meta = stats?.kpis?.metaMensualVentas || 0
+                  const pct = meta > 0 ? Math.min(100, Math.round((actual / meta) * 100)) : 0
+                  const color = pct >= 100 ? '#10b981' : pct >= 75 ? 'var(--green-600)' : pct >= 50 ? 'var(--amber)' : '#ef4444'
+                  const diff = meta - actual
+                  return (
+                    <div>
+                      <div style={{ height: 12, background: 'var(--border, #e2e8f0)', borderRadius: 99, overflow: 'hidden', position: 'relative', marginBottom: 8 }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${color}, #34d399)`, borderRadius: 99, transition: 'width 0.4s ease' }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-3, #94a3b8)', fontWeight: 600 }}>
+                        <span>Progreso: {pct}%</span>
+                        {diff > 0 ? (
+                          <span>Faltan {diff.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })}</span>
+                        ) : (
+                          <span style={{ color: '#10b981' }}>¡Meta superada! 🎉</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
+          </SectionCard>
+        )}
+
         {show.taller && (
           <SectionCard title="Talleres - ODTs Activas" icon="tool">
             <div style={{ padding: '4px 14px 8px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>

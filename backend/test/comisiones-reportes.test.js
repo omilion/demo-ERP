@@ -66,7 +66,16 @@ describe('reportes comisiones vendedores', () => {
     return rule
   }
 
-  async function createOrden({ tipo, cantidad = 1, precioUnitario = 1000, createdAt = new Date('2026-06-10T12:00:00Z') } = {}) {
+  async function createOrden({
+    tipo,
+    cantidad = 1,
+    precioUnitario = 1000,
+    createdAt = new Date('2026-06-10T12:00:00Z'),
+    estadoPago = 'Pagada',
+    estadoEntrega = 'Entregada',
+    facturado,
+  } = {}) {
+    const total = cantidad * precioUnitario
     const orden = await app.prisma.orden.create({
       data: {
         nInterno: 950000 + created.ordenes.length + Math.floor(Math.random() * 1000),
@@ -77,6 +86,9 @@ describe('reportes comisiones vendedores', () => {
         rutCliente: `COM-${Date.now()}`,
         sucursalId: 1,
         createdAt,
+        estadoPago,
+        estadoEntrega,
+        facturado: facturado !== undefined ? facturado : total,
         items: {
           create: [{ productoId: 1, cantidad, precioUnitario }],
         },

@@ -250,7 +250,33 @@ export default function MatrizVentasPage() {
   const cols = [
     { key: '_acc', label: 'Operaciones', render: (_, row) => renderOperations(row) },
     { key: 'nInterno', label: 'Nro. Interno', render: v => <span style={{ ...mono, fontWeight: 700 }}>{v || '-'}</span> },
-    { key: 'nombreCliente', label: 'Nombre', wrap: true, render: v => <span style={{ fontWeight: 600 }}>{v || '-'}</span> },
+    {
+      key: 'nombreCliente',
+      label: 'Nombre',
+      wrap: true,
+      render: (v, row) => (
+        <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          {v || '-'}
+          {row.clienteConflictivo && (
+            <span
+              style={{
+                background: '#fee2e2',
+                color: '#b91c1c',
+                padding: '1px 6px',
+                borderRadius: 4,
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: 'help',
+                border: '1px solid #fca5a5'
+              }}
+              title={row.clienteConflictivoDetalle || 'Cliente marcado como conflictivo'}
+            >
+              ⚠ Conflictivo
+            </span>
+          )}
+        </span>
+      )
+    },
     { key: 'ref', label: 'OC', wrap: true, render: (_, row) => <span style={{ fontSize: 12, whiteSpace: 'normal' }}>{ocValue(row) || '-'}</span> },
     { key: 'total', label: 'Total', align: 'right',
       render: v => <span style={{ ...mono, fontWeight: 600, color: 'var(--green-700)' }}>{fmt(v)}</span> },
@@ -270,6 +296,8 @@ export default function MatrizVentasPage() {
           {row.fechaEstadoEntrega && <span style={{ ...mono, fontSize: 10, color: 'var(--text-3)' }}>{formatDate(row.fechaEstadoEntrega)}</span>}
         </div>
       ) : '-' },
+    { key: 'regionDespacho', label: 'Región Desp.', render: v => <span style={{ fontSize: 12 }}>{v || '—'}</span> },
+    { key: 'ciudadDespacho', label: 'Ciudad Desp.', render: v => <span style={{ fontSize: 12 }}>{v || '—'}</span> },
     { key: 'detalleProductos', label: 'Detalle', width: 430, wrap: true, render: (_, row) => renderDetalle(row) },
     { key: 'fecha', label: 'Fecha Creacion', render: v => <span style={{ ...mono, fontSize: 11 }}>{formatDateTime(v)}</span> },
     { key: 'creadorNombre', label: 'Creada por', render: v => <span style={{ fontSize: 12 }}>{v || '-'}</span> },
