@@ -286,6 +286,7 @@ model Producto {
   @@index([subcategoriaId])
   @@index([categoriaId])
   @@index([ubicacionId])
+  @@index([tallerId])
   @@map("productos")
   @@schema("catalogo")
 }
