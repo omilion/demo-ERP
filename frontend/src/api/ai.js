@@ -2,8 +2,9 @@ import { useAuthStore } from '../store/auth'
 
 // Streaming SSE contra POST /api/ai/chat. fetch + ReadableStream (EventSource no
 // soporta POST). Llama a los callbacks por cada evento del backend:
-// onText(delta), onTool({name}), onDocument({name,url,tipo}), onDone(), onError(msg).
-export async function streamChat({ messages, signal, onText, onTool, onDocument, onDone, onError }) {
+// onText(delta), onTool({name}), onDocument({name,url,tipo}), onUi({action,modo}),
+// onDone(), onError(msg).
+export async function streamChat({ messages, signal, onText, onTool, onDocument, onUi, onDone, onError }) {
   const token = useAuthStore.getState().token
   let res
   try {
@@ -53,6 +54,7 @@ export async function streamChat({ messages, signal, onText, onTool, onDocument,
         if (event === 'text') onText?.(data.delta)
         else if (event === 'tool') onTool?.(data)
         else if (event === 'document') onDocument?.(data)
+        else if (event === 'ui') onUi?.(data)
         else if (event === 'done') onDone?.(data)
         else if (event === 'error') onError?.(data.message)
       }

@@ -68,6 +68,8 @@ export function AiChat() {
       onText: (delta) => { setToolStatus(null); updateLast(a => ({ ...a, content: a.content + delta })) },
       onTool: ({ name }) => setToolStatus(TOOL_LABELS[name] || 'Consultando datos…'),
       onDocument: ({ url, tipo }) => updateLast(a => ({ ...a, documents: [...(a.documents || []), { url, tipo }] })),
+      // El asistente decide cuándo conviene más espacio (respuestas extensas/tablas/documentos).
+      onUi: ({ action, modo }) => { if (action === 'display_mode') setExpanded(modo === 'expandido') },
       onDone: () => { setLoading(false); setToolStatus(null); abortRef.current = null },
       onError: (msg) => {
         setToolStatus(null); setLoading(false); abortRef.current = null

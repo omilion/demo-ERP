@@ -2,16 +2,20 @@ import { randomUUID } from 'node:crypto'
 import { getAnthropic, isAiConfigured, buildSystemPrompt, AI_MODEL, AI_MAX_TOKENS, AI_EFFORT } from './llm.js'
 import { getToolDefinitions, runTool } from './tools/index.js'
 import { documentToolDefinitions, runDocumentTool, DOCUMENT_TOOL_NAMES } from './documents.js'
+import { uiToolDefinitions, runUiTool, UI_TOOL_NAMES } from './ui-tools.js'
 
 const MAX_ITERATIONS = 8
 
-// Todas las definiciones de herramientas (consulta + documentos) que ve el LLM.
+// Todas las definiciones de herramientas (consulta + documentos + UI) que ve el LLM.
 function allToolDefinitions() {
-  return [...getToolDefinitions(), ...documentToolDefinitions]
+  return [...getToolDefinitions(), ...documentToolDefinitions, ...uiToolDefinitions]
 }
 
-// Ejecuta una herramienta por nombre, enrutando a consulta o documentos.
+// Ejecuta una herramienta por nombre, enrutando a consulta, documentos o UI.
 async function executeTool(name, input, ctx) {
+  if (UI_TOOL_NAMES.has(name)) {
+    return runUiTool(name, input)
+  }
   if (DOCUMENT_TOOL_NAMES.has(name)) {
     const r = await runDocumentTool(name, input)
     return r || { error: `Documento no generado: ${name}` }
@@ -111,6 +115,10 @@ export default async function aiChatRoute(fastify) {
           // Si es un documento generado, avisar al cliente del link.
           if (DOCUMENT_TOOL_NAMES.has(tu.name) && result?.url) {
             send('document', { name: tu.name, url: result.url, tipo: result.tipo })
+          }
+          // Si es una orden de UI, avisar al cliente para que ajuste el panel.
+          if (UI_TOOL_NAMES.has(tu.name) && result?.modo) {
+            send('ui', { action: 'display_mode', modo: result.modo })
           }
           results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(result) })
         }
