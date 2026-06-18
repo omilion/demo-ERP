@@ -330,3 +330,10 @@ a { text-decoration: none; color: inherit; }
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Detalle de licitación: 2 columnas en desktop, 1 columna en pantallas chicas */
+@media (max-width: 900px) {
+  .licitacion-two-col {
+    grid-template-columns: 1fr !important;
+  }
+}

@@ -18,6 +18,7 @@ const ItemSchema = z.object({
   // Overrides a nivel de item (p. ej. licitacion): no modifican el producto base.
   nombre: z.string().optional(),
   descripcion: z.string().optional(),
+  codigoInterno: z.string().optional(),
 })
 
 const Schema = z.object({
@@ -203,10 +204,10 @@ export default async function updateVenta(fastify) {
           productoId: item.productoId,
           cantidad: item.cantidad,
           precioUnitario: item.precioUnitario,
-          // El override de nombre/descripcion solo afecta a este item de la orden (no al producto base).
+          // El override de nombre/descripcion/SKU solo afecta a este item de la orden (no al producto base).
           nombre: (item.nombre && item.nombre.trim()) || productosById[item.productoId]?.nombre,
           descripcion: item.descripcion && item.descripcion.trim() ? item.descripcion.trim() : undefined,
-          codigoInterno: productosById[item.productoId]?.codigoInterno,
+          codigoInterno: (item.codigoInterno && item.codigoInterno.trim()) || productosById[item.productoId]?.codigoInterno,
         }))
       }
       const orden = await fastify.prisma.$transaction(async (tx) => {

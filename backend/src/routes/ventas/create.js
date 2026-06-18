@@ -16,6 +16,7 @@ const ItemSchema = z.object({
   // Overrides a nivel de item (p. ej. licitacion): no modifican el producto base.
   nombre: z.string().optional(),
   descripcion: z.string().optional(),
+  codigoInterno: z.string().optional(),
 })
 
 const Schema = z.object({
@@ -102,12 +103,13 @@ export default async function createVenta(fastify) {
       productoId: item.productoId,
       cantidad: item.cantidad,
       precioUnitario: item.precioUnitario,
-      // El override de nombre/descripcion solo afecta a este item de la orden (no al producto base).
+      // El override de nombre/descripcion/SKU solo afecta a este item de la orden (no al producto base).
       nombre: (item.nombre && item.nombre.trim()) || productosById[item.productoId]?.nombre,
       descripcion: item.descripcion && item.descripcion.trim() ? item.descripcion.trim() : undefined,
-      codigoInterno: productosById[item.productoId]?.codigoInterno,
+      codigoInterno: (item.codigoInterno && item.codigoInterno.trim()) || productosById[item.productoId]?.codigoInterno,
     }))
 
+    let cotizacionId = null
     const orden = await fastify.prisma.$transaction(async (tx) => {
       const convenioOc = await validateConvenioMarcoOcForWrite(tx, {
         tipo: rest.tipo,
@@ -176,6 +178,7 @@ export default async function createVenta(fastify) {
           where: { idLicitacion: licId }
         })
         if (cot) {
+          cotizacionId = cot.id
           await tx.cotizacionLicitacion.update({
             where: { id: cot.id },
             data: {
@@ -191,7 +194,7 @@ export default async function createVenta(fastify) {
             }
           })
         } else {
-          await tx.cotizacionLicitacion.create({
+          const nuevaCot = await tx.cotizacionLicitacion.create({
             data: {
               idLicitacion: licId,
               fecha: licitacionFecha ? new Date(licitacionFecha) : new Date(),
@@ -217,6 +220,7 @@ export default async function createVenta(fastify) {
               }
             }
           })
+          cotizacionId = nuevaCot.id
         }
       }
 
@@ -246,7 +250,7 @@ export default async function createVenta(fastify) {
       return created
     })
     const withCliente = await attachCliente(fastify, orden)
-    return reply.code(201).send({ ...withCliente, total: computeTotal(orden.items, orden.descuentoPct, [], orden.descuentoMonto) })
+    return reply.code(201).send({ ...withCliente, cotizacionId, total: computeTotal(orden.items, orden.descuentoPct, [], orden.descuentoMonto) })
     } catch (e) {
       if (e.statusCode) return reply.code(e.statusCode).send({ error: e.message })
       throw e

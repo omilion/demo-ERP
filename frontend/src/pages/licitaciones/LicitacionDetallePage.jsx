@@ -463,22 +463,25 @@ export default function LicitacionDetallePage() {
         subtitle={data.referencia || 'Sin referencia'}
         breadcrumb={['Inicio', 'Ventas', 'Licitaciones', String(data.id)]}
         actions={
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {!editing && <>
-              {canWriteLicitaciones && <Btn variant="primary" size="sm" onClick={() => { setForm(licitacionForm(data)); setEditing(true) }}>Editar</Btn>}
+              {/* Acciones primarias destacadas */}
+              {canWriteLicitaciones && <Btn variant="primary" size="sm" icon="edit" onClick={() => { setForm(licitacionForm(data)); setEditing(true) }}>Editar</Btn>}
               {canWriteLicitaciones && canWriteVentas && hasAdjudicados && !data.orden && (
-                <Btn variant="secondary" size="sm" onClick={crearVenta} disabled={crearVentaMut.isPending || faltantesVenta.length > 0}>
-                  {crearVentaMut.isPending ? 'Creando…' : '→ Crear Venta'}
+                <Btn variant="primary" size="sm" icon="plusCircle" onClick={crearVenta} disabled={crearVentaMut.isPending || faltantesVenta.length > 0}>
+                  {crearVentaMut.isPending ? 'Creando…' : 'Crear Venta'}
                 </Btn>
               )}
               {canWriteLicitaciones && canWriteVentas && data.orden && (
-                <Btn variant="secondary" size="sm" onClick={actualizarVenta} disabled={actualizarVentaMut.isPending || faltantesVenta.length > 0}>
+                <Btn variant="primary" size="sm" icon="refreshCw" onClick={actualizarVenta} disabled={actualizarVentaMut.isPending || faltantesVenta.length > 0}>
                   {actualizarVentaMut.isPending ? 'Actualizando…' : 'Actualizar venta'}
                 </Btn>
               )}
-              <Btn variant="secondary" size="sm" onClick={() => navigate(`/licitaciones/${data.id}/ficha`)}>Ficha Tec. y Eco.</Btn>
-              <Btn variant="secondary" size="sm" onClick={imprimir}>Imprimir</Btn>
-              {canDeleteLicitaciones && <Btn variant="secondary" size="sm" onClick={handleDelete} disabled={deleteMut.isPending}>Eliminar</Btn>}
+              {/* Separador visual antes de acciones secundarias (Ficha, Imprimir, Eliminar) */}
+              <span style={{ width: 1, alignSelf: 'stretch', background: 'var(--border)', margin: '0 2px' }} />
+              <Btn variant="secondary" size="sm" icon="fileText" onClick={() => navigate(`/licitaciones/${data.id}/ficha`)}>Ficha Tec. y Eco.</Btn>
+              <Btn variant="secondary" size="sm" icon="printer" onClick={imprimir}>Imprimir</Btn>
+              {canDeleteLicitaciones && <Btn variant="secondary" size="sm" icon="trash" onClick={handleDelete} disabled={deleteMut.isPending}>Eliminar</Btn>}
             </>}
             {editing && <>
               <Btn variant="secondary" size="sm" onClick={() => setEditing(false)} disabled={updateMut.isPending}>Cancelar</Btn>
@@ -535,42 +538,89 @@ export default function LicitacionDetallePage() {
           </div>
         </div>
       ) : (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
-            <InfoCard label="ID Licitación" value={data.idLicitacion || '—'} />
-            <InfoCard label="Estado"><Badge tone={ESTADO_TONE[data.estado] || 'gray'}>{data.estado}</Badge></InfoCard>
-            <InfoCard label="Fecha cotización" value={data.fecha ? new Date(data.fecha).toLocaleDateString('es-CL') : '—'} />
-            <InfoCard label="Fecha límite" value={data.fechaPlazo ? new Date(data.fechaPlazo).toLocaleDateString('es-CL') : '—'} />
-            <InfoCard label="Envíos Parciales" value={data.enviosParciales ? 'Permitido' : 'No permitido'} />
-            <InfoCard label="Monto Despacho" value={fmt(data.montoDespacho)} />
-            <InfoCard label="OC" value={data.ordenCompra || '—'} />
-            <InfoCard label="Vendedor" value={data.usuario || '—'} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 360px) 1fr', gap: 16, alignItems: 'start', marginBottom: 16 }} className="licitacion-two-col">
+          {/* Columna izquierda: datos generales */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <InfoCard label="ID Licitación" value={data.idLicitacion || '—'} />
+              <InfoCard label="Estado"><Badge tone={ESTADO_TONE[data.estado] || 'gray'}>{data.estado}</Badge></InfoCard>
+              <InfoCard label="Fecha cotización" value={data.fecha ? new Date(data.fecha).toLocaleDateString('es-CL') : '—'} />
+              <InfoCard label="Fecha límite" value={data.fechaPlazo ? new Date(data.fechaPlazo).toLocaleDateString('es-CL') : '—'} />
+              <InfoCard label="Envíos Parciales" value={data.enviosParciales ? 'Permitido' : 'No permitido'} />
+              <InfoCard label="Monto Despacho" value={fmt(data.montoDespacho)} />
+              <InfoCard label="OC" value={data.ordenCompra || '—'} />
+              <InfoCard label="Vendedor" value={data.usuario || '—'} />
+            </div>
+
+            {data.cliente && (
+              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Organismo / Cliente</div>
+                <div style={{ fontWeight: 600, fontSize: 15 }}>{data.cliente.nombre}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4 }}>
+                  <span style={{ fontFamily: "'DM Mono', monospace" }}>{data.cliente.rut}</span>
+                  {data.cliente.email && <span> · {data.cliente.email}</span>}
+                  {data.cliente.telefono && <span> · {data.cliente.telefono}</span>}
+                </div>
+              </div>
+            )}
+            {!data.cliente && data.rutCliente && (
+              <div style={{ background: 'var(--amber-bg)', border: '1px solid var(--border)', borderRadius: 12, padding: 12, fontSize: 13 }}>
+                RUT cliente <span style={{ fontFamily: "'DM Mono', monospace" }}>{data.rutCliente}</span> no encontrado en clientes registrados.
+              </div>
+            )}
+
+            {data.obs && (
+              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Observaciones</div>
+                <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', color: 'var(--text-1)' }}>{data.obs}</div>
+              </div>
+            )}
           </div>
 
-          {data.cliente && (
-            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Organismo / Cliente</div>
-              <div style={{ fontWeight: 600, fontSize: 15 }}>{data.cliente.nombre}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4 }}>
-                <span style={{ fontFamily: "'DM Mono', monospace" }}>{data.cliente.rut}</span>
-                {data.cliente.email && <span> · {data.cliente.email}</span>}
-                {data.cliente.telefono && <span> · {data.cliente.telefono}</span>}
+          {/* Columna derecha: productos cotizados */}
+          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>Productos cotizados <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>({items.length})</span></div>
+              <div style={{ display: 'flex', gap: 8, fontSize: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span><span style={{ color: 'var(--text-3)' }}>Subtotal:</span> <strong style={{ fontFamily: "'DM Mono', monospace" }}>{fmt(subtotal)}</strong></span>
+                <span><span style={{ color: 'var(--text-3)' }}>Adjudicado:</span> <strong style={{ fontFamily: "'DM Mono', monospace", color: 'var(--green-700)' }}>{fmt(totalAdjudicado)}</strong></span>
+                {canWriteLicitaciones && <button type="button" onClick={adjudicarTodo} disabled={!items.length || updateItemMut.isPending} style={btnSm}>Adjudicar todo</button>}
               </div>
             </div>
-          )}
-          {!data.cliente && data.rutCliente && (
-            <div style={{ background: 'var(--amber-bg)', border: '1px solid var(--border)', borderRadius: 12, padding: 12, marginBottom: 16, fontSize: 13 }}>
-              RUT cliente <span style={{ fontFamily: "'DM Mono', monospace" }}>{data.rutCliente}</span> no encontrado en clientes registrados.
-            </div>
-          )}
-
-          {data.obs && (
-            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Observaciones</div>
-              <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', color: 'var(--text-1)' }}>{data.obs}</div>
-            </div>
-          )}
-        </>
+            <Table
+              columns={cols}
+              rows={items}
+              emptyMessage="Sin productos cotizados"
+              keyboard={!editItemId}
+              onRowDoubleClick={canWriteLicitaciones && !editItemId ? row => startEditItem(row) : undefined}
+              ariaLabel="Productos cotizados"
+              getRowKey={row => row.id}
+            />
+            {canWriteLicitaciones && <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Agregar item</div>
+              <ProductoLookup onSelect={producto => setNewItem(f => ({
+                ...f,
+                codigoInterno: producto.codigoInterno || '',
+                nombre: producto.nombre || '',
+                descripcion: producto.descripcion || producto.texto2 || '',
+                cantidad: f.cantidad || '1',
+                precio: precioLicitacion(producto) || '',
+              }))} />
+              <button type="button" onClick={() => navigate('/bodega/nuevo')} style={{ ...btnSm, marginBottom: 8 }}>
+                Crear producto externo en catalogo
+              </button>
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 80px 80px 100px auto', gap: 6 }}>
+                <input value={newItem.codigoInterno} onChange={e => setNewItem(f => ({ ...f, codigoInterno: e.target.value }))} placeholder="Código" style={inputSm} />
+                <input value={newItem.nombre} onChange={e => setNewItem(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre producto" style={inputSm} />
+                <input value={newItem.cantidad} onChange={e => setNewItem(f => ({ ...f, cantidad: e.target.value }))} type="number" placeholder="Cant" style={inputSm} />
+                <input value={newItem.cantAdjudicados} onChange={e => setNewItem(f => ({ ...f, cantAdjudicados: e.target.value }))} type="number" placeholder="Adj" style={inputSm} />
+                <input value={newItem.precio} onChange={e => setNewItem(f => ({ ...f, precio: e.target.value }))} type="number" placeholder="Precio" style={inputSm} />
+                <button onClick={addItem} disabled={addItemMut.isPending} style={btnSmPrim}>+ Agregar</button>
+              </div>
+              <input value={newItem.descripcion} onChange={e => setNewItem(f => ({ ...f, descripcion: e.target.value }))} placeholder="Descripción (opcional)" style={{ ...inputSm, marginTop: 6, width: '100%' }} />
+            </div>}
+          </div>
+        </div>
       )}
 
       {data.orden && (
@@ -643,50 +693,6 @@ export default function LicitacionDetallePage() {
         totalAdjudicado={totalAdjudicado}
         canRequest={canWriteLicitaciones}
       />
-
-      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden', marginBottom: 16 }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>Productos cotizados <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>({items.length})</span></div>
-          <div style={{ display: 'flex', gap: 8, fontSize: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span><span style={{ color: 'var(--text-3)' }}>Subtotal cotizado:</span> <strong style={{ fontFamily: "'DM Mono', monospace" }}>{fmt(subtotal)}</strong></span>
-            <span><span style={{ color: 'var(--text-3)' }}>Adjudicado:</span> <strong style={{ fontFamily: "'DM Mono', monospace", color: 'var(--green-700)' }}>{fmt(totalAdjudicado)}</strong></span>
-            {canWriteLicitaciones && <button type="button" onClick={adjudicarTodo} disabled={!items.length || updateItemMut.isPending} style={btnSm}>Adjudicar todo</button>}
-          </div>
-        </div>
-        <Table
-          columns={cols}
-          rows={items}
-          emptyMessage="Sin productos cotizados"
-          keyboard={!editItemId}
-          onRowDoubleClick={canWriteLicitaciones && !editItemId ? row => startEditItem(row) : undefined}
-          ariaLabel="Productos cotizados"
-          getRowKey={row => row.id}
-        />
-
-        {canWriteLicitaciones && <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Agregar item</div>
-          <ProductoLookup onSelect={producto => setNewItem(f => ({
-            ...f,
-            codigoInterno: producto.codigoInterno || '',
-            nombre: producto.nombre || '',
-            descripcion: producto.descripcion || producto.texto2 || '',
-            cantidad: f.cantidad || '1',
-            precio: precioLicitacion(producto) || '',
-          }))} />
-          <button type="button" onClick={() => navigate('/bodega/nuevo')} style={{ ...btnSm, marginBottom: 8 }}>
-            Crear producto externo en catalogo
-          </button>
-          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 80px 80px 100px auto', gap: 6 }}>
-            <input value={newItem.codigoInterno} onChange={e => setNewItem(f => ({ ...f, codigoInterno: e.target.value }))} placeholder="Código" style={inputSm} />
-            <input value={newItem.nombre} onChange={e => setNewItem(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre producto" style={inputSm} />
-            <input value={newItem.cantidad} onChange={e => setNewItem(f => ({ ...f, cantidad: e.target.value }))} type="number" placeholder="Cant" style={inputSm} />
-            <input value={newItem.cantAdjudicados} onChange={e => setNewItem(f => ({ ...f, cantAdjudicados: e.target.value }))} type="number" placeholder="Adj" style={inputSm} />
-            <input value={newItem.precio} onChange={e => setNewItem(f => ({ ...f, precio: e.target.value }))} type="number" placeholder="Precio" style={inputSm} />
-            <button onClick={addItem} disabled={addItemMut.isPending} style={btnSmPrim}>+ Agregar</button>
-          </div>
-          <input value={newItem.descripcion} onChange={e => setNewItem(f => ({ ...f, descripcion: e.target.value }))} placeholder="Descripción (opcional)" style={{ ...inputSm, marginTop: 6, width: '100%' }} />
-        </div>}
-      </div>
     </main>
   )
 }

@@ -133,7 +133,7 @@ function ItemsTable({ items, onChange, locked = false, isLicitacion = false }) {
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr style={{ background: 'var(--bg)' }}>
-            {[['Producto', 'left', ''], ['Cant.', 'right', '80px'], ['P. Unit.', 'right', '130px'], ['Subtotal', 'right', '120px'], ['', 'center', '36px']].map(([h, align, w], i) => (
+            {[['Producto', 'left', ''], ['SKU', 'left', '120px'], ['Descripción', 'left', '220px'], ['Cant.', 'right', '80px'], ['P. Unit.', 'right', '130px'], ['Subtotal', 'right', '120px'], ['', 'center', '36px']].map(([h, align, w], i) => (
               <th key={i} style={{ padding: '8px ' + (i === 0 ? '12px' : '8px'), textAlign: align, fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.4, width: w || 'auto' }}>{h}</th>
             ))}
           </tr>
@@ -150,16 +150,9 @@ function ItemsTable({ items, onChange, locked = false, isLicitacion = false }) {
                     <div style={{ minWidth: 0, flex: 1 }}>
                       {fieldsEditable ? (
                         <input value={item.nombre || ''} onChange={e => update(idx, 'nombre', e.target.value)} placeholder="Nombre"
-                          style={{ width: '100%', padding: '4px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 13, fontWeight: 500, marginBottom: 3, background: '#fff' }} />
+                          style={{ width: '100%', padding: '4px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 13, fontWeight: 500, background: '#fff' }} />
                       ) : (
                         <div style={{ fontWeight: 500 }}>{item.nombre}</div>
-                      )}
-                      <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>{item.codigoInterno}</div>
-                      {fieldsEditable ? (
-                        <input value={item.descripcion || ''} onChange={e => update(idx, 'descripcion', e.target.value)} placeholder="Descripción"
-                          style={{ width: '100%', padding: '4px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 11, color: 'var(--text-2)', marginTop: 3, background: '#fff' }} />
-                      ) : (
-                        item.descripcion && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, whiteSpace: 'normal' }}>{item.descripcion}</div>
                       )}
                       {Number(item.nEntregados || 0) > 0 && (
                         <div style={{ fontSize: 11, color: 'var(--green-700)', marginTop: 2 }}>Entregados: {item.nEntregados}</div>
@@ -167,18 +160,34 @@ function ItemsTable({ items, onChange, locked = false, isLicitacion = false }) {
                     </div>
                   </div>
                 </td>
-                <td style={{ padding: '4px 8px' }}>
+                <td style={{ padding: '4px 8px', verticalAlign: 'top' }}>
+                  {fieldsEditable ? (
+                    <input value={item.codigoInterno || ''} onChange={e => update(idx, 'codigoInterno', e.target.value)} placeholder="SKU"
+                      style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono',monospace", background: '#fff' }} />
+                  ) : (
+                    <span style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>{item.codigoInterno || '—'}</span>
+                  )}
+                </td>
+                <td style={{ padding: '4px 8px', verticalAlign: 'top' }}>
+                  {fieldsEditable ? (
+                    <textarea value={item.descripcion || ''} onChange={e => update(idx, 'descripcion', e.target.value)} placeholder="Descripción" rows={2}
+                      style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-2)', background: '#fff', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.3 }} />
+                  ) : (
+                    <span style={{ fontSize: 12, color: 'var(--text-3)', whiteSpace: 'normal' }}>{item.descripcion || '—'}</span>
+                  )}
+                </td>
+                <td style={{ padding: '4px 8px', verticalAlign: 'top' }}>
                   <input type="number" min="1" value={item.cantidad} onChange={e => update(idx, 'cantidad', e.target.value)} disabled={locked}
                     style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right', background: locked ? 'var(--bg)' : '#fff', color: locked ? 'var(--text-2)' : 'inherit', cursor: locked ? 'not-allowed' : 'text' }} />
                 </td>
-                <td style={{ padding: '4px 8px' }}>
+                <td style={{ padding: '4px 8px', verticalAlign: 'top' }}>
                   <input type="number" min="0" value={item.precioUnitario} onChange={e => update(idx, 'precioUnitario', e.target.value)} disabled={locked}
                     style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right', background: locked ? 'var(--bg)' : '#fff', color: locked ? 'var(--text-2)' : 'inherit', cursor: locked ? 'not-allowed' : 'text' }} />
                 </td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>
+                <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600, verticalAlign: 'top' }}>
                   ${sub.toLocaleString('es-CL')}
                 </td>
-                <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                <td style={{ padding: '4px 6px', textAlign: 'center', verticalAlign: 'top' }}>
                   <button onClick={() => remove(idx)} disabled={locked} title={locked ? 'Productos bloqueados por entregas, pagos o documentos registrados' : 'Quitar producto'} style={{ padding: '4px', borderRadius: 4, border: 'none', background: 'none', cursor: locked ? 'not-allowed' : 'pointer', color: 'var(--text-3)', opacity: locked ? 0.45 : 1 }}
                     onMouseEnter={e => { if (!locked) e.currentTarget.style.color = 'var(--red)' }}
                     onMouseLeave={e => e.currentTarget.style.color = 'var(--text-3)'}
@@ -192,7 +201,7 @@ function ItemsTable({ items, onChange, locked = false, isLicitacion = false }) {
         </tbody>
         <tfoot>
           <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg)' }}>
-            <td colSpan={3} style={{ padding: '10px 12px', fontSize: 13, fontWeight: 600, textAlign: 'right', color: 'var(--text-2)' }}>Subtotal</td>
+            <td colSpan={5} style={{ padding: '10px 12px', fontSize: 13, fontWeight: 600, textAlign: 'right', color: 'var(--text-2)' }}>Subtotal</td>
             <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 700, fontSize: 14 }}>${subtotal.toLocaleString('es-CL')}</td>
             <td />
           </tr>
@@ -212,8 +221,8 @@ function normalizeItems(items, { withOverrides = false } = {}) {
     productoId: requiredNumber(i.productoId),
     cantidad: requiredNumber(i.cantidad),
     precioUnitario: requiredNumber(i.precioUnitario),
-    // Overrides de nombre/descripcion solo en licitacion (no modifican el producto base).
-    ...(withOverrides ? { nombre: i.nombre || undefined, descripcion: i.descripcion || undefined } : {}),
+    // Overrides de nombre/descripcion/SKU solo en licitacion (no modifican el producto base).
+    ...(withOverrides ? { nombre: i.nombre || undefined, descripcion: i.descripcion || undefined, codigoInterno: i.codigoInterno || undefined } : {}),
   }))
 }
 
@@ -1179,7 +1188,16 @@ export default function VentasFormPage() {
         ...payload,
         items: normalizedItems,
       }, {
-        onSuccess: () => navigate('/ventas'),
+        onSuccess: (created) => {
+          // Tras crear, ir directo al detalle segun el tipo de venta.
+          if (data.tipo === 'Licitación' && created?.cotizacionId) {
+            navigate('/licitaciones/' + created.cotizacionId)
+          } else if (created?.id) {
+            navigate('/ventas/' + created.id)
+          } else {
+            navigate('/ventas')
+          }
+        },
         onError: err => alert(err.response?.data?.error || 'Error al crear'),
       })
     }
