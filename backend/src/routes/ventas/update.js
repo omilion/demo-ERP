@@ -45,7 +45,9 @@ const Schema = z.object({
   montoDespacho: z.number().min(0).optional(),
   fechaPlazo: z.string().optional().nullable(),
   direccionDespacho: z.string().optional().nullable(),
+  direccionDespachoExtra: z.string().optional().nullable(),
   contactoDespacho: z.string().optional().nullable(),
+  telefonoContactoDespacho: z.string().optional().nullable(),
   regionDespacho: z.string().optional().nullable(),
   comunaDespacho: z.string().optional().nullable(),
   ciudadDespacho: z.string().optional().nullable(),
@@ -92,7 +94,9 @@ export default async function updateVenta(fastify) {
         montoDespacho,
         fechaPlazo,
         direccionDespacho,
+        direccionDespachoExtra,
         contactoDespacho,
+        telefonoContactoDespacho,
         regionDespacho,
         comunaDespacho,
         ciudadDespacho,
@@ -165,7 +169,9 @@ export default async function updateVenta(fastify) {
       if (montoDespacho !== undefined) ordenData.montoDespacho = montoDespacho
       if (fechaPlazo !== undefined) ordenData.fechaPlazo = fechaPlazo ? new Date(fechaPlazo) : null
       if (direccionDespacho !== undefined) ordenData.direccionDespacho = direccionDespacho
+      if (direccionDespachoExtra !== undefined) ordenData.direccionDespachoExtra = direccionDespachoExtra
       if (contactoDespacho !== undefined) ordenData.contactoDespacho = contactoDespacho
+      if (telefonoContactoDespacho !== undefined) ordenData.telefonoContactoDespacho = telefonoContactoDespacho
       if (regionDespacho !== undefined) ordenData.regionDespacho = regionDespacho
       if (comunaDespacho !== undefined) ordenData.comunaDespacho = comunaDespacho
       if (ciudadDespacho !== undefined) ordenData.ciudadDespacho = ciudadDespacho

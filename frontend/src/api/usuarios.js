@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from './client'
 
-export const useUsuarios = () =>
+export const useUsuarios = ({ enabled = true } = {}) =>
   useQuery({
     queryKey: ['usuarios'],
     queryFn: () => api.get('/usuarios').then(r => r.data),
     staleTime: 30_000,
+    enabled,
   })
 
 export const useUsuario = (id) =>

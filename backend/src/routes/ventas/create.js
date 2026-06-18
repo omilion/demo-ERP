@@ -46,6 +46,10 @@ const Schema = z.object({
   regionDespacho: z.string().optional().nullable(),
   comunaDespacho: z.string().optional().nullable(),
   ciudadDespacho: z.string().optional().nullable(),
+  direccionDespachoExtra: z.string().optional().nullable(),
+  telefonoContactoDespacho: z.string().optional().nullable(),
+  // Vendedor asignado: solo lo respeta un admin; un vendedor siempre se autoasigna.
+  vendedorId: z.number().int().positive().optional().nullable(),
 })
 
 export default async function createVenta(fastify) {
@@ -69,10 +73,13 @@ export default async function createVenta(fastify) {
       montoDespacho,
       fechaPlazo,
       direccionDespacho,
+      direccionDespachoExtra,
       contactoDespacho,
+      telefonoContactoDespacho,
       regionDespacho,
       comunaDespacho,
       ciudadDespacho,
+      vendedorId,
       ...rest
     } = parsed.data
     if (abono > 0 || facturado !== undefined || (estadoPago && estadoPago !== 'No pagada')) {
@@ -84,6 +91,18 @@ export default async function createVenta(fastify) {
     const cliente = await fastify.prisma.cliente.findUnique({ where: { id: rest.clienteId }, select: { id: true, activo: true, rut: true } })
     if (!cliente) return reply.code(404).send({ error: 'Cliente no encontrado' })
     if (!cliente.activo) return reply.code(409).send({ error: 'Cliente inactivo no puede generar ventas' })
+
+    // Resolver vendedor asignado: solo un admin puede asignar a otro vendedor; el
+    // resto (vendedor) siempre se autoasigna su propia venta.
+    let vendedorAsignado = { id: request.user.id, nombre: request.user.nombre }
+    if (request.user.role === 'admin' && vendedorId && vendedorId !== request.user.id) {
+      const v = await fastify.prisma.user.findFirst({
+        where: { id: vendedorId, activo: true, role: { in: ['vendedor', 'admin'] } },
+        select: { id: true, nombre: true },
+      })
+      if (!v) return reply.code(400).send({ error: 'Vendedor no válido' })
+      vendedorAsignado = v
+    }
     if (rest.clienteSucursalId) {
       const sucursal = await fastify.prisma.clienteSucursal.findFirst({
         where: { id: rest.clienteSucursalId, clienteId: rest.clienteId, activo: true },
@@ -158,15 +177,17 @@ export default async function createVenta(fastify) {
           montoDespacho: montoDespacho || 0,
           fechaPlazo: fechaPlazo ? new Date(fechaPlazo) : null,
           direccionDespacho: direccionDespacho || null,
+          direccionDespachoExtra: direccionDespachoExtra || null,
           contactoDespacho: contactoDespacho || null,
+          telefonoContactoDespacho: telefonoContactoDespacho || null,
           regionDespacho: regionDespacho || null,
           comunaDespacho: comunaDespacho || null,
           ciudadDespacho: ciudadDespacho || null,
           abono: 0,
           estadoPago: 'No pagada',
-          userId: request.user.id,
+          userId: vendedorAsignado.id,
           sucursalId: request.user?.sucursalId ?? null,
-          creadorNombre: rest.creadorNombre || request.user.nombre,
+          creadorNombre: vendedorAsignado.nombre || rest.creadorNombre || request.user.nombre,
           items: { create: itemsData },
         },
         include: { items: true },

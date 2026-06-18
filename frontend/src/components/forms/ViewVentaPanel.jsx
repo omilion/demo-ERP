@@ -477,7 +477,10 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {canWrite && onEdit && <Btn variant="primary" icon="edit" onClick={onEdit}>Editar</Btn>}
-            <Btn variant="secondary" icon="printer" onClick={() => window.print()}>Imprimir</Btn>
+            <Btn variant="secondary" icon="printer" onClick={() => {
+              const w = window.open(`${window.location.origin}/ventas/${v.id}/imprimir`, '_blank')
+              if (!w) alert('Habilita popups para imprimir')
+            }}>Imprimir</Btn>
             {canDelete && <Btn variant="ghost" icon="trash" onClick={() => setConfirmDelete(true)} style={{ color: 'var(--red)' }}>Eliminar</Btn>}
           </div>
         </div>
@@ -542,6 +545,10 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
       onClose={onClose}
       onEdit={canWrite ? onEdit : undefined}
       onDelete={canDelete ? () => setConfirmDelete(true) : undefined}
+      onPrint={() => {
+        const w = window.open(`${window.location.origin}/ventas/${v.id}/imprimir`, '_blank')
+        if (!w) alert('Habilita popups para imprimir')
+      }}
     >
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 16, marginTop: -6 }}>

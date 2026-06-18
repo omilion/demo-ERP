@@ -8,6 +8,8 @@ import { useAuthStore } from '../../store/auth'
 import { useClientes, useClienteSucursales } from '../../api/clientes'
 import { FormCliente } from '../../components/forms/FormCliente'
 import { useProductos } from '../../api/productos'
+import { useRegiones, useComunas } from '../../api/locations'
+import { useUsuarios } from '../../api/usuarios'
 import { useMultas, useCreateMulta, useDeleteMulta } from '../../api/multas'
 import { useCrearDocumentoVenta } from '../../api/caja'
 import { useDescuentos, useEvaluarDescuentos, useSolicitarDescuento, useSolicitudesDescuento } from '../../api/descuentos'
@@ -1028,10 +1030,22 @@ export default function VentasFormPage() {
     abono: '', guias: '', facturado: '', descuentoPct: '', licitacion: searchParams.get('oc') || '', observaciones: searchParams.get('obs') || '',
     licitacionFecha: '', licitacionPlazo: '', licitacionReferencia: '', licitacionOC: '',
     enviosParciales: false, montoDespacho: '', fechaPlazo: '',
-    direccionDespacho: '', contactoDespacho: '', regionDespacho: '', comunaDespacho: '', ciudadDespacho: '',
+    direccionDespacho: '', direccionDespachoExtra: '', contactoDespacho: '', telefonoContactoDespacho: '',
+    regionDespacho: '', comunaDespacho: '', ciudadDespacho: '', vendedorId: '',
   })
   const selectedClienteId = data.clienteId ? Number(data.clienteId) : null
   const { data: sucursalesCliente = [] } = useClienteSucursales(selectedClienteId)
+
+  // Despacho: regiones y comunas encadenadas (la region elegida filtra las comunas).
+  const { data: regiones = [] } = useRegiones()
+  const regionSel = regiones.find(r => r.nombre === data.regionDespacho)
+  const { data: comunas = [] } = useComunas(regionSel?.codigo)
+
+  // Vendedor: solo el admin puede elegir; un vendedor crea siempre a su nombre.
+  const isAdmin = user?.role === 'admin'
+  const { data: usuarios = [] } = useUsuarios({ enabled: isAdmin })
+  const vendedores = (Array.isArray(usuarios) ? usuarios : usuarios?.items || [])
+    .filter(u => u.activo !== false && (u.role === 'vendedor' || u.role === 'admin'))
 
   const [items, setItems] = useState([])
   const [selectedDiscountRule, setSelectedDiscountRule] = useState(null)
@@ -1057,7 +1071,9 @@ export default function VentasFormPage() {
       set('montoDespacho', found.montoDespacho != null ? String(found.montoDespacho) : '')
       set('fechaPlazo', found.fechaPlazo ? new Date(found.fechaPlazo).toISOString().slice(0, 10) : '')
       set('direccionDespacho', found.direccionDespacho || '')
+      set('direccionDespachoExtra', found.direccionDespachoExtra || '')
       set('contactoDespacho', found.contactoDespacho || '')
+      set('telefonoContactoDespacho', found.telefonoContactoDespacho || '')
       set('regionDespacho', found.regionDespacho || '')
       set('comunaDespacho', found.comunaDespacho || '')
       set('ciudadDespacho', found.ciudadDespacho || '')
@@ -1154,7 +1170,9 @@ export default function VentasFormPage() {
       montoDespacho: Number(data.montoDespacho) || 0,
       fechaPlazo: data.fechaPlazo ? new Date(data.fechaPlazo) : null,
       direccionDespacho: data.direccionDespacho || null,
+      direccionDespachoExtra: data.direccionDespachoExtra || null,
       contactoDespacho: data.contactoDespacho || null,
+      telefonoContactoDespacho: data.telefonoContactoDespacho || null,
       regionDespacho: data.regionDespacho || null,
       comunaDespacho: data.comunaDespacho || null,
       ciudadDespacho: data.ciudadDespacho || null,
@@ -1167,6 +1185,8 @@ export default function VentasFormPage() {
     }
     if (data.clienteId) payload.clienteId = Number(data.clienteId)
     payload.clienteSucursalId = data.clienteSucursalId ? Number(data.clienteSucursalId) : null
+    // Vendedor: solo el admin asigna; el backend ignora esto para no-admins.
+    if (!isEdit && isAdmin && data.vendedorId) payload.vendedorId = Number(data.vendedorId)
     if (data.descuentoPct !== '') payload.descuentoPct = Number(data.descuentoPct)
     if (activeSelectedDiscountRule?.id && !String(activeSelectedDiscountRule.id).startsWith('legacy-')) {
       payload.descuentoReglaId = activeSelectedDiscountRule.id
@@ -1257,6 +1277,21 @@ export default function VentasFormPage() {
           }}
         />
       </FormField>
+
+      {/* Selector de vendedor: solo visible para admin al crear. El vendedor se autoasigna. */}
+      {!isEdit && isAdmin && (
+        <FormField label="Vendedor asignado" hint="Asigna la venta a un vendedor, o usa 'Venta del Admin'">
+          <Select
+            value={data.vendedorId || ''}
+            onChange={v => set('vendedorId', v)}
+            options={[
+              { value: '', label: '— Seleccionar vendedor —' },
+              { value: String(user.id), label: `Venta del Admin (${user.nombre})` },
+              ...vendedores.filter(v => v.id !== user.id).map(v => ({ value: String(v.id), label: v.nombre + (v.codigoVendedor ? ` · ${v.codigoVendedor}` : '') })),
+            ]}
+          />
+        </FormField>
+      )}
 
       {data.tipo === 'Licitación' && (
         <>
@@ -1357,23 +1392,41 @@ export default function VentasFormPage() {
           </label>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 14, marginTop: 14 }}>
-        <FormField label="Dirección de Despacho (Override)" hint="Dejar vacío para usar dirección por defecto del cliente">
-          <Input value={data.direccionDespacho || ''} onChange={v => set('direccionDespacho', v)} placeholder="Calle y número" />
-        </FormField>
-        <FormField label="Contacto de Despacho (Override)">
-          <Input value={data.contactoDespacho || ''} onChange={v => set('contactoDespacho', v)} placeholder="Nombre y teléfono contacto" />
-        </FormField>
-      </div>
+      {/* Región y Comuna encadenadas: elegir región filtra las comunas disponibles */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 14 }}>
         <FormField label="Región Despacho">
-          <Input value={data.regionDespacho || ''} onChange={v => set('regionDespacho', v)} placeholder="Región" />
+          <Select
+            value={data.regionDespacho || ''}
+            onChange={v => { set('regionDespacho', v); set('comunaDespacho', '') }}
+            options={[{ value: '', label: '— Seleccionar región —' }, ...regiones.map(r => ({ value: r.nombre, label: r.nombre }))]}
+          />
         </FormField>
         <FormField label="Comuna Despacho">
-          <Input value={data.comunaDespacho || ''} onChange={v => set('comunaDespacho', v)} placeholder="Comuna" />
+          <Select
+            value={data.comunaDespacho || ''}
+            onChange={v => set('comunaDespacho', v)}
+            disabled={!data.regionDespacho}
+            options={[{ value: '', label: data.regionDespacho ? '— Seleccionar comuna —' : 'Elige región primero' }, ...comunas.map(c => ({ value: c.nombre, label: c.nombre }))]}
+          />
         </FormField>
         <FormField label="Ciudad Despacho">
           <Input value={data.ciudadDespacho || ''} onChange={v => set('ciudadDespacho', v)} placeholder="Ciudad" />
+        </FormField>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
+        <FormField label="Dirección de Despacho (Override)" hint="Dejar vacío para usar dirección por defecto del cliente">
+          <Input value={data.direccionDespacho || ''} onChange={v => set('direccionDespacho', v)} placeholder="Calle y número" />
+        </FormField>
+        <FormField label="Datos extra de dirección" hint="Depto, oficina, referencia, etc.">
+          <Input value={data.direccionDespachoExtra || ''} onChange={v => set('direccionDespachoExtra', v)} placeholder="Depto / referencia (opcional)" />
+        </FormField>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
+        <FormField label="Contacto de Despacho">
+          <Input value={data.contactoDespacho || ''} onChange={v => set('contactoDespacho', v)} placeholder="Nombre del contacto" />
+        </FormField>
+        <FormField label="Teléfono Contacto Despacho">
+          <Input value={data.telefonoContactoDespacho || ''} onChange={v => set('telefonoContactoDespacho', v)} placeholder="Teléfono del contacto" />
         </FormField>
       </div>
       {isEdit && found?.cotizaciones?.length > 0 && (

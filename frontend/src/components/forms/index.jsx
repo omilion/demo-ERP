@@ -42,7 +42,7 @@ export const FormPanel = ({ title, subtitle, onClose, onSave, saving, children, 
 }
 
 // ── ViewPanel (read-only slide-in) ────────────────────────────────────────────
-export const ViewPanel = ({ title, subtitle, onClose, onEdit, onDelete, children }) => {
+export const ViewPanel = ({ title, subtitle, onClose, onEdit, onDelete, onPrint, children }) => {
   const isMobile = window.innerWidth < 640
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', justifyContent: 'flex-end' }}>
@@ -66,7 +66,7 @@ export const ViewPanel = ({ title, subtitle, onClose, onEdit, onDelete, children
         <div style={{ flex: 1, overflowY: 'auto', padding: '22px 22px' }}>{children}</div>
         <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, flexShrink: 0 }}>
           {onEdit && <Btn variant="primary" icon="edit" onClick={onEdit}>Editar</Btn>}
-          <Btn variant="secondary" icon="printer" onClick={() => window.print()}>Imprimir</Btn>
+          <Btn variant="secondary" icon="printer" onClick={onPrint || (() => window.print())}>Imprimir</Btn>
           {onDelete && <Btn variant="ghost" icon="trash" onClick={onDelete} style={{ marginLeft: 'auto', color: 'var(--red)' }}>Eliminar</Btn>}
         </div>
       </div>

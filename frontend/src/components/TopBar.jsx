@@ -8,6 +8,7 @@ import plastimarLogo from '../assets/plastimar-logo.webp'
 
 const NAV_GROUPS = [
   { label: 'Ventas', items: [
+    { label: '+ Nueva Venta', route: '/ventas/nueva', module: 'ventas', permission: 'write', highlight: true },
     { label: 'Ventas', route: '/ventas', module: 'ventas' },
     { label: 'Matriz Ventas', route: '/matriz-ventas', module: 'ventas' },
     { label: 'OC Online / Venta Web', route: '/ordenes-compra', module: 'ventas' },
@@ -134,14 +135,14 @@ const DropdownGroup = ({ group, currentPath }) => {
               <button key={item.route} onClick={() => { navigate(item.route); setOpen(false) }} style={{
                 display: 'flex', alignItems: 'center', gap: 10, width: '100%',
                 padding: '9px 16px', fontSize: 13,
-                fontWeight: item.route === currentPath ? 600 : 400,
-                color: item.route === currentPath ? 'var(--green-700)' : 'var(--text-1)',
-                background: item.route === currentPath ? 'var(--green-50)' : 'none',
+                fontWeight: item.highlight ? 700 : item.route === currentPath ? 600 : 400,
+                color: item.highlight ? '#78350f' : item.route === currentPath ? 'var(--green-700)' : 'var(--text-1)',
+                background: item.highlight ? '#fef08a' : item.route === currentPath ? 'var(--green-50)' : 'none',
                 borderBottom: i < group.items.length - 1 ? '1px solid var(--border)' : 'none',
                 cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
               }}
-                onMouseEnter={e => item.route !== currentPath && (e.currentTarget.style.background = 'var(--green-50)')}
-                onMouseLeave={e => item.route !== currentPath && (e.currentTarget.style.background = 'none')}
+                onMouseEnter={e => item.highlight ? (e.currentTarget.style.background = '#fde047') : item.route !== currentPath && (e.currentTarget.style.background = 'var(--green-50)')}
+                onMouseLeave={e => item.highlight ? (e.currentTarget.style.background = '#fef08a') : item.route !== currentPath && (e.currentTarget.style.background = 'none')}
               >
                 {item.label}
               </button>

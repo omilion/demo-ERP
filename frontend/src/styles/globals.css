@@ -337,3 +337,47 @@ a { text-decoration: none; color: inherit; }
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Soporte de Impresión Limpia (oculta elementos de la app) */
+@media print {
+  header,
+  nav,
+  .topbar-inner,
+  .ai-chat,
+  button:not(.print-visible),
+  .btn,
+  .no-print,
+  .no-print-global,
+  iframe,
+  [title="Asistente Gerencial IA"],
+  div[style*="z-index: 200"],
+  div[style*="z-index:100"],
+  div[style*="z-index: 100"] {
+    display: none !important;
+  }
+
+  body, #root, main, .page, .page-wide {
+    background: #fff !important;
+    color: #000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Si se imprime un ViewPanel (drawer lateral), hacerlo pantalla completa limpia */
+  div[style*="position: fixed"][style*="inset: 0"] {
+    position: relative !important;
+    inset: auto !important;
+    z-index: auto !important;
+    background: transparent !important;
+  }
+  
+  div[style*="position: relative"][style*="width: 520px"],
+  div[style*="position: relative"][style*="width:520px"] {
+    width: 100% !important;
+    box-shadow: none !important;
+  }
+}

@@ -97,6 +97,30 @@ function fmtMoney(value) {
   return '$' + Math.round(Number(value || 0)).toLocaleString('es-CL')
 }
 
+const detailHeadCell = { padding: '3px 4px', borderRight: '1px solid oklch(1 0 0 / 0.25)', lineHeight: 1.1 }
+const detailCell = { padding: '4px', fontSize: 7, borderRight: '1px solid var(--border)', lineHeight: 1.15 }
+
+const renderDetalle = row => {
+  const list = row.items || []
+  if (!list.length) return <span style={{ color: 'var(--text-3)' }}>-</span>
+  return (
+    <div style={{ width: '100%', minWidth: 320, border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr)', background: 'var(--text-2)', color: '#fff', fontSize: 7, fontWeight: 700 }}>
+        <span style={detailHeadCell}>Cant.</span>
+        <span style={detailHeadCell}>Producto</span>
+      </div>
+      {list.map((item, idx) => (
+        <div key={item.id || idx} style={{ display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr)', borderTop: '1px solid var(--border)' }}>
+          <span style={detailCell}>{item.cantidad || 0}</span>
+          <span style={{ ...detailCell, whiteSpace: 'normal', overflowWrap: 'anywhere', fontWeight: 600, lineHeight: 1.15 }}>
+            {item.nombre || item.codigoInterno || 'Item'}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function formatAtraso(tiempos) {
   if (!tiempos?.atrasoHoras) return '-'
   return formatDuration(tiempos.atrasoHoras)
@@ -669,6 +693,7 @@ export default function TallerPage() {
         {formatAtraso(row.tiempos)}
       </span>
     ) },
+    { key: 'items', label: 'Detalle', width: 320, wrap: true, render: (_, row) => renderDetalle(row) },
     { key: '_acc', label: '', required: true, render: (_, row) => (
       <Btn variant="ghost" size="sm" icon="eye" onClick={e => { e.stopPropagation(); navigate('/taller/' + row.id) }}>Ver</Btn>
     ) },

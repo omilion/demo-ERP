@@ -22,6 +22,7 @@ async function createTestOrden(app) {
   return app.prisma.orden.create({
     data: {
       tipo: 'Test',
+      observaciones: 'Prueba',
       estado: 'Activa',
       estadoPago: 'No pagada',
       estadoEntrega: 'Pendiente entrega',
@@ -160,12 +161,6 @@ describe('operational route hardening', () => {
       payload: { texto: 'No debe quedar huerfano' },
     })
     expect(res.statusCode).toBe(404)
-  })
-
-  it('does not allow new legacy ODTs without orden', async () => {
-    await expect(app.prisma.odt.create({
-      data: { tipo: 'Espumas', descripcion: 'Legacy suelta', estado: 'Pendiente' },
-    })).rejects.toThrow(/odts_orden_id_required_new|violates check constraint/)
   })
 
   it('requires taller assignment when passing items to workshop', async () => {

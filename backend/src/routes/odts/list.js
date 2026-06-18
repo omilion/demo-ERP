@@ -122,6 +122,7 @@ export default async function listOdts(fastify) {
     const [odts, total, byEstado] = await Promise.all([
       fastify.prisma.odt.findMany({
         where,
+        include: { items: { where: { eliminado: false } } },
         orderBy: { createdAt: 'desc' },
         skip: pagination.skip,
         take: pagination.limit,

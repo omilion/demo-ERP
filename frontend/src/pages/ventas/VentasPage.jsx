@@ -84,6 +84,36 @@ export default function VentasPage() {
   const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
   const openVenta = row => navigate(`/ventas/${encodeURIComponent(String(row.id))}`)
 
+  const detailHeadCell = { padding: '3px 4px', borderRight: '1px solid oklch(1 0 0 / 0.25)', lineHeight: 1.1 }
+  const detailCell = { padding: '4px', fontSize: 7, borderRight: '1px solid var(--border)', lineHeight: 1.15 }
+
+  const renderDetalle = row => {
+    const list = row.items || []
+    if (!list.length) return <span style={{ color: 'var(--text-3)' }}>-</span>
+    return (
+      <div style={{ width: '100%', minWidth: 320, border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 60px', background: 'var(--text-2)', color: '#fff', fontSize: 7, fontWeight: 700 }}>
+          <span style={detailHeadCell}>Cant.</span>
+          <span style={detailHeadCell}>Producto</span>
+          <span style={{ ...detailHeadCell, textAlign: 'right' }}>Total</span>
+        </div>
+        {list.map((item, idx) => {
+          const nombre = item.nombre ?? item.producto?.nombre ?? item.descripcion ?? 'Item'
+          const cant = item.cantidad || 0
+          const pu = Number(item.precioUnitario ?? item.precio) || 0
+          const tot = cant * pu
+          return (
+            <div key={item.id || idx} style={{ display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 60px', borderTop: '1px solid var(--border)' }}>
+              <span style={detailCell}>{cant}</span>
+              <span style={{ ...detailCell, whiteSpace: 'normal', overflowWrap: 'anywhere', fontWeight: 600, lineHeight: 1.15 }}>{nombre}</span>
+              <span style={{ ...detailCell, textAlign: 'right', fontFamily: "'DM Mono', monospace" }}>{fmt(tot)}</span>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
   const cols = [
     { key: 'id', label: 'Nro. Interno', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{v}</span> },
     { key: 'cliente', label: 'Cliente', wrap: true, render: v => (
@@ -105,8 +135,13 @@ export default function VentasPage() {
       ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--green-700)' }}>#{v}</span>
       : <span style={{ color: 'var(--text-3)' }}>-</span>
     },
+    { key: 'regionDespacho', label: 'Región Desp.', render: (_, row) => {
+      const partes = [row.regionDespacho, row.ciudadDespacho].filter(Boolean)
+      return <span style={{ fontSize: 12, color: partes.length ? 'var(--text-2)' : 'var(--text-3)' }}>{partes.join(' · ') || '—'}</span>
+    } },
     { key: 'createdAt', label: 'Fecha', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-3)' }}>{new Date(v).toLocaleDateString('es-CL')}</span> },
     { key: 'creadorNombre', label: 'Vendedor', render: v => <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{v || '-'}</span> },
+    { key: 'items', label: 'Detalle', width: 320, wrap: true, render: (_, row) => renderDetalle(row) },
     { key: '_actions', label: '', render: (_, row) => (
       <button onClick={e => { e.stopPropagation(); openVenta(row) }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}>Ver</button>
     )},
