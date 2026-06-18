@@ -372,15 +372,27 @@ export default async function cotizacionesRoutes(fastify) {
       ]
     }
 
-    const [items, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       fastify.prisma.cotizacionLicitacion.findMany({
         where,
         orderBy: { fechaCreacion: 'desc' },
         take: LIMIT,
         skip: offset,
+        include: { items: true },
       }),
       fastify.prisma.cotizacionLicitacion.count({ where }),
     ])
+    // detalleProductos: mini-tabla de productos para la columna "Detalle" de la sabana (igual que Matriz de Ventas).
+    const items = rows.map(({ items: cotItems, ...c }) => ({
+      ...c,
+      detalleProductos: (cotItems || []).map(it => ({
+        id: it.id,
+        cantidad: it.cantidad,
+        nombre: it.nombre || it.codigoInterno || 'Item',
+        codigoInterno: it.codigoInterno,
+        total: Number(it.cantidad || 0) * Number(it.precio || 0),
+      })),
+    }))
     return { items, total, limit: LIMIT }
   })
 

@@ -13,6 +13,9 @@ const ItemSchema = z.object({
   productoId: z.number().int(),
   cantidad: z.number().int().min(1),
   precioUnitario: z.number().min(0),
+  // Overrides a nivel de item (p. ej. licitacion): no modifican el producto base.
+  nombre: z.string().optional(),
+  descripcion: z.string().optional(),
 })
 
 const Schema = z.object({
@@ -99,7 +102,9 @@ export default async function createVenta(fastify) {
       productoId: item.productoId,
       cantidad: item.cantidad,
       precioUnitario: item.precioUnitario,
-      nombre: productosById[item.productoId]?.nombre,
+      // El override de nombre/descripcion solo afecta a este item de la orden (no al producto base).
+      nombre: (item.nombre && item.nombre.trim()) || productosById[item.productoId]?.nombre,
+      descripcion: item.descripcion && item.descripcion.trim() ? item.descripcion.trim() : undefined,
       codigoInterno: productosById[item.productoId]?.codigoInterno,
     }))
 

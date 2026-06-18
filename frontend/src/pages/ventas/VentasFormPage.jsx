@@ -16,7 +16,8 @@ import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../u
 
 const DOCUMENTOS_VENTA = ['Factura Plast', 'Factura Laura', 'Boleta Electronica', 'NC Plast', 'NC Laura', 'NC Inter Plast', 'ND Plast', 'ND Laura']
 
-const TIPOS = ['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala']
+const TIPOS = ['Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala']
+const TIPO_DEFAULT = 'Venta Sala'
 
 function isConvenioMarco(tipo) {
   return normalizeText(tipo) === 'convenio marco'
@@ -107,7 +108,7 @@ function ProductoSearch({ onAdd, tipoVenta, disabled = false }) {
   )
 }
 
-function ItemsTable({ items, onChange, locked = false }) {
+function ItemsTable({ items, onChange, locked = false, isLicitacion = false }) {
   function update(idx, field, value) {
     if (locked) return
     onChange(items.map((item, i) => i === idx ? { ...item, [field]: value } : item))
@@ -116,6 +117,8 @@ function ItemsTable({ items, onChange, locked = false }) {
     if (locked) return
     onChange(items.filter((_, i) => i !== idx))
   }
+  // En licitacion los campos de nombre/descripcion son editables (override solo para esa venta).
+  const fieldsEditable = isLicitacion && !locked
 
   const subtotal = items.reduce((s, i) => s + (Number(i.cantidad) || 0) * (Number(i.precioUnitario) || 0), 0)
 
@@ -141,11 +144,28 @@ function ItemsTable({ items, onChange, locked = false }) {
             return (
               <tr key={idx} style={{ borderTop: '1px solid var(--border)' }}>
                 <td style={{ padding: '8px 12px' }}>
-                  <div style={{ fontWeight: 500 }}>{item.nombre}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>{item.codigoInterno}</div>
-                  {Number(item.nEntregados || 0) > 0 && (
-                    <div style={{ fontSize: 11, color: 'var(--green-700)', marginTop: 2 }}>Entregados: {item.nEntregados}</div>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                    <img src={item.fotoUrl || PRODUCT_PLACEHOLDER_IMAGE} alt="" loading="lazy" onError={useProductPlaceholderOnError}
+                      style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 5, border: '1px solid var(--border)', flexShrink: 0, marginTop: 2 }} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      {fieldsEditable ? (
+                        <input value={item.nombre || ''} onChange={e => update(idx, 'nombre', e.target.value)} placeholder="Nombre"
+                          style={{ width: '100%', padding: '4px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 13, fontWeight: 500, marginBottom: 3, background: '#fff' }} />
+                      ) : (
+                        <div style={{ fontWeight: 500 }}>{item.nombre}</div>
+                      )}
+                      <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>{item.codigoInterno}</div>
+                      {fieldsEditable ? (
+                        <input value={item.descripcion || ''} onChange={e => update(idx, 'descripcion', e.target.value)} placeholder="Descripción"
+                          style={{ width: '100%', padding: '4px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 11, color: 'var(--text-2)', marginTop: 3, background: '#fff' }} />
+                      ) : (
+                        item.descripcion && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, whiteSpace: 'normal' }}>{item.descripcion}</div>
+                      )}
+                      {Number(item.nEntregados || 0) > 0 && (
+                        <div style={{ fontSize: 11, color: 'var(--green-700)', marginTop: 2 }}>Entregados: {item.nEntregados}</div>
+                      )}
+                    </div>
+                  </div>
                 </td>
                 <td style={{ padding: '4px 8px' }}>
                   <input type="number" min="1" value={item.cantidad} onChange={e => update(idx, 'cantidad', e.target.value)} disabled={locked}
@@ -187,11 +207,13 @@ function requiredNumber(value) {
   return Number(value)
 }
 
-function normalizeItems(items) {
+function normalizeItems(items, { withOverrides = false } = {}) {
   return items.map(i => ({
     productoId: requiredNumber(i.productoId),
     cantidad: requiredNumber(i.cantidad),
     precioUnitario: requiredNumber(i.precioUnitario),
+    // Overrides de nombre/descripcion solo en licitacion (no modifican el producto base).
+    ...(withOverrides ? { nombre: i.nombre || undefined, descripcion: i.descripcion || undefined } : {}),
   }))
 }
 
@@ -992,7 +1014,7 @@ export default function VentasFormPage() {
   }
 
   const { data, set } = useForm({
-    clienteId: '', clienteSucursalId: '', tipo: searchParams.get('tipo') || 'Normal', estado: 'Activa',
+    clienteId: '', clienteSucursalId: '', tipo: searchParams.get('tipo') || TIPO_DEFAULT, estado: 'Activa',
     estadoPago: 'No pagada', estadoEntrega: 'Pendiente entrega',
     abono: '', guias: '', facturado: '', descuentoPct: '', licitacion: searchParams.get('oc') || '', observaciones: searchParams.get('obs') || '',
     licitacionFecha: '', licitacionPlazo: '', licitacionReferencia: '', licitacionOC: '',
@@ -1040,8 +1062,10 @@ export default function VentasFormPage() {
       const initialItems = found.items?.length
         ? found.items.map(i => ({
           productoId: i.productoId,
-          nombre: i.nombre || i.producto?.nombre || i.descripcion || `Producto #${i.productoId}`,
+          nombre: i.nombre || i.producto?.nombre || `Producto #${i.productoId}`,
+          descripcion: i.descripcion || i.producto?.descripcion || '',
           codigoInterno: i.codigoInterno || i.producto?.codigoInterno || i.codigo || '',
+          fotoUrl: i.fotoUrl || i.producto?.fotoUrl || null,
           cantidad: i.cantidad,
           nEntregados: i.nEntregados ?? 0,
           precioUnitario: i.precioUnitario ?? i.precio ?? 0,
@@ -1086,7 +1110,7 @@ export default function VentasFormPage() {
     setItems(prev => {
       const existing = prev.findIndex(i => i.productoId === p.id)
       if (existing >= 0) return prev.map((item, idx) => idx === existing ? { ...item, cantidad: Number(item.cantidad) + 1 } : item)
-      return [...prev, { productoId: p.id, nombre: p.nombre, codigoInterno: p.codigoInterno || '', cantidad: 1, precioUnitario: defaultPrecioUnitario(p, data.tipo) }]
+      return [...prev, { productoId: p.id, nombre: p.nombre, descripcion: p.descripcion || '', codigoInterno: p.codigoInterno || '', fotoUrl: p.fotoUrl || null, cantidad: 1, precioUnitario: defaultPrecioUnitario(p, data.tipo) }]
     })
   }
 
@@ -1111,7 +1135,7 @@ export default function VentasFormPage() {
       }
     }
 
-    const normalizedItems = shouldSendItems ? normalizeItems(items) : null
+    const normalizedItems = shouldSendItems ? normalizeItems(items, { withOverrides: data.tipo === 'Licitación' }) : null
     const payload = {
       tipo: data.tipo, estado: data.estado,
       estadoEntrega: data.estadoEntrega,
@@ -1200,10 +1224,10 @@ export default function VentasFormPage() {
     >
       <FormDivider label="Tipo de Venta" />
       <FormField label="Tipo de Venta">
-        <Select 
-          value={data.tipo} 
-          onChange={v => set('tipo', v)} 
-          options={TIPOS} 
+        <Select
+          value={data.tipo}
+          onChange={v => set('tipo', v)}
+          options={TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS]}
           style={{ 
             backgroundColor: '#fffbeb', // Soft yellow background
             borderColor: '#fcd34d',     // Warm golden border
@@ -1368,7 +1392,7 @@ export default function VentasFormPage() {
       )}
       <ProductoSearch onAdd={addProducto} tipoVenta={data.tipo} disabled={itemsLocked} />
       <div style={{ marginTop: 12 }}>
-        <ItemsTable items={items} onChange={setItems} locked={itemsLocked} />
+        <ItemsTable items={items} onChange={setItems} locked={itemsLocked} isLicitacion={data.tipo === 'Licitación'} />
       </div>
       {items.length > 0 && (
         <div style={{ marginTop: 10, background: 'var(--bg)', borderRadius: 8, padding: '12px 16px', display: 'flex', justifyContent: 'flex-end', gap: 24, alignItems: 'center' }}>

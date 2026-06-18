@@ -405,6 +405,9 @@ export default function LicitacionDetallePage() {
     !hasAdjudicados && 'items adjudicados',
   ].filter(Boolean)
 
+  const isRowEditing = row => editItemId === row.id
+  const setField = (field, value) => setItemForm(f => ({ ...f, [field]: value }))
+
   const cols = [
     {
       key: 'fotoUrl',
@@ -416,23 +419,41 @@ export default function LicitacionDetallePage() {
         <div style={{ width: 32, height: 32, borderRadius: 4, background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
       )
     },
-    { key: 'codigoInterno', label: 'Código', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{v || '—'}</span> },
-    { key: 'nombre', label: 'Producto', wrap: true, render: v => <span style={{ fontSize: 13 }}>{v || '—'}</span> },
-    { key: 'descripcion', label: 'Descripción', wrap: true,
-      render: v => <span style={{ fontSize: 12, color: 'var(--text-3)', maxWidth: 280, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v || '—'}</span> },
-    { key: 'cantidad', label: 'Cant.', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace" }}>{v}</span> },
-    { key: 'cantAdjudicados', label: 'Adjud.', align: 'right',
-      render: v => <span style={{ fontFamily: "'DM Mono', monospace", color: v > 0 ? 'var(--green-700)' : 'var(--text-3)' }}>{v}</span> },
-    { key: 'precio', label: 'Precio', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{fmt(v)}</span> },
+    { key: 'codigoInterno', label: 'Código', render: (v, row) => isRowEditing(row)
+      ? <input value={itemForm.codigoInterno} onChange={e => setField('codigoInterno', e.target.value)} style={{ ...inputSm, width: 90 }} />
+      : <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{v || '—'}</span> },
+    { key: 'nombre', label: 'Producto', wrap: true, render: (v, row) => isRowEditing(row)
+      ? <input value={itemForm.nombre} onChange={e => setField('nombre', e.target.value)} style={{ ...inputSm, width: '100%' }} />
+      : <span style={{ fontSize: 13 }}>{v || '—'}</span> },
+    { key: 'descripcion', label: 'Descripción', wrap: true, render: (v, row) => isRowEditing(row)
+      ? <input value={itemForm.descripcion} onChange={e => setField('descripcion', e.target.value)} style={{ ...inputSm, width: '100%' }} />
+      : <span style={{ fontSize: 12, color: 'var(--text-3)', maxWidth: 280, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v || '—'}</span> },
+    { key: 'cantidad', label: 'Cant.', align: 'right', render: (v, row) => isRowEditing(row)
+      ? <input type="number" value={itemForm.cantidad} onChange={e => setField('cantidad', e.target.value)} style={{ ...inputSm, width: 64, textAlign: 'right' }} />
+      : <span style={{ fontFamily: "'DM Mono', monospace" }}>{v}</span> },
+    { key: 'cantAdjudicados', label: 'Adjud.', align: 'right', render: (v, row) => isRowEditing(row)
+      ? <input type="number" value={itemForm.cantAdjudicados} onChange={e => setField('cantAdjudicados', e.target.value)} style={{ ...inputSm, width: 64, textAlign: 'right' }} />
+      : <span style={{ fontFamily: "'DM Mono', monospace", color: v > 0 ? 'var(--green-700)' : 'var(--text-3)' }}>{v}</span> },
+    { key: 'precio', label: 'Precio', align: 'right', render: (v, row) => isRowEditing(row)
+      ? <input type="number" value={itemForm.precio} onChange={e => setField('precio', e.target.value)} style={{ ...inputSm, width: 90, textAlign: 'right' }} />
+      : <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{fmt(v)}</span> },
     { key: '_total', label: 'Total', align: 'right',
       render: (_, row) => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600, fontSize: 12 }}>{fmt((row.cantidad||0) * (row.precio||0))}</span> },
     { key: '_acc', label: '', align: 'right',
-      render: (_, row) => canWriteLicitaciones || canDeleteLicitaciones ? (
-        <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-          {canWriteLicitaciones && <button onClick={() => startEditItem(row)} style={btnTiny}>Editar</button>}
-          {canDeleteLicitaciones && <button onClick={() => deleteItem(row.id)} style={{ ...btnTiny, color: 'var(--red)' }}>×</button>}
-        </div>
-      ) : null },
+      render: (_, row) => {
+        if (isRowEditing(row)) return (
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+            <button onClick={saveItem} disabled={updateItemMut.isPending} style={btnSmPrim}>Guardar</button>
+            <button onClick={() => setEditItemId(null)} style={btnTiny}>Cancelar</button>
+          </div>
+        )
+        return canWriteLicitaciones || canDeleteLicitaciones ? (
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+            {canWriteLicitaciones && <button onClick={() => startEditItem(row)} style={btnTiny}>Editar</button>}
+            {canDeleteLicitaciones && <button onClick={() => deleteItem(row.id)} style={{ ...btnTiny, color: 'var(--red)' }}>×</button>}
+          </div>
+        ) : null
+      } },
   ]
 
   return (
@@ -636,29 +657,11 @@ export default function LicitacionDetallePage() {
           columns={cols}
           rows={items}
           emptyMessage="Sin productos cotizados"
-          keyboard
-          onRowDoubleClick={canWriteLicitaciones ? row => startEditItem(row) : undefined}
+          keyboard={!editItemId}
+          onRowDoubleClick={canWriteLicitaciones && !editItemId ? row => startEditItem(row) : undefined}
           ariaLabel="Productos cotizados"
           getRowKey={row => row.id}
         />
-
-        {editItemId && (
-          <div style={{ padding: 12, borderTop: '1px solid var(--border)', background: 'var(--bg-2)' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Editar item</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 80px 80px 100px auto', gap: 6 }}>
-              <input value={itemForm.codigoInterno} onChange={e => setItemForm(f => ({ ...f, codigoInterno: e.target.value }))} placeholder="Código" style={inputSm} />
-              <input value={itemForm.nombre} onChange={e => setItemForm(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre" style={inputSm} />
-              <input value={itemForm.cantidad} onChange={e => setItemForm(f => ({ ...f, cantidad: e.target.value }))} type="number" placeholder="Cant" style={inputSm} />
-              <input value={itemForm.cantAdjudicados} onChange={e => setItemForm(f => ({ ...f, cantAdjudicados: e.target.value }))} type="number" placeholder="Adj" style={inputSm} />
-              <input value={itemForm.precio} onChange={e => setItemForm(f => ({ ...f, precio: e.target.value }))} type="number" placeholder="Precio" style={inputSm} />
-              <div style={{ display: 'flex', gap: 4 }}>
-                <button onClick={saveItem} disabled={updateItemMut.isPending} style={btnSmPrim}>Guardar</button>
-                <button onClick={() => setEditItemId(null)} style={btnSm}>Cancelar</button>
-              </div>
-            </div>
-            <input value={itemForm.descripcion} onChange={e => setItemForm(f => ({ ...f, descripcion: e.target.value }))} placeholder="Descripción" style={{ ...inputSm, marginTop: 6, width: '100%' }} />
-          </div>
-        )}
 
         {canWriteLicitaciones && <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Agregar item</div>
