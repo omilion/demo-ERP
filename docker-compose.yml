@@ -1,0 +1,33 @@
+# Entorno local de desarrollo: Postgres + pgvector (RAG).
+# Reproduce el contenedor `plastimar-postgres-local` que antes se creaba a mano.
+#
+# Uso:
+#   docker compose up -d            # levanta la base
+#   cd backend && npx prisma migrate deploy   # aplica el esquema
+#   cd backend && npm run db:seed             # datos semilla de desarrollo
+#
+# La conexion coincide con backend/.env:
+#   DATABASE_URL=postgresql://plastimar:plastimar@localhost:55432/plastimar_test?schema=public
+
+services:
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: plastimar-postgres-local
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: plastimar
+      POSTGRES_PASSWORD: plastimar
+      POSTGRES_DB: plastimar_test
+    ports:
+      - "55432:5432"
+    volumes:
+      - plastimar_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plastimar -d plastimar_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  plastimar_pgdata:
+    name: plastimar_pgdata
