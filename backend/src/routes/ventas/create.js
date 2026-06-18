@@ -200,6 +200,8 @@ export default async function createVenta(fastify) {
         })
         if (cot) {
           cotizacionId = cot.id
+          // Actualizar cabecera y reemplazar items con los overrides del formulario.
+          await tx.cotizacionLicitacionItem.deleteMany({ where: { cotizacionId: cot.id } })
           await tx.cotizacionLicitacion.update({
             where: { id: cot.id },
             data: {
@@ -212,6 +214,16 @@ export default async function createVenta(fastify) {
               fechaPlazo: fechaPlazo ? new Date(fechaPlazo) : undefined,
               enviosParciales: enviosParciales || undefined,
               montoDespacho: montoDespacho || undefined,
+              items: {
+                create: itemsData.map(item => ({
+                  codigoInterno: item.codigoInterno,
+                  nombre: item.nombre,
+                  descripcion: item.descripcion || null,
+                  cantidad: item.cantidad,
+                  cantAdjudicados: item.cantidad,
+                  precio: item.precioUnitario,
+                }))
+              }
             }
           })
         } else {
@@ -234,6 +246,7 @@ export default async function createVenta(fastify) {
                 create: itemsData.map(item => ({
                   codigoInterno: item.codigoInterno,
                   nombre: item.nombre,
+                  descripcion: item.descripcion || null,
                   cantidad: item.cantidad,
                   cantAdjudicados: item.cantidad,
                   precio: item.precioUnitario,
