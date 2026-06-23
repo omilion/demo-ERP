@@ -1782,3 +1782,31 @@ model AiQueryLog {
   @@map("query_logs")
   @@schema("ai")
 }
+
+// Conversaciones persistentes del asistente: historial reabrible por usuario.
+model AiConversacion {
+  id         Int          @id @default(autoincrement())
+  userId     Int          @map("user_id")
+  titulo     String       @default("Nueva conversación")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+  mensajes   AiMensaje[]
+
+  @@index([userId, updatedAt])
+  @@map("conversaciones")
+  @@schema("ai")
+}
+
+model AiMensaje {
+  id             Int            @id @default(autoincrement())
+  conversacionId Int            @map("conversacion_id")
+  role           String         // 'user' | 'assistant'
+  content        String
+  documents      Json?          // [{ url, tipo }]
+  createdAt      DateTime       @default(now()) @map("created_at")
+  conversacion   AiConversacion @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
+
+  @@index([conversacionId, createdAt])
+  @@map("mensajes")
+  @@schema("ai")
+}

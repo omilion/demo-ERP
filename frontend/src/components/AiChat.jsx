@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Icon } from './shared'
 import { Markdown } from './Markdown'
 import { useAuthStore } from '../store/auth'
@@ -14,6 +15,7 @@ const WELCOME = { role: 'assistant', content: 'Hola. Soy el Asistente Gerencial 
 
 export function AiChat() {
   const { user } = useAuthStore()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [messages, setMessages] = useState([WELCOME])
@@ -119,11 +121,11 @@ export function AiChat() {
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green-400, #4ade80)', display: 'inline-block' }} />
               <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11 }}>Conectado</span>
             </span>
-            <button onClick={() => setExpanded(e => !e)} title={expanded ? 'Reducir' : 'Pantalla completa'}
+            <button onClick={() => { setOpen(false); navigate('/asistente') }} title="Abrir en pantalla completa"
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, background: 'rgba(255,255,255,0.12)', border: 'none', cursor: 'pointer' }}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.22)'}
               onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}>
-              <Icon name={expanded ? 'minimize' : 'maximize'} size={14} color="#fff" />
+              <Icon name="maximize" size={14} color="#fff" />
             </button>
           </div>
 

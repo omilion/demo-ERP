@@ -1,4 +1,5 @@
 import comisionesAdminRoutes from './comisiones.js'
+import aiBalanceRoutes from './ai-balance.js'
 
 export function toJsonSerializable(value) {
   if (typeof value === 'bigint') {
@@ -21,6 +22,7 @@ export default async function adminRoutes(fastify) {
   const adminDelete = fastify.rbac('admin', 'delete', { allowExtra: false })
 
   fastify.register(comisionesAdminRoutes, { prefix: '/comisiones' })
+  fastify.register(aiBalanceRoutes)
 
   fastify.get('/integridad/resumen', { preHandler: [fastify.authenticate, adminRead] }, async () => {
     const p = fastify.prisma

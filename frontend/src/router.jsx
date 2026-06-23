@@ -8,6 +8,7 @@ import VentasPage from './pages/ventas/VentasPage'
 import VentaDetallePage from './pages/ventas/VentaDetallePage'
 import VentasFormPage from './pages/ventas/VentasFormPage'
 import VentaPrintPage from './pages/ventas/VentaPrintPage'
+import AsistentePage from './pages/asistente/AsistentePage'
 import BodegaPage from './pages/bodega/BodegaPage'
 import BodegaFormPage from './pages/bodega/BodegaFormPage'
 import TallerPage from './pages/taller/TallerPage'
@@ -51,6 +52,8 @@ import AuditoriaPage from './pages/admin/AuditoriaPage'
 import HistoricoPage from './pages/admin/HistoricoPage'
 import SaneamientoLegacyPage from './pages/admin/SaneamientoLegacyPage'
 import ComisionesPage from './pages/admin/ComisionesPage'
+import IaBalancePage from './pages/admin/IaBalancePage'
+
 
 const ALL = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
 
@@ -74,6 +77,7 @@ export const router = createBrowserRouter([
       { path: 'ventas/nueva', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
       { path: 'ventas/:id/editar', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
       { path: 'ventas/:id/imprimir', element: protect(<VentaPrintPage />, { module: 'ventas' }) },
+      { path: 'asistente', element: protect(<AsistentePage />, { allowedRoles: ['admin'] }) },
       { path: 'bodega', element: protect(<BodegaPage />, { module: 'bodega' }) },
       { path: 'bodega/nuevo', element: protect(<BodegaFormPage />, { module: 'bodega', permission: 'write' }) },
       { path: 'bodega/:id/editar', element: protect(<BodegaFormPage />, { module: 'bodega', permission: 'write' }) },
@@ -124,6 +128,8 @@ export const router = createBrowserRouter([
       { path: 'admin/auditoria',  element: <ProtectedRoute allowedRoles={['admin']}><AuditoriaPage /></ProtectedRoute> },
       { path: 'admin/historico',  element: <ProtectedRoute allowedRoles={['admin']}><HistoricoPage /></ProtectedRoute> },
       { path: 'admin/saneamiento-legacy', element: <ProtectedRoute allowedRoles={['admin']}><SaneamientoLegacyPage /></ProtectedRoute> },
+      { path: 'admin/ia-balance', element: <ProtectedRoute allowedRoles={['admin']}><IaBalancePage /></ProtectedRoute> },
+
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

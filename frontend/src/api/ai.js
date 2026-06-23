@@ -74,3 +74,53 @@ export async function fetchAiStatus() {
     return { configured: false }
   }
 }
+
+// ── Conversaciones persistentes (historial del RAG) ──────────────────────────
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import api from './client'
+
+export const useConversaciones = () =>
+  useQuery({
+    queryKey: ['ai-conversaciones'],
+    queryFn: () => api.get('/ai/conversaciones').then(r => r.data),
+    staleTime: 10_000,
+  })
+
+export const useConversacion = (id) =>
+  useQuery({
+    queryKey: ['ai-conversaciones', id],
+    queryFn: () => api.get(`/ai/conversaciones/${id}`).then(r => r.data),
+    enabled: id != null,
+  })
+
+export const useCrearConversacion = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data) => api.post('/ai/conversaciones', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ai-conversaciones'] }),
+  })
+}
+
+export const useGuardarMensajes = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, mensajes }) => api.post(`/ai/conversaciones/${id}/mensajes`, { mensajes }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ai-conversaciones'] }),
+  })
+}
+
+export const useRenombrarConversacion = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, titulo }) => api.put(`/ai/conversaciones/${id}`, { titulo }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ai-conversaciones'] }),
+  })
+}
+
+export const useEliminarConversacion = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/ai/conversaciones/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ai-conversaciones'] }),
+  })
+}

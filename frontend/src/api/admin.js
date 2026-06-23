@@ -128,3 +128,11 @@ export function useDeleteComisionRegla() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'comisiones'] }),
   })
 }
+
+export function useAiBalance(params = {}) {
+  return useQuery({
+    queryKey: ['admin', 'ai-balance', params],
+    queryFn: () => api.get('/admin/ai-balance', { params }).then(r => r.data),
+  })
+}
+
