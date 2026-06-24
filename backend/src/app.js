@@ -44,6 +44,7 @@ import usuariosWebRoutes from './routes/usuarios-web/index.js'
 import rrhhRoutes from './routes/rrhh/index.js'
 import adminRoutes from './routes/admin/index.js'
 import historicoRoutes from './routes/historico/index.js'
+import notificacionesRoutes from './routes/notificaciones/index.js'
 import uploadsRoutes from './routes/uploads/index.js'
 import aiRoutes from './routes/ai/index.js'
 import { decorateRbac } from './middleware/rbac.js'
@@ -109,6 +110,7 @@ export function buildApp(opts = {}) {
   app.register(rrhhRoutes, { prefix: '/api/rrhh' })
   app.register(adminRoutes, { prefix: '/api/admin' })
   app.register(historicoRoutes, { prefix: '/api/historico' })
+  app.register(notificacionesRoutes, { prefix: '/api/notificaciones' })
   app.register(aiRoutes, { prefix: '/api/ai' })
   app.register(uploadsRoutes, { prefix: '/uploads' })
 

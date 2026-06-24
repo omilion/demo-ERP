@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/auth'
 import { Icon } from './shared'
 import api from '../api/client'
 import { can, canAny, getUserRole, hasRole } from '../utils/permissions'
+import { useNotificaciones } from '../api/notificaciones'
 import plastimarLogo from '../assets/plastimar-logo.webp'
 
 const NAV_GROUPS = [
@@ -171,6 +172,64 @@ function useClock() {
   return clock
 }
 
+const SEV_COLOR = { alta: 'var(--red)', media: 'var(--amber)', baja: 'var(--text-3)' }
+const TIPO_ICON = { licitacion: 'clipboard', factura_proveedor: 'dollarSign', odt_atrasada: 'tool', entrega_pendiente: 'truck' }
+
+function NotificacionesBell() {
+  const [open, setOpen] = useState(false)
+  const ref = useRef()
+  const navigate = useNavigate()
+  const { data } = useNotificaciones()
+  const items = data?.items || []
+  const total = data?.total || 0
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    if (open) document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button aria-label="Notificaciones" onClick={() => setOpen(o => !o)}
+        style={{ color: 'rgba(255,255,255,0.78)', minWidth: 44, minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, position: 'relative', background: open ? 'rgba(255,255,255,0.18)' : 'transparent', border: 'none', cursor: 'pointer' }}>
+        <Icon name="bell" size={18} />
+        {total > 0 && (
+          <span style={{ position: 'absolute', top: 4, right: 4, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: 'var(--red)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid var(--green-900)' }}>
+            {total > 99 ? '99+' : total}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 10000, width: 360, maxHeight: 460, background: '#fff', borderRadius: 10, boxShadow: '0 8px 32px oklch(0 0 0 / 0.18)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 14, color: 'var(--text-1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Notificaciones</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 400 }}>{total} pendiente{total !== 1 ? 's' : ''}</span>
+          </div>
+          <div style={{ overflowY: 'auto' }}>
+            {items.length === 0 ? (
+              <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Sin notificaciones pendientes 🎉</div>
+            ) : items.map((n, i) => (
+              <button key={i} onClick={() => { setOpen(false); if (n.link) navigate(n.link) }}
+                style={{ display: 'flex', gap: 10, width: '100%', padding: '11px 16px', textAlign: 'left', background: 'none', border: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer', alignItems: 'flex-start' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <span style={{ marginTop: 2, color: SEV_COLOR[n.severidad] || 'var(--text-3)', flexShrink: 0 }}>
+                  <Icon name={TIPO_ICON[n.tipo] || 'bell'} size={15} />
+                </span>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.titulo}</span>
+                  <span style={{ display: 'block', fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>{n.detalle}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function TopBar() {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
@@ -225,10 +284,7 @@ export function TopBar() {
 
         <div className="topbar-actions">
           <span className="topbar-clock" style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, fontFamily: "'DM Mono', monospace", letterSpacing: 0 }}>{clock}</span>
-          <button aria-label="Notificaciones" style={{ color: 'rgba(255,255,255,0.78)', minWidth: 44, minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, position: 'relative' }}>
-            <Icon name="bell" size={18} />
-            <span style={{ position: 'absolute', top: 8, right: 8, width: 7, height: 7, borderRadius: '50%', background: 'var(--amber)', border: '1.5px solid var(--green-900)' }} />
-          </button>
+          <NotificacionesBell />
 
           <div ref={userRef} style={{ position: 'relative' }}>
             <button onClick={() => setUserMenuOpen(o => !o)} style={{
