@@ -77,6 +77,7 @@ export default async function aiBalanceRoutes(fastify) {
     let totalLatency = 0
     let successCount = 0
     let errorCount = 0
+    let totalDocumentos = 0 // documentos generados (Excel + PowerPoint)
     
     const byDayMap = {}
     const byUserMap = {}
@@ -134,10 +135,11 @@ export default async function aiBalanceRoutes(fastify) {
       byModelMap[modelName].queries++
       byModelMap[modelName].cost += cost
       
-      // Group by Tool
+      // Group by Tool + contar documentos generados (Excel/PowerPoint)
       const tools = Array.isArray(row.usedTools) ? row.usedTools : []
       for (const t of tools) {
         byToolMap[t] = (byToolMap[t] || 0) + 1
+        if (t === 'generar_excel' || t === 'generar_pptx') totalDocumentos++
       }
     }
     
@@ -174,6 +176,7 @@ export default async function aiBalanceRoutes(fastify) {
     return {
       summary: {
         totalQueries,
+        totalDocumentos,
         totalTokens: totalInputTokens + totalOutputTokens,
         inputTokens: totalInputTokens,
         outputTokens: totalOutputTokens,

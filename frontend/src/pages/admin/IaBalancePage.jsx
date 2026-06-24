@@ -35,6 +35,7 @@ export default function IaBalancePage() {
 
   const summary = data?.summary || {
     totalQueries: 0,
+    totalDocumentos: 0,
     totalTokens: 0,
     inputTokens: 0,
     outputTokens: 0,
@@ -203,6 +204,13 @@ export default function IaBalancePage() {
           value={isLoading ? '...' : summary.totalQueries}
           icon="messageSquare"
           tone="neutral"
+        />
+        <KpiCard
+          label="Documentos Generados"
+          value={isLoading ? '...' : (summary.totalDocumentos ?? 0)}
+          icon="fileText"
+          tone="green"
+          sublabel="Excel / PowerPoint"
         />
         <KpiCard
           label="Costo Estimado (USD)"
