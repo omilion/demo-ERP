@@ -1,6 +1,7 @@
-import { rangoPeriodo, PERIODO_ENUM } from './helpers.js'
+import { rangoPeriodo, PERIODO_ENUM, nombreMes } from './helpers.js'
 import { ODT_ESTADOS_ABIERTOS, buildOdtTiempoMetrics } from '../../odts/operations.js'
 import { computeTotal } from '../../ventas/helpers.js'
+import { buildComisionesReporte } from '../../reportes/comisiones.js'
 
 // ── Registro de herramientas ──────────────────────────────────────────────
 // Cada herramienta: { definition (JSON schema Anthropic), execute(prisma, input, user) }.
@@ -39,6 +40,59 @@ register({
     ordenes,
     montoTotalCLP: Math.round(montoTotal),
     porEstadoPago: Object.fromEntries(porEstadoPago.map(g => [g.estadoPago, g._count._all])),
+  }
+})
+
+register({
+  name: 'ranking_ventas',
+  description: 'Ranking de los productos o categorías MÁS (o menos) vendidos en un período, por monto facturado y por cantidad de unidades. Usar para preguntas como "producto más vendido", "categoría más vendida", "top 10 productos", "qué se vende más". Devuelve ambas métricas (monto y unidades) para que tú elijas la relevante.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      agrupar_por: { type: 'string', enum: ['producto', 'categoria'], description: 'Agrupar el ranking por producto individual o por categoría' },
+      periodo: { type: 'string', enum: PERIODO_ENUM, description: 'Período a consultar' },
+      anio: { type: 'integer', description: 'Año (para mes_especifico / anio_especifico)' },
+      mes: { type: 'integer', description: 'Mes 1-12 (para mes_especifico)' },
+      ordenar_por: { type: 'string', enum: ['monto', 'cantidad'], description: 'Métrica de ordenamiento del ranking (default: monto)' },
+      limite: { type: 'integer', description: 'Cuántos resultados devolver (default 10, máx 50)' },
+    },
+    required: ['agrupar_por', 'periodo'],
+  },
+}, async (prisma, input) => {
+  const fecha = rangoPeriodo(input.periodo, input.anio, input.mes)
+  const limite = Math.min(Math.max(parseInt(input.limite, 10) || 10, 1), 50)
+  const orderCol = input.ordenar_por === 'cantidad' ? 'unidades' : 'monto'
+  // Monto por linea = cantidad * precio_unitario (sin descuentos de cabecera; ranking relativo).
+  const groupExpr = input.agrupar_por === 'categoria'
+    ? `COALESCE(NULLIF(TRIM(p.categoria), ''), 'Sin categoría')`
+    : `COALESCE(NULLIF(TRIM(i.nombre), ''), p.nombre, i.codigo_interno, 'Sin nombre')`
+  const extraSelect = input.agrupar_por === 'producto' ? `, MAX(i.codigo_interno) AS codigo` : ''
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT ${groupExpr} AS etiqueta${extraSelect},
+            SUM(i.cantidad)::bigint AS unidades,
+            ROUND(SUM(i.cantidad * i.precio_unitario))::bigint AS monto
+     FROM ventas.orden_items i
+     JOIN ventas.ordenes o ON o.id = i.orden_id
+     LEFT JOIN catalogo.productos p ON p.id = i.producto_id
+     WHERE o.eliminada = false AND i.eliminado = false
+       AND o.created_at >= $1 AND o.created_at < $2
+     GROUP BY ${groupExpr}
+     ORDER BY ${orderCol} DESC
+     LIMIT ${limite}`,
+    fecha.gte, fecha.lt,
+  )
+  return {
+    agrupadoPor: input.agrupar_por,
+    ordenadoPor: orderCol,
+    periodo: input.periodo,
+    rango: { desde: fecha.gte.toISOString().slice(0, 10), hasta: fecha.lt.toISOString().slice(0, 10) },
+    ranking: rows.map((r, idx) => ({
+      posicion: idx + 1,
+      [input.agrupar_por]: r.etiqueta,
+      ...(r.codigo ? { codigo: r.codigo } : {}),
+      unidades: Number(r.unidades),
+      montoCLP: Number(r.monto),
+    })),
   }
 })
 
@@ -235,6 +289,116 @@ register({
   const porEmpresa = await prisma.trabajador.groupBy({ by: ['empresa'], where: { estado: true }, _count: { _all: true } })
   const total = porEmpresa.reduce((s, g) => s + g._count._all, 0)
   return { totalActivos: total, porEmpresa: Object.fromEntries(porEmpresa.map(g => [g.empresa || 'sin_empresa', g._count._all])) }
+})
+
+// ── COMISIONES (motor real del ERP) ───────────────────────────────────────
+register({
+  name: 'consultar_comisiones',
+  description: 'Comisiones de los vendedores en un período, CALCULADAS con el motor oficial del ERP (respeta reglas por vendedor/tipo, tramos, base vendido/cobrado, y descuenta multas y notas de crédito). Usar para preguntas como "cuánto de comisión le toca a X", "comisiones del mes", "total a pagar en comisiones". Devuelve el desglose por vendedor.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      periodo: { type: 'string', enum: PERIODO_ENUM, description: 'Período a consultar' },
+      anio: { type: 'integer', description: 'Año (para mes_especifico / anio_especifico)' },
+      mes: { type: 'integer', description: 'Mes 1-12 (para mes_especifico)' },
+      vendedor: { type: 'string', description: 'Filtrar por nombre de vendedor (opcional, búsqueda parcial)' },
+    },
+    required: ['periodo'],
+  },
+}, async (prisma, input) => {
+  const fecha = rangoPeriodo(input.periodo, input.anio, input.mes)
+  const desde = fecha.gte.toISOString().slice(0, 10)
+  // El reporte usa rango inclusivo (hasta); restamos 1 día al lt exclusivo.
+  const hastaDate = new Date(fecha.lt); hastaDate.setDate(hastaDate.getDate() - 1)
+  const hasta = hastaDate.toISOString().slice(0, 10)
+  const reporte = await buildComisionesReporte({ prisma }, {
+    desde, hasta,
+    ...(input.vendedor ? { vendedor: input.vendedor } : {}),
+    limit: '5000',
+  })
+  if (reporte.error) return { error: reporte.error }
+  const reglasActivas = await prisma.comisionRegla.count({ where: { activo: true } })
+  const porVendedor = Object.entries(reporte.byVendedor || {}).map(([nombre, v]) => ({
+    vendedor: nombre,
+    ventas: v.count,
+    totalVendidoCLP: Math.round(v.totalVendido || 0),
+    totalCobradoCLP: Math.round(v.totalCobrado || 0),
+    multasCLP: Math.round(v.totalMultas || 0),
+    notasCreditoCLP: Math.round(v.totalNC || 0),
+    comisionCLP: Math.round(v.totalComision || 0),
+  })).sort((a, b) => b.comisionCLP - a.comisionCLP)
+  return {
+    periodo: input.periodo,
+    rango: { desde, hasta },
+    totalComisionCLP: Math.round(reporte.totales?.totalComision || 0),
+    ventasConsideradas: reporte.totales?.count || 0,
+    reglasComisionActivas: reglasActivas,
+    ...(reglasActivas === 0 ? { advertencia: 'No hay reglas de comisión configuradas en el ERP, por eso toda comisión calcula $0. Para obtener cifras reales hay que cargar las reglas en Admin → Reglas de Comisión.' } : {}),
+    nota: 'La comisión solo se paga si la venta está pagada, entregada y facturada (regla del ERP).',
+    porVendedor,
+  }
+})
+
+// ── PLANILLAS / LIQUIDACIONES (datos cargados) ─────────────────────────────
+register({
+  name: 'consultar_planillas',
+  description: 'Planilla de sueldos (liquidaciones cargadas) de un mes/año: líquido a pagar, haberes, descuentos y sueldo base, por trabajador y total. Usar para "cuánto fue la planilla de X mes", "cuánto ganó un trabajador", "total de descuentos del mes". Reporta solo lo que está cargado; si un período no tiene liquidaciones, lo indica.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      anio: { type: 'integer', description: 'Año (ej: 2025)' },
+      mes: { type: 'integer', description: 'Mes 1-12 (opcional; sin mes = todo el año)' },
+      trabajador: { type: 'string', description: 'Filtrar por nombre/apellido del trabajador (opcional, búsqueda parcial)' },
+    },
+    required: ['anio'],
+  },
+}, async (prisma, input) => {
+  const where = { anio: String(input.anio) }
+  const mesNombre = input.mes ? nombreMes(input.mes) : null
+  if (input.mes && !mesNombre) return { error: 'mes inválido (1-12)' }
+  if (mesNombre) where.mes = mesNombre
+  if (input.trabajador) {
+    const t = String(input.trabajador)
+    where.trabajador = {
+      is: {
+        OR: [
+          { nombres: { contains: t, mode: 'insensitive' } },
+          { apellidoPaterno: { contains: t, mode: 'insensitive' } },
+          { apellidoMaterno: { contains: t, mode: 'insensitive' } },
+        ],
+      },
+    }
+  }
+  const rows = await prisma.liquidacion.findMany({
+    where,
+    select: {
+      anio: true, mes: true, sueldoBase: true, totalHaberes: true,
+      totalDescuentos: true, liquidoPagar: true, horasExtras: true, totalExtras: true,
+      trabajador: { select: { nombres: true, apellidoPaterno: true, apellidoMaterno: true, empresa: true } },
+    },
+    take: 1000,
+  })
+  if (!rows.length) {
+    return { periodo: { anio: input.anio, mes: mesNombre || 'todo el año' }, liquidaciones: 0, mensaje: 'No hay liquidaciones cargadas para ese período/filtro.' }
+  }
+  const sum = (k) => rows.reduce((s, r) => s + Number(r[k] || 0), 0)
+  return {
+    periodo: { anio: input.anio, mes: mesNombre || 'todo el año' },
+    liquidaciones: rows.length,
+    totalLiquidoPagarCLP: Math.round(sum('liquidoPagar')),
+    totalHaberesCLP: Math.round(sum('totalHaberes')),
+    totalDescuentosCLP: Math.round(sum('totalDescuentos')),
+    detalle: rows.map(r => ({
+      trabajador: [r.trabajador?.nombres, r.trabajador?.apellidoPaterno, r.trabajador?.apellidoMaterno].filter(Boolean).join(' '),
+      empresa: r.trabajador?.empresa || null,
+      mes: r.mes,
+      sueldoBaseCLP: Number(r.sueldoBase || 0),
+      haberesCLP: Number(r.totalHaberes || 0),
+      descuentosCLP: Number(r.totalDescuentos || 0),
+      liquidoCLP: Number(r.liquidoPagar || 0),
+      horasExtras: Number(r.horasExtras || 0),
+    })).sort((a, b) => b.liquidoCLP - a.liquidoCLP),
+  }
 })
 
 export function getToolDefinitions() {

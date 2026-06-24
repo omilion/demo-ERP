@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Icon } from './shared'
 import { Markdown } from './Markdown'
 import { useAuthStore } from '../store/auth'
-import { streamChat } from '../api/ai'
+import { streamChat, useCrearConversacion, useGuardarMensajes } from '../api/ai'
 
 const SUGGESTIONS = [
   '¿Cuántas ODT pendientes hay y cuántas atrasadas?',
@@ -19,11 +19,14 @@ export function AiChat() {
   const [open, setOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [messages, setMessages] = useState([WELCOME])
+  const [activeId, setActiveId] = useState(null) // conversación persistida actual
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [toolStatus, setToolStatus] = useState(null)
   const scrollRef = useRef()
   const abortRef = useRef(null)
+  const crearConv = useCrearConversacion()
+  const guardarMensajes = useGuardarMensajes()
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -34,6 +37,10 @@ export function AiChat() {
 
   const TOOL_LABELS = {
     consultar_ventas: 'Consultando ventas…',
+    ranking_ventas: 'Calculando ranking de ventas…',
+    comparar_ventas_anios: 'Comparando ventas entre años…',
+    consultar_comisiones: 'Calculando comisiones…',
+    consultar_planillas: 'Consultando planillas de sueldo…',
     consultar_taller: 'Consultando taller…',
     consultar_caja: 'Consultando caja…',
     consultar_crm: 'Consultando CRM…',
@@ -43,18 +50,26 @@ export function AiChat() {
     generar_pptx: 'Generando PowerPoint…',
   }
 
-  const send = (text) => {
+  const send = async (text) => {
     const q = (text || input).trim()
     if (!q || loading) return
     setInput('')
     const history = [...messages].filter(m => m !== WELCOME)
-    const next = [...messages, { role: 'user', content: q }]
-    setMessages(next)
+
+    // Asegurar conversación persistida: crear si es la primera vez.
+    let convId = activeId
+    if (!convId) {
+      try {
+        const created = await crearConv.mutateAsync({ primerMensaje: q })
+        convId = created.id
+        setActiveId(created.id)
+      } catch { /* si falla la persistencia, seguimos el chat igual */ }
+    }
+
+    setMessages(m => [...m, { role: 'user', content: q }, { role: 'assistant', content: '', documents: [] }])
     setLoading(true)
     setToolStatus(null)
 
-    // Placeholder de respuesta que se va llenando con el stream.
-    setMessages(m => [...m, { role: 'assistant', content: '', documents: [] }])
     const updateLast = (fn) => setMessages(m => {
       const copy = [...m]
       copy[copy.length - 1] = fn(copy[copy.length - 1])
@@ -72,7 +87,17 @@ export function AiChat() {
       onDocument: ({ url, tipo }) => updateLast(a => ({ ...a, documents: [...(a.documents || []), { url, tipo }] })),
       // El asistente decide cuándo conviene más espacio (respuestas extensas/tablas/documentos).
       onUi: ({ action, modo }) => { if (action === 'display_mode') setExpanded(modo === 'expandido') },
-      onDone: () => { setLoading(false); setToolStatus(null); abortRef.current = null },
+      onDone: () => {
+        setLoading(false); setToolStatus(null); abortRef.current = null
+        // Persistir el turno (pregunta + respuesta) para que aparezca en el historial.
+        if (convId) {
+          setMessages(curr => {
+            const ultima = curr[curr.length - 1]
+            guardarMensajes.mutate({ id: convId, mensajes: [{ role: 'user', content: q }, { role: 'assistant', content: ultima.content, documents: ultima.documents || [] }] })
+            return curr
+          })
+        }
+      },
       onError: (msg) => {
         setToolStatus(null); setLoading(false); abortRef.current = null
         updateLast(a => ({ ...a, content: a.content || `⚠️ ${msg}`, error: !a.content }))
@@ -121,7 +146,7 @@ export function AiChat() {
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green-400, #4ade80)', display: 'inline-block' }} />
               <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11 }}>Conectado</span>
             </span>
-            <button onClick={() => { setOpen(false); navigate('/asistente') }} title="Abrir en pantalla completa"
+            <button onClick={() => { setOpen(false); navigate(activeId ? `/asistente?conv=${activeId}` : '/asistente') }} title="Abrir en pantalla completa"
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, background: 'rgba(255,255,255,0.12)', border: 'none', cursor: 'pointer' }}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.22)'}
               onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}>

@@ -40,3 +40,14 @@ export function rangoPeriodo(periodo, anio, mes) {
 export const PERIODO_ENUM = ['hoy', 'mes_actual', 'mes_anterior', 'anio_actual', 'ultimos_30_dias', 'mes_especifico', 'anio_especifico']
 
 export const clp = n => '$' + Math.round(Number(n || 0)).toLocaleString('es-CL')
+
+// Liquidaciones de RRHH guardan el mes como texto en español ("Junio"). Mapea
+// número de mes (1-12) → nombre tal como está en la base.
+export const MES_NOMBRE = [
+  null, 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+]
+export function nombreMes(mes) {
+  const m = parseInt(mes, 10)
+  return m >= 1 && m <= 12 ? MES_NOMBRE[m] : null
+}

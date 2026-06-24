@@ -12,6 +12,10 @@ const WELCOME = { role: 'assistant', content: 'Hola. Soy el Asistente Gerencial 
 
 const TOOL_LABELS = {
   consultar_ventas: 'Consultando ventas…',
+  ranking_ventas: 'Calculando ranking de ventas…',
+  comparar_ventas_anios: 'Comparando ventas entre años…',
+  consultar_comisiones: 'Calculando comisiones…',
+  consultar_planillas: 'Consultando planillas de sueldo…',
   consultar_taller: 'Consultando taller…',
   consultar_caja: 'Consultando caja…',
   consultar_crm: 'Consultando CRM…',
@@ -48,9 +52,13 @@ export default function AsistentePage() {
     }
   }, [convActiva])
 
-  // Si llega ?nueva=1 (desde el pop-up al expandir), arrancar conversación limpia.
+  // Al venir desde el pop-up: ?conv=ID abre esa conversación; ?nueva arranca limpia.
   useEffect(() => {
-    if (searchParams.get('nueva')) {
+    const conv = searchParams.get('conv')
+    if (conv) {
+      setActiveId(parseInt(conv, 10))
+      setSearchParams({}, { replace: true })
+    } else if (searchParams.get('nueva')) {
       setActiveId(null)
       setMessages([WELCOME])
       setSearchParams({}, { replace: true })
