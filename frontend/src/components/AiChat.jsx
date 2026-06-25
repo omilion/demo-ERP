@@ -48,6 +48,7 @@ export function AiChat() {
     consultar_rrhh: 'Consultando RRHH…',
     generar_excel: 'Generando Excel…',
     generar_pptx: 'Generando PowerPoint…',
+    consultar_documentacion: 'Buscando en la documentación…',
   }
 
   const send = async (text) => {

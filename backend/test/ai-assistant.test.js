@@ -3,7 +3,7 @@ import { mkdtemp, rm, readdir } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { buildApp } from '../src/app.js'
-import { getToolDefinitions } from '../src/routes/ai/tools/index.js'
+import { getToolDefinitions, runTool } from '../src/routes/ai/tools/index.js'
 import { documentToolDefinitions, runDocumentTool } from '../src/routes/ai/documents.js'
 
 process.env.JWT_ACCESS_SECRET ||= 'test-access-secret'
@@ -92,3 +92,19 @@ describe('AI assistant — RBAC del endpoint', () => {
     expect(res.statusCode).toBe(403)
   })
 })
+
+describe('AI assistant — consultar_documentacion', () => {
+  it('encuentra coincidencia en la documentación', async () => {
+    const r = await runTool('consultar_documentacion', { tema: 'ventas' }, { prisma: {} })
+    expect(r.encontrado).toBe(true)
+    expect(r.documentos.length).toBeGreaterThan(0)
+    expect(r.documentos[0].modulo).toBe('ventas')
+    expect(r.documentos[0].contenido).toContain('# Módulo de Ventas')
+  })
+
+  it('retorna encontrado false cuando no hay coincidencia', async () => {
+    const r = await runTool('consultar_documentacion', { tema: 'xyz123noexistebusqueda' }, { prisma: {} })
+    expect(r.encontrado).toBe(false)
+  })
+})
+

@@ -23,6 +23,7 @@ const TOOL_LABELS = {
   consultar_rrhh: 'Consultando RRHH…',
   generar_excel: 'Generando Excel…',
   generar_pptx: 'Generando PowerPoint…',
+  consultar_documentacion: 'Buscando en la documentación…',
 }
 
 export default function AsistentePage() {

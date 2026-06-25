@@ -2,6 +2,13 @@ import { rangoPeriodo, PERIODO_ENUM, nombreMes } from './helpers.js'
 import { ODT_ESTADOS_ABIERTOS, buildOdtTiempoMetrics } from '../../odts/operations.js'
 import { computeTotal } from '../../ventas/helpers.js'
 import { buildComisionesReporte } from '../../reportes/comisiones.js'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const docsDir = path.join(__dirname, '../docs')
+
 
 // ── Registro de herramientas ──────────────────────────────────────────────
 // Cada herramienta: { definition (JSON schema Anthropic), execute(prisma, input, user) }.
@@ -400,6 +407,94 @@ register({
     })).sort((a, b) => b.liquidoCLP - a.liquidoCLP),
   }
 })
+
+register({
+  name: 'consultar_documentacion',
+  description: 'Busca en la documentación de USO del sistema Plastimar cómo realizar una tarea o dónde está una función (ej: cómo crear una venta, dónde marcar un cliente conflictivo, cómo generar una ficha de licitación). Usar para preguntas de "cómo hago...", "dónde está...", "para qué sirve...". NO usar para consultar datos (ventas, stock, etc.), para eso están las otras herramientas.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      tema: { type: 'string', description: 'Tema, palabra clave o módulo a consultar (ej: "ventas", "licitaciones", "cliente conflictivo")' }
+    },
+    required: ['tema']
+  }
+}, async (prisma, input) => {
+  const query = String(input.tema || '').trim()
+  if (!query) return { encontrado: false }
+
+  const normalizeText = (text) => {
+    return text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+  }
+
+  const STOP_WORDS = new Set(['de', 'la', 'el', 'en', 'y', 'para', 'con', 'un', 'una', 'unos', 'unas', 'lo', 'los', 'las', 'como', 'donde', 'que', 'a', 'o', 'como', 'hacer', 'crear', 'ver'])
+  const queryWords = normalizeText(query)
+    .split(/[^a-z0-9]+/i)
+    .filter(w => w.length > 1 && !STOP_WORDS.has(w))
+
+  if (queryWords.length === 0) {
+    const fallbackWord = normalizeText(query).trim()
+    if (fallbackWord) {
+      queryWords.push(fallbackWord)
+    } else {
+      return { encontrado: false }
+    }
+  }
+
+  let files = []
+  try {
+    files = await fs.readdir(docsDir)
+  } catch (e) {
+    return { encontrado: false, error: 'No se pudo leer la carpeta de documentación' }
+  }
+
+  // _index.md es el catálogo de módulos: hace match con casi todo y ensucia el
+  // ranking. Se excluye de la búsqueda (sirve solo como referencia interna).
+  const mdFiles = files.filter(f => f.endsWith('.md') && f !== '_index.md')
+  const matches = []
+
+  for (const file of mdFiles) {
+    const filePath = path.join(docsDir, file)
+    const content = await fs.readFile(filePath, 'utf-8')
+    const normContent = normalizeText(content)
+
+    const fileBase = normalizeText(file).replace(/\.md$/, '')
+    let score = 0
+    for (const word of queryWords) {
+      const regex = new RegExp(word, 'g')
+      const count = (normContent.match(regex) || []).length
+      score += count
+
+      // El nombre del archivo en el título pesa; un match EXACTO del nombre base
+      // (ej. tema "ventas" → ventas.md) prima sobre uno parcial (matriz-ventas.md).
+      if (fileBase === word) score += 50
+      else if (fileBase.includes(word)) score += 15
+    }
+
+    if (score > 0) {
+      matches.push({
+        modulo: file.replace('.md', ''),
+        contenido: content,
+        score
+      })
+    }
+  }
+
+  matches.sort((a, b) => b.score - a.score)
+  const topMatches = matches.slice(0, 2)
+
+  if (topMatches.length === 0) {
+    return { encontrado: false }
+  }
+
+  return {
+    encontrado: true,
+    documentos: topMatches.map(m => ({ modulo: m.modulo, contenido: m.contenido }))
+  }
+})
+
 
 export function getToolDefinitions() {
   return Object.values(tools).map(t => t.definition)
