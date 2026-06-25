@@ -867,9 +867,11 @@ model CrmRegistro {
   comentarios     String?
   estado          String?
   usuario         String?
+  vendedorId      Int?      @map("vendedor_id")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
+  @@index([vendedorId])
   @@map("crm_registros")
   @@schema("ventas")
 }
@@ -1468,6 +1470,9 @@ model Trabajador {
   epps               Epp[]
   hojasVida          HojaVida[]
   reglamentos        Reglamento[]
+  subcontratos       Subcontrato[]
+  certificadosAntecedentes CertificadoAntecedentes[]
+  vacunas            Vacuna[]
 
   @@index([empresa])
   @@index([rut])
@@ -1810,3 +1815,57 @@ model AiMensaje {
   @@map("mensajes")
   @@schema("ai")
 }
+
+model Subcontrato {
+  id           Int        @id @default(autoincrement())
+  trabajadorId Int        @map("trabajador_id")
+  empresa      String?    // empresa subcontratista
+  contrato     String?    // identificador/nombre del subcontrato
+  inicio       DateTime?  @db.Date
+  termino      DateTime?  @db.Date
+  documento    String?
+  imagen       String?    // PDF/imagen escaneada
+  estado       Boolean    @default(true)
+  createdAt    DateTime?  @default(now()) @map("created_at")
+  updatedAt    DateTime?  @updatedAt @map("updated_at")
+  trabajador   Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+  @@index([trabajadorId])
+  @@map("subcontratos")
+  @@schema("rrhh")
+}
+
+model CertificadoAntecedentes {
+  id           Int        @id @default(autoincrement())
+  trabajadorId Int        @map("trabajador_id")
+  fechaEmision DateTime?  @map("fecha_emision") @db.Date
+  fechaVencimiento DateTime? @map("fecha_vencimiento") @db.Date
+  documento    String?
+  imagen       String?
+  observacion  String?
+  estado       Boolean    @default(true)
+  createdAt    DateTime?  @default(now()) @map("created_at")
+  updatedAt    DateTime?  @updatedAt @map("updated_at")
+  trabajador   Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+  @@index([trabajadorId])
+  @@map("certificados_antecedentes")
+  @@schema("rrhh")
+}
+
+model Vacuna {
+  id           Int        @id @default(autoincrement())
+  trabajadorId Int        @map("trabajador_id")
+  tipo         String?    // ej: Influenza, COVID, Tétanos
+  dosis        String?    // ej: "1a dosis", "refuerzo"
+  fecha        DateTime?  @db.Date
+  documento    String?
+  imagen       String?
+  observacion  String?
+  estado       Boolean    @default(true)
+  createdAt    DateTime?  @default(now()) @map("created_at")
+  updatedAt    DateTime?  @updatedAt @map("updated_at")
+  trabajador   Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+  @@index([trabajadorId])
+  @@map("vacunas")
+  @@schema("rrhh")
+}
+

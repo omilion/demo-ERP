@@ -118,6 +118,9 @@ export const epps = makeSubResource('epps')
 export const hojasVida = makeSubResource('hojas-vida')
 export const horasExtras = makeSubResource('horas-extras')
 export const reglamentos = makeSubResource('reglamentos')
+export const subcontratos = makeSubResource('subcontratos')
+export const certificadosAntecedentes = makeSubResource('certificados-antecedentes')
+export const vacunas = makeSubResource('vacunas')
 
 export const useUploadRrhhDocumento = () =>
   useMutation({

@@ -119,6 +119,9 @@ export default async function rrhhRoutes(fastify) {
           epps: { orderBy: { fechaEntrega: 'desc' } },
           hojasVida: { orderBy: { fecha: 'desc' } },
           reglamentos: true,
+          subcontratos: { orderBy: { inicio: 'desc' } },
+          certificadosAntecedentes: { orderBy: { fechaEmision: 'desc' } },
+          vacunas: { orderBy: { fecha: 'desc' } },
         },
       })
       if (!t) return reply.code(404).send({ error: 'No encontrado' })
@@ -194,6 +197,9 @@ export default async function rrhhRoutes(fastify) {
     registerSubResource(f, 'hojas-vida', 'hojaVida', pickHojaVida)
     registerSubResource(f, 'horas-extras', 'horaExtra', pickHoraExtra)
     registerSubResource(f, 'reglamentos', 'reglamento', pickReglamento)
+    registerSubResource(f, 'subcontratos', 'subcontrato', pickSubcontrato)
+    registerSubResource(f, 'certificados-antecedentes', 'certificadoAntecedentes', pickCertificadoAntecedentes)
+    registerSubResource(f, 'vacunas', 'vacuna', pickVacuna)
 
     // ── Asistencias (sin trabajadorId en path para reportería masiva) ───
     f.get('/asistencias', {
@@ -677,6 +683,38 @@ function pickReglamento(b) {
   return {
     nombre: b.nombre || '', documento: b.documento || null, link: b.link || null,
     fechaEntrega: b.fechaEntrega || null,
+    estado: b.estado !== undefined ? toBool(b.estado) : true,
+  }
+}
+function pickSubcontrato(b) {
+  return {
+    empresa: b.empresa || null,
+    contrato: b.contrato || null,
+    inicio: toDate(b.inicio),
+    termino: toDate(b.termino),
+    documento: b.documento || null,
+    imagen: b.imagen || null,
+    estado: b.estado !== undefined ? toBool(b.estado) : true,
+  }
+}
+function pickCertificadoAntecedentes(b) {
+  return {
+    fechaEmision: toDate(b.fechaEmision),
+    fechaVencimiento: toDate(b.fechaVencimiento),
+    documento: b.documento || null,
+    imagen: b.imagen || null,
+    observacion: b.observacion || null,
+    estado: b.estado !== undefined ? toBool(b.estado) : true,
+  }
+}
+function pickVacuna(b) {
+  return {
+    tipo: b.tipo || null,
+    dosis: b.dosis || null,
+    fecha: toDate(b.fecha),
+    documento: b.documento || null,
+    imagen: b.imagen || null,
+    observacion: b.observacion || null,
     estado: b.estado !== undefined ? toBool(b.estado) : true,
   }
 }

@@ -5,6 +5,7 @@ import {
   useTrabajadores, useTrabajador, useCreateTrabajador, useUpdateTrabajador, useDeleteTrabajador,
   useRrhhCargos, useRrhhOperativo, useResumenRRHH,
   contratos, liquidaciones, anticipos, licencias, vacaciones, epps, useUploadRrhhDocumento,
+  subcontratos, certificadosAntecedentes, vacunas,
 } from '../../api/rrhh'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
@@ -194,6 +195,56 @@ const RRHH_TAB_CONFIG = {
     columns: [
       ['EPP', 'epp'], ['Marca', 'marca'], ['Cantidad', 'cantidad'],
       ['Entrega', it => fmtDate(it.fechaEntrega)], ['Observacion', 'observacion'],
+    ],
+  },
+  subcontratos: {
+    label: 'Subcontratos', singular: 'subcontrato', addLabel: 'Nuevo subcontrato',
+    resource: subcontratos, documentField: 'imagen', required: ['empresa', 'contrato'],
+    defaults: { empresa: '', contrato: '', inicio: '', termino: '', estado: true, imagen: '' },
+    fields: [
+      { key: 'empresa', label: 'Empresa contratista', required: true },
+      { key: 'contrato', label: 'Nombre subcontrato', required: true },
+      { key: 'inicio', label: 'Inicio', type: 'date' },
+      { key: 'termino', label: 'Termino', type: 'date' },
+      { key: 'estado', label: 'Activo', type: 'checkbox' },
+    ],
+    columns: [
+      ['Empresa', 'empresa'], ['Contrato', 'contrato'],
+      ['Inicio', it => fmtDate(it.inicio)], ['Termino', it => fmtDate(it.termino)],
+      ['Estado', it => it.estado ? <Badge tone="green">Activo</Badge> : <Badge tone="gray">Cerrado</Badge>],
+    ],
+  },
+  certificadosAntecedentes: {
+    label: 'Cert. Antecedentes', singular: 'certificado de antecedentes', addLabel: 'Nuevo certificado',
+    resource: certificadosAntecedentes, documentField: 'imagen', required: ['fechaEmision'],
+    defaults: { fechaEmision: '', fechaVencimiento: '', documento: '', imagen: '', observacion: '', estado: true },
+    fields: [
+      { key: 'fechaEmision', label: 'Fecha emision', type: 'date', required: true },
+      { key: 'fechaVencimiento', label: 'Fecha vencimiento', type: 'date' },
+      { key: 'observacion', label: 'Observacion', wide: true },
+      { key: 'estado', label: 'Activo', type: 'checkbox' },
+    ],
+    columns: [
+      ['Emision', it => fmtDate(it.fechaEmision)], ['Vencimiento', it => fmtDate(it.fechaVencimiento)],
+      ['Observacion', 'observacion'],
+      ['Estado', it => it.estado ? <Badge tone="green">Vigente</Badge> : <Badge tone="gray">Vencido</Badge>],
+    ],
+  },
+  vacunas: {
+    label: 'Vacunas', singular: 'vacuna', addLabel: 'Registrar vacuna',
+    resource: vacunas, documentField: 'imagen', required: ['tipo', 'fecha'],
+    defaults: { tipo: '', dosis: '', fecha: '', documento: '', imagen: '', observacion: '', estado: true },
+    fields: [
+      { key: 'tipo', label: 'Tipo vacuna (Influenza, COVID, etc.)', required: true },
+      { key: 'dosis', label: 'Dosis (1a, de refuerzo, etc.)' },
+      { key: 'fecha', label: 'Fecha vacuna', type: 'date', required: true },
+      { key: 'observacion', label: 'Observacion', wide: true },
+      { key: 'estado', label: 'Activo', type: 'checkbox' },
+    ],
+    columns: [
+      ['Tipo', 'tipo'], ['Dosis', 'dosis'], ['Fecha', it => fmtDate(it.fecha)],
+      ['Observacion', 'observacion'],
+      ['Estado', it => it.estado ? <Badge tone="green">Al día</Badge> : <Badge tone="gray">Inactivo</Badge>],
     ],
   },
 }
@@ -403,6 +454,9 @@ function ViewTrabajadorPage({ trabajador, onClose, onEdit, canWrite, canDelete }
           <TabBtn active={tab === 'vacaciones'} onClick={() => setTab('vacaciones')} badge={full?.vacaciones?.length}>Vacaciones</TabBtn>
           <TabBtn active={tab === 'licencias'} onClick={() => setTab('licencias')} badge={full?.licencias?.length}>Licencias</TabBtn>
           <TabBtn active={tab === 'epps'} onClick={() => setTab('epps')} badge={full?.epps?.length}>EPP</TabBtn>
+          <TabBtn active={tab === 'subcontratos'} onClick={() => setTab('subcontratos')} badge={full?.subcontratos?.length}>Subcontratos</TabBtn>
+          <TabBtn active={tab === 'certificadosAntecedentes'} onClick={() => setTab('certificadosAntecedentes')} badge={full?.certificadosAntecedentes?.length}>Cert. Antecedentes</TabBtn>
+          <TabBtn active={tab === 'vacunas'} onClick={() => setTab('vacunas')} badge={full?.vacunas?.length}>Vacunas</TabBtn>
         </div>
 
         <div style={{ padding: '18px 22px' }}>
@@ -414,6 +468,9 @@ function ViewTrabajadorPage({ trabajador, onClose, onEdit, canWrite, canDelete }
           {tab === 'vacaciones' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.vacaciones} items={full?.vacaciones} canWrite={canWrite} />}
           {tab === 'licencias' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.licencias} items={full?.licencias} canWrite={canWrite} />}
           {tab === 'epps' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.epps} items={full?.epps} canWrite={canWrite} />}
+          {tab === 'subcontratos' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.subcontratos} items={full?.subcontratos} canWrite={canWrite} />}
+          {tab === 'certificadosAntecedentes' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.certificadosAntecedentes} items={full?.certificadosAntecedentes} canWrite={canWrite} />}
+          {tab === 'vacunas' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.vacunas} items={full?.vacunas} canWrite={canWrite} />}
         </div>
       </section>
     </main>
