@@ -14,6 +14,7 @@ async function buildCrmHandlers(prisma) {
         prisma,
         get: (path, _opts, handler) => { handlers[`GET ${path}`] = handler },
         patch: (path, _opts, handler) => { handlers[`PATCH ${path}`] = handler },
+        post: (path, _opts, handler) => { handlers[`POST ${path}`] = handler },
       })
     },
   }
@@ -26,6 +27,10 @@ function replyStub() {
     statusCode: 200,
     body: undefined,
     status(statusCode) {
+      this.statusCode = statusCode
+      return this
+    },
+    code(statusCode) {
       this.statusCode = statusCode
       return this
     },
@@ -49,6 +54,7 @@ describe('CRM estado routes', () => {
 
     const response = await handlers['GET /']({
       query: { estado: '1', page: '1' },
+      user: { role: 'admin' },
     })
 
     expect(response).toEqual({ items: [], total: 0, limit: 500 })
@@ -101,5 +107,79 @@ describe('CRM estado routes', () => {
     expect(reply.statusCode).toBe(400)
     expect(reply.body).toEqual({ error: 'Estado CRM invalido' })
     expect(prisma.crmRegistro.update).not.toHaveBeenCalled()
+  })
+
+  it('converts lead to customer', async () => {
+    const crm = { id: 10, rut: '12345678-9', nombre: 'Test Lead', email: 'test@example.com', telefono: '1234', estado: '3' }
+    const createdCustomer = { id: 99, rut: '12345678-9', nombre: 'Test Lead' }
+    const prisma = {
+      crmRegistro: {
+        findUnique: vi.fn().mockResolvedValue(crm),
+      },
+      cliente: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue(createdCustomer),
+      },
+    }
+    const handlers = await buildCrmHandlers(prisma)
+    const reply = replyStub()
+
+    const response = await handlers['POST /:id/convertir-cliente']({
+      params: { id: '10' },
+    }, reply)
+
+    expect(reply.statusCode).toBe(201)
+    expect(response).toEqual({ clienteId: 99, creado: true })
+    expect(prisma.cliente.create).toHaveBeenCalled()
+  })
+
+  it('gets pending items today', async () => {
+    const prisma = {
+      crmRegistro: {
+        count: vi.fn().mockResolvedValue(0),
+        findMany: vi.fn().mockResolvedValue([
+          { id: 1, fechaProximo: new Date(Date.now() - 24 * 60 * 60 * 1000) }, // overdue
+          { id: 2, fechaProximo: new Date() }, // today
+        ]),
+      },
+    }
+    const handlers = await buildCrmHandlers(prisma)
+    const response = await handlers['GET /pendientes-hoy']({
+      user: { role: 'vendedor', nombre: 'Ana' },
+    })
+
+    expect(response.hoy.length).toBe(1)
+    expect(response.vencidas.length).toBe(1)
+  })
+
+  it('gets metrics', async () => {
+    const prisma = {
+      crmRegistro: {
+        groupBy: vi.fn().mockResolvedValue([
+          { estado: '0', _count: { _all: 2 } },
+          { estado: '3', _count: { _all: 3 } },
+        ]),
+        findMany: vi.fn().mockImplementation((args) => {
+          if (args.select?.ejecutiva) {
+            return Promise.resolve([
+              { ejecutiva: 'Ana', estado: '3' },
+              { ejecutiva: 'Pedro', estado: '0' },
+            ])
+          }
+          return Promise.resolve([
+            { createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000) }
+          ])
+        }),
+      },
+    }
+    const handlers = await buildCrmHandlers(prisma)
+    const response = await handlers['GET /metricas']({
+      query: {},
+    })
+
+    expect(response.porEstado).toEqual({ '0': 2, '1': 0, '2': 0, '3': 3 })
+    expect(response.tasaCierre).toBe(60)
+    expect(response.porEjecutiva[0]).toMatchObject({ ejecutiva: 'Ana', total: 1, cerrados: 1, tasaCierre: 100 })
+    expect(response.tiempoPromedioEnPipeline).toBeCloseTo(5, 1)
   })
 })

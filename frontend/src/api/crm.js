@@ -31,3 +31,28 @@ export const useCrmOrdenLink = (id, enabled) =>
     enabled: !!id && enabled,
     staleTime: 60_000,
   })
+
+export const useCrmConvertirCliente = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.post(`/crm/${id}/convertir-cliente`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['clientes'] })
+      qc.invalidateQueries({ queryKey: ['crm'] })
+    },
+  })
+}
+
+export const useCrmPendientesHoy = () =>
+  useQuery({
+    queryKey: ['crm', 'pendientes-hoy'],
+    queryFn: () => api.get('/crm/pendientes-hoy').then(r => r.data),
+    staleTime: 30_000,
+  })
+
+export const useCrmMetricas = (params = {}) =>
+  useQuery({
+    queryKey: ['crm', 'metricas', params],
+    queryFn: () => api.get('/crm/metricas', { params }).then(r => r.data),
+    staleTime: 60_000,
+  })

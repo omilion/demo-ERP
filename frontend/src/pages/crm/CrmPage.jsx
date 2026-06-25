@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { DndContext, DragOverlay, PointerSensor, pointerWithin, rectIntersection, useSensor, useSensors } from '@dnd-kit/core'
 import { useDroppable, useDraggable } from '@dnd-kit/core'
-import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../components/shared'
-import { useCrm, useCrmEjecutivas, useCrmPatch, useCrmOrdenLink } from '../../api/crm'
+import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
+import { useCrm, useCrmEjecutivas, useCrmPatch, useCrmOrdenLink, useCrmConvertirCliente, useCrmPendientesHoy, useCrmMetricas } from '../../api/crm'
 import { Link } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
+import { useAuthStore } from '../../store/auth'
 
 const ESTADOS = [
   { id: '0', label: 'Pendiente',  tone: 'amber', color: '#f59e0b', bg: '#fffbeb' },
@@ -143,6 +145,9 @@ function DraggableCard({ item, onOpen }) {
 
 // ── Detail modal ───────────────────────────────────────────────────────────────
 function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
+  const { user } = useAuthStore()
+  const convertirCliente = useCrmConvertirCliente()
+
   const [form, setForm] = useState(() => ({
     estado:          normalizeEstado(item.estado),
     prioridad:       item.prioridad || '',
@@ -168,6 +173,22 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
     await patch.mutateAsync({ id: item.id, ...form, estado: normalizeEstado(form.estado) })
     onSaved?.()
     onClose()
+  }
+
+  const hasValidRut = String(form.rut || '').trim().length > 0
+
+  async function handleConvertir() {
+    if (!hasValidRut) return
+    try {
+      const res = await convertirCliente.mutateAsync(item.id)
+      if (res.creado) {
+        alert('Lead convertido a cliente exitosamente.')
+      } else {
+        alert('El cliente ya existe en el sistema con ese RUT.')
+      }
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al convertir cliente')
+    }
   }
 
   const inputStyle = { padding: '7px 10px', fontSize: 13, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)', width: '100%', fontFamily: 'inherit' }
@@ -217,7 +238,7 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
           </Field>
 
           <Field label="Ejecutiva">
-            <input list="crm-ejecutivas" value={form.ejecutiva} onChange={set('ejecutiva')} style={inputStyle} />
+            <input list="crm-ejecutivas" value={form.ejecutiva} onChange={set('ejecutiva')} style={inputStyle} disabled={user?.role !== 'admin'} />
             <datalist id="crm-ejecutivas">
               {ejecutivas.map(e => <option key={e.ejecutiva} value={e.ejecutiva} />)}
             </datalist>
@@ -265,6 +286,17 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
         </div>
 
         <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          {form.estado === '3' && (
+            <Btn
+              variant="secondary"
+              size="sm"
+              disabled={convertirCliente.isPending || !hasValidRut}
+              onClick={handleConvertir}
+              style={{ marginRight: 'auto', border: '1px solid var(--green-600)', color: 'var(--green-700)' }}
+            >
+              {convertirCliente.isPending ? 'Convirtiendo...' : 'Convertir a Cliente'}
+            </Btn>
+          )}
           <Btn variant="secondary" size="sm" onClick={onClose}>Cancelar</Btn>
           <Btn variant="primary" size="sm" onClick={save} disabled={patch.isPending}>
             {patch.isPending ? 'Guardando…' : 'Guardar'}
@@ -375,6 +407,7 @@ function TableView({ items, total, limit, onOpen }) {
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function CrmPage() {
+  const queryClient = useQueryClient()
   const [view, setView]               = useState('pipeline')
   const [ejecutiva, setEjecutiva]     = useState('')
   const [prioridad, setPrioridad]     = useState('')
@@ -394,6 +427,8 @@ export default function CrmPage() {
   }, [search])
 
   const { data: ejecutivas = [] } = useCrmEjecutivas()
+  const { data: pendientesHoyData } = useCrmPendientesHoy()
+  const { data: metricas } = useCrmMetricas({ fechaDesde, fechaHasta })
   const patch = useCrmPatch()
 
   const params = {}
@@ -419,10 +454,9 @@ export default function CrmPage() {
 
   const activeItem = activeId != null ? items.find(i => String(i.id) === String(activeId)) : null
 
-  const pendientes    = items.filter(c => normalizeEstado(c.estado) === '0').length
-  const enGestion     = items.filter(c => normalizeEstado(c.estado) === '1').length
-  const cerrados      = items.filter(c => normalizeEstado(c.estado) === '3').length
   const altaPrioridad = items.filter(c => c.prioridad?.toLowerCase() === 'alta').length
+  const tasaCierreVal = metricas?.tasaCierre != null ? `${Math.round(metricas.tasaCierre)}%` : '—'
+  const tiempoPipeVal = metricas?.tiempoPromedioEnPipeline != null ? `${Math.round(metricas.tiempoPromedioEnPipeline)} días` : '—'
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
@@ -438,11 +472,34 @@ export default function CrmPage() {
     const newEstado = normalizeEstado(over.id)
     const item = items.find(i => String(i.id) === String(active.id))
     if (!item || normalizeEstado(item.estado) === newEstado) return
+
+    const queryKey = ['crm', params]
+    const previousData = queryClient.getQueryData(queryKey)
+
+    queryClient.setQueryData(queryKey, old => {
+      if (!old || !old.items) return old
+      return {
+        ...old,
+        items: old.items.map(i =>
+          String(i.id) === String(item.id)
+            ? { ...i, estado: newEstado }
+            : i
+        )
+      }
+    })
+
     patch.mutate(
       { id: item.id, estado: newEstado },
-      { onError: err => alert(err.response?.data?.error || 'No se pudo cambiar el estado CRM') }
+      {
+        onError: err => {
+          queryClient.setQueryData(queryKey, previousData)
+          alert(err.response?.data?.error || 'No se pudo cambiar el estado CRM')
+        }
+      }
     )
   }
+
+  const totalPendientes = (pendientesHoyData?.hoy?.length || 0) + (pendientesHoyData?.vencidas?.length || 0)
 
   return (
     <main className="page page-wide">
@@ -458,11 +515,72 @@ export default function CrmPage() {
 
       <div className="kpi-strip">
         <KpiCard label="Total registros"   value={total.toLocaleString('es-CL')} icon="fileText"      sublabel="Seguimientos CRM" />
-        <KpiCard label="Pendientes"         value={pendientes}                     icon="clock"   tone="amber" sublabel="Sin cerrar" />
-        <KpiCard label="En gestión"         value={enGestion}                      icon="phone"   tone="blue"  sublabel="Activamente gestionados" />
+        <KpiCard label="Tasa de Cierre"     value={tasaCierreVal}                  icon="checkCircle"   tone="green" sublabel="Leads ganados" />
+        <KpiCard label="Promedio Pipeline"  value={tiempoPipeVal}                  icon="clock"   tone="blue"  sublabel="Días transcurridos" />
         <KpiCard label="Prioridad Alta"     value={altaPrioridad}                  icon="alertTriangle" tone="red" sublabel="Requieren atención" />
-        <KpiCard label="Cerrados"           value={cerrados}                       icon="checkCircle" tone="neutral" sublabel="En período filtrado" />
       </div>
+
+      {/* Agenda de pendientes */}
+      {totalPendientes > 0 && (
+        <div style={{
+          background: 'oklch(0.985 0.003 240)',
+          border: '1px solid var(--border)',
+          borderRadius: 12,
+          padding: '12px 16px',
+          marginBottom: 16,
+          boxShadow: 'var(--shadow-sm)'
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Icon name="clock" size={16} style={{ color: 'var(--amber-600)' }} />
+            Mis Pendientes de Hoy y Atrasados ({totalPendientes})
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {pendientesHoyData.vencidas.map(lead => (
+              <div
+                key={lead.id}
+                onClick={() => setSelected(lead)}
+                style={{
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: 8,
+                  padding: '6px 10px',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  color: '#b91c1c',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}
+              >
+                <span style={{ fontWeight: 700 }}>Atrasado:</span>
+                <span>{lead.nombre || lead.rsocial}</span>
+                <span style={{ fontSize: 10, fontFamily: "'DM Mono', monospace" }}>({new Date(lead.fechaProximo).toLocaleDateString('es-CL')})</span>
+              </div>
+            ))}
+            {pendientesHoyData.hoy.map(lead => (
+              <div
+                key={lead.id}
+                onClick={() => setSelected(lead)}
+                style={{
+                  background: '#fffbeb',
+                  border: '1px solid #fde68a',
+                  borderRadius: 8,
+                  padding: '6px 10px',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  color: '#b45309',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}
+              >
+                <span style={{ fontWeight: 700 }}>Hoy:</span>
+                <span>{lead.nombre || lead.rsocial}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div style={{
