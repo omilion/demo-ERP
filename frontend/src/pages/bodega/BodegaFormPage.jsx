@@ -10,12 +10,12 @@ import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 
 const ESTADO_INVENTARIO_OPTIONS = [
-  'Inventariado',
-  'Transitorio',
-  'Activo',
-  'Descontinuado',
-  'En transito',
-  'Reserva',
+  { value: 'Inventariado', label: 'Inventariado' },
+  { value: 'Transitorio', label: 'Transitorio' },
+  { value: 'Activo', label: 'Activo' },
+  { value: 'Descontinuado', label: 'Descontinuado' },
+  { value: 'En transito', label: 'En transito' },
+  { value: 'Reserva', label: 'Reservado' },
 ]
 
 const MOTIVO_CATEGORIA_OPTIONS = ['', 'Merma', 'Perdida', 'Dano', 'Error inventario', 'Otro']

@@ -4,6 +4,7 @@ import { Icon, Badge, KpiCard, SectionCard, ActionRow, PageHeader, Btn } from '.
 import { useDashboardStats } from '../../api/dashboard'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import { useCrmPendientesHoy } from '../../api/crm'
 
 const TALLER_ICONS = { Espumas: 'layers', Confecciones: 'scissors', Madera: 'box', Externo: 'truck' }
 
@@ -270,6 +271,179 @@ export default function DashboardPage() {
   const { data: stats, isLoading } = useDashboardStats()
   const { user } = useAuthStore()
   const { show, quickAccess } = getAccessModel(user, stats, isLoading)
+
+  const isVendedor = user?.role === 'vendedor'
+  const { data: pendientesCrm } = useCrmPendientesHoy()
+
+  if (isVendedor) {
+    const todayTasks = pendientesCrm?.hoy || []
+    const overdueTasks = pendientesCrm?.vencidas || []
+    const totalCrmPendientes = todayTasks.length + overdueTasks.length
+
+    const sellerQuickAccess = [
+      { label: 'Pipeline CRM', icon: 'phone', tone: 'blue', route: '/crm' },
+      { label: 'Nueva Venta', icon: 'plusCircle', tone: 'cyan', route: '/ventas/nueva' },
+      { label: 'Matriz Ventas', icon: 'grid', tone: 'blue', route: '/matriz-ventas' },
+      { label: 'Consulta Precios', icon: 'tag', tone: 'blue', route: '/consulta-precios' },
+      { label: 'Clientes', icon: 'users', tone: 'green', route: '/clientes' },
+    ]
+
+    const now = new Date()
+    const fecha = now.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })
+
+    return (
+      <main className="page" style={{ ...dashboardStartShell, display: 'block', padding: '24px 16px' }}>
+        <div style={{ ...dashboardStartFrame, margin: '0 auto' }}>
+          <PageHeader
+            title={`¡Hola, ${user.nombre || 'Vendedor'}!`}
+            subtitle={`Tu panel personal · ${fecha}`}
+            breadcrumb={['Inicio', 'Mi Panel']}
+            actions={
+              <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/ventas/nueva')}>Nueva Venta</Btn>
+            }
+          />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, marginTop: 16 }}>
+            <SectionCard title={`Mis Pendientes CRM (${totalCrmPendientes})`} icon="phone">
+              <div style={{ padding: '8px 16px' }}>
+                {totalCrmPendientes === 0 ? (
+                  <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
+                    <Icon name="checkCircle" size={32} style={{ color: 'var(--green-600)', marginBottom: 8 }} />
+                    <div>No tienes tareas de CRM pendientes para hoy. ¡Excelente!</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '350px', overflowY: 'auto', paddingRight: 4 }}>
+                    {overdueTasks.map(lead => (
+                      <div
+                        key={lead.id}
+                        onClick={() => navigate(`/crm`)}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr auto',
+                          gap: 12,
+                          alignItems: 'center',
+                          border: '1px solid #fecaca',
+                          borderRadius: 8,
+                          background: '#fef2f2',
+                          padding: '10px 14px',
+                          cursor: 'pointer',
+                          transition: 'transform 0.1s ease',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+                        onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+                      >
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: '#b91c1c' }}>
+                            Atrasado: {lead.nombre || lead.rsocial}
+                          </div>
+                          {lead.accion && (
+                            <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 2 }}>
+                              <strong>Acción:</strong> {lead.accion}
+                            </div>
+                          )}
+                          {lead.comentarios && (
+                            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {lead.comentarios}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <Badge tone="red">{lead.prioridad || 'normal'}</Badge>
+                          <div style={{ fontSize: 10, fontFamily: "'DM Mono', monospace", color: '#b91c1c', marginTop: 4 }}>
+                            {new Date(lead.fechaProximo).toLocaleDateString('es-CL')}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {todayTasks.map(lead => (
+                      <div
+                        key={lead.id}
+                        onClick={() => navigate(`/crm`)}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr auto',
+                          gap: 12,
+                          alignItems: 'center',
+                          border: '1px solid #fde68a',
+                          borderRadius: 8,
+                          background: '#fffbeb',
+                          padding: '10px 14px',
+                          cursor: 'pointer',
+                          transition: 'transform 0.1s ease',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+                        onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+                      >
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: '#b45309' }}>
+                            Hoy: {lead.nombre || lead.rsocial}
+                          </div>
+                          {lead.accion && (
+                            <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 2 }}>
+                              <strong>Acción:</strong> {lead.accion}
+                            </div>
+                          )}
+                          {lead.comentarios && (
+                            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {lead.comentarios}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <Badge tone="amber">{lead.prioridad || 'normal'}</Badge>
+                          <div style={{ fontSize: 10, fontFamily: "'DM Mono', monospace", color: '#b45309', marginTop: 4 }}>
+                            Hoy
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+
+            <section>
+              <div style={{
+                background: 'var(--green-700)',
+                color: '#fff',
+                padding: '9px 12px',
+                fontSize: 14,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                borderRadius: '6px 6px 0 0',
+              }}>
+                Accesos rápidos
+              </div>
+              <div style={{
+                background: '#fff',
+                border: '1px solid var(--border)',
+                borderTop: 0,
+                borderRadius: '0 0 8px 8px',
+                padding: 6,
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: 6,
+              }}>
+                {sellerQuickAccess.map(item => (
+                  <QuickAccessTile
+                    key={item.label}
+                    {...item}
+                    onClick={() => navigate(item.route)}
+                  />
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <div style={{ marginTop: 28, paddingTop: 14, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Plastimar ERP · Panel de Ventas</span>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
   const mainModules = [
     { label: 'Dashboard', icon: 'barChart2', tone: 'green', route: '/dashboard/operativo' },
     show.ventas && { label: 'Ventas', icon: 'shoppingCart', tone: 'blue', route: '/matriz-ventas' },

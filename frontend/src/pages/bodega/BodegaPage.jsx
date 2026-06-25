@@ -115,9 +115,9 @@ export default function BodegaPage() {
     { key: 'stock', label: 'Stock', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
     { key: 'proveedor', label: 'Proveedor', render: v => v || '-' },
     { key: 'estadoInventario', label: 'Estado inventario', required: true, render: v => v || '-' },
-    { key: 'estadoOperacional', label: 'Estado operativo', required: true, render: v => <Badge tone={estadoTone(v)}>{v || 'Sin evaluar'}</Badge> },
+    { key: 'estadoOperacional', label: 'Estado operativo', required: true, render: v => <Badge tone={estadoTone(v)}>{v === 'Reserva' ? 'Reservado' : (v || 'Sin evaluar')}</Badge> },
     { key: 'estado', label: 'Estado', render: v => (
-      <Badge tone={estadoTone(v)}>{v}</Badge>
+      <Badge tone={estadoTone(v)}>{v === 'Reserva' ? 'Reservado' : v}</Badge>
     )},
     { key: '_acc', label: '', required: true, render: (_, row) => (
       <div style={{ display: 'flex', gap: 4 }}>
@@ -192,7 +192,7 @@ export default function BodegaPage() {
             </select>
             <select value={estadoOperativo} onChange={e => setEstadoOperativo(e.target.value)} style={selectStyle}>
               <option value="">Estado operativo</option>
-              {estadoOperativoOptions.filter(Boolean).map(v => <option key={v} value={v}>{v}</option>)}
+              {estadoOperativoOptions.filter(Boolean).map(v => <option key={v} value={v}>{v === 'Reserva' ? 'Reservado' : v}</option>)}
             </select>
             <select value={proveedorId} onChange={e => setProveedorId(e.target.value)} style={{ ...selectStyle, minWidth: 180 }}>
               <option value="">Todos los proveedores</option>
