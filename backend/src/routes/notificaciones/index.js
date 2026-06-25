@@ -83,7 +83,7 @@ export default async function notificacionesRoutes(fastify) {
             { fechaEntregaCompromiso: { not: null, lt: ahora } },
           ],
         },
-        select: { id: true, nInterno: true, plazo: true, fechaEntregaCompromiso: true, clienteNombre: true },
+        select: { id: true, plazo: true, fechaEntregaCompromiso: true, clienteNombre: true },
         orderBy: { createdAt: 'desc' },
         take: 50,
       })
@@ -93,7 +93,7 @@ export default async function notificacionesRoutes(fastify) {
         items.push({
           tipo: 'odt_atrasada',
           severidad: dias > 7 ? 'alta' : 'media',
-          titulo: `ODT atrasada: #${o.nInterno || o.id}`,
+          titulo: `ODT atrasada: #${o.id}`,
           detalle: `${o.clienteNombre || 'Sin cliente'} · atrasada ${dias} día(s)`,
           fecha: ref,
           link: `/taller/${o.id}`,
