@@ -24,6 +24,7 @@ const TOOL_LABELS = {
   generar_excel: 'Generando Excel…',
   generar_pptx: 'Generando PowerPoint…',
   consultar_documentacion: 'Buscando en la documentación…',
+  ficha_producto: 'Analizando el producto…',
 }
 
 export default function AsistentePage() {

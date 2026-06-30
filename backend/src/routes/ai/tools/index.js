@@ -52,7 +52,7 @@ register({
 
 register({
   name: 'ranking_ventas',
-  description: 'Ranking de los productos o categorías MÁS (o menos) vendidos en un período, por monto facturado y por cantidad de unidades. Usar para preguntas como "producto más vendido", "categoría más vendida", "top 10 productos", "qué se vende más". Devuelve ambas métricas (monto y unidades) para que tú elijas la relevante.',
+  description: 'Ranking de los productos o categorías MÁS (o menos) vendidos en un período, por monto facturado, cantidad de unidades, o margen (rentabilidad). Usar para preguntas como "producto más rentable", "top 10 productos más vendidos", "qué categoría se vende más". Devuelve métricas (monto, unidades y margen si aplica) para que tú elijas la relevante.',
   input_schema: {
     type: 'object',
     properties: {
@@ -60,7 +60,7 @@ register({
       periodo: { type: 'string', enum: PERIODO_ENUM, description: 'Período a consultar' },
       anio: { type: 'integer', description: 'Año (para mes_especifico / anio_especifico)' },
       mes: { type: 'integer', description: 'Mes 1-12 (para mes_especifico)' },
-      ordenar_por: { type: 'string', enum: ['monto', 'cantidad'], description: 'Métrica de ordenamiento del ranking (default: monto)' },
+      ordenar_por: { type: 'string', enum: ['monto', 'cantidad', 'margen'], description: 'Métrica de ordenamiento del ranking (default: monto, margen solo disponible con agrupar_por: producto)' },
       limite: { type: 'integer', description: 'Cuántos resultados devolver (default 10, máx 50)' },
     },
     required: ['agrupar_por', 'periodo'],
@@ -68,8 +68,77 @@ register({
 }, async (prisma, input) => {
   const fecha = rangoPeriodo(input.periodo, input.anio, input.mes)
   const limite = Math.min(Math.max(parseInt(input.limite, 10) || 10, 1), 50)
+
+  if (input.ordenar_por === 'margen') {
+    if (input.agrupar_por === 'categoria') {
+      throw new Error('El ordenamiento por margen solo está disponible cuando se agrupa por producto.')
+    }
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT COALESCE(NULLIF(TRIM(i.nombre), ''), p.nombre, i.codigo_interno, 'Sin nombre') AS etiqueta,
+              MAX(i.codigo_interno) AS codigo,
+              SUM(i.cantidad)::bigint AS unidades,
+              ROUND(SUM(i.cantidad * i.precio_unitario))::bigint AS monto,
+              AVG(i.precio_unitario)::float AS precio_prom,
+              COALESCE(costo_sub.costo_prom, 0)::float AS costo_prom
+       FROM ventas.orden_items i
+       JOIN ventas.ordenes o ON o.id = i.orden_id
+       LEFT JOIN catalogo.productos p ON p.id = i.producto_id
+       LEFT JOIN (
+         SELECT codigo_interno, AVG(precio) AS costo_prom
+         FROM catalogo.detalle_facturas_proveedor
+         WHERE precio > 0
+         GROUP BY codigo_interno
+       ) costo_sub ON costo_sub.codigo_interno = i.codigo_interno
+       WHERE o.eliminada = false AND i.eliminado = false
+         AND o.created_at >= $1 AND o.created_at < $2
+       GROUP BY COALESCE(NULLIF(TRIM(i.nombre), ''), p.nombre, i.codigo_interno, 'Sin nombre'), costo_sub.costo_prom`,
+      fecha.gte, fecha.lt
+    )
+
+    const mapped = rows.map(r => {
+      const costo = r.costo_prom || 0
+      const precio = r.precio_prom || 0
+      const margenPct = (costo > 0 && precio > 0)
+        ? Math.round((1 - (costo / precio)) * 100)
+        : null
+      return {
+        etiqueta: r.etiqueta,
+        codigo: r.codigo,
+        unidades: Number(r.unidades),
+        monto: Number(r.monto),
+        costoProm: Math.round(costo),
+        margenPct
+      }
+    })
+
+    mapped.sort((a, b) => {
+      if (a.margenPct === null && b.margenPct === null) return 0
+      if (a.margenPct === null) return 1
+      if (b.margenPct === null) return -1
+      return b.margenPct - a.margenPct
+    })
+
+    const finalRows = mapped.slice(0, limite)
+
+    return {
+      agrupadoPor: input.agrupar_por,
+      ordenadoPor: 'margen',
+      periodo: input.periodo,
+      rango: { desde: fecha.gte.toISOString().slice(0, 10), hasta: fecha.lt.toISOString().slice(0, 10) },
+      ranking: finalRows.map((r, idx) => ({
+        posicion: idx + 1,
+        [input.agrupar_por]: r.etiqueta,
+        ...(r.codigo ? { codigo: r.codigo } : {}),
+        unidades: r.unidades,
+        montoCLP: r.monto,
+        costoPromCLP: r.costoProm,
+        margenPct: r.margenPct
+      })),
+      nota: 'Costo = promedio de todas las compras del producto, sin considerar la fecha. El margen no refleja variaciones de costo en el tiempo.'
+    }
+  }
+
   const orderCol = input.ordenar_por === 'cantidad' ? 'unidades' : 'monto'
-  // Monto por linea = cantidad * precio_unitario (sin descuentos de cabecera; ranking relativo).
   const groupExpr = input.agrupar_por === 'categoria'
     ? `COALESCE(NULLIF(TRIM(p.categoria), ''), 'Sin categoría')`
     : `COALESCE(NULLIF(TRIM(i.nombre), ''), p.nombre, i.codigo_interno, 'Sin nombre')`
@@ -100,6 +169,138 @@ register({
       unidades: Number(r.unidades),
       montoCLP: Number(r.monto),
     })),
+  }
+})
+
+register({
+  name: 'ficha_producto',
+  description: 'Expediente integral de UN producto: rentabilidad (margen = precio de venta vs. costo de compra) y tiempos de producción en taller. Usar para preguntas como "qué margen deja este producto", "cuánto tiempo estuvo en taller espuma", "cuál fue su mejor tiempo de producción", "es rentable el producto X". Recibe el código o nombre del producto. NO sirve para rankings de varios productos (para eso usar ranking_ventas).',
+  input_schema: {
+    type: 'object',
+    properties: {
+      producto: { type: 'string', description: 'Código interno o nombre (búsqueda parcial) del producto' }
+    },
+    required: ['producto']
+  }
+}, async (prisma, input) => {
+  const search = (input.producto || '').trim()
+  if (!search) {
+    return { encontrado: false, error: 'Debe ingresar un nombre o código de producto.' }
+  }
+
+  // 1. Resolve product
+  const matches = await prisma.producto.findMany({
+    where: {
+      OR: [
+        { codigoInterno: { equals: search, mode: 'insensitive' } },
+        { nombre: { contains: search, mode: 'insensitive' } }
+      ],
+      activo: true
+    },
+    take: 5
+  })
+
+  if (matches.length === 0) {
+    return { encontrado: false }
+  }
+
+  // Tie-breaker: find the one with the most sales
+  let selected = matches[0]
+  let maxSales = -1
+  for (const match of matches) {
+    const salesCount = await prisma.ordenItem.count({
+      where: { productoId: match.id, eliminado: false, orden: { eliminada: false } }
+    })
+    if (salesCount > maxSales) {
+      maxSales = salesCount
+      selected = match
+    }
+  }
+
+  const alternativas = matches
+    .filter(m => m.id !== selected.id)
+    .map(m => ({ id: m.id, codigoInterno: m.codigoInterno, nombre: m.nombre }))
+
+  // 2. Rentabilidad
+  // Costo promedio de compra
+  const costRows = await prisma.$queryRawUnsafe(
+    `SELECT ROUND(AVG(precio))::bigint AS costo_prom
+     FROM catalogo.detalle_facturas_proveedor
+     WHERE codigo_interno = $1 AND precio > 0`,
+    selected.codigoInterno
+  )
+  const costoProm = costRows[0]?.costo_prom ? Number(costRows[0].costo_prom) : null
+
+  // Ventas promedio, unidades y monto
+  const saleRows = await prisma.$queryRawUnsafe(
+    `SELECT ROUND(AVG(oi.precio_unitario))::bigint AS precio_prom,
+            SUM(oi.cantidad)::int AS unidades,
+            ROUND(SUM(oi.cantidad * oi.precio_unitario))::bigint AS monto
+     FROM ventas.orden_items oi
+     JOIN ventas.ordenes o ON o.id = oi.orden_id
+     WHERE oi.producto_id = $1 AND o.eliminada = false AND oi.eliminado = false`,
+    selected.id
+  )
+  const precioProm = saleRows[0]?.precio_prom ? Number(saleRows[0].precio_prom) : null
+  const unidades = saleRows[0]?.unidades ? Number(saleRows[0].unidades) : 0
+  const monto = saleRows[0]?.monto ? Number(saleRows[0].monto) : 0
+
+  const margenPct = (costoProm && precioProm && precioProm > 0)
+    ? Math.round((1 - (costoProm / precioProm)) * 100)
+    : null
+
+  // 3. Taller
+  // Veces en producción total (sin filtro de fechas)
+  const totalProduccion = await prisma.odtItem.count({
+    where: { productoId: selected.id, eliminado: false }
+  })
+
+  // Tiempos promedio por taller
+  const tallerRows = await prisma.$queryRawUnsafe(
+    `SELECT t.nombre AS taller,
+            COUNT(*)::int AS veces,
+            ROUND(AVG(EXTRACT(EPOCH FROM (oit.fecha_listo - oit.fecha_inicio))/3600)::numeric, 1)::float AS horas_prom,
+            ROUND(MIN(EXTRACT(EPOCH FROM (oit.fecha_listo - oit.fecha_inicio))/3600)::numeric, 1)::float AS mejor_horas
+     FROM taller.odt_item_talleres oit
+     JOIN taller.odt_items oi ON oi.id = oit.odt_item_id
+     JOIN taller.talleres t ON t.id = oit.taller_id
+     WHERE oi.producto_id = $1
+       AND oit.fecha_inicio IS NOT NULL AND oit.fecha_listo IS NOT NULL
+       AND oit.fecha_listo >= oit.fecha_inicio
+     GROUP BY t.nombre`,
+    selected.id
+  )
+
+  const porTaller = tallerRows.map(r => ({
+    taller: r.taller,
+    veces: Number(r.veces),
+    tiempoPromedioHoras: Number(r.horas_prom),
+    mejorTiempoHoras: Number(r.mejor_horas)
+  }))
+
+  return {
+    encontrado: true,
+    producto: {
+      id: selected.id,
+      codigo: selected.codigoInterno,
+      nombre: selected.nombre,
+      categoria: selected.categoria,
+      stock: selected.stock
+    },
+    alternativas: alternativas.length > 0 ? alternativas : undefined,
+    rentabilidad: {
+      costoPromCompra: costoProm,
+      precioPromVenta: precioProm,
+      unidadesVendidas: unidades,
+      montoVendidoCLP: monto,
+      margenPct,
+      nota: 'Costo = promedio de todas las compras del producto, sin considerar la fecha. El margen no refleja variaciones de costo en el tiempo.'
+    },
+    taller: {
+      vecesEnProduccionTotal: totalProduccion,
+      porTaller,
+      nota: 'Los tiempos se calculan solo sobre registros con inicio y fin marcados. Hoy la mayoría de las ODT no registra estos tiempos, por lo que la cobertura es baja y los promedios pueden no ser representativos.'
+    }
   }
 })
 

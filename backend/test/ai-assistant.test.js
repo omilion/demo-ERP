@@ -108,3 +108,122 @@ describe('AI assistant — consultar_documentacion', () => {
   })
 })
 
+describe('AI assistant — product rentabilidad & times', () => {
+  let app
+  beforeAll(async () => {
+    app = buildApp({ logger: false })
+    await app.ready()
+  })
+  afterAll(() => app.close())
+
+  it('ficha_producto calculates rentabilidad margin and handles production times', async () => {
+    const code = `TEST-PROD-${Date.now()}`
+    const category = `TestCat-${Date.now()}`
+    
+    // Create product
+    const product = await app.prisma.producto.create({
+      data: {
+        codigoInterno: code,
+        nombre: `Producto Test Margen ${code}`,
+        categoria: category,
+        stock: 10,
+        precioLista: 10000,
+        bodega: 'Inventario',
+      }
+    })
+
+    // Create provider
+    const provider = await app.prisma.proveedor.create({
+      data: {
+        nombre: `Proveedor Test ${code}`,
+        rut: `rut-prov-${code}`,
+      }
+    })
+
+    // Create pagoProveedor
+    const payment = await app.prisma.pagoProveedor.create({
+      data: {
+        proveedorId: provider.id,
+        total: 50000,
+        documento: 'Factura',
+        nDoc: '12345',
+        fechaPago: new Date(),
+        estado: 'Pagado',
+      }
+    })
+
+    // Create detail
+    const invoiceDetail = await app.prisma.detalleFacturaProveedor.create({
+      data: {
+        pagoId: payment.id,
+        codigoInterno: code,
+        cantidad: 10,
+        precio: 6000, // Cost = 6000
+      }
+    })
+
+    // Create client
+    const client = await app.prisma.cliente.create({
+      data: {
+        rut: `rut-cl-${code}`,
+        nombre: `Cliente Test ${code}`,
+      }
+    })
+
+    // Create sales order with items nested
+    const order = await app.prisma.orden.create({
+      data: {
+        tipo: 'Normal',
+        userId: 1,
+        clienteId: client.id,
+        items: {
+          create: [{
+            productoId: product.id,
+            codigoInterno: code,
+            cantidad: 2,
+            precioUnitario: 12000, // Price = 12000
+          }]
+        }
+      }
+    })
+
+    try {
+      // 1. Run ficha_producto
+      const r = await runTool('ficha_producto', { producto: code }, { prisma: app.prisma })
+      expect(r.encontrado).toBe(true)
+      expect(r.producto.codigo).toBe(code)
+      expect(r.rentabilidad.costoPromCompra).toBe(6000)
+      expect(r.rentabilidad.precioPromVenta).toBe(12000)
+      expect(r.rentabilidad.margenPct).toBe(50) // 1 - 6000/12000 = 50%
+
+      // 2. Run ranking_ventas by margen
+      const rRank = await runTool('ranking_ventas', {
+        agrupar_por: 'producto',
+        periodo: 'mes_actual',
+        ordenar_por: 'margen',
+        limite: 5
+      }, { prisma: app.prisma })
+
+      expect(rRank.ordenadoPor).toBe('margen')
+      const rankItem = rRank.ranking.find(item => item.producto === `Producto Test Margen ${code}`)
+      expect(rankItem).toBeDefined()
+      expect(rankItem.margenPct).toBe(50)
+      expect(rankItem.costoPromCLP).toBe(6000)
+    } finally {
+      // Cleanup
+      await app.prisma.orden.deleteMany({ where: { id: order.id } })
+      await app.prisma.cliente.deleteMany({ where: { id: client.id } })
+      await app.prisma.detalleFacturaProveedor.deleteMany({ where: { id: invoiceDetail.id } })
+      await app.prisma.pagoProveedor.deleteMany({ where: { id: payment.id } })
+      await app.prisma.proveedor.deleteMany({ where: { id: provider.id } })
+      await app.prisma.producto.deleteMany({ where: { id: product.id } })
+    }
+  })
+
+  it('ficha_producto returns encontrado false for unknown product', async () => {
+    const r = await runTool('ficha_producto', { producto: 'NON_EXISTENT_PROD_12345' }, { prisma: app.prisma })
+    expect(r.encontrado).toBe(false)
+  })
+})
+
+
