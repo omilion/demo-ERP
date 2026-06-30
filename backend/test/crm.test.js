@@ -80,6 +80,7 @@ describe('CRM estado routes', () => {
     const response = await handlers['PATCH /:id']({
       params: { id: '10' },
       body: { estado: 2 },
+      user: { id: 1, role: 'admin' },
     }, reply)
 
     expect(response).toBe(updated)
@@ -102,6 +103,7 @@ describe('CRM estado routes', () => {
     await handlers['PATCH /:id']({
       params: { id: '10' },
       body: { estado: '9' },
+      user: { id: 1, role: 'admin' },
     }, reply)
 
     expect(reply.statusCode).toBe(400)

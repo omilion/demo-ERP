@@ -312,7 +312,7 @@ function KanbanColumn({ estado, items, isOver, onOpen }) {
   const { setNodeRef } = useDroppable({ id: String(estado.id) })
   return (
     <div ref={setNodeRef} style={{
-      flex: '1 1 220px', minWidth: 220, maxWidth: 320,
+      width: '100%', minWidth: 0,
       background: isOver ? estado.bg : 'var(--surface)',
       borderRadius: 12,
       border: `1.5px solid ${isOver ? estado.color : 'var(--border)'}`,
@@ -631,7 +631,7 @@ export default function CrmPage() {
           {isLoading ? (
             <div style={{ padding: '80px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando pipeline…</div>
           ) : (
-            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', overflowX: 'auto', paddingBottom: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ESTADOS.length}, minmax(0, 1fr))`, gap: 12, alignItems: 'flex-start', paddingBottom: 16 }}>
               {ESTADOS.map(estado => (
                 <KanbanColumn
                   key={estado.id}
