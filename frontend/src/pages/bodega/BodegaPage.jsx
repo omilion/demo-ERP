@@ -109,7 +109,7 @@ export default function BodegaPage() {
     { key: 'categoria', label: 'Categoría', render: v => v ? <Badge tone="gray">{v}</Badge> : '-' },
     { key: 'subcategoria', label: 'Subcategoría', render: (_, row) => row.subcategoria?.nombre || '-' },
     { key: 'porcDesc', label: 'Desc.', align: 'right', render: v => `${Number(v || 0).toLocaleString('es-CL')}%` },
-    { key: 'precioLista', label: 'P. costo/lista', align: 'right', render: v => mono(money(v)) },
+    { key: 'precioLista', label: 'Precio costo', align: 'right', render: v => mono(money(v)) },
     { key: 'precioWeb', label: 'P. venta/web', align: 'right', render: (v, row) => mono(money(v ?? row.precioLista)) },
     { key: 'precioMarco', label: 'P. licitación', align: 'right', render: (v, row) => mono(money(row.consultaPrecios?.precioLicitacion ?? v)) },
     { key: 'stockCritico', label: 'Stock crit.', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },

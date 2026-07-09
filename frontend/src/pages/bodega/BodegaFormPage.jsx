@@ -405,8 +405,22 @@ export default function BodegaFormPage() {
 
       <FormSection title="Precios" tone="price">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <FormField label="Precio lista">
-          <Input value={data.precio} onChange={v => set('precio', v)} type="number" prefix="$" placeholder="0" />
+        <FormField label="Precio costo" hint="Se define asignando proveedores">
+          {isEdit ? (
+            <>
+              <Input value={data.precio} type="number" prefix="$" disabled />
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
+                El costo es el promedio ponderado de los proveedores asignados (ver sección <b>Proveedores y Costos</b>). No se edita aquí.
+              </div>
+            </>
+          ) : (
+            <>
+              <Input value={data.precio} onChange={v => set('precio', v)} type="number" prefix="$" placeholder="0" />
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
+                Costo inicial. Al asignar proveedores, se recalcula automáticamente desde ellos.
+              </div>
+            </>
+          )}
         </FormField>
         <FormField label="Precio marco" hint="Convenio">
           <Input value={data.precioMarco} onChange={v => set('precioMarco', v)} type="number" prefix="$" placeholder="0" />
@@ -522,7 +536,7 @@ export default function BodegaFormPage() {
       )}
       </FormSection>
 
-      {isEdit && found && <ProveedoresSection productoId={found.id} />}
+      {isEdit && found && <ProveedoresSection productoId={found.id} precioCostoActual={found.precioLista} />}
 
       {isEdit && found && <div id="movimientos"><MovimientosSection productoId={found.id} stockActual={found.stock} /></div>}
 
@@ -531,8 +545,9 @@ export default function BodegaFormPage() {
   )
 }
 
-function ProveedoresSection({ productoId }) {
+function ProveedoresSection({ productoId, precioCostoActual }) {
   const { data = { items: [], stockTotal: 0, costoPonderado: 0 } } = useProductoProveedores(productoId)
+  const sinProveedores = (data.items || []).length === 0
   const { data: proveedoresData = { items: [] } } = useProveedores()
   const upsert = useUpsertProductoProveedor()
   const update = useUpdateProductoProveedor()
@@ -568,11 +583,16 @@ function ProveedoresSection({ productoId }) {
   return (
     <>
       <FormDivider label="Proveedores y costos" />
-      <div style={{ background: 'var(--bg)', padding: 12, borderRadius: 8, marginBottom: 10, fontSize: 12, color: 'var(--text-2)', display: 'flex', gap: 24 }}>
+      <div style={{ background: 'var(--bg)', padding: 12, borderRadius: 8, marginBottom: 10, fontSize: 12, color: 'var(--text-2)', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
         <span>Stock total: <b style={{ color: 'var(--text-1)', fontFamily: "'DM Mono', monospace" }}>{Number(data.stockTotal || 0).toLocaleString('es-CL')}</b></span>
-        <span>Costo ponderado: <b style={{ color: 'var(--text-1)', fontFamily: "'DM Mono', monospace" }}>{money(data.costoPonderado)}</b></span>
-        <span style={{ color: 'var(--text-3)' }}>El costo ponderado alimenta el precio costo. El precio de venta es único.</span>
+        <span>Costo ponderado: <b style={{ color: 'var(--text-1)', fontFamily: "'DM Mono', monospace" }}>{money(sinProveedores ? precioCostoActual : data.costoPonderado)}</b></span>
+        <span style={{ color: 'var(--text-3)' }}>El costo ponderado de los proveedores es el <b>precio costo</b> del producto.</span>
       </div>
+      {sinProveedores && (
+        <div style={{ background: 'var(--amber-bg)', border: '1px solid var(--border)', padding: 10, borderRadius: 8, marginBottom: 10, fontSize: 12, color: 'var(--text-2)' }}>
+          Este producto aún no tiene proveedores asignados. Su precio costo actual es <b style={{ fontFamily: "'DM Mono', monospace" }}>{money(precioCostoActual)}</b> (valor cargado). Asigna un proveedor con su costo para que el sistema lo recalcule automáticamente.
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: 8, marginBottom: 12, alignItems: 'end' }}>
         <FormField label="Proveedor">
           <Select
