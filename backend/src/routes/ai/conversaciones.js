@@ -8,11 +8,9 @@ function tituloDesde(texto) {
 }
 
 export default async function aiConversacionesRoute(fastify) {
-  const gate = fastify.rbac('ai', 'read')
-
   // Lista de conversaciones del usuario (para el sidebar).
   fastify.get('/conversaciones', {
-    preHandler: [fastify.authenticate, gate],
+    preHandler: [fastify.authenticate],
   }, async (request) => {
     const rows = await fastify.prisma.aiConversacion.findMany({
       where: { userId: request.user.id },
@@ -25,7 +23,7 @@ export default async function aiConversacionesRoute(fastify) {
 
   // Mensajes de una conversación (al abrirla desde el sidebar).
   fastify.get('/conversaciones/:id', {
-    preHandler: [fastify.authenticate, gate],
+    preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
@@ -39,7 +37,7 @@ export default async function aiConversacionesRoute(fastify) {
 
   // Crear conversación (opcionalmente con el primer mensaje del usuario).
   fastify.post('/conversaciones', {
-    preHandler: [fastify.authenticate, gate],
+    preHandler: [fastify.authenticate],
   }, async (request) => {
     const { titulo, primerMensaje } = request.body || {}
     const conv = await fastify.prisma.aiConversacion.create({
@@ -54,7 +52,7 @@ export default async function aiConversacionesRoute(fastify) {
   // Agregar un turno (mensaje user + respuesta assistant) a una conversación.
   // Lo llama el frontend al terminar cada intercambio del chat.
   fastify.post('/conversaciones/:id/mensajes', {
-    preHandler: [fastify.authenticate, gate],
+    preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
@@ -85,7 +83,7 @@ export default async function aiConversacionesRoute(fastify) {
 
   // Renombrar.
   fastify.put('/conversaciones/:id', {
-    preHandler: [fastify.authenticate, gate],
+    preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
@@ -100,7 +98,7 @@ export default async function aiConversacionesRoute(fastify) {
 
   // Eliminar (cascade borra los mensajes).
   fastify.delete('/conversaciones/:id', {
-    preHandler: [fastify.authenticate, gate],
+    preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })

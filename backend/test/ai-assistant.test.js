@@ -5,6 +5,8 @@ import path from 'node:path'
 import { buildApp } from '../src/app.js'
 import { getToolDefinitions, runTool } from '../src/routes/ai/tools/index.js'
 import { documentToolDefinitions, runDocumentTool } from '../src/routes/ai/documents.js'
+import { buildSystemPrompt } from '../src/routes/ai/llm.js'
+import { executeTool } from '../src/routes/ai/chat.js'
 
 process.env.JWT_ACCESS_SECRET ||= 'test-access-secret'
 process.env.JWT_REFRESH_SECRET ||= 'test-refresh-secret'
@@ -70,9 +72,9 @@ describe('AI assistant — RBAC del endpoint', () => {
     expect(res.statusCode).toBe(401)
   })
 
-  it('rechaza rol no-admin en /api/ai/status (403)', async () => {
+  it('permite rol no-admin en /api/ai/status (200)', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/ai/status', headers: { authorization: `Bearer ${tokenFor(app, 'vendedor')}` } })
-    expect(res.statusCode).toBe(403)
+    expect(res.statusCode).toBe(200)
   })
 
   it('permite admin en /api/ai/status (200)', async () => {
@@ -83,13 +85,13 @@ describe('AI assistant — RBAC del endpoint', () => {
     expect(body).toHaveProperty('model')
   })
 
-  it('rechaza rol no-admin en /api/ai/chat (403)', async () => {
+  it('permite rol no-admin en /api/ai/chat (200)', async () => {
     const res = await app.inject({
       method: 'POST', url: '/api/ai/chat',
       headers: { authorization: `Bearer ${tokenFor(app, 'cajero')}` },
       payload: { messages: [{ role: 'user', content: 'hola' }] },
     })
-    expect(res.statusCode).toBe(403)
+    expect(res.statusCode).toBe(200)
   })
 })
 
@@ -223,6 +225,37 @@ describe('AI assistant — product rentabilidad & times', () => {
   it('ficha_producto returns encontrado false for unknown product', async () => {
     const r = await runTool('ficha_producto', { producto: 'NON_EXISTENT_PROD_12345' }, { prisma: app.prisma })
     expect(r.encontrado).toBe(false)
+  })
+})
+
+describe('AI assistant — prompts y tools por rol', () => {
+  it('system prompt de no-admin es restringido', () => {
+    const prompt = buildSystemPrompt({ role: 'vendedor', nombre: 'Juan' })
+    expect(prompt).toContain('asistente de ayuda de Plastimar')
+    expect(prompt).toContain('consultar_documentacion')
+    expect(prompt).not.toContain('Asistente Gerencial de Plastimar')
+  })
+
+  it('system prompt de admin es completo', () => {
+    const prompt = buildSystemPrompt({ role: 'admin', nombre: 'Pedro' })
+    expect(prompt).toContain('Asistente Gerencial de Plastimar')
+    expect(prompt).toContain('Plastimar es una empresa de espumas')
+  })
+
+  it('no-admin solo tiene acceso a herramientas de documentacion y ajuste de pantalla en executeTool', async () => {
+    const ctxVendedor = { user: { role: 'vendedor' }, prisma: {} }
+    
+    // Prohibido para vendedor: ficha_producto, ranking_ventas, etc.
+    const rFicha = await executeTool('ficha_producto', { producto: 'xyz' }, ctxVendedor)
+    expect(rFicha.error).toBe('Herramienta no disponible para tu rol')
+
+    const rRank = await executeTool('ranking_ventas', { agrupar_por: 'producto' }, ctxVendedor)
+    expect(rRank.error).toBe('Herramienta no disponible para tu rol')
+
+    // Permitido para vendedor: consultar_documentacion (no debe dar error de rol)
+    const rDoc = await executeTool('consultar_documentacion', { tema: 'inexistente' }, ctxVendedor)
+    expect(rDoc.error).toBeUndefined()
+    expect(rDoc.encontrado).toBe(false)
   })
 })
 

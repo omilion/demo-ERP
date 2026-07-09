@@ -5,20 +5,33 @@ import { Markdown } from './Markdown'
 import { useAuthStore } from '../store/auth'
 import { streamChat, useCrearConversacion, useGuardarMensajes } from '../api/ai'
 
-const SUGGESTIONS = [
-  '¿Cuántas ODT pendientes hay y cuántas atrasadas?',
-  'Resumen de ventas del mes actual',
-  'Genera un Excel con el stock crítico',
-]
-
-const WELCOME = { role: 'assistant', content: 'Hola. Soy el Asistente Gerencial de Plastimar. Puedo consultar ventas, taller, caja, CRM, inventario y RRHH en vivo, y generar reportes en Excel o PowerPoint. ¿Qué necesitas?' }
-
 export function AiChat() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
-  const [messages, setMessages] = useState([WELCOME])
+
+  const isConfigAdmin = user?.role === 'admin'
+  const welcomeMessage = {
+    role: 'assistant',
+    content: isConfigAdmin
+      ? 'Hola. Soy el Asistente Gerencial de Plastimar. Puedo consultar ventas, taller, caja, CRM, inventario y RRHH en vivo, y generar reportes en Excel o PowerPoint. ¿Qué necesitas?'
+      : 'Hola. Puedo ayudarte a usar el sistema: pregúntame cómo hacer algo o dónde encontrar una función.'
+  }
+
+  const suggestions = isConfigAdmin
+    ? [
+        '¿Cuántas ODT pendientes hay y cuántas atrasadas?',
+        'Resumen de ventas del mes actual',
+        'Genera un Excel con el stock crítico',
+      ]
+    : [
+        '¿Cómo creo una venta?',
+        '¿Dónde veo mis despachos pendientes?',
+        '¿Cómo registrar un pago de cobranza?',
+      ]
+
+  const [messages, setMessages] = useState([welcomeMessage])
   const [activeId, setActiveId] = useState(null) // conversación persistida actual
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -31,9 +44,6 @@ export function AiChat() {
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages, open, toolStatus])
-
-  // Solo gerencia (admin) tiene acceso al asistente por ahora.
-  if (user?.role !== 'admin') return null
 
   const TOOL_LABELS = {
     consultar_ventas: 'Consultando ventas…',
@@ -196,7 +206,7 @@ export function AiChat() {
             {messages.length === 1 && !loading && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
                 <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase' }}>Sugerencias</span>
-                {SUGGESTIONS.map(s => (
+                {suggestions.map(s => (
                   <button key={s} onClick={() => send(s)} style={{
                     textAlign: 'left', fontSize: 13, padding: '9px 13px', borderRadius: 10,
                     border: '1px solid var(--border)', background: '#fff', color: 'var(--text-2)', cursor: 'pointer', transition: 'all 0.13s',
@@ -213,7 +223,7 @@ export function AiChat() {
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
               <textarea value={input} onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-                placeholder="Pregunta sobre ventas, taller, caja…" rows={1}
+                placeholder={isConfigAdmin ? "Pregunta sobre ventas, taller, caja…" : "Pregunta cómo usar el sistema…"} rows={1}
                 style={{ flex: 1, borderRadius: 10, border: '1px solid var(--border)', padding: '9px 13px', fontSize: 14, fontFamily: 'inherit', resize: 'none', outline: 'none', background: 'var(--bg)', color: 'var(--text-1)', lineHeight: 1.4 }}
                 onFocus={e => e.target.style.borderColor = 'var(--green-600)'}
                 onBlur={e => e.target.style.borderColor = 'var(--border)'}

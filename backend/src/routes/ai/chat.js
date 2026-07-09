@@ -7,12 +7,16 @@ import { uiToolDefinitions, runUiTool, UI_TOOL_NAMES } from './ui-tools.js'
 const MAX_ITERATIONS = 8
 
 // Todas las definiciones de herramientas (consulta + documentos + UI) que ve el LLM.
-function allToolDefinitions() {
+export function allToolDefinitions() {
   return [...getToolDefinitions(), ...documentToolDefinitions, ...uiToolDefinitions]
 }
 
 // Ejecuta una herramienta por nombre, enrutando a consulta, documentos o UI.
-async function executeTool(name, input, ctx) {
+export async function executeTool(name, input, ctx) {
+  const esAdmin = ctx.user?.role === 'admin'
+  if (!esAdmin && name !== 'consultar_documentacion' && name !== 'ajustar_pantalla') {
+    return { error: 'Herramienta no disponible para tu rol' }
+  }
   if (UI_TOOL_NAMES.has(name)) {
     return runUiTool(name, input)
   }
@@ -35,13 +39,13 @@ function normalizeMessages(raw) {
 export default async function aiChatRoute(fastify) {
   // Estado de configuración (para que el frontend sepa si mostrar el chat).
   fastify.get('/status', {
-    preHandler: [fastify.authenticate, fastify.rbac('ai', 'read')],
+    preHandler: [fastify.authenticate],
   }, async () => ({ configured: isAiConfigured(), model: AI_MODEL }))
 
   // Chat principal — SSE. El loop de tool-use corre server-side; al cliente se
   // le envían eventos: tool (consultando), text (delta), done, error.
   fastify.post('/chat', {
-    preHandler: [fastify.authenticate, fastify.rbac('ai', 'read')],
+    preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const requestId = randomUUID()
     const startedAt = Date.now()
@@ -79,7 +83,10 @@ export default async function aiChatRoute(fastify) {
     try {
       const client = getAnthropic()
       const system = [{ type: 'text', text: buildSystemPrompt(request.user), cache_control: { type: 'ephemeral' } }]
-      const tools = allToolDefinitions()
+      const esAdmin = request.user?.role === 'admin'
+      const tools = esAdmin 
+        ? allToolDefinitions() 
+        : allToolDefinitions().filter(t => t.name === 'consultar_documentacion' || t.name === 'ajustar_pantalla')
       const convo = [...messages]
 
       for (let i = 0; i < MAX_ITERATIONS; i++) {

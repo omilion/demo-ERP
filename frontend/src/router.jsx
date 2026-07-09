@@ -77,7 +77,7 @@ export const router = createBrowserRouter([
       { path: 'ventas/nueva', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
       { path: 'ventas/:id/editar', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
       { path: 'ventas/:id/imprimir', element: protect(<VentaPrintPage />, { module: 'ventas' }) },
-      { path: 'asistente', element: protect(<AsistentePage />, { allowedRoles: ['admin'] }) },
+      { path: 'asistente', element: protect(<AsistentePage />, { allowedRoles: ALL }) },
       { path: 'bodega', element: protect(<BodegaPage />, { module: 'bodega' }) },
       { path: 'bodega/nuevo', element: protect(<BodegaFormPage />, { module: 'bodega', permission: 'write' }) },
       { path: 'bodega/:id/editar', element: protect(<BodegaFormPage />, { module: 'bodega', permission: 'write' }) },

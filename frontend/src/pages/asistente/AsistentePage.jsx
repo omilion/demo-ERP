@@ -8,7 +8,15 @@ import {
   useCrearConversacion, useGuardarMensajes, useEliminarConversacion,
 } from '../../api/ai'
 
-const WELCOME = { role: 'assistant', content: 'Hola. Soy el Asistente Gerencial de Plastimar. Puedo consultar ventas, taller, caja, CRM, inventario y RRHH en vivo, y generar reportes en Excel o PowerPoint. ¿Qué necesitas?' }
+const getWelcomeMessage = (user) => {
+  const isConfigAdmin = user?.role === 'admin'
+  return {
+    role: 'assistant',
+    content: isConfigAdmin
+      ? 'Hola. Soy el Asistente Gerencial de Plastimar. Puedo consultar ventas, taller, caja, CRM, inventario y RRHH en vivo, y generar reportes en Excel o PowerPoint. ¿Qué necesitas?'
+      : 'Hola. Puedo ayudarte a usar el sistema: pregúntame cómo hacer algo o dónde encontrar una función.'
+  }
+}
 
 const TOOL_LABELS = {
   consultar_ventas: 'Consultando ventas…',
@@ -31,7 +39,7 @@ export default function AsistentePage() {
   const { user } = useAuthStore()
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeId, setActiveId] = useState(null)
-  const [messages, setMessages] = useState([WELCOME])
+  const [messages, setMessages] = useState(() => [getWelcomeMessage(user)])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [toolStatus, setToolStatus] = useState(null)
@@ -50,9 +58,9 @@ export default function AsistentePage() {
     if (convActiva?.mensajes) {
       setMessages(convActiva.mensajes.length
         ? convActiva.mensajes.map(m => ({ role: m.role, content: m.content, documents: m.documents || [] }))
-        : [WELCOME])
+        : [getWelcomeMessage(user)])
     }
-  }, [convActiva])
+  }, [convActiva, user])
 
   // Al venir desde el pop-up: ?conv=ID abre esa conversación; ?nueva arranca limpia.
   useEffect(() => {
@@ -62,20 +70,18 @@ export default function AsistentePage() {
       setSearchParams({}, { replace: true })
     } else if (searchParams.get('nueva')) {
       setActiveId(null)
-      setMessages([WELCOME])
+      setMessages([getWelcomeMessage(user)])
       setSearchParams({}, { replace: true })
     }
-  }, [searchParams, setSearchParams])
+  }, [searchParams, setSearchParams, user])
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages, toolStatus])
 
-  if (user?.role !== 'admin') return <main style={{ padding: 24 }}>No tienes acceso al asistente.</main>
-
   const nuevaConversacion = () => {
     setActiveId(null)
-    setMessages([WELCOME])
+    setMessages([getWelcomeMessage(user)])
     setInput('')
   }
 
@@ -83,7 +89,8 @@ export default function AsistentePage() {
     const q = (text || input).trim()
     if (!q || loading) return
     setInput('')
-    const history = messages.filter(m => m !== WELCOME)
+    const welcome = getWelcomeMessage(user)
+    const history = messages.filter(m => m.content !== welcome.content)
 
     // Asegurar conversación: crear si es la primera vez.
     let convId = activeId
@@ -163,7 +170,7 @@ export default function AsistentePage() {
             >
               <Icon name="messageSquare" size={13} color="var(--text-3)" />
               <span style={{ flex: 1, fontSize: 12, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.titulo}</span>
-              <button onClick={e => { e.stopPropagation(); if (confirm('¿Eliminar esta conversación?')) { eliminarConv.mutate(c.id); if (c.id === activeId) nuevaConversacion() } }}
+              <button onClick={async e => { e.stopPropagation(); if (await confirmDialog({ title: 'Confirmar', detail: '¿Eliminar esta conversación?', tone: 'danger' })) { eliminarConv.mutate(c.id); if (c.id === activeId) nuevaConversacion() } }}
                 style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 2, display: 'flex' }} title="Eliminar">
                 <Icon name="trash" size={12} />
               </button>
@@ -179,8 +186,8 @@ export default function AsistentePage() {
             <Icon name="messageSquare" size={14} color="#fff" />
           </div>
           <div>
-            <div style={{ color: '#fff', fontWeight: 600, fontSize: 14 }}>Asistente Gerencial IA</div>
-            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Datos en vivo del ERP</div>
+            <div style={{ color: '#fff', fontWeight: 600, fontSize: 14 }}>{user?.role === 'admin' ? "Asistente Gerencial IA" : "Asistente de Ayuda IA"}</div>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>{user?.role === 'admin' ? "Datos en vivo del ERP" : "Guía de uso y documentación"}</div>
           </div>
         </div>
 
@@ -227,7 +234,7 @@ export default function AsistentePage() {
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', maxWidth: 900, margin: '0 auto' }}>
             <textarea value={input} onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-              placeholder="Pregunta sobre ventas, taller, caja…" rows={1}
+              placeholder={user?.role === 'admin' ? "Pregunta sobre ventas, taller, caja…" : "Pregunta cómo usar el sistema…"} rows={1}
               style={{ flex: 1, borderRadius: 10, border: '1px solid var(--border)', padding: '11px 15px', fontSize: 14, fontFamily: 'inherit', resize: 'none', outline: 'none', background: 'var(--bg)', color: 'var(--text-1)', lineHeight: 1.4 }}
             />
             <button onClick={() => send()} disabled={!input.trim() || loading} style={{
