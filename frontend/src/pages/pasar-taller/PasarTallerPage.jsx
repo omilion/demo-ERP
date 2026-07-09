@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, Btn, PageHeader, Table } from '../../components/shared'
@@ -107,7 +108,7 @@ export default function PasarTallerPage() {
     const params = {}
     if (ordenIdInput) params.ordenId = ordenIdInput
     if (nInternoInput) params.nInterno = nInternoInput
-    if (!params.ordenId && !params.nInterno) return alert('Ingresa ID de venta o N interno')
+    if (!params.ordenId && !params.nInterno) return toast.warning('Ingresa ID de venta o N interno')
     setLineOverrides({})
     setPrioridad('')
     setObsGeneral('')
@@ -131,9 +132,9 @@ export default function PasarTallerPage() {
   }
 
   function enviarItems(payloadItems) {
-    if (!data.orden?.id) return alert('Primero carga una venta')
+    if (!data.orden?.id) return toast.warning('Primero carga una venta')
     if (!payloadItems.length && currentPrioridad === (normalizeText(odt?.prioridad) || 'alta') && currentObsGeneral === (odt?.obsGeneral || '')) {
-      return alert('No hay cambios para notificar')
+      return toast.warning('No hay cambios para notificar')
     }
     enviarMut.mutate({
       ordenId: data.orden.id,
@@ -142,11 +143,11 @@ export default function PasarTallerPage() {
       items: payloadItems,
     }, {
       onSuccess: (res) => {
-        alert('Taller notificado')
+        toast.warning('Taller notificado')
         setSearchParams({ ordenId: String(data.orden.id) })
         if (res?.odtId) navigate(`/pasar-taller?ordenId=${data.orden.id}`, { replace: true })
       },
-      onError: e => alert(e.response?.data?.error || 'Error al notificar taller'),
+      onError: e => toast.error(e.response?.data?.error || 'Error al notificar taller'),
     })
   }
 
@@ -162,7 +163,7 @@ export default function PasarTallerPage() {
 
   function enviarUno(item) {
     const line = getLine(item)
-    if (!line.tallerIds?.length) return alert('Selecciona al menos un taller para este producto')
+    if (!line.tallerIds?.length) return toast.warning('Selecciona al menos un taller para este producto')
     enviarItems([{
       ordenItemId: item.ordenItemId,
       cantidad: Number(line.cantidad || item.cantidad),
@@ -171,14 +172,14 @@ export default function PasarTallerPage() {
     }])
   }
 
-  function eliminarItem(item) {
+  async function eliminarItem(item) {
     const tallerItemId = item.talleres?.[0]?.id
     const odtItemId = odt?.items?.find(i => i.codigoInterno === item.codigoInterno)?.id
     const id = odtItemId || item.id || tallerItemId
-    if (!id) return alert('No se encontro item de taller para eliminar')
-    if (!confirm(`Quitar ${item.codigoInterno || item.nombre} de la OT?`)) return
+    if (!id) return toast.warning('No se encontro item de taller para eliminar')
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Quitar ${item.codigoInterno || item.nombre} de la OT?`, tone: 'danger' })) return
     eliminarMut.mutate(id, {
-      onError: e => alert(e.response?.data?.error || 'Error al quitar item'),
+      onError: e => toast.error(e.response?.data?.error || 'Error al quitar item'),
     })
   }
 

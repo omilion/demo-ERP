@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState, useEffect, useRef } from 'react'
 import { DndContext, DragOverlay, PointerSensor, pointerWithin, rectIntersection, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -212,16 +213,16 @@ function BitacoraSection({ odtId, entries = [], canWrite, canDelete }) {
       { odtId, texto },
       {
         onSuccess: () => setTexto(''),
-        onError: err => alert(getErrorMessage(err)),
+        onError: err => toast.error(getErrorMessage(err)),
       }
     )
   }
 
-  const handleDelete = entryId => {
-    if (!confirm('¿Eliminar esta entrada de bitacora? Esta accion no se puede deshacer.')) return
+  const handleDelete = async entryId => {
+    if (!await confirmDialog({ title: 'Confirmar', detail: '¿Eliminar esta entrada de bitacora? Esta accion no se puede deshacer.', tone: 'danger' })) return
     delBitacora.mutate(
       { odtId, entryId },
-      { onError: err => alert(getErrorMessage(err)) }
+      { onError: err => toast.error(getErrorMessage(err)) }
     )
   }
 
@@ -700,16 +701,16 @@ export default function TallerPage() {
   ]
   function handleEstadoChange(id, estado) {
     cambiarEstado.mutate({ id, estado }, {
-      onError: err => alert(getErrorMessage(err)),
+      onError: err => toast.error(getErrorMessage(err)),
     })
   }
 
-  function handleKanbanDrop(odt, estado) {
+  async function handleKanbanDrop(odt, estado) {
     if (!canWriteTaller || cambiarEstado.isPending) return
     const current = odt.estado || 'Sin estado'
     if (current === estado) return
     const odtNumero = odtNumeroOperativo(odt)
-    if (!confirm(`Confirmas mover la OT #${odtNumero} de ${current} a ${estado}?`)) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Confirmas mover la OT #${odtNumero} de ${current} a ${estado}?` })) return
     handleEstadoChange(odt.id, estado)
   }
 

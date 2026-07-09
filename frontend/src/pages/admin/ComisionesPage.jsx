@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useMemo, useState } from 'react'
 import { Badge, Btn, Icon, KpiCard, PageHeader, SearchBar, Table } from '../../components/shared'
 import { FormField, Input, Select, Textarea } from '../../components/forms'
@@ -223,7 +224,7 @@ export default function ComisionesPage() {
   }
 
   async function deactivate(regla) {
-    if (!window.confirm(`Desactivar regla "${regla.nombre}"?`)) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Desactivar regla "${regla.nombre}"?`, tone: 'danger' })) return
     try {
       await deleteRule.mutateAsync(regla.id)
       if (editingId === regla.id) resetForm()

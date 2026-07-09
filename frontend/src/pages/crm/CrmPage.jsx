@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { DndContext, DragOverlay, PointerSensor, pointerWithin, rectIntersection, useSensor, useSensors } from '@dnd-kit/core'
 import { useDroppable, useDraggable } from '@dnd-kit/core'
@@ -182,12 +183,12 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
     try {
       const res = await convertirCliente.mutateAsync(item.id)
       if (res.creado) {
-        alert('Lead convertido a cliente exitosamente.')
+        toast.success('Lead convertido a cliente exitosamente.')
       } else {
-        alert('El cliente ya existe en el sistema con ese RUT.')
+        toast.warning('El cliente ya existe en el sistema con ese RUT.')
       }
     } catch (err) {
-      alert(err.response?.data?.error || 'Error al convertir cliente')
+      toast.error(err.response?.data?.error || 'Error al convertir cliente')
     }
   }
 
@@ -357,7 +358,7 @@ function KanbanColumn({ estado, items, isOver, onOpen }) {
 }
 
 // ── Table view ─────────────────────────────────────────────────────────────────
-function TableView({ items, total, limit, onOpen }) {
+function TableView({ items, total, limit, onOpen, view, setView, ejecutiva, setEjecutiva, ejecutivas, prioridad, setPrioridad, fechaDesde, setFechaDesde, fechaHasta, setFechaHasta, search, setSearch }) {
   const cols = [
     {
       key: 'fecha', label: 'Fecha',
@@ -393,9 +394,45 @@ function TableView({ items, total, limit, onOpen }) {
       render: v => v ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-3)' }}>{new Date(v).toLocaleDateString('es-CL')}</span> : '—'
     },
   ]
+
+  const toolbarExtra = (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+      <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+        <button onClick={() => setView('pipeline')} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', background: view === 'pipeline' ? 'var(--green-900)' : '#fff', color: view === 'pipeline' ? '#fff' : 'var(--text-2)', border: 'none' }}>Pipeline</button>
+        <button onClick={() => setView('table')} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', background: view === 'table' ? 'var(--green-900)' : '#fff', color: view === 'table' ? '#fff' : 'var(--text-2)', border: 'none' }}>Tabla</button>
+      </div>
+      <select value={ejecutiva} onChange={e => setEjecutiva(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
+        <option value="">Ejecutiva</option>
+        {ejecutivas.map(e => <option key={e.ejecutiva} value={e.ejecutiva}>{e.ejecutiva} ({e.total})</option>)}
+      </select>
+      <select value={prioridad} onChange={e => setPrioridad(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
+        <option value="">Prioridad</option>
+        <option value="Alta">Alta</option>
+        <option value="Media">Media</option>
+        <option value="Baja">Baja</option>
+      </select>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Desde</span>
+        <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Hasta</span>
+        <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }} />
+      </div>
+      {(fechaDesde || fechaHasta) && (
+        <button onClick={() => { setFechaDesde(''); setFechaHasta('') }} style={{ fontSize: 11, color: 'var(--red)', background: 'none', border: '1px solid var(--red)', borderRadius: 5, padding: '3px 8px', cursor: 'pointer' }}>
+          Limpiar fechas ✕
+        </button>
+      )}
+      <div style={{ flex: 1, minWidth: 160 }}>
+        <SearchBar placeholder="Contacto, organismo, RUT, cotización..." value={search} onChange={setSearch} />
+      </div>
+    </div>
+  )
+
   return (
     <>
-      <Table columns={cols} rows={items} onRowClick={onOpen} emptyMessage="Sin registros para este filtro" ariaLabel="Registros CRM" getRowKey={row => row.id} />
+      <Table columns={cols} rows={items} onRowClick={onOpen} emptyMessage="Sin registros para este filtro" ariaLabel="Registros CRM" getRowKey={row => row.id} toolbarExtra={toolbarExtra} />
       {total > limit && (
         <div style={{ padding: '10px 20px', textAlign: 'center', fontSize: 12, color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>
           Mostrando {limit} de {total.toLocaleString('es-CL')} registros. Usa los filtros para acotar.
@@ -493,7 +530,7 @@ export default function CrmPage() {
       {
         onError: err => {
           queryClient.setQueryData(queryKey, previousData)
-          alert(err.response?.data?.error || 'No se pudo cambiar el estado CRM')
+          toast.error(err.response?.data?.error || 'No se pudo cambiar el estado CRM')
         }
       }
     )
@@ -583,38 +620,40 @@ export default function CrmPage() {
       )}
 
       {/* Filters */}
-      <div style={{
-        background: '#fff', borderRadius: 12, border: '1px solid var(--border)',
-        boxShadow: 'var(--shadow-sm)', padding: '12px 16px', marginBottom: 16,
-        display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
-      }}>
-        <select value={ejecutiva} onChange={e => setEjecutiva(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
-          <option value="">Todas las ejecutivas</option>
-          {ejecutivas.map(e => <option key={e.ejecutiva} value={e.ejecutiva}>{e.ejecutiva} ({e.total})</option>)}
-        </select>
-        <select value={prioridad} onChange={e => setPrioridad(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
-          <option value="">Toda prioridad</option>
-          <option value="Alta">Alta</option>
-          <option value="Media">Media</option>
-          <option value="Baja">Baja</option>
-        </select>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Desde</span>
-          <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }} />
+      {view === 'pipeline' && (
+        <div style={{
+          background: '#fff', borderRadius: 12, border: '1px solid var(--border)',
+          boxShadow: 'var(--shadow-sm)', padding: '12px 16px', marginBottom: 16,
+          display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
+        }}>
+          <select value={ejecutiva} onChange={e => setEjecutiva(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
+            <option value="">Todas las ejecutivas</option>
+            {ejecutivas.map(e => <option key={e.ejecutiva} value={e.ejecutiva}>{e.ejecutiva} ({e.total})</option>)}
+          </select>
+          <select value={prioridad} onChange={e => setPrioridad(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
+            <option value="">Toda prioridad</option>
+            <option value="Alta">Alta</option>
+            <option value="Media">Media</option>
+            <option value="Baja">Baja</option>
+          </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Desde</span>
+            <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Hasta</span>
+            <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }} />
+          </div>
+          {(fechaDesde || fechaHasta) && (
+            <button onClick={() => { setFechaDesde(''); setFechaHasta('') }} style={{ fontSize: 11, color: 'var(--red)', background: 'none', border: '1px solid var(--red)', borderRadius: 5, padding: '3px 8px', cursor: 'pointer' }}>
+              Limpiar fechas ✕
+            </button>
+          )}
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <SearchBar placeholder="Contacto, organismo, RUT, cotización..." value={search} onChange={setSearch} />
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Hasta</span>
-          <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }} />
-        </div>
-        {(fechaDesde || fechaHasta) && (
-          <button onClick={() => { setFechaDesde(''); setFechaHasta('') }} style={{ fontSize: 11, color: 'var(--red)', background: 'none', border: '1px solid var(--red)', borderRadius: 5, padding: '3px 8px', cursor: 'pointer' }}>
-            Limpiar fechas ✕
-          </button>
-        )}
-        <div style={{ flex: 1, minWidth: 160 }}>
-          <SearchBar placeholder="Contacto, organismo, RUT, cotización..." value={search} onChange={setSearch} />
-        </div>
-      </div>
+      )}
 
       {/* Pipeline view */}
       {view === 'pipeline' && (
@@ -655,7 +694,25 @@ export default function CrmPage() {
         <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
           {isLoading
             ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-            : <TableView items={items} total={total} limit={result.limit} onOpen={setSelected} />
+            : <TableView
+                items={items}
+                total={total}
+                limit={result.limit}
+                onOpen={setSelected}
+                view={view}
+                setView={setView}
+                ejecutiva={ejecutiva}
+                setEjecutiva={setEjecutiva}
+                ejecutivas={ejecutivas}
+                prioridad={prioridad}
+                setPrioridad={setPrioridad}
+                fechaDesde={fechaDesde}
+                setFechaDesde={setFechaDesde}
+                fechaHasta={fechaHasta}
+                setFechaHasta={setFechaHasta}
+                search={search}
+                setSearch={setSearch}
+              />
           }
         </div>
       )}

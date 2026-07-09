@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, Table, Tabs, SearchBar, Pager } from '../../components/shared'
@@ -122,17 +123,17 @@ export default function CajaPage() {
 
   const handleExport = () => {
     if (tab === 'hoy' && !turno?.id) {
-      alert('No hay turno activo para exportar')
+      toast.warning('No hay turno activo para exportar')
       return
     }
     downloadFromBackend('/reportes/export/caja', `caja_${new Date().toISOString().slice(0, 10)}.csv`, exportParams)
-      .catch(err => alert(err?.response?.data?.error || 'No se pudo exportar caja'))
+      .catch(err => toast.error(err?.response?.data?.error || 'No se pudo exportar caja'))
   }
 
-  const handleAbrirTurno = () => {
-    if (!confirm('Abrir turno de caja?')) return
+  const handleAbrirTurno = async () => {
+    if (!await confirmDialog({ title: 'Confirmar', detail: 'Abrir turno de caja?' })) return
     abrirTurno.mutate({ cajaId: 1 }, {
-      onError: (e) => alert(e?.response?.data?.error || 'No se pudo abrir el turno'),
+      onError: (e) => toast.error(e?.response?.data?.error || 'No se pudo abrir el turno'),
     })
   }
 
@@ -142,30 +143,30 @@ export default function CajaPage() {
     setCierreOpen(true)
   }
 
-  const handleConfirmarCierre = () => {
+  const handleConfirmarCierre = async () => {
     if (!turno?.id) return
-    if (!confirm(`Cerrar turno #${turno.id} con diferencia ${fmt(cierreDiferencia)}?`)) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Cerrar turno #${turno.id} con diferencia ${fmt(cierreDiferencia)}?` })) return
     cerrarTurno.mutate({ id: turno.id, obs: cierreForm.obs || undefined, conteo: cierreForm.conteo }, {
       onSuccess: () => setCierreOpen(false),
-      onError: (e) => alert(e?.response?.data?.error || 'No se pudo cerrar el turno'),
+      onError: (e) => toast.error(e?.response?.data?.error || 'No se pudo cerrar el turno'),
     })
   }
 
-  const handleDeleteMovimiento = (mov) => {
-    if (!confirm(`Eliminar movimiento #${mov.id}? Esta accion deja el registro marcado como eliminado.`)) return
-    const motivo = prompt('Motivo de anulacion')
+  const handleDeleteMovimiento = async (mov) => {
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Eliminar movimiento #${mov.id}? Esta accion deja el registro marcado como eliminado.`, tone: 'danger' })) return
+    const motivo = await promptDialog({ title: 'Motivo de anulacion' })
     if (!motivo?.trim()) return
     deleteMovimiento.mutate({ id: mov.id, motivo: motivo.trim() }, {
-      onError: (e) => alert(e?.response?.data?.error || 'No se pudo eliminar el movimiento'),
+      onError: (e) => toast.error(e?.response?.data?.error || 'No se pudo eliminar el movimiento'),
     })
   }
 
-  const handleReactivateMovimiento = (mov) => {
-    if (!confirm(`Reactivar movimiento #${mov.id}?`)) return
-    const motivo = prompt('Motivo de reactivacion')
+  const handleReactivateMovimiento = async (mov) => {
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Reactivar movimiento #${mov.id}?` })) return
+    const motivo = await promptDialog({ title: 'Motivo de reactivacion' })
     if (!motivo?.trim()) return
     reactivateMovimiento.mutate({ id: mov.id, motivo: motivo.trim() }, {
-      onError: (e) => alert(e?.response?.data?.error || 'No se pudo reactivar el movimiento'),
+      onError: (e) => toast.error(e?.response?.data?.error || 'No se pudo reactivar el movimiento'),
     })
   }
 

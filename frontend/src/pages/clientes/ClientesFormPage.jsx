@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
@@ -67,13 +68,13 @@ export default function ClientesFormPage() {
         { id: Number(id), data: payload },
         {
           onSuccess: () => navigate('/clientes'),
-          onError: (err) => alert(err?.response?.data?.error || 'Error al guardar'),
+          onError: (err) => toast.error(err?.response?.data?.error || 'Error al guardar'),
         }
       )
     } else {
       createMutation.mutate(payload, {
         onSuccess: () => navigate('/clientes'),
-        onError: (err) => alert(err?.response?.data?.error || 'Error al guardar'),
+        onError: (err) => toast.error(err?.response?.data?.error || 'Error al guardar'),
       })
     }
   }
@@ -188,12 +189,12 @@ function SucursalesCliente({ cliente }) {
   }
 
   function save() {
-    if (!form.nombre.trim()) { alert('Nombre de sucursal requerido'); return }
+    if (!form.nombre.trim()) { toast.warning('Nombre de sucursal requerido'); return }
     const data = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, typeof v === 'string' && !v.trim() ? undefined : v]))
     if (editingId) {
-      updateSucursal.mutate({ clienteId: cliente.id, sucursalId: editingId, data }, { onSuccess: reset, onError: e => alert(e.response?.data?.error || 'Error al guardar sucursal') })
+      updateSucursal.mutate({ clienteId: cliente.id, sucursalId: editingId, data }, { onSuccess: reset, onError: e => toast.error(e.response?.data?.error || 'Error al guardar sucursal') })
     } else {
-      createSucursal.mutate({ clienteId: cliente.id, data }, { onSuccess: reset, onError: e => alert(e.response?.data?.error || 'Error al crear sucursal') })
+      createSucursal.mutate({ clienteId: cliente.id, data }, { onSuccess: reset, onError: e => toast.error(e.response?.data?.error || 'Error al crear sucursal') })
     }
   }
 

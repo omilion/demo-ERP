@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast, confirmDialog } from '../../store/notif'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Pager } from '../../components/shared'
 import { ViewClientePanel } from '../../components/forms/FormCliente'
 import { useClienteActivo, useClientes } from '../../api/clientes'
@@ -61,12 +62,12 @@ export default function ClientesPage() {
   const fmt = n => '$' + Number(n).toLocaleString('es-CL')
   const getErrorMessage = err => err?.response?.data?.error || err?.message || 'No se pudo completar la accion'
 
-  function handleClienteActivo(cliente, activo) {
+  async function handleClienteActivo(cliente, activo) {
     const accion = activo ? 'reactivar' : 'dar de baja'
     const detalle = activo
       ? 'El cliente volvera a estar disponible para nuevas operaciones.'
       : 'El cliente dejara de aparecer en busquedas operativas. Su historial se conserva.'
-    if (!confirm(`¿Confirmas ${accion} al cliente "${cliente.nombre}"?\n\n${detalle}`)) return
+    if (!(await confirmDialog({ title: `¿Confirmas ${accion}?`, detail: `¿Confirmas ${accion} al cliente "${cliente.nombre}"?\n\n${detalle}`, tone: activo ? 'primary' : 'danger' }))) return
     const razon = activo ? undefined : 'Baja operativa desde listado de clientes'
     clienteActivo.mutate(
       { id: cliente.id, activo, razon },
@@ -74,7 +75,7 @@ export default function ClientesPage() {
         onSuccess: updated => {
           if (selected?.id === cliente.id) setSelected(updated)
         },
-        onError: err => alert(getErrorMessage(err)),
+        onError: err => toast.error(getErrorMessage(err)),
       }
     )
   }
@@ -113,6 +114,48 @@ export default function ClientesPage() {
 
   const deudaTotal = clientes.reduce((s, c) => s + (c.saldo || 0), 0)
 
+  const toolbarExtra = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {['all', ...tipos].map(t => (
+            <button key={t} onClick={() => setTipoFilter(t)} style={{
+              padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+              background: tipoFilter === t ? 'var(--green-900)' : '#fff',
+              color: tipoFilter === t ? '#fff' : 'var(--text-2)',
+              border: `1px solid ${tipoFilter === t ? 'var(--green-900)' : 'var(--border)'}`,
+              transition: 'all 0.15s',
+            }}>{t === 'all' ? 'Todos' : t}</button>
+          ))}
+        </div>
+        <SearchBar placeholder="Buscar por nombre, RUT, email o ubicacion..." value={search} onChange={setSearch} style={{ width: 320 }} />
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input value={region} onChange={e => setRegion(e.target.value)} placeholder="Región" style={miniInput} />
+        <input value={ciudad} onChange={e => setCiudad(e.target.value)} placeholder="Ciudad" style={miniInput} />
+        <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" style={{ ...miniInput, width: 180 }} />
+        <select value={segmento} onChange={e => setSegmento(e.target.value)} style={{ ...miniInput, cursor: 'pointer' }}>
+          <option value="">Segmento</option>
+          <option value="A">A</option>
+          <option value="B">B</option>
+          <option value="C">C</option>
+        </select>
+        <select value={estadoCliente} onChange={e => setEstadoCliente(e.target.value)} style={{ ...miniInput, cursor: 'pointer' }}>
+          <option value="activos">Activos</option>
+          <option value="inactivos">Inactivos</option>
+          <option value="todos">Todos</option>
+        </select>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-2)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={conDeuda} onChange={e => setConDeuda(e.target.checked)} />
+          Solo con deuda
+        </label>
+        {(region || ciudad || email || segmento || conDeuda || estadoCliente !== 'activos') && (
+          <button onClick={() => { setRegion(''); setCiudad(''); setEmail(''); setSegmento(''); setConDeuda(false); setEstadoCliente('activos') }} style={{ padding: '5px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Limpiar</button>
+        )}
+      </div>
+    </div>
+  )
+
   return (
     <main className="page page-wide">
       <PageHeader title="Clientes" subtitle={`${shown.length} de ${totalClientes.toLocaleString('es-CL')} clientes`} breadcrumb={['Inicio', 'Clientes']}
@@ -130,47 +173,17 @@ export default function ClientesPage() {
         <KpiCard label="Institucional / Gob." value={clientes.filter(c => ['Institucional', 'Gobierno', 'Municipal'].includes(c.tipo)).length} icon="clipboard" sublabel="Clientes públicos" />
       </div>
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {['all', ...tipos].map(t => (
-                <button key={t} onClick={() => setTipoFilter(t)} style={{
-                  padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                  background: tipoFilter === t ? 'var(--green-900)' : '#fff',
-                  color: tipoFilter === t ? '#fff' : 'var(--text-2)',
-                  border: `1px solid ${tipoFilter === t ? 'var(--green-900)' : 'var(--border)'}`,
-                  transition: 'all 0.15s',
-                }}>{t === 'all' ? 'Todos' : t}</button>
-              ))}
-            </div>
-            <SearchBar placeholder="Buscar por nombre, RUT, email o ubicacion..." value={search} onChange={setSearch} style={{ width: 320 }} />
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input value={region} onChange={e => setRegion(e.target.value)} placeholder="Región" style={miniInput} />
-            <input value={ciudad} onChange={e => setCiudad(e.target.value)} placeholder="Ciudad" style={miniInput} />
-            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" style={{ ...miniInput, width: 180 }} />
-            <select value={segmento} onChange={e => setSegmento(e.target.value)} style={{ ...miniInput, cursor: 'pointer' }}>
-              <option value="">Segmento</option>
-              <option value="A">A</option>
-              <option value="B">B</option>
-              <option value="C">C</option>
-            </select>
-            <select value={estadoCliente} onChange={e => setEstadoCliente(e.target.value)} style={{ ...miniInput, cursor: 'pointer' }}>
-              <option value="activos">Activos</option>
-              <option value="inactivos">Inactivos</option>
-              <option value="todos">Todos</option>
-            </select>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-2)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={conDeuda} onChange={e => setConDeuda(e.target.checked)} />
-              Solo con deuda
-            </label>
-            {(region || ciudad || email || segmento || conDeuda || estadoCliente !== 'activos') && (
-              <button onClick={() => { setRegion(''); setCiudad(''); setEmail(''); setSegmento(''); setConDeuda(false); setEstadoCliente('activos') }} style={{ padding: '5px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Limpiar</button>
-            )}
-          </div>
-        </div>
-        <Table columns={cols} rows={shown} emptyMessage="Sin clientes" keyboard onRowDoubleClick={row => setSelected(row)} ariaLabel="Clientes" getRowKey={row => row.id} />
-        <Pager page={page} pages={pages} total={totalClientes} limit={limit} shown={shown.length} onChange={setPagerPage} disabled={isLoading} />
+        <Table
+          columns={cols}
+          rows={shown}
+          emptyMessage="Sin clientes"
+          keyboard
+          onRowDoubleClick={row => setSelected(row)}
+          ariaLabel="Clientes"
+          getRowKey={row => row.id}
+          toolbarExtra={toolbarExtra}
+          pager={{ page, pages, total: totalClientes, limit, shown: shown.length, onChange: setPagerPage, disabled: isLoading }}
+        />
       </div>
       {selected && <ViewClientePanel cliente={selected} canWrite={canWriteClientes} onClose={() => setSelected(null)} onEdit={() => { navigate('/clientes/' + selected.id + '/editar'); setSelected(null) }} />}
     </main>

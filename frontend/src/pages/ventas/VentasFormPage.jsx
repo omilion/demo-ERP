@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
@@ -481,9 +482,9 @@ function DescuentosDisponiblesPanel({ venta, items, subtotal, cargosTotal, total
     })
   }
 
-  function requestRule(rule) {
+  async function requestRule(rule) {
     if (disabled) return
-    const motivo = window.prompt('Motivo de solicitud de descuento')
+    const motivo = await promptDialog({ title: 'Motivo de solicitud de descuento' })
     if (motivo === null) return
     setError('')
     setMessage('')
@@ -592,11 +593,11 @@ function CargosSection({ ordenId, locked = false }) {
   const total = cargos.reduce((s, c) => s + (c.valor || 0), 0)
 
   function add() {
-    if (locked) { alert('No se pueden modificar cargos con pagos o documentos registrados'); return }
-    if (!draft.nombre || !draft.valor) { alert('Nombre y valor requeridos'); return }
+    if (locked) { toast.warning('No se pueden modificar cargos con pagos o documentos registrados'); return }
+    if (!draft.nombre || !draft.valor) { toast.warning('Nombre y valor requeridos'); return }
     addCargo.mutate({ ordenId, nombre: draft.nombre, valor: Number(draft.valor) }, {
       onSuccess: () => setDraft({ nombre: '', valor: '' }),
-      onError: e => alert(e.response?.data?.error || 'Error'),
+      onError: e => toast.error(e.response?.data?.error || 'Error'),
     })
   }
 
@@ -620,7 +621,7 @@ function CargosSection({ ordenId, locked = false }) {
                     <td style={{ padding: '4px 8px', textAlign: 'center', width: 36 }}>
                       <button
                         onClick={() => {
-                          if (locked) { alert('No se pueden modificar cargos con pagos o documentos registrados'); return }
+                          if (locked) { toast.warning('No se pueden modificar cargos con pagos o documentos registrados'); return }
                           delCargo.mutate({ ordenId, cargoId: c.id })
                         }}
                         disabled={locked}
@@ -670,7 +671,7 @@ function DocumentosVentaSection({ ordenId, pagos = [] }) {
   function submit() {
     const monto = Number(draft.monto)
     if (!draft.documento || !draft.nDoc || !Number.isFinite(monto) || monto <= 0) {
-      alert('Documento, numero y monto son requeridos')
+      toast.warning('Documento, numero y monto son requeridos')
       return
     }
     crearDocumento.mutate({
@@ -684,7 +685,7 @@ function DocumentosVentaSection({ ordenId, pagos = [] }) {
       },
     }, {
       onSuccess: () => setDraft(prev => ({ ...prev, nDoc: '', monto: '', tipoDocumento: '', fecha: '' })),
-      onError: err => alert(err.response?.data?.error || 'No se pudo crear el documento'),
+      onError: err => toast.error(err.response?.data?.error || 'No se pudo crear el documento'),
     })
   }
 
@@ -759,7 +760,7 @@ function EntregaSection({ items }) {
                     onBlur={e => {
                       const n = parseInt(e.target.value || '0', 10)
                       if (n !== ent) updateEnt.mutate({ itemId: it.id, nEntregados: n }, {
-                        onError: er => alert(er.response?.data?.error || 'Error'),
+                        onError: er => toast.error(er.response?.data?.error || 'Error'),
                       })
                     }}
                     style={{ width: 70, padding: '4px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right' }} />
@@ -790,7 +791,7 @@ function MultasSection({ ordenId }) {
   const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
   function add() {
-    if (!draft.monto) { alert('Monto requerido'); return }
+    if (!draft.monto) { toast.warning('Monto requerido'); return }
     createM.mutate({
       ordenId,
       monto: Number(draft.monto),
@@ -800,13 +801,13 @@ function MultasSection({ ordenId }) {
       interno: draft.interno || undefined,
     }, {
       onSuccess: () => setDraft({ monto: '', nDocumento: '', numero: '', fecha: '', interno: '' }),
-      onError: e => alert(e.response?.data?.error || 'Error'),
+      onError: e => toast.error(e.response?.data?.error || 'Error'),
     })
   }
 
-  function remove(id) {
-    if (!confirm('¿Eliminar esta multa?')) return
-    deleteM.mutate(id, { onError: e => alert(e.response?.data?.error || 'Error') })
+  async function remove(id) {
+    if (!await confirmDialog({ title: 'Confirmar', detail: '¿Eliminar esta multa?', tone: 'danger' })) return
+    deleteM.mutate(id, { onError: e => toast.error(e.response?.data?.error || 'Error') })
   }
 
   return (
@@ -1009,16 +1010,16 @@ export default function VentasFormPage() {
   const activarVenta = useActivarVenta()
   const { data: descuentosCatalogo } = useDescuentos()
 
-  function handleAnular() {
-    if (!confirm(`¿Anular venta #${id}? Quedará marcada como Nula y eliminada.`)) return
-    anularVenta.mutate(Number(id), { onSuccess: () => navigate('/ventas'), onError: e => alert(e.response?.data?.error || 'Error') })
+  async function handleAnular() {
+    if (!await confirmDialog({ title: 'Confirmar', detail: `¿Anular venta #${id}? Quedará marcada como Nula y eliminada.`, tone: 'danger' })) return
+    anularVenta.mutate(Number(id), { onSuccess: () => navigate('/ventas'), onError: e => toast.error(e.response?.data?.error || 'Error') })
   }
   function handleActivar() {
-    activarVenta.mutate(Number(id), { onError: e => alert(e.response?.data?.error || 'Error') })
+    activarVenta.mutate(Number(id), { onError: e => toast.error(e.response?.data?.error || 'Error') })
   }
   function handleImprimir() {
     const w = window.open(`${window.location.origin}/ventas/${id}/imprimir`, '_blank')
-    if (!w) alert('Habilita popups para imprimir')
+    if (!w) toast.warning('Habilita popups para imprimir')
   }
   function handlePasarTaller() {
     navigate(`/pasar-taller?ordenId=${id}`)
@@ -1144,18 +1145,18 @@ export default function VentasFormPage() {
   function handleSave() {
     const shouldSendItems = !isEdit || !itemsLocked
     const itemError = shouldSendItems ? validateItems(items) : null
-    if (itemError) { alert(itemError); return }
+    if (itemError) { toast.error(itemError); return }
     if (isConvenioMarco(data.tipo) && !String(data.licitacion || '').replace(/\s+/g, '').trim()) {
-      alert('Ingresa la OC de Convenio Marco')
+      toast.warning('Ingresa la OC de Convenio Marco')
       return
     }
     if (data.tipo === 'Licitación') {
       if (!String(data.licitacion || '').trim()) {
-        alert('Ingresa el ID de Licitación')
+        toast.warning('Ingresa el ID de Licitación')
         return
       }
       if (!data.licitacionFecha) {
-        alert('Ingresa la Fecha de la Licitación')
+        toast.warning('Ingresa la Fecha de la Licitación')
         return
       }
     }
@@ -1201,7 +1202,7 @@ export default function VentasFormPage() {
       if (shouldSendItems) payload.items = normalizedItems
       updateVenta.mutate({ id: Number(id), data: payload }, {
         onSuccess: () => navigate('/ventas'),
-        onError: err => alert(err.response?.data?.error || 'Error al guardar'),
+        onError: err => toast.error(err.response?.data?.error || 'Error al guardar'),
       })
     } else {
       createVenta.mutate({
@@ -1218,7 +1219,7 @@ export default function VentasFormPage() {
             navigate('/ventas')
           }
         },
-        onError: err => alert(err.response?.data?.error || 'Error al crear'),
+        onError: err => toast.error(err.response?.data?.error || 'Error al crear'),
       })
     }
   }

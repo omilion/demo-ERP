@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { toast, confirmDialog } from '../../store/notif'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { FormField, FormPanel, Input, Select, Textarea } from '../../components/forms'
 import { downloadPagosProveedoresCsv, useCreatePagoProveedor, usePagosProveedores, useUpdatePagoProveedor } from '../../api/pagosProveedores'
@@ -105,11 +106,11 @@ export default function PagosProveedoresPage() {
   }
 
   const saveSimpleDoc = () => {
-    if (!form.proveedorId) return alert('Proveedor requerido')
-    if (!form.documento) return alert('Documento requerido')
-    if (!form.nDoc.trim()) return alert('N Doc requerido')
-    if (!form.fechaDoc) return alert('Fecha documento requerida')
-    if (!form.total || Number(form.total) <= 0) return alert('Total requerido')
+    if (!form.proveedorId) return toast.warning('Proveedor requerido')
+    if (!form.documento) return toast.warning('Documento requerido')
+    if (!form.nDoc.trim()) return toast.warning('N Doc requerido')
+    if (!form.fechaDoc) return toast.warning('Fecha documento requerida')
+    if (!form.total || Number(form.total) <= 0) return toast.warning('Total requerido')
     createMut.mutate({
       ...form,
       proveedorId: Number(form.proveedorId),
@@ -121,7 +122,7 @@ export default function PagosProveedoresPage() {
         setShowCreate(false)
         setForm(emptyForm())
       },
-      onError: err => alert(err.response?.data?.error || 'No se pudo crear el documento'),
+      onError: err => toast.error(err.response?.data?.error || 'No se pudo crear el documento'),
     })
   }
 
@@ -162,11 +163,11 @@ export default function PagosProveedoresPage() {
             variant="primary"
             size="xs"
             icon="check"
-            onClick={e => {
+            onClick={async e => {
               e.stopPropagation()
-              if (!confirm(`Marcar pago ${row.nDoc || row.id} como pagado hoy?`)) return
+              if (!(await confirmDialog({ title: 'Confirmar pago', detail: `¿Marcar pago ${row.nDoc || row.id} como pagado hoy?` }))) return
               updateMut.mutate({ id: row.id, data: { estado: 'Pagado', fechaPago: new Date().toISOString().slice(0, 10) } }, {
-                onError: err => alert(err.response?.data?.error || 'Error'),
+                onError: err => toast.error(err.response?.data?.error || 'Error'),
               })
             }}
             disabled={updateMut.isPending}
@@ -175,6 +176,40 @@ export default function PagosProveedoresPage() {
       </div>
     ) },
   ]
+
+  const toolbarExtra = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <Tabs tabs={TABS} active={tab} onChange={t => { setTab(t); setPage(1); setSearch('') }} style={{ marginBottom: 0 }} />
+        <SearchBar placeholder="Buscar N doc, proveedor, codigo" value={search} onChange={setSearch} style={{ width: 300 }} />
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>Fecha doc:</span>
+        <input type="date" value={desde} onChange={e => { setDesde(e.target.value); setPage(1) }} style={{ padding: '5px 8px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)' }} />
+        <span style={{ fontSize: 11, color: 'var(--text-3)' }}>-</span>
+        <input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setPage(1) }} style={{ padding: '5px 8px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)' }} />
+        <select value={documento} onChange={e => { setDocumento(e.target.value); setPage(1) }} style={{ padding: '5px 8px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)' }}>
+          <option value="">Documento</option>
+          <option value="Factura">Factura</option>
+          <option value="Boleta">Boleta</option>
+          <option value="Nota">Nota</option>
+        </select>
+        <input value={bodega} onChange={e => { setBodega(e.target.value); setPage(1) }} placeholder="Bodega" style={{ padding: '5px 8px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)' }} />
+        <input value={proveedor} onChange={e => { setProveedor(e.target.value); setPage(1) }} placeholder="Proveedor/RUT" style={{ padding: '5px 8px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)' }} />
+        {(desde || hasta || debouncedSearch || tab !== 'all' || documento || bodega || proveedor) && (
+          <button onClick={clearFilters} style={{ padding: '5px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Limpiar</button>
+        )}
+      </div>
+      {!!providerTotals.length && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', paddingTop: 4 }}>
+          <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700 }}>Total proveedor:</span>
+          {providerTotals.slice(0, 6).map(p => (
+            <Badge key={p.nombre} tone="gray">{p.nombre}: {fmt(p.total)}</Badge>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <main className="page page-wide">
@@ -207,40 +242,6 @@ export default function PagosProveedoresPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <Tabs tabs={TABS} active={tab} onChange={t => { setTab(t); setPage(1); setSearch('') }} />
-          <SearchBar placeholder="Buscar N doc, proveedor, codigo" value={search} onChange={setSearch} style={{ width: 300, marginBottom: 10 }} />
-        </div>
-        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>Fecha doc:</span>
-          <input type="date" value={desde} onChange={e => { setDesde(e.target.value); setPage(1) }} style={{ padding: '5px 8px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)' }} />
-          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>-</span>
-          <input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setPage(1) }} style={{ padding: '5px 8px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)' }} />
-          <select value={documento} onChange={e => { setDocumento(e.target.value); setPage(1) }} style={{ padding: '5px 8px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)' }}>
-            <option value="">Documento</option>
-            <option value="Factura">Factura</option>
-            <option value="Boleta">Boleta</option>
-            <option value="Nota">Nota</option>
-          </select>
-          <input value={bodega} onChange={e => { setBodega(e.target.value); setPage(1) }} placeholder="Bodega" style={{ padding: '5px 8px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)' }} />
-          <input value={proveedor} onChange={e => { setProveedor(e.target.value); setPage(1) }} placeholder="Proveedor/RUT" style={{ padding: '5px 8px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)' }} />
-          {(desde || hasta || debouncedSearch || tab !== 'all' || documento || bodega || proveedor) && (
-            <button onClick={clearFilters} style={{ padding: '5px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Limpiar</button>
-          )}
-        </div>
-        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
-          <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}>Anterior</button>
-          <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{page} / {pages}</span>
-          <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: page >= pages ? 'not-allowed' : 'pointer' }}>Siguiente</button>
-        </div>
-        {!!providerTotals.length && (
-          <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700 }}>Total proveedor:</span>
-            {providerTotals.slice(0, 6).map(p => (
-              <Badge key={p.nombre} tone="gray">{p.nombre}: {fmt(p.total)}</Badge>
-            ))}
-          </div>
-        )}
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
           : <Table
@@ -257,6 +258,8 @@ export default function PagosProveedoresPage() {
                 }
                 return {}
               }}
+              toolbarExtra={toolbarExtra}
+              pager={{ page, pages, total, limit, shown: items.length, onChange: setPage, disabled: isLoading }}
             />
         }
       </div>

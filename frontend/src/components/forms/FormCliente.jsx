@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FormPanel, ViewPanel, FormField, FormDivider, DetailRow, Input, Select, useForm } from './index'
@@ -58,7 +59,7 @@ export function FormCliente({ initial, onClose, onSaved }) {
             onSaved && onSaved(saved)
             onClose()
           },
-          onError: (err) => alert(err?.response?.data?.error || 'Error al guardar'),
+          onError: (err) => toast.error(err?.response?.data?.error || 'Error al guardar'),
         }
       )
     } else {
@@ -69,7 +70,7 @@ export function FormCliente({ initial, onClose, onSaved }) {
             onSaved && onSaved(saved)
             onClose()
           },
-          onError: (err) => alert(err?.response?.data?.error || 'Error al crear'),
+          onError: (err) => toast.error(err?.response?.data?.error || 'Error al crear'),
         }
       )
     }

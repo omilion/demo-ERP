@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { toast, confirmDialog } from '../../store/notif'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs } from '../../components/shared'
 import { useDeleteProducto, useProductos } from '../../api/productos'
 import { useCategorias } from '../../api/categorias'
@@ -89,10 +90,10 @@ export default function BodegaPage() {
   const subcategorias = selectedCategoria?.subcategorias || []
   const valorInventario = kpiStats.valorInventario == null ? null : Number(kpiStats.valorInventario || 0)
 
-  const handleDelete = (row) => {
-    if (!window.confirm(`Eliminar producto ${row.codigoInterno}?`)) return
+  const handleDelete = async (row) => {
+    if (!(await confirmDialog({ title: 'Eliminar producto', detail: `¿Eliminar producto ${row.codigoInterno}?`, tone: 'danger' }))) return
     deleteProducto.mutate(row.id, {
-      onError: e => alert(e.response?.data?.error || 'No se pudo eliminar el producto'),
+      onError: e => toast.error(e.response?.data?.error || 'No se pudo eliminar el producto'),
     })
   }
 
@@ -139,6 +140,57 @@ export default function BodegaPage() {
     ? 'Sin acceso'
     : '$' + Math.round(valorInventario / 1_000_000 * 10) / 10 + 'M'
 
+  const toolbarExtra = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+      <Tabs tabs={[
+        { id: 'inventario', label: 'Bodega Inventario' },
+        { id: 'taller', label: 'Bodega Taller' },
+      ]} active={tab} onChange={t => { setTab(t); setSearch('') }} style={{ marginBottom: 0 }} />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select value={filter} onChange={e => setFilter(e.target.value)} style={selectStyle}>
+          <option value="all">Todos los estados</option>
+          <option value="critico">Solo críticos</option>
+          <option value="sin-stock">Sin stock</option>
+        </select>
+        <select value={visibleWeb} onChange={e => setVisibleWeb(e.target.value)} style={selectStyle}>
+          <option value="all">Web: todos</option>
+          <option value="true">Web: si</option>
+          <option value="false">Web: no</option>
+        </select>
+        <select value={categoriaId} onChange={e => { setCategoriaId(e.target.value); setSubcategoriaId('') }} style={selectStyle}>
+          <option value="">Todas las categorías</option>
+          {categoriasApi.map(c => <option key={c.id || c.nombre} value={c.id}>{c.nombre}</option>)}
+        </select>
+        <select value={subcategoriaId} onChange={e => setSubcategoriaId(e.target.value)} style={selectStyle} disabled={!subcategorias.length}>
+          <option value="">Todas las subcategorías</option>
+          {subcategorias.map(sc => <option key={sc.id} value={sc.id}>{sc.nombre}</option>)}
+        </select>
+        <select value={estadoInventario} onChange={e => setEstadoInventario(e.target.value)} style={selectStyle}>
+          <option value="">Estado inventario</option>
+          {estadoInventarioOptions.filter(Boolean).map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <select value={estadoOperativo} onChange={e => setEstadoOperativo(e.target.value)} style={selectStyle}>
+          <option value="">Estado operativo</option>
+          {estadoOperativoOptions.filter(Boolean).map(v => <option key={v} value={v}>{v === 'Reserva' ? 'Reservado' : v}</option>)}
+        </select>
+        <select value={proveedorId} onChange={e => setProveedorId(e.target.value)} style={{ ...selectStyle, minWidth: 180 }}>
+          <option value="">Todos los proveedores</option>
+          {(proveedoresResult.items || []).map(p => (
+            <option key={p.id} value={p.id}>{p.nombre}</option>
+          ))}
+        </select>
+        <select value={ubicacionId} onChange={e => setUbicacionId(e.target.value)} style={{ ...selectStyle, minWidth: 170 }}>
+          <option value="">Todas las ubicaciones</option>
+          {(ubicacionesResult.items || []).map(u => (
+            <option key={u.id} value={u.id}>{u.nombre}</option>
+          ))}
+        </select>
+        <input value={idMarco} onChange={e => setIdMarco(e.target.value)} placeholder="ID Marco" style={miniInput} />
+        <SearchBar placeholder="Buscar código, barra o producto..." value={search} onChange={setSearch} style={{ width: 260 }} />
+      </div>
+    </div>
+  )
+
   return (
     <main className="page page-wide">
       <PageHeader
@@ -162,54 +214,6 @@ export default function BodegaPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)' }}>
-          <Tabs tabs={[
-            { id: 'inventario', label: 'Bodega Inventario' },
-            { id: 'taller', label: 'Bodega Taller' },
-          ]} active={tab} onChange={t => { setTab(t); setSearch('') }} />
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
-            <select value={filter} onChange={e => setFilter(e.target.value)} style={selectStyle}>
-              <option value="all">Todos los estados</option>
-              <option value="critico">Solo críticos</option>
-              <option value="sin-stock">Sin stock</option>
-            </select>
-            <select value={visibleWeb} onChange={e => setVisibleWeb(e.target.value)} style={selectStyle}>
-              <option value="all">Web: todos</option>
-              <option value="true">Web: si</option>
-              <option value="false">Web: no</option>
-            </select>
-            <select value={categoriaId} onChange={e => { setCategoriaId(e.target.value); setSubcategoriaId('') }} style={selectStyle}>
-              <option value="">Todas las categorías</option>
-              {categoriasApi.map(c => <option key={c.id || c.nombre} value={c.id}>{c.nombre}</option>)}
-            </select>
-            <select value={subcategoriaId} onChange={e => setSubcategoriaId(e.target.value)} style={selectStyle} disabled={!subcategorias.length}>
-              <option value="">Todas las subcategorías</option>
-              {subcategorias.map(sc => <option key={sc.id} value={sc.id}>{sc.nombre}</option>)}
-            </select>
-            <select value={estadoInventario} onChange={e => setEstadoInventario(e.target.value)} style={selectStyle}>
-              <option value="">Estado inventario</option>
-              {estadoInventarioOptions.filter(Boolean).map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
-            <select value={estadoOperativo} onChange={e => setEstadoOperativo(e.target.value)} style={selectStyle}>
-              <option value="">Estado operativo</option>
-              {estadoOperativoOptions.filter(Boolean).map(v => <option key={v} value={v}>{v === 'Reserva' ? 'Reservado' : v}</option>)}
-            </select>
-            <select value={proveedorId} onChange={e => setProveedorId(e.target.value)} style={{ ...selectStyle, minWidth: 180 }}>
-              <option value="">Todos los proveedores</option>
-              {(proveedoresResult.items || []).map(p => (
-                <option key={p.id} value={p.id}>{p.nombre}</option>
-              ))}
-            </select>
-            <select value={ubicacionId} onChange={e => setUbicacionId(e.target.value)} style={{ ...selectStyle, minWidth: 170 }}>
-              <option value="">Todas las ubicaciones</option>
-              {(ubicacionesResult.items || []).map(u => (
-                <option key={u.id} value={u.id}>{u.nombre}</option>
-              ))}
-            </select>
-            <input value={idMarco} onChange={e => setIdMarco(e.target.value)} placeholder="ID Marco" style={miniInput} />
-            <SearchBar placeholder="Buscar código, barra o producto..." value={search} onChange={setSearch} style={{ width: 260 }} />
-          </div>
-        </div>
         {totalEnBodega > LIMIT && !debouncedSearch && (
           <div style={{ padding: '8px 16px', background: 'var(--amber-bg, #fffbeb)', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text-2)' }}>
             Mostrando los primeros {LIMIT.toLocaleString('es-CL')} de {totalEnBodega.toLocaleString('es-CL')} productos. Use filtros para acotar.
@@ -229,6 +233,7 @@ export default function BodegaPage() {
               ariaLabel="Productos de bodega"
               getRowKey={row => row.id}
               columnPrefsKey={`bodega-${tab}`}
+              toolbarExtra={toolbarExtra}
             />
         }
       </div>

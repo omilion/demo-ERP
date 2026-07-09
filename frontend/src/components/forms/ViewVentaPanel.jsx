@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, Icon } from '../shared'
@@ -438,10 +439,10 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const handleForzarTaller = () => {
     forzarTallerMut.mutate(v.id, {
       onSuccess: () => {
-        alert('Orden de Trabajo (ODT) procesada correctamente.')
+        toast.warning('Orden de Trabajo (ODT) procesada correctamente.')
       },
       onError: (err) => {
-        alert('Error al forzar taller: ' + (err.response?.data?.error || err.message))
+        toast.error('Error al forzar taller: ' + (err.response?.data?.error || err.message))
       }
     })
   }
@@ -479,7 +480,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
             {canWrite && onEdit && <Btn variant="primary" icon="edit" onClick={onEdit}>Editar</Btn>}
             <Btn variant="secondary" icon="printer" onClick={() => {
               const w = window.open(`${window.location.origin}/ventas/${v.id}/imprimir`, '_blank')
-              if (!w) alert('Habilita popups para imprimir')
+              if (!w) toast.warning('Habilita popups para imprimir')
             }}>Imprimir</Btn>
             {canDelete && <Btn variant="ghost" icon="trash" onClick={() => setConfirmDelete(true)} style={{ color: 'var(--red)' }}>Eliminar</Btn>}
           </div>
@@ -547,7 +548,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
       onDelete={canDelete ? () => setConfirmDelete(true) : undefined}
       onPrint={() => {
         const w = window.open(`${window.location.origin}/ventas/${v.id}/imprimir`, '_blank')
-        if (!w) alert('Habilita popups para imprimir')
+        if (!w) toast.warning('Habilita popups para imprimir')
       }}
     >
       {/* Tabs */}

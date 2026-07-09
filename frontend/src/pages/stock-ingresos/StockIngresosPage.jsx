@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useMemo, useState } from 'react'
 import { Badge, Btn, KpiCard, PageHeader, Table } from '../../components/shared'
 import { FormField, FormPanel, Input, Select, Textarea } from '../../components/forms'
@@ -107,27 +108,27 @@ export default function StockIngresosPage() {
     }))
     .filter(d => d.codigoInterno.trim())
 
-  const applyStock = (row) => {
+  const applyStock = async (row) => {
     if (!canWriteBodega) return
     const action = row.documento === 'Nota' ? 'descontara stock' : 'sumara stock'
-    if (!confirm(`Aplicar documento ${row.nDoc || row.id}: ${action}.`)) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Aplicar documento ${row.nDoc || row.id}: ${action}.` })) return
     aplicarMut.mutate(row.id, {
       onSuccess: (res) => {
         const ok = res.aplicados?.filter(a => a.ok).length || 0
-        alert(res.idempotent ? 'El stock ya estaba aplicado.' : `Stock aplicado en ${ok} lineas.`)
+        toast.success(res.idempotent ? 'El stock ya estaba aplicado.' : `Stock aplicado en ${ok} lineas.`)
       },
-      onError: err => alert(err.response?.data?.error || 'No se pudo aplicar stock'),
+      onError: err => toast.error(err.response?.data?.error || 'No se pudo aplicar stock'),
     })
   }
 
   const saveFactura = () => {
-    if (!header.proveedorId) return alert('Proveedor requerido')
-    if (!header.nDoc.trim()) return alert('N Doc requerido')
-    if (!validDetails.length) return alert('Agrega al menos una linea de detalle')
+    if (!header.proveedorId) return toast.warning('Proveedor requerido')
+    if (!header.nDoc.trim()) return toast.warning('N Doc requerido')
+    if (!validDetails.length) return toast.warning('Agrega al menos una linea de detalle')
     const invalid = validDetails.find(d => !Number.isFinite(d.cantidad) || d.cantidad <= 0 || !Number.isFinite(d.precio) || d.precio < 0)
-    if (invalid) return alert(`Cantidad o precio invalido en ${invalid.codigoInterno}`)
+    if (invalid) return toast.warning(`Cantidad o precio invalido en ${invalid.codigoInterno}`)
     const invalidProductQty = validDetails.find(d => d.destino === 'producto' && !Number.isInteger(d.cantidad))
-    if (invalidProductQty) return alert(`Cantidad de inventario debe ser entera en ${invalidProductQty.codigoInterno}`)
+    if (invalidProductQty) return toast.warning(`Cantidad de inventario debe ser entera en ${invalidProductQty.codigoInterno}`)
     createMut.mutate({
       ...header,
       proveedorId: Number(header.proveedorId),
@@ -137,17 +138,17 @@ export default function StockIngresosPage() {
       detalles: validDetails.map(d => ({ ...d, codigoInterno: d.codigoInterno.trim() })),
     }, {
       onSuccess: () => resetForm(),
-      onError: err => alert(err.response?.data?.error || 'No se pudo crear el documento'),
+      onError: err => toast.error(err.response?.data?.error || 'No se pudo crear el documento'),
     })
   }
 
-  const anular = (row) => {
+  const anular = async (row) => {
     if (!canReverse) return
-    const motivo = prompt(`Motivo de anulacion para ${row.nDoc || row.id}`)
+    const motivo = await promptDialog({ title: `Motivo de anulacion para ${row.nDoc || row.id}` })
     if (motivo === null) return
-    if (!motivo.trim()) return alert('Motivo requerido')
+    if (!motivo.trim()) return toast.warning('Motivo requerido')
     anularMut.mutate({ id: row.id, motivo: motivo.trim() }, {
-      onError: err => alert(err.response?.data?.error || 'No se pudo anular'),
+      onError: err => toast.error(err.response?.data?.error || 'No se pudo anular'),
     })
   }
 

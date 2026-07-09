@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState } from 'react'
 import { PageHeader, Btn, Tabs, Table, Badge } from '../../components/shared'
 import { FormField, Input, Textarea, Select } from '../../components/forms'
@@ -94,10 +95,10 @@ function CargoTransporteSection() {
         <FormField label="Valor %"><Input type="number" min="0" max="100" value={nuevo.valor} onChange={v => setNuevo(s => ({ ...s, valor: v }))} /></FormField>
         <Btn variant="primary" onClick={() => {
           const validated = validateCargo({ ...nuevo, activo: true })
-          if (validated.error) return alert(validated.error)
+          if (validated.error) return toast.error(validated.error)
           createMut.mutate(validated.data, {
             onSuccess: () => setNuevo({ nombre: '', valor: 0 }),
-            onError: err => alert(err?.response?.data?.error || 'No se pudo crear el cargo'),
+            onError: err => toast.error(err?.response?.data?.error || 'No se pudo crear el cargo'),
           })
         }}>+ Agregar</Btn>
       </div>
@@ -122,17 +123,17 @@ function CargoTransporteSection() {
                 <td style={{ padding: 10, textAlign: 'right', display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                   {dirty && <Btn size="sm" variant="primary" onClick={() => {
                     const validated = validateCargo(d, c.id)
-                    if (validated.error) return alert(validated.error)
+                    if (validated.error) return toast.error(validated.error)
                     updateMut.mutate({ id: c.id, data: validated.data }, {
                       onSuccess: () => setEdits(s => {
                         const next = { ...s }
                         delete next[c.id]
                         return next
                       }),
-                      onError: err => alert(err?.response?.data?.error || 'No se pudo guardar el cargo'),
+                      onError: err => toast.error(err?.response?.data?.error || 'No se pudo guardar el cargo'),
                     })
                   }}>Guardar</Btn>}
-                  <button onClick={() => { if (confirm('Desactivar cargo transporte? Se mantiene para historial.')) deleteMut.mutate(c.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer' }}>Desactivar</button>
+                  <button onClick={async () => { if (await confirmDialog({ title: 'Confirmar', detail: 'Desactivar cargo transporte? Se mantiene para historial.', tone: 'danger' })) deleteMut.mutate(c.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer' }}>Desactivar</button>
                 </td>
               </tr>
             )
@@ -160,29 +161,29 @@ function GastosSection() {
   const errorMessage = err => err?.response?.data?.error || 'No se pudo completar la operacion'
   const submitCreate = () => {
     const nombre = normalize(nuevo)
-    if (nombre.length < 2) return alert('El nombre debe tener al menos 2 caracteres.')
-    if (duplicateName(nombre)) return alert('Este nombre de gasto ya existe.')
+    if (nombre.length < 2) return toast.warning('El nombre debe tener al menos 2 caracteres.')
+    if (duplicateName(nombre)) return toast.warning('Este nombre de gasto ya existe.')
     createMut.mutate({ nombre }, {
       onSuccess: () => setNuevo(''),
-      onError: err => alert(errorMessage(err)),
+      onError: err => toast.error(errorMessage(err)),
     })
   }
   const submitUpdate = (g, d) => {
     const nombre = normalize(d.nombre)
-    if (nombre.length < 2) return alert('El nombre debe tener al menos 2 caracteres.')
-    if (duplicateName(nombre, g.id)) return alert('Este nombre de gasto ya existe.')
+    if (nombre.length < 2) return toast.warning('El nombre debe tener al menos 2 caracteres.')
+    if (duplicateName(nombre, g.id)) return toast.warning('Este nombre de gasto ya existe.')
     updateMut.mutate({ id: g.id, data: { nombre, activo: d.activo } }, {
       onSuccess: () => setEdits(s => {
         const next = { ...s }
         delete next[g.id]
         return next
       }),
-      onError: err => alert(errorMessage(err)),
+      onError: err => toast.error(errorMessage(err)),
     })
   }
-  const submitDelete = (g) => {
-    if (!confirm('Eliminar gasto? Si ya fue usado en caja quedara inactivo para no romper el historial.')) return
-    deleteMut.mutate(g.id, { onError: err => alert(errorMessage(err)) })
+  const submitDelete = async (g) => {
+    if (!await confirmDialog({ title: 'Confirmar', detail: 'Eliminar gasto? Si ya fue usado en caja quedara inactivo para no romper el historial.', tone: 'danger' })) return
+    deleteMut.mutate(g.id, { onError: err => toast.error(errorMessage(err)) })
   }
 
   return (
@@ -312,7 +313,7 @@ function EmpresaSection() {
 
   const save = () => {
     const error = validate()
-    if (error) return alert(error)
+    if (error) return toast.error(error)
     const payload = empresaPayload(form)
     if (creating || !selected) {
       return createMut.mutate(payload, {
@@ -321,7 +322,7 @@ function EmpresaSection() {
           setSelectedId(empresa.id)
           setDraft({})
         },
-        onError: err => alert(err?.response?.data?.error || 'No se pudo crear'),
+        onError: err => toast.error(err?.response?.data?.error || 'No se pudo crear'),
       })
     }
     return updateMut.mutate({ id: selected.id, data: payload }, {
@@ -329,20 +330,20 @@ function EmpresaSection() {
         setSelectedId(empresa.id)
         setDraft({})
       },
-      onError: err => alert(err?.response?.data?.error || 'No se pudo guardar'),
+      onError: err => toast.error(err?.response?.data?.error || 'No se pudo guardar'),
     })
   }
 
-  const remove = () => {
+  const remove = async () => {
     if (!selected) return
-    if (!confirm(`Eliminar ${selected.nombre} del sistema?`)) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Eliminar ${selected.nombre} del sistema?`, tone: 'danger' })) return
     deleteMut.mutate(selected.id, {
       onSuccess: () => {
         setSelectedId(null)
         setCreating(false)
         setDraft({})
       },
-      onError: err => alert(err?.response?.data?.error || 'No se pudo eliminar'),
+      onError: err => toast.error(err?.response?.data?.error || 'No se pudo eliminar'),
     })
   }
 
@@ -567,7 +568,7 @@ function CategoriasBodegaSection() {
             <Input value={c.nombre} onChange={v => updateCat.mutate({ id: c.id, data: { nombre: v } })} />
             <Input type="number" value={c.porcDesc ?? 0} onChange={v => updateCat.mutate({ id: c.id, data: { porcDesc: v } })} />
             <Select value={c.mostrar === false ? 'false' : 'true'} onChange={v => updateCat.mutate({ id: c.id, data: { mostrar: v === 'true' } })} options={[{ value: 'true', label: 'Mostrar' }, { value: 'false', label: 'Ocultar' }]} />
-            <button onClick={() => { if (confirm('Eliminar categoria?')) deleteCat.mutate(c.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer' }}>Borrar</button>
+            <button onClick={async () => { if (await confirmDialog({ title: 'Confirmar', detail: 'Eliminar categoria?', tone: 'danger' })) deleteCat.mutate(c.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer' }}>Borrar</button>
           </div>
           <div style={{ marginLeft: 20 }}>
             {(c.subcategorias || []).map(s => (
@@ -579,7 +580,7 @@ function CategoriasBodegaSection() {
                   onChange={v => updateSub.mutate({ id: s.id, data: { categoriaId: Number(v) } })}
                   options={categorias.map(cat => ({ value: String(cat.id), label: cat.nombre }))}
                 />
-                <button onClick={() => { if (confirm('Eliminar subcategoria?')) deleteSub.mutate(s.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer', fontSize: 12 }}>Borrar</button>
+                <button onClick={async () => { if (await confirmDialog({ title: 'Confirmar', detail: 'Eliminar subcategoria?', tone: 'danger' })) deleteSub.mutate(s.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer', fontSize: 12 }}>Borrar</button>
               </div>
             ))}
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -621,7 +622,7 @@ function CategoriasBTSection() {
         <div key={c.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <Input value={c.nombre} onChange={v => updateCat.mutate({ id: c.id, data: { nombre: v } })} />
-            <button onClick={() => { if (confirm('¿Eliminar categoría?')) deleteCat.mutate(c.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer' }}>Borrar</button>
+            <button onClick={async () => { if (await confirmDialog({ title: 'Confirmar', detail: '¿Eliminar categoría?', tone: 'danger' })) deleteCat.mutate(c.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer' }}>Borrar</button>
           </div>
           <div style={{ marginLeft: 20 }}>
             {(c.subcategorias || []).map(s => (
@@ -633,7 +634,7 @@ function CategoriasBTSection() {
                   onChange={v => updateSub.mutate({ id: s.id, data: { categoriaId: Number(v) } })}
                   options={categorias.map(cat => ({ value: String(cat.id), label: cat.nombre }))}
                 />
-                <button onClick={() => { if (confirm('¿Eliminar subcategoría?')) deleteSub.mutate(s.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer', fontSize: 12 }}>×</button>
+                <button onClick={async () => { if (await confirmDialog({ title: 'Confirmar', detail: '¿Eliminar subcategoría?', tone: 'danger' })) deleteSub.mutate(s.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer', fontSize: 12 }}>×</button>
               </div>
             ))}
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -686,24 +687,24 @@ function BannersSection() {
   })
   const saveBanner = (id, data) => {
     const payload = cleanBanner(data)
-    if (!payload.titulo) return alert('Titulo requerido')
+    if (!payload.titulo) return toast.warning('Titulo requerido')
     updateMut.mutate({ id, data: payload }, {
       onSuccess: () => setEdits(s => {
         const next = { ...s }
         delete next[id]
         return next
       }),
-      onError: err => alert(err?.response?.data?.error || 'No se pudo guardar el banner'),
+      onError: err => toast.error(err?.response?.data?.error || 'No se pudo guardar el banner'),
     })
   }
   const uploadBannerImage = (file, onUrl) => {
     if (!file) return
-    if (!['image/png', 'image/jpeg'].includes(file.type)) return alert('Solo PNG o JPG')
-    if (file.size > 3 * 1024 * 1024) return alert('La imagen supera 3 MB')
+    if (!['image/png', 'image/jpeg'].includes(file.type)) return toast.warning('Solo PNG o JPG')
+    if (file.size > 3 * 1024 * 1024) return toast.warning('La imagen supera 3 MB')
     const reader = new FileReader()
     reader.onload = () => uploadMut.mutate({ data: reader.result }, {
       onSuccess: res => onUrl(res.url),
-      onError: err => alert(err?.response?.data?.error || 'No se pudo subir la imagen'),
+      onError: err => toast.error(err?.response?.data?.error || 'No se pudo subir la imagen'),
     })
     reader.readAsDataURL(file)
   }
@@ -719,10 +720,10 @@ function BannersSection() {
         <FormField label="Orden"><Input type="number" value={nuevo.orden} onChange={v => setNuevo(s => ({ ...s, orden: v }))} /></FormField>
         <Btn variant="primary" onClick={() => {
           const payload = cleanBanner(nuevo)
-          if (!payload.titulo) return alert('Titulo requerido')
+          if (!payload.titulo) return toast.warning('Titulo requerido')
           createMut.mutate(payload, {
             onSuccess: () => setNuevo({ titulo: '', subtitulo: '', imagenUrl: '', link: '', orden: 0, activo: true }),
-            onError: err => alert(err?.response?.data?.error || 'No se pudo crear el banner'),
+            onError: err => toast.error(err?.response?.data?.error || 'No se pudo crear el banner'),
           })
         }}>+ Agregar</Btn>
       </div>
@@ -760,7 +761,7 @@ function BannersSection() {
               </td>
               <td style={{ padding: 10, textAlign: 'right', display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                 {dirty && <Btn size="sm" variant="primary" onClick={() => saveBanner(b.id, d)}>Guardar</Btn>}
-                <button onClick={() => { if (confirm('¿Eliminar?')) deleteMut.mutate(b.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer' }}>Borrar</button>
+                <button onClick={async () => { if (await confirmDialog({ title: 'Confirmar', detail: '¿Eliminar?', tone: 'danger' })) deleteMut.mutate(b.id) }} style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer' }}>Borrar</button>
               </td>
             </tr>
             )
@@ -794,8 +795,8 @@ function UsuariosWebSection() {
   if (isLoading) return <div>Cargando…</div>
 
   const saveUser = (id, data) => {
-    if (!String(data.nombre || '').trim()) return alert('Nombre requerido')
-    if (data.password && String(data.password).length < 8) return alert('La password debe tener al menos 8 caracteres')
+    if (!String(data.nombre || '').trim()) return toast.warning('Nombre requerido')
+    if (data.password && String(data.password).length < 8) return toast.warning('La password debe tener al menos 8 caracteres')
     updateMut.mutate({
       id,
       data: {
@@ -808,7 +809,7 @@ function UsuariosWebSection() {
         activo: data.activo !== false,
         password: data.password || undefined,
       },
-    }, { onError: err => alert(err?.response?.data?.error || 'No se pudo guardar usuario web') })
+    }, { onError: err => toast.error(err?.response?.data?.error || 'No se pudo guardar usuario web') })
   }
 
   return (

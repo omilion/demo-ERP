@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Btn, PageHeader } from '../../components/shared'
@@ -25,7 +26,7 @@ export default function LicitacionFormPage() {
     event.preventDefault()
     createCotizacion.mutate(form, {
       onSuccess: data => navigate(`/licitaciones/${data.id}`),
-      onError: e => alert(e.response?.data?.error || 'Error al crear cotizacion'),
+      onError: e => toast.error(e.response?.data?.error || 'Error al crear cotizacion'),
     })
   }
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast, confirmDialog } from '../../store/notif'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../components/shared'
 import { useCotizaciones, useReportesLicitaciones, useCrearVentaDesdeLicitacion } from '../../api/cotizaciones'
 import { useAuthStore } from '../../store/auth'
@@ -139,15 +140,15 @@ export default function LicitacionesPage() {
           >Ver</button>
           {canWriteLicitaciones && canWriteVentas && row.estado === 'Adjudicada' && !row.ordenId && (
             <button
-              onClick={e => {
+              onClick={async e => {
                 e.stopPropagation()
-                if (!confirm(`Crear venta desde licitación ${row.idLicitacion || row.id}?`)) return
+                if (!(await confirmDialog({ title: 'Crear venta', detail: `¿Crear venta desde licitación ${row.idLicitacion || row.id}?` }))) return
                 crearVenta.mutate(row.id, {
                   onSuccess: (data) => {
                     const ordenId = data?.orden?.id || data?.ordenId
                     if (ordenId) navigate(`/ventas/${ordenId}/editar`)
                   },
-                  onError: e => alert(e.response?.data?.error || 'Error al crear venta'),
+                  onError: e => toast.error(e.response?.data?.error || 'Error al crear venta'),
                 })
               }}
               disabled={crearVenta.isPending}
@@ -168,9 +169,24 @@ export default function LicitacionesPage() {
 
   const handleExport = () => {
     const source = reportes?.items?.length ? reportes.items : cotizaciones
-    if (!source.length) { alert('Nada para exportar'); return }
+    if (!source.length) { toast.warning('Nada para exportar'); return }
     exportCsv(source)
   }
+
+  const toolbarExtra = (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <SearchBar placeholder="Buscar ID licitación, OC, referencia…" value={search} onChange={setSearch} style={{ width: 280 }} />
+      <select value={estado} onChange={e => { setEstado(e.target.value); setPage(1) }} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, background: '#fff' }}>
+        {ESTADOS.map(s => <option key={s} value={s}>{s || 'Todos los estados'}</option>)}
+      </select>
+      <input type="date" value={fechaDesde} onChange={e => { setFechaDesde(e.target.value); setPage(1) }} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12 }} />
+      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>a</span>
+      <input type="date" value={fechaHasta} onChange={e => { setFechaHasta(e.target.value); setPage(1) }} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12 }} />
+      {(estado || fechaDesde || fechaHasta) && (
+        <button onClick={() => { setEstado(''); setFechaDesde(''); setFechaHasta('') }} style={{ padding: '5px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Limpiar</button>
+      )}
+    </div>
+  )
 
   return (
     <main className="page page-wide">
@@ -192,28 +208,18 @@ export default function LicitacionesPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <SearchBar placeholder="Buscar ID licitación, OC, referencia…" value={search} onChange={setSearch} style={{ width: 280 }} />
-            <select value={estado} onChange={e => { setEstado(e.target.value); setPage(1) }} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, background: '#fff' }}>
-              {ESTADOS.map(s => <option key={s} value={s}>{s || 'Todos los estados'}</option>)}
-            </select>
-            <input type="date" value={fechaDesde} onChange={e => { setFechaDesde(e.target.value); setPage(1) }} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12 }} />
-            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>a</span>
-            <input type="date" value={fechaHasta} onChange={e => { setFechaHasta(e.target.value); setPage(1) }} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12 }} />
-            {(estado || fechaDesde || fechaHasta) && (
-              <button onClick={() => { setEstado(''); setFechaDesde(''); setFechaHasta('') }} style={{ padding: '5px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Limpiar</button>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}>‹ Anterior</button>
-            <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{page} / {pages}</span>
-            <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: page >= pages ? 'not-allowed' : 'pointer' }}>Siguiente ›</button>
-          </div>
-        </div>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-          : <Table columns={cols} rows={cotizaciones} onRowClick={row => navigate('/licitaciones/' + row.id)} emptyMessage="Sin cotizaciones registradas" ariaLabel="Licitaciones" getRowKey={row => row.id} />
+          : <Table
+              columns={cols}
+              rows={cotizaciones}
+              onRowClick={row => navigate('/licitaciones/' + row.id)}
+              emptyMessage="Sin cotizaciones registradas"
+              ariaLabel="Licitaciones"
+              getRowKey={row => row.id}
+              toolbarExtra={toolbarExtra}
+              pager={{ page, pages, total, limit, shown: cotizaciones.length, onChange: setPage, disabled: isLoading }}
+            />
         }
       </div>
     </main>

@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState } from 'react'
 import { Badge, PageHeader, Btn, Icon } from '../../components/shared'
 import { FormField, Input, Select, Textarea } from '../../components/forms'
@@ -313,7 +314,7 @@ export default function DescuentosPage() {
   }
 
   async function removeRule(regla) {
-    if (!window.confirm(`Eliminar regla "${regla.nombre}"?`)) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Eliminar regla "${regla.nombre}"?`, tone: 'danger' })) return
     setRuleError('')
     try {
       await deleteRule.mutateAsync(regla.id)
@@ -325,13 +326,13 @@ export default function DescuentosPage() {
 
   async function resolveSolicitud(solicitud, action) {
     const promptLabel = action === 'aprobar' ? 'Motivo de aprobacion' : 'Motivo de rechazo'
-    const motivo = window.prompt(promptLabel, action === 'aprobar' ? 'Aprobada' : 'Rechazada')
+    const motivo = await promptDialog({ title: promptLabel, defaultValue: action === 'aprobar' ? 'Aprobada' : 'Rechazada' })
     if (motivo === null) return
     try {
       if (action === 'aprobar') await aprobarSolicitud.mutateAsync({ id: solicitud.id, motivo })
       else await rechazarSolicitud.mutateAsync({ id: solicitud.id, motivo })
     } catch (err) {
-      alert(apiError(err, 'No se pudo resolver la solicitud'))
+      toast.error(apiError(err, 'No se pudo resolver la solicitud'))
     }
   }
 
@@ -594,7 +595,7 @@ function Catalog({ titulo, subtitulo, items, onCreate, onUpdate, onDelete, pendi
   }
 
   async function remove(item) {
-    if (!window.confirm(`Eliminar descuento ${item.valor}%?`)) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Eliminar descuento ${item.valor}%?`, tone: 'danger' })) return
     setError('')
     try {
       await onDelete(item.id)

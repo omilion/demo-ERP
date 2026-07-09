@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useMemo, useState } from 'react'
 import { Badge, Btn, KpiCard, PageHeader, Pager, Table } from '../../components/shared'
 import { FormField, Input, Select, Textarea } from '../../components/forms'
@@ -111,10 +112,10 @@ export default function BitacoraTallerPage() {
           )}
           {canDeleteTaller && (
             <button
-              onClick={(e) => {
+              onClick={async (e) => {
                 e.stopPropagation()
-                if (confirm('Confirmar eliminacion permanente?')) {
-                  delMut.mutate(r.id, { onError: err => alert(getErrorMessage(err)) })
+                if (await confirmDialog({ title: 'Confirmar', detail: 'Confirmar eliminacion permanente?' })) {
+                  delMut.mutate(r.id, { onError: err => toast.error(getErrorMessage(err)) })
                 }
               }}
               style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer', fontSize: 12 }}
@@ -130,7 +131,7 @@ export default function BitacoraTallerPage() {
     delete exportParams.page
     delete exportParams.limit
     downloadFromBackend('/bitacora-taller/export', `bitacora_actividades_${todayInputDate()}.csv`, exportParams)
-      .catch(err => alert(getErrorMessage(err)))
+      .catch(err => toast.error(getErrorMessage(err)))
   }
 
   const saveModal = (form) => {
@@ -144,7 +145,7 @@ export default function BitacoraTallerPage() {
     const dataPayload = editing ? { id: editing.id, data: payload } : payload
     mut.mutate(dataPayload, {
       onSuccess: () => { setCreating(false); setEditing(null) },
-      onError: err => alert(getErrorMessage(err)),
+      onError: err => toast.error(getErrorMessage(err)),
     })
   }
 

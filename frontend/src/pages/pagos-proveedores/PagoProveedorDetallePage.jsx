@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Badge, Btn, PageHeader, Table } from '../../components/shared'
@@ -56,15 +57,15 @@ export default function PagoProveedorDetallePage() {
     const payload = { ...form, ncMonto: form.ncMonto === '' ? null : parseFloat(form.ncMonto) }
     updateMut.mutate({ id: data.id, data: payload }, { onSuccess: () => setEditing(false) })
   }
-  const handleAplicarStock = () => {
-    if (!confirm(`Aplicar stock del documento ${data.nDoc || data.id}?`)) return
-    aplicarMut.mutate(data.id, { onError: err => alert(err.response?.data?.error || 'No se pudo aplicar stock') })
+  const handleAplicarStock = async () => {
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Aplicar stock del documento ${data.nDoc || data.id}?` })) return
+    aplicarMut.mutate(data.id, { onError: err => toast.error(err.response?.data?.error || 'No se pudo aplicar stock') })
   }
-  const handleAnular = () => {
-    const motivo = prompt(`Motivo de anulacion para ${data.nDoc || data.id}`)
+  const handleAnular = async () => {
+    const motivo = await promptDialog({ title: `Motivo de anulacion para ${data.nDoc || data.id}` })
     if (motivo === null) return
-    if (!motivo.trim()) return alert('Motivo requerido')
-    anularMut.mutate({ id: data.id, motivo: motivo.trim() }, { onError: err => alert(err.response?.data?.error || 'No se pudo anular') })
+    if (!motivo.trim()) return toast.warning('Motivo requerido')
+    anularMut.mutate({ id: data.id, motivo: motivo.trim() }, { onError: err => toast.error(err.response?.data?.error || 'No se pudo anular') })
   }
 
   const cols = [

@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
@@ -131,11 +132,11 @@ export default function MatrizVentasPage() {
     else if (row.fuente === 'oc-online') navigate('/ordenes-compra')
   }
 
-  function eliminarFila(row) {
-    if (row.fuente !== 'orden') { alert('Solo se pueden eliminar ordenes desde aqui'); return }
-    if (!confirm(`Anular venta N ${row.nInterno ?? row.id}? Esta accion usa el flujo auditado.`)) return
+  async function eliminarFila(row) {
+    if (row.fuente !== 'orden') { toast.warning('Solo se pueden eliminar ordenes desde aqui'); return }
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Anular venta N ${row.nInterno ?? row.id}? Esta accion usa el flujo auditado.`, tone: 'danger' })) return
     anularVenta.mutate(row.id, {
-      onError: e => alert(e.response?.data?.error || 'Error al anular'),
+      onError: e => toast.error(e.response?.data?.error || 'Error al anular'),
     })
   }
 

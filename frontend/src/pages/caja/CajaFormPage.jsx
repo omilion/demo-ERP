@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
@@ -32,13 +33,13 @@ export default function CajaFormPage() {
 
   const handleSave = () => {
     if (!validate({ monto: { required: true } })) return
-    if (!turno) { alert('No hay turno activo. Abre un turno primero.'); return }
+    if (!turno) { toast.warning('No hay turno activo. Abre un turno primero.'); return }
     if (data.tipo === 'Ingreso' && data.ordenId) {
-      alert('Los pagos de ventas se registran desde Cobranza, no como movimiento manual.')
+      toast.warning('Los pagos de ventas se registran desde Cobranza, no como movimiento manual.')
       return
     }
     if (data.tipo === 'Egreso' && !data.gastoTipoId && !data.ordenId) {
-      alert('Para un egreso debes indicar categoria de gasto o N Venta.')
+      toast.warning('Para un egreso debes indicar categoria de gasto o N Venta.')
       return
     }
     const payload = {
@@ -57,7 +58,7 @@ export default function CajaFormPage() {
     }
     createMovimiento.mutate({ turnoId: turno.id, data: payload }, {
       onSuccess: () => navigate('/caja'),
-      onError: (err) => alert(err?.response?.data?.error || 'Error al registrar movimiento'),
+      onError: (err) => toast.error(err?.response?.data?.error || 'Error al registrar movimiento'),
     })
   }
 

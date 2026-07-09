@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
@@ -119,16 +120,16 @@ function BitacoraSection({ odtId, entries = [], canWrite, canDelete }) {
       { odtId, texto },
       {
         onSuccess: () => setTexto(''),
-        onError: err => alert(getErrorMessage(err)),
+        onError: err => toast.error(getErrorMessage(err)),
       }
     )
   }
 
-  const handleDelete = entryId => {
-    if (!confirm('¿Eliminar esta entrada de bitacora? Esta accion no se puede deshacer.')) return
+  const handleDelete = async entryId => {
+    if (!await confirmDialog({ title: 'Confirmar', detail: '¿Eliminar esta entrada de bitacora? Esta accion no se puede deshacer.', tone: 'danger' })) return
     delBitacora.mutate(
       { odtId, entryId },
-      { onError: err => alert(getErrorMessage(err)) }
+      { onError: err => toast.error(getErrorMessage(err)) }
     )
   }
 
@@ -271,12 +272,12 @@ export default function TallerFormPage() {
           setIsEditMode(false)
           navigate(`/taller/${id}`)
         },
-        onError: () => alert('Error al guardar la OT'),
+        onError: () => toast.error('Error al guardar la OT'),
       })
     } else {
       createOdt.mutate(payload, {
         onSuccess: () => navigate('/taller'),
-        onError: () => alert('Error al crear la OT'),
+        onError: () => toast.error('Error al crear la OT'),
       })
     }
   }
@@ -302,19 +303,19 @@ export default function TallerFormPage() {
     }
   }
 
-  function handleCloseOdt(estado) {
+  async function handleCloseOdt(estado) {
     const isReopen = estado === 'Pendiente'
     const action = isReopen ? 'reabrir' : 'cerrar'
     const odtNumero = odtNumeroOperativo(found)
     const detail = isReopen
       ? 'La OT volvera a Pendiente y quedara disponible para trabajo operativo.'
       : 'La OT pasara a Terminada y se registrara fecha de termino si aun no existe.'
-    if (!confirm(`¿Confirmas ${action} la OT #${odtNumero}?\n\n${detail}`)) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: `¿Confirmas ${action} la OT #${odtNumero}?\n\n${detail}` })) return
     if (isReopen) {
       cambiarEstado.mutate(
         { id: Number(id), estado },
         {
-          onError: err => alert(getErrorMessage(err)),
+          onError: err => toast.error(getErrorMessage(err)),
         }
       )
       return
@@ -322,22 +323,22 @@ export default function TallerFormPage() {
     cerrarOdt.mutate(
       { id: Number(id), estado },
       {
-        onError: err => alert(getErrorMessage(err)),
+        onError: err => toast.error(getErrorMessage(err)),
       }
     )
   }
 
-  function handleAnularOdt() {
+  async function handleAnularOdt() {
     const odtNumero = odtNumeroOperativo(found)
-    const razon = prompt(`Motivo para anular la OT #${odtNumero}`)
+    const razon = await promptDialog({ title: `Motivo para anular la OT #${odtNumero}` })
     if (razon == null) return
-    if (!razon.trim()) { alert('Debes indicar un motivo para anular la OT.'); return }
-    if (!confirm(`¿Confirmas anular la OT #${odtNumero}?\n\nEsta accion la sacara del flujo operativo y conservara trazabilidad en bitacora.`)) return
+    if (!razon.trim()) { toast.warning('Debes indicar un motivo para anular la OT.'); return }
+    if (!await confirmDialog({ title: 'Confirmar', detail: `¿Confirmas anular la OT #${odtNumero}?\n\nEsta accion la sacara del flujo operativo y conservara trazabilidad en bitacora.`, tone: 'danger' })) return
     anularOdt.mutate(
       { id: Number(id), razon: razon.trim() },
       {
         onSuccess: () => navigate('/taller'),
-        onError: err => alert(getErrorMessage(err)),
+        onError: err => toast.error(getErrorMessage(err)),
       }
     )
   }
@@ -603,8 +604,8 @@ function OdtConsumosSection({ odtId }) {
 
   const submitConsumo = () => {
     const parsedCantidad = parseCantidad(cantidad)
-    if (!selectedItem) return alert('Seleccione un item')
-    if (parsedCantidad <= 0) return alert('Ingrese una cantidad mayor a cero')
+    if (!selectedItem) return toast.warning('Seleccione un item')
+    if (parsedCantidad <= 0) return toast.warning('Ingrese una cantidad mayor a cero')
 
     const numericItemId = Number(selectedItem.id)
     const payload = {
@@ -626,7 +627,7 @@ function OdtConsumosSection({ odtId }) {
         setCantidad('')
         setMotivo('')
       },
-      onError: (error) => alert(error?.response?.data?.error || 'Error al registrar consumo'),
+      onError: (error) => toast.error(error?.response?.data?.error || 'Error al registrar consumo'),
     })
   }
 
@@ -634,10 +635,10 @@ function OdtConsumosSection({ odtId }) {
   const materialesActuales = materiales.items || []
   const disabled = createConsumo.isPending || !itemId || !cantidad
 
-  const handleDeleteMaterial = material => {
-    if (!confirm(`Eliminar material ${material.nombre || material.codigoInterno || material.id} de la OT?`)) return
+  const handleDeleteMaterial = async material => {
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Eliminar material ${material.nombre || material.codigoInterno || material.id} de la OT?`, tone: 'danger' })) return
     deleteMaterial.mutate({ odtId, materialId: material.id }, {
-      onError: error => alert(error?.response?.data?.error || 'Error al eliminar material'),
+      onError: error => toast.error(error?.response?.data?.error || 'Error al eliminar material'),
     })
   }
 
@@ -796,18 +797,18 @@ function OdtItemsTable({ odtId, items }) {
       tallerItemId: taller.id,
       estado: action.estado,
     }, {
-      onError: () => alert('Error al cambiar el estado del taller'),
+      onError: () => toast.error('Error al cambiar el estado del taller'),
     })
   }
 
-  const handleTallerMasivo = taller => {
-    if (!confirm(`Marcar como listos ${taller.pendientes} item(s) de ${taller.nombre}?`)) return
+  const handleTallerMasivo = async taller => {
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Marcar como listos ${taller.pendientes} item(s) de ${taller.nombre}?` })) return
     cambiarTallerMasivo.mutate({
       odtId,
       tallerId: taller.tallerId,
       estado: 'listo',
     }, {
-      onError: () => alert('Error al actualizar el taller completo'),
+      onError: () => toast.error('Error al actualizar el taller completo'),
     })
   }
 

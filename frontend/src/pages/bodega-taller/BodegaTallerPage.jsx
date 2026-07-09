@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useEffect, useRef, useState } from 'react'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { FormField, Input, Select } from '../../components/forms'
@@ -82,10 +83,10 @@ export default function BodegaTallerPage() {
   const exportParams = { ...params }
   delete exportParams.page
 
-  const handleDelete = row => {
-    if (!confirm(`Eliminar material ${row.codigoInterno || row.nombre}?`)) return
+  const handleDelete = async row => {
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Eliminar material ${row.codigoInterno || row.nombre}?`, tone: 'danger' })) return
     deleteMut.mutate(row.id, {
-      onError: e => alert(e.response?.data?.error || 'No se pudo eliminar el material'),
+      onError: e => toast.error(e.response?.data?.error || 'No se pudo eliminar el material'),
     })
   }
 
@@ -180,7 +181,7 @@ export default function BodegaTallerPage() {
             const payload = creating ? data : { id: editing.id, data }
             mut.mutate(payload, {
               onSuccess: () => { setEditing(null); setCreating(false) },
-              onError: e => alert(e.response?.data?.error || 'No se pudo guardar el material'),
+              onError: e => toast.error(e.response?.data?.error || 'No se pudo guardar el material'),
             })
           }}
           initial={editing || {}}

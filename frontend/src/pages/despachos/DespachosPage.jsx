@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, Pager, SearchBar, Table, Tabs } from '../../components/shared'
@@ -368,8 +369,8 @@ export default function DespachosPage() {
     }
   }
 
-  function solicitarEliminacion(tipo, id, mutation) {
-    const motivo = window.prompt(`Motivo de eliminacion de ${tipo}`)
+  async function solicitarEliminacion(tipo, id, mutation) {
+    const motivo = await promptDialog({ title: `Motivo de eliminacion de ${tipo}` })
     if (!motivo?.trim()) return
     mutation.mutate({ id, motivo: motivo.trim() }, { onError: showError })
   }
@@ -382,6 +383,66 @@ export default function DespachosPage() {
     setVentasHoy(false); setConIncidencia(false); setIncludeEliminados(false); setPage(1)
     if (ordenIdParam || odtIdParam) setSearchParams({})
   }
+
+  const toolbarExtra = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
+      <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+        <Tabs tabs={TABS} active={tab} onChange={value => { setTab(value); setPage(1) }} style={{ marginBottom: 0 }} />
+        <SearchBar placeholder="Buscar cliente, documento, guia o interno..." value={search} onChange={setFilter(setSearch)} style={{ width: 320 }} />
+      </div>
+      <div style={filterGrid}>
+        <FilterField label="Desde"><input type="date" value={desde} onChange={e => setFilter(setDesde)(e.target.value)} style={inputFilter} /></FilterField>
+        <FilterField label="Hasta"><input type="date" value={hasta} onChange={e => setFilter(setHasta)(e.target.value)} style={inputFilter} /></FilterField>
+        <FilterField label="N interno"><input value={nInterno} onChange={e => setFilter(setNInterno)(e.target.value)} style={inputFilter} /></FilterField>
+        <FilterField label="RUT"><input value={rut} onChange={e => setFilter(setRut)(e.target.value)} style={inputFilter} /></FilterField>
+        <FilterField label="Cliente"><input value={cliente} onChange={e => setFilter(setCliente)(e.target.value)} style={inputFilter} /></FilterField>
+        <FilterField label="OC"><input value={oc} onChange={e => setFilter(setOc)(e.target.value)} style={inputFilter} /></FilterField>
+        <FilterField label="ID licitacion"><input value={idLicitacion} onChange={e => setFilter(setIdLicitacion)(e.target.value)} style={inputFilter} /></FilterField>
+        <FilterField label="Guia"><input value={guia} onChange={e => setFilter(setGuia)(e.target.value)} style={inputFilter} /></FilterField>
+        <FilterField label="NC"><input value={nc} onChange={e => setFilter(setNc)(e.target.value)} style={inputFilter} /></FilterField>
+        <FilterField label="ND"><input value={nd} onChange={e => setFilter(setNd)(e.target.value)} style={inputFilter} /></FilterField>
+        <FilterField label="ODT"><input value={odtId} onChange={e => setFilter(setOdtId)(e.target.value)} style={inputFilter} /></FilterField>
+        <FilterField label="Tipo venta">
+          <select value={tipoVenta} onChange={e => setFilter(setTipoVenta)(e.target.value)} style={inputFilter}>
+            {TIPO_VENTA_OPTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </FilterField>
+        <FilterField label="Pago">
+          <select value={estadoPago} onChange={e => setFilter(setEstadoPago)(e.target.value)} style={inputFilter}>
+            {ESTADO_PAGO_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
+          </select>
+        </FilterField>
+        <FilterField label="Entrega">
+          <select value={estadoEntrega} onChange={e => setFilter(setEstadoEntrega)(e.target.value)} style={inputFilter}>
+            {ESTADO_ENTREGA_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
+          </select>
+        </FilterField>
+        <FilterField label="Estado despacho">
+          <select value={estadoLogistico} onChange={e => setFilter(setEstadoLogistico)(e.target.value)} style={inputFilter}>
+            <option value="">Todos</option>
+            <option value="pendiente">Pendiente</option>
+            <option value="entregada">Entregada</option>
+            <option value="parcial">Parcial</option>
+            <option value="multa">Con multa</option>
+          </select>
+        </FilterField>
+        <FilterField label="Region"><input value={region} onChange={e => setFilter(setRegion)(e.target.value)} style={inputFilter} /></FilterField>
+        <FilterField label="Comuna"><input value={comuna} onChange={e => setFilter(setComuna)(e.target.value)} style={inputFilter} /></FilterField>
+        <FilterField label="Ciudad"><input value={ciudad} onChange={e => setFilter(setCiudad)(e.target.value)} style={inputFilter} /></FilterField>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+          <label style={checkLabel}><input type="checkbox" checked={ventasHoy} onChange={e => { setVentasHoy(e.target.checked); setPage(1) }} /> Ventas hoy</label>
+          {tab === 'registros' && (
+            <label style={checkLabel}><input type="checkbox" checked={conIncidencia} onChange={e => { setConIncidencia(e.target.checked); setPage(1) }} /> Con incidencia</label>
+          )}
+          {canDeleteDespacho && tab !== 'matriz' && (
+            <label style={checkLabel}><input type="checkbox" checked={includeEliminados} onChange={e => { setIncludeEliminados(e.target.checked); setPage(1) }} /> Ver eliminados</label>
+          )}
+          <button onClick={clearFilters} style={smallButton}>Limpiar</button>
+        </div>
+      </div>
+      {ordenIdParam && <div><Badge tone="blue">Orden #{ordenIdParam}</Badge></div>}
+    </div>
+  )
 
   return (
     <main className="page page-wide">
@@ -408,66 +469,22 @@ export default function DespachosPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={filterGrid}>
-          <FilterField label="Desde"><input type="date" value={desde} onChange={e => setFilter(setDesde)(e.target.value)} style={inputFilter} /></FilterField>
-          <FilterField label="Hasta"><input type="date" value={hasta} onChange={e => setFilter(setHasta)(e.target.value)} style={inputFilter} /></FilterField>
-          <FilterField label="N interno"><input value={nInterno} onChange={e => setFilter(setNInterno)(e.target.value)} style={inputFilter} /></FilterField>
-          <FilterField label="RUT"><input value={rut} onChange={e => setFilter(setRut)(e.target.value)} style={inputFilter} /></FilterField>
-          <FilterField label="Cliente"><input value={cliente} onChange={e => setFilter(setCliente)(e.target.value)} style={inputFilter} /></FilterField>
-          <FilterField label="OC"><input value={oc} onChange={e => setFilter(setOc)(e.target.value)} style={inputFilter} /></FilterField>
-          <FilterField label="ID licitacion"><input value={idLicitacion} onChange={e => setFilter(setIdLicitacion)(e.target.value)} style={inputFilter} /></FilterField>
-          <FilterField label="Guia"><input value={guia} onChange={e => setFilter(setGuia)(e.target.value)} style={inputFilter} /></FilterField>
-          <FilterField label="NC"><input value={nc} onChange={e => setFilter(setNc)(e.target.value)} style={inputFilter} /></FilterField>
-          <FilterField label="ND"><input value={nd} onChange={e => setFilter(setNd)(e.target.value)} style={inputFilter} /></FilterField>
-          <FilterField label="ODT"><input value={odtId} onChange={e => setFilter(setOdtId)(e.target.value)} style={inputFilter} /></FilterField>
-          <FilterField label="Tipo venta">
-            <select value={tipoVenta} onChange={e => setFilter(setTipoVenta)(e.target.value)} style={inputFilter}>
-              {TIPO_VENTA_OPTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </FilterField>
-          <FilterField label="Pago">
-            <select value={estadoPago} onChange={e => setFilter(setEstadoPago)(e.target.value)} style={inputFilter}>
-              {ESTADO_PAGO_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
-            </select>
-          </FilterField>
-          <FilterField label="Entrega">
-            <select value={estadoEntrega} onChange={e => setFilter(setEstadoEntrega)(e.target.value)} style={inputFilter}>
-              {ESTADO_ENTREGA_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
-            </select>
-          </FilterField>
-          <FilterField label="Estado despacho">
-            <select value={estadoLogistico} onChange={e => setFilter(setEstadoLogistico)(e.target.value)} style={inputFilter}>
-              <option value="">Todos</option>
-              <option value="pendiente">Pendiente</option>
-              <option value="entregada">Entregada</option>
-              <option value="parcial">Parcial</option>
-              <option value="multa">Con multa</option>
-            </select>
-          </FilterField>
-          <FilterField label="Region"><input value={region} onChange={e => setFilter(setRegion)(e.target.value)} style={inputFilter} /></FilterField>
-          <FilterField label="Comuna"><input value={comuna} onChange={e => setFilter(setComuna)(e.target.value)} style={inputFilter} /></FilterField>
-          <FilterField label="Ciudad"><input value={ciudad} onChange={e => setFilter(setCiudad)(e.target.value)} style={inputFilter} /></FilterField>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-            <label style={checkLabel}><input type="checkbox" checked={ventasHoy} onChange={e => { setVentasHoy(e.target.checked); setPage(1) }} /> Ventas hoy</label>
-            {tab === 'registros' && (
-              <label style={checkLabel}><input type="checkbox" checked={conIncidencia} onChange={e => { setConIncidencia(e.target.checked); setPage(1) }} /> Con incidencia</label>
-            )}
-            {canDeleteDespacho && tab !== 'matriz' && (
-              <label style={checkLabel}><input type="checkbox" checked={includeEliminados} onChange={e => { setIncludeEliminados(e.target.checked); setPage(1) }} /> Ver eliminados</label>
-            )}
-            <button onClick={clearFilters} style={smallButton}>Limpiar</button>
-          </div>
-        </div>
-        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
-          <Tabs tabs={TABS} active={tab} onChange={value => { setTab(value); setPage(1) }} />
-          <SearchBar placeholder="Buscar cliente, documento, guia o interno..." value={search} onChange={setFilter(setSearch)} style={{ width: 320 }} />
-        </div>
-        {ordenIdParam && <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)' }}><Badge tone="blue">Orden #{ordenIdParam}</Badge></div>}
         {currentLoading
           ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table key={tab} columns={columns} rows={rows} emptyMessage={tab === 'matriz' ? 'Sin ventas para despacho' : 'Sin registros'} keyboard ariaLabel="Despachos" columnPrefsKey={`despachos-${tab}`} getRowKey={(row, index) => row.id || row.ordenId || row.numeroGuia || index} onRowDoubleClick={tab === 'matriz' ? row => row.ordenId && navigate(ventaPath(row.ordenId, user)) : undefined} />
+          : <Table
+              key={tab}
+              columns={columns}
+              rows={rows}
+              emptyMessage={tab === 'matriz' ? 'Sin ventas para despacho' : 'Sin registros'}
+              keyboard
+              ariaLabel="Despachos"
+              columnPrefsKey={`despachos-${tab}`}
+              getRowKey={(row, index) => row.id || row.ordenId || row.numeroGuia || index}
+              onRowDoubleClick={tab === 'matriz' ? row => row.ordenId && navigate(ventaPath(row.ordenId, user)) : undefined}
+              toolbarExtra={toolbarExtra}
+              pager={{ page, pages, total, limit, shown: rows.length, onChange: setPage, disabled: currentLoading }}
+            />
         }
-        <Pager page={page} pages={pages} total={total} limit={limit} shown={rows.length} onChange={setPage} disabled={currentLoading} />
       </div>
 
       {creating && (
@@ -966,7 +983,7 @@ function toneEntrega(value) {
 }
 
 function showError(error) {
-  alert(error.response?.data?.error || 'Error')
+  toast.error(error.response?.data?.error || 'Error')
 }
 
 function linkButton(color, fontWeight = 500) {

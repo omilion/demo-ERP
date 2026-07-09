@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Badge, PageHeader, Btn, Table } from '../../components/shared'
@@ -46,7 +47,7 @@ export default function OrdenCompraDetallePage() {
   }
 
   const handleProcesarVenta = () => {
-    if (!clienteId) return alert('Selecciona el cliente ERP para crear la Venta Web')
+    if (!clienteId) return toast.warning('Selecciona el cliente ERP para crear la Venta Web')
     procesarMut.mutate({
       id: data.id,
       data: { clienteId: Number(clienteId), clienteSucursalId: clienteSucursalId ? Number(clienteSucursalId) : undefined },
@@ -55,7 +56,7 @@ export default function OrdenCompraDetallePage() {
       onError: err => {
         const ventaId = err?.response?.data?.ventaId
         if (ventaId) return navigate(`/ventas/${ventaId}/editar`)
-        alert(err?.response?.data?.error || 'No se pudo procesar la OC online')
+        toast.error(err?.response?.data?.error || 'No se pudo procesar la OC online')
       },
     })
   }

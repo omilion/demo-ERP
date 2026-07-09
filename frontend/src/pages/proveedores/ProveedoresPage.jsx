@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState, useEffect, useRef } from 'react'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
 import { useProveedores, useProveedor, useCreatePagoProveedor, useDeletePagoProveedor, useCreateProveedor, useUpdateProveedor, useDeleteProveedor } from '../../api/proveedores'
@@ -26,10 +27,10 @@ function PagoForm({ proveedorId, onClose, canWrite }) {
 
   const handleSave = () => {
     if (!canWrite) return
-    if (!form.documento.trim()) return alert('Documento requerido')
-    if (!form.nDoc.trim()) return alert('N Doc requerido')
-    if (!form.fechaDoc) return alert('Fecha Doc requerida')
-    if (!form.total) return alert('Total requerido')
+    if (!form.documento.trim()) return toast.warning('Documento requerido')
+    if (!form.nDoc.trim()) return toast.warning('N Doc requerido')
+    if (!form.fechaDoc) return toast.warning('Fecha Doc requerida')
+    if (!form.total) return toast.warning('Total requerido')
     create.mutate({ proveedorId, ...form }, { onSuccess: onClose })
   }
 
@@ -131,9 +132,9 @@ function TabDatos({ p }) {
 function TabPagos({ proveedorId, pagos = [], canWrite, canDelete }) {
   const [showForm, setShowForm] = useState(false)
   const deletePago = useDeletePagoProveedor()
-  const confirmDeletePago = (p) => {
+  const confirmDeletePago = async (p) => {
     const doc = `${p.documento || 'Documento'} ${p.nDoc ? `#${p.nDoc}` : ''}`.trim()
-    if (!confirm(`Eliminar/anular pago ${doc} por ${fmtPeso(p.total)}?`)) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Eliminar/anular pago ${doc} por ${fmtPeso(p.total)}?`, tone: 'danger' })) return
     deletePago.mutate({ proveedorId, pagoId: p.id })
   }
 
@@ -225,9 +226,9 @@ function ViewProveedorPanel({ proveedor, onClose, onEdit, canWrite, canDelete, c
   const p = full || proveedor
   const pagos = full?.pagos ?? []
   const deleteProv = useDeleteProveedor()
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!canDelete) return
-    if (!confirm(`¿Eliminar proveedor "${p.nombre}"? (soft delete)`)) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: `¿Eliminar proveedor "${p.nombre}"? (soft delete)`, tone: 'danger' })) return
     deleteProv.mutate(p.id, { onSuccess: onClose })
   }
 
@@ -292,13 +293,13 @@ function ProveedorFormModal({ proveedor, onClose }) {
   const requiredFields = ['nombre', 'razonSocial', 'rut', 'giro', 'email', 'telefono', 'direccion', 'region', 'comuna']
   const handleSave = () => {
     for (const field of requiredFields) {
-      if (!String(form[field] || '').trim()) return alert(`${field} requerido`)
+      if (!String(form[field] || '').trim()) return toast.warning(`${field} requerido`)
     }
-    if (form.nombre.trim().length < 4) return alert('Nombre debe tener al menos 4 caracteres')
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return alert('Email invalido')
+    if (form.nombre.trim().length < 4) return toast.warning('Nombre debe tener al menos 4 caracteres')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return toast.warning('Email invalido')
     const payload = { ...form }
-    if (isEdit) update.mutate({ id: proveedor.id, ...payload }, { onSuccess: onClose, onError: err => alert(err?.response?.data?.error || 'No se pudo guardar') })
-    else create.mutate(payload, { onSuccess: onClose, onError: err => alert(err?.response?.data?.error || 'No se pudo crear') })
+    if (isEdit) update.mutate({ id: proveedor.id, ...payload }, { onSuccess: onClose, onError: err => toast.error(err?.response?.data?.error || 'No se pudo guardar') })
+    else create.mutate(payload, { onSuccess: onClose, onError: err => toast.error(err?.response?.data?.error || 'No se pudo crear') })
   }
   const pending = create.isPending || update.isPending
   const inp = { width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box' }

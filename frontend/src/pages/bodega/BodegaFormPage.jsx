@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
@@ -80,7 +81,7 @@ function ImageUploadField({ label, value, onUploaded, size = 'chica', append = f
     const file = event.target.files?.[0]
     if (!file) return
     if (file.size > 4 * 1024 * 1024) {
-      alert('La imagen supera el máximo de 4 MB. Reduce su tamaño e inténtalo de nuevo.')
+      toast.warning('La imagen supera el máximo de 4 MB. Reduce su tamaño e inténtalo de nuevo.')
       event.target.value = ''
       return
     }
@@ -91,7 +92,7 @@ function ImageUploadField({ label, value, onUploaded, size = 'chica', append = f
       event.target.value = ''
     } catch (error) {
       const data = error?.response?.data
-      alert(data?.error || data?.message || error.message || 'No se pudo subir la imagen')
+      toast.error(data?.error || data?.message || error.message || 'No se pudo subir la imagen')
       event.target.value = ''
     }
   }
@@ -221,14 +222,14 @@ export default function BodegaFormPage() {
   }
 
   const createUbicacionFromForm = async () => {
-    const nombre = window.prompt('Nueva ubicacion fisica')
+    const nombre = await promptDialog({ title: 'Nueva ubicacion fisica' })
     if (!nombre?.trim()) return
     try {
       const created = await createUbicacion.mutateAsync({ nombre: nombre.trim() })
       set('ubicacionId', String(created.id))
       set('ubicacion', created.nombre)
     } catch (error) {
-      alert(error?.response?.data?.error || 'No se pudo crear la ubicacion')
+      toast.error(error?.response?.data?.error || 'No se pudo crear la ubicacion')
     }
   }
 
@@ -248,7 +249,7 @@ export default function BodegaFormPage() {
         const url = new URL(data.linkCompra)
         if (!['http:', 'https:'].includes(url.protocol)) throw new Error('invalid')
       } catch {
-        alert('Link de compra invalido')
+        toast.warning('Link de compra invalido')
         return
       }
     }
@@ -296,14 +297,14 @@ export default function BodegaFormPage() {
         onSuccess: () => {
           navigate('/bodega')
         },
-        onError: () => alert('Error al guardar el producto. Intente nuevamente.'),
+        onError: () => toast.error('Error al guardar el producto. Intente nuevamente.'),
       })
     } else {
       createProducto.mutate(
         { ...payload, codigoInterno: data.cod },
         {
           onSuccess: () => navigate('/bodega'),
-          onError: () => alert('Error al crear el producto. Intente nuevamente.'),
+          onError: () => toast.error('Error al crear el producto. Intente nuevamente.'),
         }
       )
     }
@@ -544,24 +545,24 @@ function ProveedoresSection({ productoId }) {
   const proveedorOptions = proveedoresData.items || []
 
   const add = () => {
-    if (!proveedorId) { alert('Selecciona un proveedor'); return }
+    if (!proveedorId) { toast.warning('Selecciona un proveedor'); return }
     upsert.mutate(
       { productoId, proveedorId: Number(proveedorId), costo: Number(costo || 0), cantidad: Number(cantidad || 0) },
       {
         onSuccess: () => { setProveedorId(''); setCosto(''); setCantidad('') },
-        onError: e => alert(e.response?.data?.error || 'No se pudo guardar el proveedor'),
+        onError: e => toast.error(e.response?.data?.error || 'No se pudo guardar el proveedor'),
       },
     )
   }
 
   const setRow = (row, field, value) => {
     const payload = { productoId, proveedorId: row.proveedorId, costo: row.costo, cantidad: row.cantidad, [field]: Number(value || 0) }
-    update.mutate(payload, { onError: e => alert(e.response?.data?.error || 'No se pudo actualizar') })
+    update.mutate(payload, { onError: e => toast.error(e.response?.data?.error || 'No se pudo actualizar') })
   }
 
-  const del = (row) => {
-    if (!window.confirm(`Quitar proveedor ${row.proveedorNombre || row.proveedorId}?`)) return
-    remove.mutate({ productoId, proveedorId: row.proveedorId }, { onError: e => alert(e.response?.data?.error || 'No se pudo quitar') })
+  const del = async (row) => {
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Quitar proveedor ${row.proveedorNombre || row.proveedorId}?`, tone: 'danger' })) return
+    remove.mutate({ productoId, proveedorId: row.proveedorId }, { onError: e => toast.error(e.response?.data?.error || 'No se pudo quitar') })
   }
 
   return (
@@ -639,13 +640,13 @@ function MovimientosSection({ productoId, stockActual }) {
 
   const submit = () => {
     const c = parseInt(cantidad, 10)
-    if (isNaN(c)) { alert('Cantidad inválida'); return }
-    if (!motivo.trim()) { alert('Motivo requerido'); return }
+    if (isNaN(c)) { toast.warning('Cantidad inválida'); return }
+    if (!motivo.trim()) { toast.warning('Motivo requerido'); return }
     const requiereCategoria = tipo === 'egreso' || (tipo === 'ajuste' && c < Number(stockActual || 0))
-    if (requiereCategoria && !motivoCategoria) { alert('Motivo operacional requerido'); return }
+    if (requiereCategoria && !motivoCategoria) { toast.warning('Motivo operacional requerido'); return }
     addMov.mutate({ productoId, tipo, cantidad: c, motivo: motivo.trim(), motivoCategoria: requiereCategoria ? motivoCategoria : undefined }, {
       onSuccess: () => { setCantidad(''); setMotivo(''); setMotivoCategoria('') },
-      onError: e => alert(e.response?.data?.error || 'Error'),
+      onError: e => toast.error(e.response?.data?.error || 'Error'),
     })
   }
 

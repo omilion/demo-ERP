@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { toast, confirmDialog } from '../../store/notif'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table } from '../../components/shared'
 import { useOrdenesCompra, useUpdateOrdenCompra, ordenesCompraExportUrl } from '../../api/ordenesCompra'
 import { downloadFromBackend } from '../../utils/csv'
@@ -65,11 +66,11 @@ export default function OrdenesCompraPage() {
           >Ver</button>
           {row.estadoCompra !== 'Recepcionada' && row.estadoCompra !== 'Anulada' && (
             <button
-              onClick={e => {
+              onClick={async e => {
                 e.stopPropagation()
-                if (!confirm(`Marcar OC ${row.nCompra || row.id} como recepcionada?`)) return
+                if (!(await confirmDialog({ title: 'Confirmar Recepción', detail: `¿Marcar OC ${row.nCompra || row.id} como recepcionada?` }))) return
                 updateMut.mutate({ id: row.id, data: { estadoCompra: 'Recepcionada' } }, {
-                  onError: err => alert(err.response?.data?.error || 'Error'),
+                  onError: err => toast.error(err.response?.data?.error || 'Error'),
                 })
               }}
               disabled={updateMut.isPending}
@@ -82,6 +83,20 @@ export default function OrdenesCompraPage() {
   ]
 
   const montoTotal = items.reduce((s, i) => s + (i.total || 0), 0)
+
+  const toolbarExtra = (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <SearchBar placeholder="Buscar N compra, email..." value={search} onChange={setSearch} style={{ width: 300 }} />
+      <select value={estado} onChange={e => { setEstado(e.target.value); setPage(1) }} style={filterSelect}>
+        <option value="">Todos los estados</option>
+        {['Pendiente', 'En proceso', 'Recepcionada', 'Procesada', 'Despachada', 'Entregada', 'Pagada', 'Cancelada', 'Anulada'].map(e => <option key={e} value={e}>{e}</option>)}
+      </select>
+      <select value={canal} onChange={e => { setCanal(e.target.value); setPage(1) }} style={filterSelect}>
+        <option value="">Todos los canales</option>
+        {['Web', 'Convenio Marco', 'Venta Sala', 'Telefónica'].map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
+    </div>
+  )
 
   return (
     <main className="page page-wide">
@@ -98,27 +113,18 @@ export default function OrdenesCompraPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <SearchBar placeholder="Buscar N compra, email..." value={search} onChange={setSearch} style={{ width: 300 }} />
-            <select value={estado} onChange={e => { setEstado(e.target.value); setPage(1) }} style={filterSelect}>
-              <option value="">Todos los estados</option>
-              {['Pendiente', 'En proceso', 'Recepcionada', 'Procesada', 'Despachada', 'Entregada', 'Pagada', 'Cancelada', 'Anulada'].map(e => <option key={e} value={e}>{e}</option>)}
-            </select>
-            <select value={canal} onChange={e => { setCanal(e.target.value); setPage(1) }} style={filterSelect}>
-              <option value="">Todos los canales</option>
-              {['Web', 'Convenio Marco', 'Venta Sala', 'Telefónica'].map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}>‹ Anterior</button>
-            <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{page} / {pages}</span>
-            <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: page >= pages ? 'not-allowed' : 'pointer' }}>Siguiente ›</button>
-          </div>
-        </div>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-          : <Table columns={cols} rows={items} onRowClick={row => navigate('/ordenes-compra/' + row.id)} emptyMessage="Sin órdenes" ariaLabel="Ordenes de compra" getRowKey={row => row.id} />
+          : <Table
+              columns={cols}
+              rows={items}
+              onRowClick={row => navigate('/ordenes-compra/' + row.id)}
+              emptyMessage="Sin órdenes"
+              ariaLabel="Ordenes de compra"
+              getRowKey={row => row.id}
+              toolbarExtra={toolbarExtra}
+              pager={{ page, pages, total, limit, shown: items.length, onChange: setPage, disabled: isLoading }}
+            />
         }
       </div>
     </main>

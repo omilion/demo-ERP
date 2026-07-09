@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Badge, PageHeader, Btn, Table } from '../../components/shared'
@@ -170,8 +171,8 @@ function LicitacionDescuentoPanel({ cotizacion, items, subtotal, totalAdjudicado
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasContext, cotizacion.id, cotizacion.estado, cotizacion.ordenCompra, subtotal, totalAdjudicado, items])
 
-  function requestRule(rule) {
-    const motivo = window.prompt('Motivo de solicitud para esta licitacion')
+  async function requestRule(rule) {
+    const motivo = await promptDialog({ title: 'Motivo de solicitud para esta licitacion' })
     if (motivo === null) return
     setError('')
     setMessage('')
@@ -324,8 +325,8 @@ export default function LicitacionDetallePage() {
     updateMut.mutate({ id: data.id, data: form }, { onSuccess: () => setEditing(false) })
   }
 
-  const handleDelete = () => {
-    if (!confirm('¿Eliminar licitación? Esta acción no se puede deshacer.')) return
+  const handleDelete = async () => {
+    if (!await confirmDialog({ title: 'Confirmar', detail: '¿Eliminar licitación? Esta acción no se puede deshacer.', tone: 'danger' })) return
     deleteMut.mutate(data.id, { onSuccess: () => navigate('/licitaciones') })
   }
 
@@ -345,47 +346,47 @@ export default function LicitacionDetallePage() {
       onSuccess: () => setEditItemId(null),
     })
   }
-  const deleteItem = (itemId) => {
-    if (!confirm('¿Eliminar item?')) return
+  const deleteItem = async (itemId) => {
+    if (!await confirmDialog({ title: 'Confirmar', detail: '¿Eliminar item?', tone: 'danger' })) return
     deleteItemMut.mutate({ id: data.id, itemId })
   }
   const addItem = () => {
-    if (!newItem.nombre && !newItem.codigoInterno) { alert('Código o nombre requerido'); return }
+    if (!newItem.nombre && !newItem.codigoInterno) { toast.warning('Código o nombre requerido'); return }
     addItemMut.mutate({ id: data.id, data: newItem }, {
       onSuccess: () => setNewItem({ codigoInterno: '', nombre: '', descripcion: '', cantidad: '', cantAdjudicados: '', precio: '' }),
     })
   }
-  const crearVenta = () => {
+  const crearVenta = async () => {
     if (data.orden?.id || data.ordenId) {
       navigate('/ventas/' + (data.orden?.id || data.ordenId) + '/editar')
       return
     }
-    if (!confirm('¿Crear venta desde esta licitación? Se generará una orden con los items adjudicados.')) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: '¿Crear venta desde esta licitación? Se generará una orden con los items adjudicados.' })) return
     crearVentaMut.mutate(data.id, {
       onSuccess: (res) => {
         const msg = res.faltantes?.length
           ? `Venta creada (#${res.orden.id}). Faltantes en catálogo: ${res.faltantes.join(', ')}`
           : `Venta creada (#${res.orden.id})`
-        alert(msg)
+        toast.warning(msg)
         navigate('/ventas/' + res.orden.id + '/editar')
       },
-      onError: (err) => alert(err?.response?.data?.error || 'Error al crear venta'),
+      onError: (err) => toast.error(err?.response?.data?.error || 'Error al crear venta'),
     })
   }
-  const actualizarVenta = () => {
+  const actualizarVenta = async () => {
     if (!data.orden?.id && !data.ordenId) return
-    if (!confirm('Actualizar la venta vinculada con los items adjudicados actuales?')) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: 'Actualizar la venta vinculada con los items adjudicados actuales?' })) return
     actualizarVentaMut.mutate(data.id, {
       onSuccess: (res) => {
-        alert(res.faltantes?.length ? `Venta actualizada. Faltantes: ${res.faltantes.join(', ')}` : 'Venta actualizada')
+        toast.warning(res.faltantes?.length ? `Venta actualizada. Faltantes: ${res.faltantes.join(', ')}` : 'Venta actualizada')
         navigate('/ventas/' + res.orden.id + '/editar')
       },
-      onError: (err) => alert(err?.response?.data?.error || 'Error al actualizar venta'),
+      onError: (err) => toast.error(err?.response?.data?.error || 'Error al actualizar venta'),
     })
   }
-  const adjudicarTodo = () => {
+  const adjudicarTodo = async () => {
     if (!canWriteLicitaciones || !items.length) return
-    if (!confirm('Adjudicar todos los items por su cantidad cotizada?')) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: 'Adjudicar todos los items por su cantidad cotizada?' })) return
     items.forEach(item => {
       updateItemMut.mutate({
         id: data.id,

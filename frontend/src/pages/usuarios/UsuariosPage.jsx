@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState } from 'react'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../components/shared'
 import { useDeleteUsuario, useUsuarios, useCreateUsuario, useUpdateUsuario, useUpdatePermisos } from '../../api/usuarios'
@@ -65,10 +66,10 @@ export default function UsuariosPage() {
     )},
   ]
 
-  const handleDelete = row => {
-    if (!confirm(`Dar de baja al usuario ${row.nombre}?`)) return
+  const handleDelete = async row => {
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Dar de baja al usuario ${row.nombre}?`, tone: 'danger' })) return
     deleteU.mutate(row.id, {
-      onError: e => alert(e.response?.data?.error || 'No se pudo dar de baja'),
+      onError: e => toast.error(e.response?.data?.error || 'No se pudo dar de baja'),
     })
   }
 
@@ -130,10 +131,10 @@ function CreateUsuarioModal({ sucursales, onClose }) {
   })
 
   function submit() {
-    if (!form.email || !form.password || !form.nombre) { alert('Email, password y nombre requeridos'); return }
+    if (!form.email || !form.password || !form.nombre) { toast.warning('Email, password y nombre requeridos'); return }
     createU.mutate(form, {
       onSuccess: () => onClose(),
-      onError: e => alert(e.response?.data?.error || 'Error'),
+      onError: e => toast.error(e.response?.data?.error || 'Error'),
     })
   }
 
@@ -184,14 +185,14 @@ function EditUsuarioModal({ user, sucursales, onClose }) {
     if (!data.password) delete data.password
     updateU.mutate({ id: user.id, data }, {
       onSuccess: () => onClose(),
-      onError: e => alert(e.response?.data?.error || 'Error'),
+      onError: e => toast.error(e.response?.data?.error || 'Error'),
     })
   }
 
   function savePermisos() {
     updateP.mutate({ id: user.id, permisosExtra: Object.keys(permisos).length === 0 ? null : permisos }, {
       onSuccess: () => onClose(),
-      onError: e => alert(e.response?.data?.error || 'Error'),
+      onError: e => toast.error(e.response?.data?.error || 'Error'),
     })
   }
 

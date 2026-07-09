@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader, KpiCard, Badge, Btn } from '../../components/shared'
@@ -72,8 +73,8 @@ export default function IntegridadPage() {
     if (isOrdenHuerfano) reasignarOrden.mutate({ id: rowId, producto_id: productoId })
     else if (isOdtHuerfano) reasignarOdt.mutate({ id: rowId, producto_id: productoId })
   }
-  function handleEliminar(rowId) {
-    if (!confirm('¿Eliminar este item huérfano? Acción registrada en auditoría.')) return
+  async function handleEliminar(rowId) {
+    if (!await confirmDialog({ title: 'Confirmar', detail: '¿Eliminar este item huérfano? Acción registrada en auditoría.', tone: 'danger' })) return
     if (isOrdenHuerfano) eliminarOrden.mutate(rowId)
     else if (isOdtHuerfano) eliminarOdt.mutate(rowId)
   }
@@ -108,7 +109,7 @@ export default function IntegridadPage() {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {tipo === 'odts-sin-cliente' && (
               <Btn size="sm" variant="primary"
-                onClick={() => { if (confirm('Rellenar cliente_nombre desde orden.cliente_id en todas las ODTs huérfanas?')) backfillOdtsCliente.mutate() }}
+                onClick={async () => { if (await confirmDialog({ title: 'Confirmar', detail: 'Rellenar cliente_nombre desde orden.cliente_id en todas las ODTs huérfanas?' })) backfillOdtsCliente.mutate() }}
                 disabled={backfillOdtsCliente.isPending}>
                 {backfillOdtsCliente.isPending ? 'Backfilling…' : 'Backfill desde Orden'}
               </Btn>

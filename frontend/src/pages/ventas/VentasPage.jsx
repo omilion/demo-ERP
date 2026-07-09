@@ -147,6 +147,13 @@ export default function VentasPage() {
     )},
   ]
 
+  const toolbarExtra = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 16, width: '100%', flexWrap: 'wrap' }}>
+      <Tabs tabs={FILTER_TABS} active={tab} onChange={t => { setTab(t); setSearch('') }} style={{ marginBottom: 0 }} />
+      <SearchBar placeholder="Buscar Nro., vendedor, licitacion u OC..." value={search} onChange={setSearch} style={{ width: 280 }} />
+    </div>
+  )
+
   return (
     <main className="page page-wide">
       <PageHeader
@@ -175,17 +182,19 @@ export default function VentasPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <Tabs tabs={FILTER_TABS} active={tab} onChange={t => { setTab(t); setSearch('') }} />
-            <SearchBar placeholder="Buscar Nro., vendedor, licitacion u OC..." value={search} onChange={setSearch} style={{ width: 280 }} />
-          </div>
-        </div>
         {isLoading
           ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={filtered} onRowDoubleClick={openVenta} emptyMessage="Sin ventas" ariaLabel="Ventas" getRowKey={row => row.id} />
+          : <Table
+              columns={cols}
+              rows={filtered}
+              onRowDoubleClick={openVenta}
+              emptyMessage="Sin ventas"
+              ariaLabel="Ventas"
+              getRowKey={row => row.id}
+              toolbarExtra={toolbarExtra}
+              pager={{ page, pages, total, limit: LIMIT, shown: filtered.length, onChange: setPagerPage, disabled: isLoading }}
+            />
         }
-        <Pager page={page} pages={pages} total={total} limit={LIMIT} shown={ventas.length} onChange={setPagerPage} disabled={isLoading} />
       </div>
     </main>
   )

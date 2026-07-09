@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDeleteCotizacion, useReportesLicitaciones } from '../../api/cotizaciones'
@@ -113,8 +114,8 @@ export default function ReportesLicitacionesPage() {
     )
   }
 
-  const eliminar = row => {
-    if (!confirm(`Confirmo eliminacion de la licitacion ${row.idLicitacion || row.id}`)) return
+  const eliminar = async row => {
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Confirmo eliminacion de la licitacion ${row.idLicitacion || row.id}` })) return
     deleteMut.mutate(row.id)
   }
 

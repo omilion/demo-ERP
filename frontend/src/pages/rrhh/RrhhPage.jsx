@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
@@ -296,7 +297,7 @@ function RrhhDocumentField({ trabajadorId, value, onChange, disabled }) {
       onChange(uploaded.url)
       event.target.value = ''
     } catch (error) {
-      alert(error?.response?.data?.error || error.message || 'No se pudo subir el documento')
+      toast.error(error?.response?.data?.error || error.message || 'No se pudo subir el documento')
     }
   }
   return (
@@ -333,7 +334,7 @@ function SubresourceFormModal({ trabajadorId, config, item, onClose }) {
     const missing = (config.required || []).find(key => String(form[key] ?? '').trim() === '')
     if (missing) {
       const field = config.fields.find(f => f.key === missing)
-      return alert(`${field?.label || missing} es requerido`)
+      return toast.warning(`${field?.label || missing} es requerido`)
     }
     const payload = { ...form, trabajadorId }
     if (isEdit) update.mutate({ id: item.id, ...payload }, { onSuccess: onClose })
@@ -424,9 +425,9 @@ function ViewTrabajadorPage({ trabajador, onClose, onEdit, canWrite, canDelete }
   const del = useDeleteTrabajador()
   const name = fullName(t) || 'Trabajador'
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!canDelete) return
-    if (!confirm(`¿Dar de baja a ${name}? (estado=false)`)) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: `¿Dar de baja a ${name}? (estado=false)`, tone: 'danger' })) return
     del.mutate(t.id, { onSuccess: onClose })
   }
 
@@ -513,7 +514,7 @@ function TrabajadorFormModal({ trabajador, onClose }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const handleSave = () => {
     if (!form.nombres.trim() || !form.apellidoPaterno.trim() || !form.rut.trim()) {
-      return alert('Nombres, apellido paterno y RUT son requeridos')
+      return toast.warning('Nombres, apellido paterno y RUT son requeridos')
     }
     if (isEdit) update.mutate({ id: trabajador.id, ...form }, { onSuccess: onClose })
     else create.mutate(form, { onSuccess: onClose })
@@ -736,6 +737,23 @@ export default function RrhhPage() {
   const plastimarCount = resumen?.porEmpresa?.find(e => e.empresa === 'plastimar')?.count || 0
   const allegroCount = resumen?.porEmpresa?.find(e => e.empresa === 'allegro')?.count || 0
 
+  const toolbarExtra = (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+      <select value={empresa} onChange={e => { setEmpresa(e.target.value); setCargo('') }} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12 }}>
+        <option value="">Todas las empresas</option>
+        <option value="plastimar">Plastimar</option>
+        <option value="allegro">Allegro</option>
+      </select>
+      <select value={cargo} onChange={e => setCargo(e.target.value)} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, maxWidth: 180 }}>
+        <option value="">Todos los cargos</option>
+        {cargos.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
+      <div style={{ flex: 1, minWidth: 160 }}>
+        <SearchBar placeholder="Nombre, RUT…" value={search} onChange={setSearch} />
+      </div>
+    </div>
+  )
+
   return (
     <main className="page page-wide">
       <PageHeader
@@ -759,24 +777,17 @@ export default function RrhhPage() {
       />
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>{total.toLocaleString('es-CL')} trabajadores</span>
-            <select value={empresa} onChange={e => { setEmpresa(e.target.value); setCargo('') }} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12 }}>
-              <option value="">Todas las empresas</option>
-              <option value="plastimar">Plastimar</option>
-              <option value="allegro">Allegro</option>
-            </select>
-            <select value={cargo} onChange={e => setCargo(e.target.value)} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, maxWidth: 180 }}>
-              <option value="">Todos los cargos</option>
-              {cargos.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <SearchBar placeholder="Nombre, RUT…" value={search} onChange={setSearch} style={{ width: 'min(280px, 100%)' }} />
-        </div>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-          : <Table columns={cols} rows={trabajadores} emptyMessage="Sin trabajadores" onRowClick={row => navigate(`/rrhh/${row.id}`)} ariaLabel="Trabajadores" getRowKey={row => row.id} />
+          : <Table
+              columns={cols}
+              rows={trabajadores}
+              emptyMessage="Sin trabajadores"
+              onRowClick={row => navigate(`/rrhh/${row.id}`)}
+              ariaLabel="Trabajadores"
+              getRowKey={row => row.id}
+              toolbarExtra={toolbarExtra}
+            />
         }
         {total > (result.limit ?? 100) && (
           <div style={{ padding: '10px 20px', textAlign: 'center', fontSize: 12, color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>

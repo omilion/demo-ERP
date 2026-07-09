@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState } from 'react'
 import { Badge, Btn, KpiCard, PageHeader, Pager, Table } from '../../components/shared'
 import { FormField, Input, Select } from '../../components/forms'
@@ -62,12 +63,12 @@ export default function HistorialMaterialesPage() {
     })
   }
 
-  const deleteSelected = () => {
+  const deleteSelected = async () => {
     if (!selectedIds.length) return
-    if (!confirm(`Eliminar ${selectedIds.length} movimiento(s) seleccionados?`)) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: `Eliminar ${selectedIds.length} movimiento(s) seleccionados?`, tone: 'danger' })) return
     delManyMut.mutate(selectedIds, {
       onSuccess: () => setSelectedIds([]),
-      onError: err => alert(err?.response?.data?.error || 'Error al eliminar seleccion'),
+      onError: err => toast.error(err?.response?.data?.error || 'Error al eliminar seleccion'),
     })
   }
 
@@ -112,9 +113,9 @@ export default function HistorialMaterialesPage() {
       label: '',
       render: (_, row) => (
         <button
-          onClick={(e) => {
+          onClick={async (e) => {
             e.stopPropagation()
-            if (confirm('Eliminar movimiento?')) delMut.mutate(row.id)
+            if (await confirmDialog({ title: 'Confirmar', detail: 'Eliminar movimiento?', tone: 'danger' })) delMut.mutate(row.id)
           }}
           style={{ background: 'transparent', border: 'none', color: 'var(--red-700)', cursor: 'pointer', fontSize: 12 }}
         >

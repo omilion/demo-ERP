@@ -1,3 +1,4 @@
+import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, Icon, KpiCard, PageHeader, Pager, Table } from '../../components/shared'
@@ -101,7 +102,7 @@ export default function ConsultaPreciosPage() {
 
   function exportarPrecios() {
     downloadFromBackend('/reportes/export/productos', `precios_${new Date().toISOString().slice(0, 10)}.csv`, exportParams)
-      .catch(err => alert(err?.response?.data?.error || 'No se pudo exportar precios'))
+      .catch(err => toast.error(err?.response?.data?.error || 'No se pudo exportar precios'))
   }
 
   function setPrecioDraft(productoId, value) {
@@ -112,7 +113,7 @@ export default function ConsultaPreciosPage() {
     const raw = precioDrafts[row.id] ?? row.precioLista
     const precioLista = Number(raw)
     if (!Number.isFinite(precioLista) || precioLista < 0) {
-      alert('Precio costo inválido')
+      toast.warning('Precio costo inválido')
       return
     }
     updateProducto.mutate(
@@ -125,7 +126,7 @@ export default function ConsultaPreciosPage() {
             return next
           })
         },
-        onError: err => alert(err?.response?.data?.error || 'No se pudo actualizar el precio'),
+        onError: err => toast.error(err?.response?.data?.error || 'No se pudo actualizar el precio'),
       },
     )
   }
