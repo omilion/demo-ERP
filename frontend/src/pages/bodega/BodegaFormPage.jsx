@@ -406,21 +406,12 @@ export default function BodegaFormPage() {
       <FormSection title="Precios" tone="price">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <FormField label="Precio costo" hint="Se define asignando proveedores">
-          {isEdit ? (
-            <>
-              <Input value={data.precio} type="number" prefix="$" disabled />
-              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
-                El costo es el promedio ponderado de los proveedores asignados (ver sección <b>Proveedores y Costos</b>). No se edita aquí.
-              </div>
-            </>
-          ) : (
-            <>
-              <Input value={data.precio} onChange={v => set('precio', v)} type="number" prefix="$" placeholder="0" />
-              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
-                Costo inicial. Al asignar proveedores, se recalcula automáticamente desde ellos.
-              </div>
-            </>
-          )}
+          <Input value={data.precio} type="number" prefix="$" disabled />
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
+            {isEdit
+              ? <>El costo es el promedio ponderado de los proveedores asignados (ver sección <b>Proveedores y Costos</b>). No se edita aquí.</>
+              : <>El costo no se digita aquí. Guarda el producto y luego asígnale un proveedor con su costo en la sección <b>Proveedores y Costos</b>; el sistema lo calcula desde ahí.</>}
+          </div>
         </FormField>
         <FormField label="Precio marco" hint="Convenio">
           <Input value={data.precioMarco} onChange={v => set('precioMarco', v)} type="number" prefix="$" placeholder="0" />
