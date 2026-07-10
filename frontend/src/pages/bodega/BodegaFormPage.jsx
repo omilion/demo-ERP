@@ -139,9 +139,9 @@ export default function BodegaFormPage() {
 
   const { data, set, errors, validate } = useForm({
     cod: '', nombre: '', cat: '', bodega: 'Inventario', stock: '', minimo: '', precio: '',
-    codigoBarra: '', proveedor: '', ubicacion: '', ubicacionId: '', descripcion: '', precioMarco: '', precioLicitacion: '', precioLicitacionManual: false,
+    codigoBarra: '', proveedor: '', ubicacion: '', ubicacionId: '', descripcion: '',
     categoriaId: '', subcategoriaId: '', porcDesc: '',
-    idMarco: '', unidadMedida: '', estadoInventario: 'Inventariado',
+    unidadMedida: '', estadoInventario: 'Inventariado',
     descripcionLicitacion: '', linkCompra: '', edad: '', materialidad: '',
     visibleWeb: false, destacadoWeb: false, fotoUrl: '', fotoUrlGrande: '', fotosGaleria: '',
     descripcionWeb: '', precioWeb: '', ordenWeb: '',
@@ -176,10 +176,6 @@ export default function BodegaFormPage() {
       set('linkCompra', found.linkCompra || '')
       set('edad', found.edad || '')
       set('materialidad', found.materialidad || '')
-      set('precioMarco', found.precioMarco != null ? String(found.precioMarco) : '')
-      set('precioLicitacion', found.precioLicitacion != null ? String(found.precioLicitacion) : '')
-      set('precioLicitacionManual', found.precioLicitacion != null)
-      set('idMarco', found.idMarco || '')
       set('unidadMedida', found.unidadMedida || '')
       set('estadoInventario', found.estadoInventario || 'Inventariado')
     }
@@ -270,9 +266,7 @@ export default function BodegaFormPage() {
       linkCompra: isEdit ? data.linkCompra : data.linkCompra || undefined,
       edad: isEdit ? data.edad : data.edad || undefined,
       materialidad: isEdit ? data.materialidad : data.materialidad || undefined,
-      precioMarco: data.precioMarco !== '' ? Number(data.precioMarco) : undefined,
-      precioLicitacion: data.precioLicitacionManual ? Number(data.precioLicitacion || 0) : (isEdit ? null : undefined),
-      idMarco: data.idMarco || undefined,
+      // precioMarco / precioLicitacion / idMarco se gestionan desde Proveedores, no en inventario
       unidadMedida: data.unidadMedida || undefined,
       estadoInventario: data.estadoInventario || 'Inventariado',
       visibleWeb: !!data.visibleWeb,
@@ -412,37 +406,13 @@ export default function BodegaFormPage() {
               ? <>El costo es el promedio ponderado de los proveedores asignados (ver sección <b>Proveedores y Costos</b>). No se edita aquí.</>
               : <>El costo no se digita aquí. Guarda el producto y luego asígnale un proveedor con su costo en la sección <b>Proveedores y Costos</b>; el sistema lo calcula desde ahí.</>}
           </div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
+            Los precios por canal (sala, marco, licitación) se calculan con los % del proveedor; se gestionan desde <b>Proveedores</b>, no aquí.
+          </div>
         </FormField>
-        <FormField label="Precio marco" hint="Convenio">
-          <Input value={data.precioMarco} onChange={v => set('precioMarco', v)} type="number" prefix="$" placeholder="0" />
+        <FormField label="Descuento (%)" hint="Equivalente a descuento legacy">
+          <Input value={data.porcDesc} onChange={v => set('porcDesc', v)} type="number" placeholder="0" />
         </FormField>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <FormField label="Precio licitación">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-2)', cursor: 'pointer', marginBottom: 8 }}>
-            <input
-              type="checkbox"
-              checked={!!data.precioLicitacionManual}
-              onChange={e => set('precioLicitacionManual', e.target.checked)}
-            />
-            Definir precio manual (sobrescribe el cálculo automático)
-          </label>
-          {data.precioLicitacionManual
-            ? <Input value={data.precioLicitacion} onChange={v => set('precioLicitacion', v)} type="number" prefix="$" placeholder="0" />
-            : <div style={{ fontSize: 12, color: 'var(--text-2)', padding: '8px 0' }}>
-                Automático: <b style={{ fontFamily: "'DM Mono', monospace", color: 'var(--text-1)' }}>{found?.consultaPrecios?.precioLicitacionCalculado != null ? '$' + Number(found.consultaPrecios.precioLicitacionCalculado).toLocaleString('es-CL') : '—'}</b>
-                <span style={{ color: 'var(--text-3)' }}> (costo + % licitación del proveedor)</span>
-              </div>}
-        </FormField>
-        <div />
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-      <FormField label="Descuento (%)" hint="Equivalente a descuento legacy">
-        <Input value={data.porcDesc} onChange={v => set('porcDesc', v)} type="number" placeholder="0" />
-      </FormField>
-      <FormField label="ID Convenio Marco" hint="Código del rubro/línea en CM">
-        <Input value={data.idMarco} onChange={v => set('idMarco', v)} placeholder="123456" />
-      </FormField>
       </div>
 
       </FormSection>

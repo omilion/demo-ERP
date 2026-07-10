@@ -56,7 +56,6 @@ export default function BodegaPage() {
   const [estadoInventario, setEstadoInventario] = useState('')
   const [estadoOperativo, setEstadoOperativo] = useState('')
   const [ubicacionId, setUbicacionId] = useState('')
-  const [idMarco, setIdMarco] = useState('')
   const debounceRef = useRef(null)
 
   useEffect(() => {
@@ -74,7 +73,6 @@ export default function BodegaPage() {
   if (visibleWeb !== 'all') queryParams.visibleWeb = visibleWeb
   if (estadoInventario) queryParams.estadoInventario = estadoInventario
   if (ubicacionId) queryParams.ubicacionId = ubicacionId
-  if (idMarco) queryParams.idMarco = idMarco
   if (filter === 'critico') queryParams.estado = 'critico'
   else if (filter === 'sin-stock') queryParams.estado = 'sin-stock'
 
@@ -102,7 +100,6 @@ export default function BodegaPage() {
       ? <img src={v} alt="" loading="lazy" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} onError={useProductPlaceholderOnError} />
       : <img src={PRODUCT_PLACEHOLDER_IMAGE} alt="" loading="lazy" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} onError={useProductPlaceholderOnError} /> },
     { key: 'codigoInterno', label: 'Cod.', render: v => mono(v) },
-    { key: 'idMarco', label: 'ID Marco', render: v => mono(v) },
     { key: 'codigoBarra', label: 'Cod. Barra', render: v => mono(v) },
     { key: 'visibleWeb', label: 'Web', render: v => <Badge tone={v ? 'green' : 'gray'}>{v ? 'Si' : 'No'}</Badge> },
     { key: 'nombre', label: 'Nombre', wrap: true },
@@ -110,8 +107,6 @@ export default function BodegaPage() {
     { key: 'subcategoria', label: 'Subcategoría', render: (_, row) => row.subcategoria?.nombre || '-' },
     { key: 'porcDesc', label: 'Desc.', align: 'right', render: v => `${Number(v || 0).toLocaleString('es-CL')}%` },
     { key: 'precioLista', label: 'Precio costo', align: 'right', render: v => mono(money(v)) },
-    { key: 'precioWeb', label: 'P. venta/web', align: 'right', render: (v, row) => mono(money(v ?? row.precioLista)) },
-    { key: 'precioMarco', label: 'P. licitación', align: 'right', render: (v, row) => mono(money(row.consultaPrecios?.precioLicitacion ?? v)) },
     { key: 'stockCritico', label: 'Stock crit.', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
     { key: 'stock', label: 'Stock', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
     { key: 'proveedor', label: 'Proveedor', render: v => v || '-' },
@@ -185,7 +180,6 @@ export default function BodegaPage() {
             <option key={u.id} value={u.id}>{u.nombre}</option>
           ))}
         </select>
-        <input value={idMarco} onChange={e => setIdMarco(e.target.value)} placeholder="ID Marco" style={miniInput} />
         <SearchBar placeholder="Buscar código, barra o producto..." value={search} onChange={setSearch} style={{ width: 260 }} />
       </div>
     </div>
@@ -302,7 +296,7 @@ function ImportModal({ canWriteBodega, onClose, onDone }) {
     } finally { setLoading(false) }
   }
 
-  const cols = tipo === 'precios' ? 'codigo, precioLista|precio costo, precioMarco, precioWeb, descuento'
+  const cols = tipo === 'precios' ? 'codigo, precioLista|precio costo, descuento'
     : tipo === 'stock' ? 'codigo, stock, stockCritico'
     : tipo === 'web' ? 'codigo, visibleWeb|mostrarWeb|web'
     : 'codigo, nombre, unidadMedida, categoria, proveedor, precioLista, stock, stockCritico, codigoBarra, bodega, visibleWeb, descripcionLicitacion, linkCompra, edad, materialidad, ubicacion'
