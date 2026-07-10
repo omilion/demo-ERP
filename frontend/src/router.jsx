@@ -33,6 +33,7 @@ import BodegaTallerPage from './pages/bodega-taller/BodegaTallerPage'
 import AccesosPage from './pages/accesos/AccesosPage'
 import DescuentosPage from './pages/descuentos/DescuentosPage'
 import ProveedoresPage from './pages/proveedores/ProveedoresPage'
+import ProveedorDetallePage from './pages/proveedores/ProveedorDetallePage'
 import CrmPage from './pages/crm/CrmPage'
 import ConfigPage from './pages/config/ConfigPage'
 import MatrizVentasPage from './pages/matriz-ventas/MatrizVentasPage'
@@ -109,6 +110,7 @@ export const router = createBrowserRouter([
       { path: 'usuarios',   element: <ProtectedRoute allowedRoles={['admin']}><UsuariosPage /></ProtectedRoute> },
       { path: 'descuentos', element: protect(<DescuentosPage />, { module: 'descuentos', permission: 'write' }) },
       { path: 'proveedores', element: protect(<ProveedoresPage />, { module: 'proveedores' }) },
+      { path: 'proveedores/:id', element: protect(<ProveedorDetallePage />, { module: 'proveedores' }) },
       { path: 'crm', element: protect(<CrmPage />, { module: 'ventas' }) },
       { path: 'config',        element: <ProtectedRoute allowedRoles={['admin']}><ConfigPage /></ProtectedRoute> },
       { path: 'matriz-ventas', element: protect(<MatrizVentasPage />, { module: 'ventas' }) },

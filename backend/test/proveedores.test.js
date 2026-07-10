@@ -658,4 +658,69 @@ describe('SPR-34 proveedores legacy parity', () => {
     const stored = await app.prisma.pagoProveedor.findUnique({ where: { id: pago.id } })
     expect(stored.estado).toBe('Pendiente')
   })
+
+  it('lists productos of a proveedor with search and pagination', async () => {
+    const token = tokenFor(app, 'admin')
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/proveedores',
+      headers: { authorization: `Bearer ${token}` },
+      payload: proveedorPayload(9100 + (marker % 1000)),
+    })
+    expect(createRes.statusCode).toBe(201)
+    const proveedor = JSON.parse(createRes.body)
+    created.push(proveedor.id)
+
+    const productos = []
+    for (const [i, nombre] of [['A', `Cubo Didactico PROD-${marker}`], ['B', `Alfombra Sensorial PROD-${marker}`]]) {
+      const producto = await app.prisma.producto.create({
+        data: {
+          codigoInterno: `QA-PROV-${marker}-${i}`,
+          nombre,
+          proveedorId: proveedor.id,
+          proveedor: proveedor.nombre,
+          precioLista: 1000,
+          activo: true,
+        },
+      })
+      productos.push(producto.id)
+    }
+    // producto inactivo no debe aparecer
+    const inactivo = await app.prisma.producto.create({
+      data: { codigoInterno: `QA-PROV-${marker}-OFF`, nombre: `Inactivo PROD-${marker}`, proveedorId: proveedor.id, activo: false },
+    })
+    productos.push(inactivo.id)
+
+    try {
+      const listRes = await app.inject({
+        method: 'GET',
+        url: `/api/proveedores/${proveedor.id}/productos`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(listRes.statusCode).toBe(200)
+      const body = JSON.parse(listRes.body)
+      expect(body.total).toBe(2)
+      expect(body.items).toHaveLength(2)
+      expect(body.items.map(p => p.codigoInterno).sort()).toEqual([`QA-PROV-${marker}-A`, `QA-PROV-${marker}-B`])
+
+      const searchRes = await app.inject({
+        method: 'GET',
+        url: `/api/proveedores/${proveedor.id}/productos?search=alfombra`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(searchRes.statusCode).toBe(200)
+      const searchBody = JSON.parse(searchRes.body)
+      expect(searchBody.total).toBe(1)
+      expect(searchBody.items[0].nombre).toContain('Alfombra')
+
+      const notFoundRes = await app.inject({
+        method: 'GET',
+        url: '/api/proveedores/99999999/productos',
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(notFoundRes.statusCode).toBe(404)
+    } finally {
+      await app.prisma.producto.deleteMany({ where: { id: { in: productos } } }).catch(() => {})
+    }
+  })
 })

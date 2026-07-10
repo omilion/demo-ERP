@@ -1,10 +1,11 @@
-import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState, useEffect, useRef } from 'react'
-import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
-import { useProveedores, useProveedor, useCreatePagoProveedor, useDeletePagoProveedor, useCreateProveedor, useUpdateProveedor, useDeleteProveedor } from '../../api/proveedores'
+import { useNavigate } from 'react-router-dom'
+import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../components/shared'
+import { useProveedores } from '../../api/proveedores'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import ProveedorFormModal from './ProveedorFormModal'
 
 const SEARCH_MODES = [
   { id: 'general', label: 'Todos', placeholder: 'Nombre, RUT, razon social o codigo...' },
@@ -14,343 +15,15 @@ const SEARCH_MODES = [
 ]
 
 const fmt = n => n ? `${n}%` : '—'
-const fmtPeso = n => '$' + (n || 0).toLocaleString('es-CL')
-const fmtDate = d => d ? new Date(d).toLocaleDateString('es-CL') : '—'
-
-const ESTADO_TONE = { Pagado: 'green', Pendiente: 'amber', Vencido: 'red', 'N/C': 'neutral' }
-
-// ── PagoForm inline ────────────────────────────────────────────────────────────
-function PagoForm({ proveedorId, onClose, canWrite }) {
-  const [form, setForm] = useState({ documento: '', nDoc: '', fechaDoc: '', fechaVencimiento: '', fechaPago: '', estado: 'Pendiente', total: '', bodega: '', obs: '' })
-  const create = useCreatePagoProveedor()
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-
-  const handleSave = () => {
-    if (!canWrite) return
-    if (!form.documento.trim()) return toast.warning('Documento requerido')
-    if (!form.nDoc.trim()) return toast.warning('N Doc requerido')
-    if (!form.fechaDoc) return toast.warning('Fecha Doc requerida')
-    if (!form.total) return toast.warning('Total requerido')
-    create.mutate({ proveedorId, ...form }, { onSuccess: onClose })
-  }
-
-  return (
-    <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', marginBottom: 14, border: '1px solid var(--border)' }}>
-      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-3)', marginBottom: 10 }}>Nuevo pago</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-        {[
-          ['Documento', 'documento', 'text', 'Factura / Boleta'],
-          ['N° Doc',    'nDoc',      'text', '001234'],
-          ['Fecha Doc', 'fechaDoc',  'date', ''],
-          ['Vencimiento','fechaVencimiento','date',''],
-          ['Fecha Pago','fechaPago', 'date', ''],
-          ['Total',     'total',     'number','0'],
-        ].map(([label, key, type, ph]) => (
-          <div key={key}>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>{label}</div>
-            <input
-              type={type}
-              value={form[key]}
-              onChange={e => set(key, e.target.value)}
-              placeholder={ph}
-              style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box' }}
-            />
-          </div>
-        ))}
-      </div>
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>Estado</div>
-        <select value={form.estado} onChange={e => set('estado', e.target.value)} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', width: '100%' }}>
-          {['Pendiente', 'Pagado', 'Vencido', 'N/C'].map(s => <option key={s}>{s}</option>)}
-        </select>
-      </div>
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>Observaciones</div>
-        <input value={form.obs} onChange={e => set('obs', e.target.value)} style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box' }} />
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={handleSave} disabled={create.isPending} style={{ padding: '7px 14px', background: 'var(--green-600)', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-          {create.isPending ? 'Guardando…' : 'Guardar pago'}
-        </button>
-        <button onClick={onClose} style={{ padding: '7px 14px', background: 'none', border: '1px solid var(--border)', borderRadius: 7, fontSize: 12, cursor: 'pointer', color: 'var(--text-2)' }}>
-          Cancelar
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ── TabDatos ────────────────────────────────────────────────────────────────────
-function TabDatos({ p }) {
-  return (
-    <>
-      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center' }}>
-        <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--green-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <span style={{ fontWeight: 700, fontSize: 20, color: 'var(--green-700)' }}>{(p.nombre || '?')[0]}</span>
-        </div>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>{p.nombre}</div>
-          {p.razonSocial && p.razonSocial !== p.nombre && <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{p.razonSocial}</div>}
-          {p.giro && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{p.giro}</div>}
-        </div>
-      </div>
-
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-3)', marginBottom: 8 }}>Identificación</div>
-      {[['RUT', p.rut], ['Código', p.codigoProveedor || '—'], ['Región', p.region || '—'], ['Comuna', p.comuna || '—']].map(([l, v]) => (
-        <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{l}</span>
-          <span style={{ fontSize: 12, fontFamily: "'DM Mono',monospace", fontWeight: 500 }}>{v}</span>
-        </div>
-      ))}
-
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-3)', marginTop: 14, marginBottom: 8 }}>Contacto</div>
-      {[['Email', p.email || '—'], ['Teléfono', p.telefono || '—'], ['Dirección', p.direccion || '—']].map(([l, v]) => (
-        <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{l}</span>
-          <span style={{ fontSize: 12 }}>{v}</span>
-        </div>
-      ))}
-
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-3)', marginTop: 14, marginBottom: 8 }}>Márgenes</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-        {[
-          ['Mg. Sala',  p.porcVentaSala,  p.porcVentaSala >= 50 ? 'green' : p.porcVentaSala >= 30 ? 'amber' : 'gray'],
-          ['Mg. Marco', p.porcMarco,      p.porcMarco >= 40 ? 'green' : p.porcMarco >= 20 ? 'amber' : 'gray'],
-          ['Mg. Lic.',  p.porcLicitacion, p.porcLicitacion >= 30 ? 'green' : p.porcLicitacion >= 15 ? 'amber' : 'gray'],
-        ].map(([label, val, tone]) => (
-          <div key={label} style={{ textAlign: 'center', background: 'var(--bg)', borderRadius: 8, padding: '10px 8px', border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 4 }}>{label}</div>
-            <Badge tone={tone}>{fmt(val)}</Badge>
-          </div>
-        ))}
-      </div>
-    </>
-  )
-}
-
-// ── TabPagos ────────────────────────────────────────────────────────────────────
-function TabPagos({ proveedorId, pagos = [], canWrite, canDelete }) {
-  const [showForm, setShowForm] = useState(false)
-  const deletePago = useDeletePagoProveedor()
-  const confirmDeletePago = async (p) => {
-    const doc = `${p.documento || 'Documento'} ${p.nDoc ? `#${p.nDoc}` : ''}`.trim()
-    if (!await confirmDialog({ title: 'Confirmar', detail: `Eliminar/anular pago ${doc} por ${fmtPeso(p.total)}?`, tone: 'danger' })) return
-    deletePago.mutate({ proveedorId, pagoId: p.id })
-  }
-
-  const total = pagos.reduce((s, p) => s + (p.total || 0), 0)
-  const pendientes = pagos.filter(p => p.estado === 'Pendiente').length
-  const vencidos   = pagos.filter(p => p.estado === 'Vencido').length
-
-  return (
-    <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 14 }}>
-        {[
-          { label: 'Total', value: fmtPeso(total), tone: null },
-          { label: 'Pendientes', value: pendientes, tone: pendientes > 0 ? null : null },
-          { label: 'Vencidos', value: vencidos, tone: vencidos > 0 ? 'red' : null },
-        ].map(({ label, value, tone }, i) => (
-          <div key={i} style={{ background: tone === 'red' ? '#fef2f2' : 'var(--bg)', borderRadius: 8, padding: '10px 12px', border: `1px solid ${tone === 'red' ? 'var(--red)' : 'var(--border)'}`, textAlign: 'center' }}>
-            <div style={{ fontSize: 10, color: tone === 'red' ? 'var(--red)' : 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 3 }}>{label}</div>
-            <div style={{ fontFamily: "'DM Mono',monospace", fontWeight: 700, fontSize: 13, color: tone === 'red' ? 'var(--red)' : 'var(--text-1)' }}>{value}</div>
-          </div>
-        ))}
-      </div>
-
-      {canWrite && (
-        <button
-          onClick={() => setShowForm(s => !s)}
-          style={{ width: '100%', padding: '7px 14px', marginBottom: 12, background: showForm ? 'var(--bg)' : 'var(--green-600)', color: showForm ? 'var(--text-2)' : '#fff', border: showForm ? '1px solid var(--border)' : 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-        >
-          <Icon name={showForm ? 'x' : 'plus'} size={14} />
-          {showForm ? 'Cancelar' : 'Registrar pago'}
-        </button>
-      )}
-
-      {showForm && canWrite && <PagoForm proveedorId={proveedorId} onClose={() => setShowForm(false)} canWrite={canWrite} />}
-
-      {pagos.length === 0 && !showForm ? (
-        <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Sin pagos registrados</div>
-      ) : (
-        pagos.map(p => (
-          <div key={p.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '11px 14px', marginBottom: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 5 }}>
-              <div>
-                <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, fontWeight: 700, color: 'var(--green-700)' }}>
-                  {p.documento || 'Sin tipo'} {p.nDoc ? `#${p.nDoc}` : ''}
-                </span>
-                {p.bodega && <span style={{ fontSize: 11, color: 'var(--text-3)', marginLeft: 8 }}>{p.bodega}</span>}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: 700, fontSize: 13 }}>{fmtPeso(p.total)}</span>
-                <Badge tone={ESTADO_TONE[p.estado] ?? 'gray'} style={{ fontSize: 10 }}>{p.estado}</Badge>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 14, fontSize: 11, color: 'var(--text-3)', marginBottom: 4 }}>
-              {p.fechaDoc && <span>Doc: {fmtDate(p.fechaDoc)}</span>}
-              {p.fechaVencimiento && <span>Vence: {fmtDate(p.fechaVencimiento)}</span>}
-              {p.fechaPago && <span>Pago: {fmtDate(p.fechaPago)}</span>}
-            </div>
-            {p.obs && <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 3 }}>{p.obs}</div>}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5, fontSize: 11, color: 'var(--text-3)' }}>
-              <span>{p.usuario || '—'}</span>
-              {canDelete && <button onClick={() => confirmDeletePago(p)} style={{ fontSize: 11, color: 'var(--red)', cursor: 'pointer', background: 'none', border: 'none', padding: '0 2px' }}>Eliminar</button>}
-            </div>
-          </div>
-        ))
-      )}
-    </>
-  )
-}
-
-// ── ViewProveedorPanel ──────────────────────────────────────────────────────────
-function TabBtn({ active, onClick, children, badge }) {
-  return (
-    <button onClick={onClick} style={{
-      padding: '7px 14px', fontSize: 13, fontWeight: active ? 700 : 400,
-      color: active ? 'var(--green-700)' : 'var(--text-2)',
-      borderBottom: active ? '2px solid var(--green-600)' : '2px solid transparent',
-      background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-    }}>
-      {children}
-      {badge != null && badge > 0 && (
-        <span style={{ fontSize: 10, fontWeight: 700, background: active ? 'var(--green-600)' : 'var(--border)', color: active ? '#fff' : 'var(--text-3)', borderRadius: 99, padding: '1px 6px' }}>{badge}</span>
-      )}
-    </button>
-  )
-}
-
-function ViewProveedorPanel({ proveedor, onClose, onEdit, canWrite, canDelete, canWritePagos, canDeletePagos }) {
-  const [tab, setTab] = useState('datos')
-  const { data: full, isLoading } = useProveedor(proveedor.id)
-  const p = full || proveedor
-  const pagos = full?.pagos ?? []
-  const deleteProv = useDeleteProveedor()
-  const handleDelete = async () => {
-    if (!canDelete) return
-    if (!await confirmDialog({ title: 'Confirmar', detail: `¿Eliminar proveedor "${p.nombre}"? (soft delete)`, tone: 'danger' })) return
-    deleteProv.mutate(p.id, { onSuccess: onClose })
-  }
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex', justifyContent: 'flex-end' }} onClick={onClose}>
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{ width: 420, height: '100%', background: '#fff', boxShadow: '-8px 0 32px oklch(0 0 0 / 0.12)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}
-      >
-        {/* Header */}
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 15 }}>{p.nombre}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace", marginTop: 2 }}>{p.rut}</div>
-          </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            {canWrite && <button onClick={() => onEdit(p)} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Editar</button>}
-            {canDelete && <button onClick={handleDelete} disabled={deleteProv.isPending} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 6, border: '1px solid var(--red, #fca5a5)', background: '#fff', cursor: 'pointer', color: 'var(--red, #991b1b)' }}>Eliminar</button>}
-            <button onClick={onClose} style={{ color: 'var(--text-3)', padding: 4 }}><Icon name="x" size={18} /></button>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-          <TabBtn active={tab === 'datos'}  onClick={() => setTab('datos')}>Datos</TabBtn>
-          <TabBtn active={tab === 'pagos'}  onClick={() => setTab('pagos')} badge={pagos.length}>Pagos</TabBtn>
-        </div>
-
-        <div style={{ flex: 1, padding: '16px 20px', overflowY: 'auto' }}>
-          {isLoading && !full && (
-            <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Cargando…</div>
-          )}
-          {tab === 'datos' && <TabDatos p={p} />}
-          {tab === 'pagos' && <TabPagos proveedorId={p.id} pagos={pagos} canWrite={canWritePagos} canDelete={canDeletePagos} />}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── ProveedorFormModal ──────────────────────────────────────────────────────────
-function ProveedorFormModal({ proveedor, onClose }) {
-  const isEdit = !!proveedor?.id
-  const [form, setForm] = useState({
-    nombre: proveedor?.nombre || '',
-    razonSocial: proveedor?.razonSocial || '',
-    rut: proveedor?.rut || '',
-    giro: proveedor?.giro || '',
-    email: proveedor?.email || '',
-    telefono: proveedor?.telefono || '',
-    direccion: proveedor?.direccion || '',
-    region: proveedor?.region || '',
-    comuna: proveedor?.comuna || '',
-    codigoProveedor: proveedor?.codigoProveedor || '',
-    porcVentaSala: proveedor?.porcVentaSala || '',
-    porcMarco: proveedor?.porcMarco || '',
-    porcLicitacion: proveedor?.porcLicitacion || '',
-  })
-  const create = useCreateProveedor()
-  const update = useUpdateProveedor()
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const requiredFields = ['nombre', 'razonSocial', 'rut', 'giro', 'email', 'telefono', 'direccion', 'region', 'comuna']
-  const handleSave = () => {
-    for (const field of requiredFields) {
-      if (!String(form[field] || '').trim()) return toast.warning(`${field} requerido`)
-    }
-    if (form.nombre.trim().length < 4) return toast.warning('Nombre debe tener al menos 4 caracteres')
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return toast.warning('Email invalido')
-    const payload = { ...form }
-    if (isEdit) update.mutate({ id: proveedor.id, ...payload }, { onSuccess: onClose, onError: err => toast.error(err?.response?.data?.error || 'No se pudo guardar') })
-    else create.mutate(payload, { onSuccess: onClose, onError: err => toast.error(err?.response?.data?.error || 'No se pudo crear') })
-  }
-  const pending = create.isPending || update.isPending
-  const inp = { width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box' }
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'oklch(0 0 0 / 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 560, maxHeight: '90vh', overflowY: 'auto', background: '#fff', borderRadius: 12, padding: '20px 22px' }}>
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>{isEdit ? 'Editar proveedor' : 'Nuevo proveedor'}</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-          {[
-            ['Nombre *', 'nombre'], ['Razon social *', 'razonSocial'],
-            ['RUT *', 'rut'], ['Codigo', 'codigoProveedor'],
-            ['Giro *', 'giro'], ['Email *', 'email'],
-            ['Telefono *', 'telefono'], ['Direccion *', 'direccion'],
-            ['Region *', 'region'], ['Comuna *', 'comuna'],
-            ['Mg. Sala %', 'porcVentaSala'], ['Mg. Marco %', 'porcMarco'],
-            ['Mg. Lic. %', 'porcLicitacion'],
-          ].map(([label, key]) => (
-            <div key={key}>
-              <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>{label}</div>
-              <input
-                value={form[key]}
-                onChange={e => set(key, e.target.value)}
-                type={['codigoProveedor', 'porcVentaSala', 'porcMarco', 'porcLicitacion'].includes(key) ? 'number' : key === 'email' ? 'email' : 'text'}
-                min={key === 'codigoProveedor' ? 1 : undefined}
-                step="1"
-                style={inp}
-              />
-            </div>
-          ))}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button onClick={onClose} style={{ padding: '7px 14px', background: 'none', border: '1px solid var(--border)', borderRadius: 7, fontSize: 12, cursor: 'pointer', color: 'var(--text-2)' }}>Cancelar</button>
-          <button onClick={handleSave} disabled={pending} style={{ padding: '7px 14px', background: 'var(--green-600)', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{pending ? 'Guardando…' : 'Guardar'}</button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ── Main Page ───────────────────────────────────────────────────────────────────
 export default function ProveedoresPage() {
+  const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
   const canWriteProveedores = can(user, 'proveedores', 'write')
-  const canDeleteProveedores = can(user, 'proveedores', 'delete')
-  const canWritePagos = can(user, 'proveedores', 'write')
-  const canDeletePagos = can(user, 'proveedores', 'delete')
   const [search, setSearch] = useState('')
   const [searchMode, setSearchMode] = useState('general')
   const [debounced, setDebounced] = useState('')
-  const [selected, setSelected] = useState(null)
-  const [editing, setEditing] = useState(null)
   const [creating, setCreating] = useState(false)
   const ref = useRef(null)
 
@@ -454,7 +127,7 @@ export default function ProveedoresPage() {
         </div>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-          : <Table columns={cols} rows={proveedores} emptyMessage="Sin proveedores" onRowClick={row => setSelected(row)} ariaLabel="Proveedores" getRowKey={row => row.id} />
+          : <Table columns={cols} rows={proveedores} emptyMessage="Sin proveedores" onRowClick={row => navigate(`/proveedores/${row.id}`)} ariaLabel="Proveedores" getRowKey={row => row.id} />
         }
         {total > (result.limit ?? 100) && (
           <div style={{ padding: '10px 20px', textAlign: 'center', fontSize: 12, color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>
@@ -463,9 +136,7 @@ export default function ProveedoresPage() {
         )}
       </div>
 
-      {selected && <ViewProveedorPanel proveedor={selected} canWrite={canWriteProveedores} canDelete={canDeleteProveedores} canWritePagos={canWritePagos} canDeletePagos={canDeletePagos} onClose={() => setSelected(null)} onEdit={p => { setSelected(null); setEditing(p) }} />}
       {creating && <ProveedorFormModal onClose={() => setCreating(false)} />}
-      {editing && <ProveedorFormModal proveedor={editing} onClose={() => setEditing(null)} />}
     </main>
   )
 }

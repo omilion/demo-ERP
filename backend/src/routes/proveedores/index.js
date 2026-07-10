@@ -198,6 +198,41 @@ export default async function proveedoresRoutes(fastify) {
       }
     })
 
+    f.get('/:id/productos', {
+      preHandler: [f.authenticate, f.rbac('proveedores', 'read')],
+    }, async (request, reply) => {
+      const proveedorId = parseInt(request.params.id, 10)
+      if (isNaN(proveedorId)) return reply.code(400).send({ error: 'ID invalido' })
+      const proveedor = await requireActiveProveedor(f.prisma, proveedorId, reply)
+      if (!proveedor) return reply
+      const { search = '', page = '1' } = request.query
+      const LIMIT = 50
+      const offset = (Math.max(parseInt(page, 10) || 1, 1) - 1) * LIMIT
+      const where = { proveedorId, activo: true }
+      const term = String(search).trim()
+      if (term) {
+        where.OR = [
+          { nombre: { contains: term, mode: 'insensitive' } },
+          { codigoInterno: { contains: term, mode: 'insensitive' } },
+        ]
+      }
+      const [items, total] = await Promise.all([
+        f.prisma.producto.findMany({
+          where,
+          orderBy: { nombre: 'asc' },
+          take: LIMIT,
+          skip: offset,
+          select: {
+            id: true, codigoInterno: true, nombre: true, categoria: true,
+            precioLista: true, precioMarco: true, stock: true,
+            estadoInventario: true, visibleWeb: true, fotoUrl: true,
+          },
+        }),
+        f.prisma.producto.count({ where }),
+      ])
+      return { items, total, limit: LIMIT }
+    })
+
     f.get('/:id/pagos', {
       preHandler: [f.authenticate, f.rbac('proveedores', 'read')],
     }, async (request, reply) => {

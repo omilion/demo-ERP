@@ -16,6 +16,15 @@ export const useProveedor = (id) =>
     enabled: !!id,
   })
 
+export const useProveedorProductos = (id, params = {}) =>
+  useQuery({
+    queryKey: ['proveedores', id, 'productos', params],
+    queryFn: () => api.get(`/proveedores/${id}/productos`, { params }).then(r => r.data),
+    enabled: !!id,
+    placeholderData: prev => prev,
+    staleTime: 120_000,
+  })
+
 export const useCreateProveedor = () => {
   const qc = useQueryClient()
   return useMutation({
