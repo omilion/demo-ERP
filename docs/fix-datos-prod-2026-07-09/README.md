@@ -62,12 +62,36 @@ Total sucursales: 10 → 6.104.
 - `cliente_sucursales`: 6.104
 - API prod respondiendo 200, pm2 online
 
+## Fix 4 — Import/enriquecimiento de catálogo desde `catalogo2` (2026-07-10)
+
+Verificado en el PHP legacy que **sisgestion y sisventa usan solo `catalogo2`** (186 y 16
+queries respectivamente; `catalogo` a secas es tabla muerta), así que `catalogo2` es la
+fuente correcta.
+
+- **276 productos enriquecidos** (los 259 mínimos del Fix 2 + 17 que ya estaban sin datos):
+  solo se llenaron campos vacíos/0, sin pisar datos ya cargados en v2.
+- **1.771 productos del gap insertados** con ficha completa: nombre (mojibake latin1→utf8
+  reparado), categoría/subcategoría (ids legacy = ids v2), precios lista/marco/web,
+  stock, proveedor (mismo remap del Fix 1), descripciones (interna y web), visible_web, edad.
+  Del gap, 298 tuvieron ventas 2025-2026; el resto son ítems de catálogo web (Externo).
+- **573 fotos asignadas**: las ~34k fotos legacy ya estaban en
+  `/var/lib/plastimar-uploads/fotos_*` nombradas por id legacy; se apuntó
+  `foto_url`/`foto_url_grande` al archivo existente vía id legacy. El resto de los
+  importados no tiene foto en el servidor (productos posteriores al rsync de fotos del 04-27).
+- `ERROR_MAS` / `ERROR_RESTA` (líneas internas de corrección de sisventa, no productos)
+  quedaron `activo=false, visible_web=false`.
+- Backup: `staging_fix.productos_enrich_bkp_20260710` (estado previo de los enriquecidos);
+  los insertados se identifican por estar en `staging_fix.cat_import` con `accion='insert'`.
+- Total catálogo v2: 32.533 → **34.563 productos**.
+
+Script: `fix4-catalogo-20260710.sql` (staging `stage_catalogo_import.csv` + `stage_fotos.csv`
+en `/root/fix-20260709/`).
+
 ## Pendientes
 
-- Enriquecer los 259 productos creados con datos mínimos (categoría, precio, foto).
 - 505 productos siguen con proveedor sin % de canal (también así en legacy — definir % con Plastimar).
 - 224 órdenes legacy históricas referencian RUTs sin ficha de cliente.
-- Gap de catálogo: legacy tiene ~34.5k productos vs ~32.8k en v2; evaluar import completo del delta.
+- ~1.470 productos importados sin foto en el servidor (subir fotos nuevas de sisventa post-04-27 si existen).
 - Los `%canal` viven duplicados por nombre de proveedor; revisar reglas de precio en el módulo antes de exponer canal licitación.
 
 ## Archivos
