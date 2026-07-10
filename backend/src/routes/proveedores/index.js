@@ -172,6 +172,17 @@ export default async function proveedoresRoutes(fastify) {
           const duplicate = await ensureProveedorUnique(tx, data, id)
           if (duplicate) return { status: 409, payload: { error: duplicate } }
           const updated = await tx.proveedor.update({ where: { id }, data })
+          // precio_web de productos = precio sala (derivado): recalcular si cambio el % sala
+          if (data.porcVentaSala !== undefined && Number(data.porcVentaSala ?? 0) !== Number(current.porcVentaSala ?? 0)) {
+            const pct = Number(updated.porcVentaSala ?? 0)
+            await tx.$executeRaw`
+              UPDATE catalogo.productos p SET precio_web = CASE
+                WHEN (p.precio_lista::numeric + round(p.precio_lista::numeric * ${pct}::numeric / 100)) > 0
+                THEN ((p.precio_lista::numeric + round(p.precio_lista::numeric * ${pct}::numeric / 100))
+                      + round((p.precio_lista::numeric + round(p.precio_lista::numeric * ${pct}::numeric / 100)) * 19 / 100))::double precision
+                ELSE NULL END
+              WHERE p.proveedor_id = ${id} AND p.activo`
+          }
           return { status: 200, payload: updated }
         })
         return reply.code(result.status).send(result.payload)

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { can } from '../../middleware/rbac.js'
 import { computeEstado, computeEstadoOperacional, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos, sanitizeProductoCosto, syncProductoCategoriaText, syncProductoUbicacionText, validateProductoClasificacion } from './helpers.js'
 import { ensureProductoMkNotification } from './mkNotifications.js'
+import { syncPrecioWeb } from './pricing.js'
 
 const FotoUrlSchema = z.string().refine(isProductoFotoUrl, {
   message: 'fotoUrl debe ser URL o ruta /uploads valida',
@@ -47,7 +48,6 @@ const Schema = z.object({
   edad: z.string().optional(),
   materialidad: z.string().optional(),
   descripcionWeb: z.string().optional(),
-  precioWeb: z.number().min(0).optional(),
   ordenWeb: z.number().int().optional(),
   destacadoWeb: z.boolean().optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'El cuerpo no puede estar vacío' })
@@ -60,7 +60,6 @@ const SENSITIVE_BODEGA_FIELDS = [
   'precioLista',
   'precioMarco',
   'precioLicitacion',
-  'precioWeb',
   'porcDesc',
   'visibleWeb',
   'destacadoWeb',
@@ -129,7 +128,7 @@ export default async function updateProducto(fastify) {
           })
         }
         await ensureProductoMkNotification(tx, updated, request.user)
-        return updated
+        return syncPrecioWeb(tx, updated)
       })
     } catch (error) {
       if (error.code === 'P2002') return reply.code(409).send({ error: 'codigoInterno duplicado' })

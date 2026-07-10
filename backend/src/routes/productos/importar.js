@@ -1,5 +1,6 @@
 // Importador masivo de productos. El cliente parsea CSV/Excel y envia JSON.
 import { ensureProductoMkNotification } from './mkNotifications.js'
+import { syncPrecioWeb } from './pricing.js'
 
 const MAX_IMPORT_ROWS = 1000
 const VALID_BODEGAS = ['Inventario', 'Taller']
@@ -104,13 +105,10 @@ function buildPrecioRow(row, rowIndex, errors) {
   const data = {}
   const precioLista = parseNumber(read(row, ['precioLista', 'precio costo', 'precioCosto', 'precio1']), 'precioLista', rowIndex, errors, { min: 0 })
   const precioMarco = parseNumber(read(row, ['precioMarco', 'precio marco', 'precio licitacion', 'precio convenio marco neto']), 'precioMarco', rowIndex, errors, { min: 0 })
-  const precioWeb = parseNumber(read(row, ['precioWeb', 'precio web']), 'precioWeb', rowIndex, errors, { min: 0 })
-  const precioOferta = parseNumber(read(row, ['precioOferta', 'precio oferta']), 'precioOferta', rowIndex, errors, { min: 0 })
   const porcDesc = parseNumber(read(row, ['porcDesc', 'descuento', 'porc descuento']), 'porcDesc', rowIndex, errors, { min: 0, max: 100 })
   if (precioLista !== undefined) data.precioLista = precioLista
   if (precioMarco !== undefined) data.precioMarco = precioMarco
-  if (precioWeb !== undefined) data.precioWeb = precioWeb
-  else if (precioOferta !== undefined) data.precioWeb = precioOferta
+  // precioWeb es derivado (precio sala con IVA), no importable
   if (porcDesc !== undefined) data.porcDesc = porcDesc
   if (!Object.keys(data).length) errors.push({ fila: rowIndex, error: 'sin precios validos' })
   return data
@@ -146,7 +144,6 @@ function buildNuevoRow(row, rowIndex, errors) {
     proveedor: read(row, ['proveedor']) || null,
     precioLista: parseNumber(read(row, ['precioLista', 'precio costo', 'precioCosto', 'precio1']), 'precioLista', rowIndex, errors, { min: 0 }) ?? 0,
     precioMarco: parseNumber(read(row, ['precioMarco', 'precio marco', 'precio licitacion']), 'precioMarco', rowIndex, errors, { min: 0 }) ?? 0,
-    precioWeb: parseNumber(read(row, ['precioWeb', 'precio web']), 'precioWeb', rowIndex, errors, { min: 0 }) ?? null,
     porcDesc: parseNumber(read(row, ['porcDesc', 'descuento']), 'porcDesc', rowIndex, errors, { min: 0, max: 100 }) ?? 0,
     stock: parseIntNumber(read(row, ['stock']), 'stock', rowIndex, errors, { min: 0 }) ?? 0,
     stockCritico: parseIntNumber(read(row, ['stockCritico', 'stock critico', 'stock minimo', 'minimo']), 'stockCritico', rowIndex, errors, { min: 0 }) ?? 0,
@@ -225,7 +222,8 @@ export default async function importarRoute(fastify) {
     await fastify.prisma.$transaction(async (tx) => {
       for (const row of parsedRows) {
         const product = productosByCode.get(row.codigo.toLowerCase())
-        await tx.producto.update({ where: { id: product.id }, data: row.data })
+        const updated = await tx.producto.update({ where: { id: product.id }, data: row.data })
+        await syncPrecioWeb(tx, updated)
         if (row.data.precioLista !== undefined && Number(row.data.precioLista) !== Number(product.precioLista)) {
           await tx.precioHistorial.create({
             data: precioHistorialData(product.id, Number(product.precioLista), Number(row.data.precioLista), usuarioNombre),
@@ -327,6 +325,7 @@ export default async function importarRoute(fastify) {
     await fastify.prisma.$transaction(async (tx) => {
       for (const row of createRows) {
         const created = await tx.producto.create({ data: row })
+        await syncPrecioWeb(tx, created)
         await ensureProductoMkNotification(tx, created, request.user)
       }
     })

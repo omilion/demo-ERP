@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeConsultaPrecios } from '../src/routes/productos/pricing.js'
+import { computeConsultaPrecios, computePrecioWeb } from '../src/routes/productos/pricing.js'
 
 const proveedor = { porcVentaSala: 0, porcLicitacion: 20 }
 
@@ -21,5 +21,21 @@ describe('computeConsultaPrecios - precio licitacion', () => {
     const r = computeConsultaPrecios({ precioLista: 1000, precioLicitacion: 0 }, null, proveedor)
     expect(r.precioLicitacion).toBe(0)
     expect(r.precioLicitacionManual).toBe(true)
+  })
+})
+
+describe('computePrecioWeb - precio web derivado del precio sala', () => {
+  it('costo + % sala del proveedor, con IVA', () => {
+    // 33613 + 50% = 50420 neto; + IVA 19% = 60000
+    expect(computePrecioWeb(33613, 50)).toBe(60000)
+  })
+
+  it('sin % sala usa solo costo + IVA', () => {
+    expect(computePrecioWeb(1000, 0)).toBe(1190)
+  })
+
+  it('costo 0 o invalido devuelve null (la web oculta el precio)', () => {
+    expect(computePrecioWeb(0, 50)).toBe(null)
+    expect(computePrecioWeb(null, 50)).toBe(null)
   })
 })

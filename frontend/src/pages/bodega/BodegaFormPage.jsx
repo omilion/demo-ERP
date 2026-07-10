@@ -281,7 +281,7 @@ export default function BodegaFormPage() {
       fotoUrlGrande: data.fotoUrlGrande || undefined,
       fotosGaleria: data.fotosGaleria ? data.fotosGaleria.split(/\r?\n/).map(s => s.trim()).filter(Boolean) : undefined,
       descripcionWeb: data.descripcionWeb || undefined,
-      precioWeb: data.precioWeb !== '' ? Number(data.precioWeb) : undefined,
+      // precioWeb es derivado en backend (precio sala con IVA), no se envía
       ordenWeb: data.ordenWeb !== '' ? Number(data.ordenWeb) : undefined,
     }
     if (isEdit && data.subcategoriaId === '') payload.subcategoriaId = null
@@ -516,8 +516,8 @@ export default function BodegaFormPage() {
             <Textarea value={data.descripcionWeb} onChange={v => set('descripcionWeb', v)} rows={3} />
           </FormField>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            <FormField label="Precio web" hint="Vacío = usa precio lista">
-              <Input value={data.precioWeb} onChange={v => set('precioWeb', v)} type="number" prefix="$" placeholder="0" />
+            <FormField label="Precio web" hint="Automático: precio sala (costo + % sala del proveedor, con IVA). No editable.">
+              <Input value={data.precioWeb} type="number" prefix="$" placeholder="—" disabled />
             </FormField>
             <FormField label="Orden" hint="Menor primero">
               <Input value={data.ordenWeb} onChange={v => set('ordenWeb', v)} type="number" placeholder="0" />

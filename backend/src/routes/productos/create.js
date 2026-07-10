@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { can } from '../../middleware/rbac.js'
 import { computeEstado, computeEstadoOperacional, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos, sanitizeProductoCosto, syncProductoCategoriaText, syncProductoUbicacionText, validateProductoClasificacion } from './helpers.js'
 import { ensureProductoMkNotification } from './mkNotifications.js'
+import { syncPrecioWeb } from './pricing.js'
 
 const FotoUrlSchema = z.string().refine(isProductoFotoUrl, {
   message: 'fotoUrl debe ser URL o ruta /uploads valida',
@@ -47,7 +48,6 @@ const Schema = z.object({
   edad: z.string().optional(),
   materialidad: z.string().optional(),
   descripcionWeb: z.string().optional(),
-  precioWeb: z.number().min(0).optional(),
   ordenWeb: z.number().int().optional(),
   destacadoWeb: z.boolean().optional(),
 })
@@ -60,7 +60,6 @@ const SENSITIVE_BODEGA_FIELDS = [
   'precioLista',
   'precioMarco',
   'precioLicitacion',
-  'precioWeb',
   'porcDesc',
   'visibleWeb',
   'destacadoWeb',
@@ -94,7 +93,7 @@ export default async function createProducto(fastify) {
     const p = await fastify.prisma.$transaction(async (tx) => {
       const created = await tx.producto.create({ data })
       await ensureProductoMkNotification(tx, created, request.user)
-      return created
+      return syncPrecioWeb(tx, created)
     })
     const canReadCosto = can(request.user?.role, 'bodega', 'read', request.user?.permisosExtra)
     return reply.code(201).send(sanitizeProductoCosto(normalizeProductoFotos({ ...p, estado: computeEstado(p), estadoOperacional: computeEstadoOperacional(p) }), canReadCosto))

@@ -59,6 +59,44 @@ function mapCategories(categorias) {
   return mapped
 }
 
+// Precio web = precio sala (costo + % venta sala del proveedor, con IVA).
+// Derivado, no editable: se recalcula al crear/editar producto y al cambiar
+// el % del proveedor.
+export function computePrecioWeb(precioLista, porcVentaSala) {
+  const neto = legacyMarkedPrice(toNumber(precioLista), porcVentaSala)
+  return neto > 0 ? withIva(neto) : null
+}
+
+export async function resolvePorcVentaSala(prisma, producto) {
+  if (producto.proveedorId) {
+    const prov = await prisma.proveedor.findUnique({
+      where: { id: producto.proveedorId },
+      select: { porcVentaSala: true },
+    })
+    if (prov) return toNumber(prov.porcVentaSala)
+  }
+  const nombre = String(producto.proveedor ?? '').trim()
+  if (nombre) {
+    const prov = await prisma.proveedor.findFirst({
+      where: { activo: true, nombre: { equals: nombre, mode: 'insensitive' } },
+      select: { porcVentaSala: true },
+    })
+    if (prov) return toNumber(prov.porcVentaSala)
+  }
+  return 0
+}
+
+export async function syncPrecioWeb(prisma, producto) {
+  const pct = await resolvePorcVentaSala(prisma, producto)
+  const precioWeb = computePrecioWeb(producto.precioLista, pct)
+  if ((producto.precioWeb ?? null) === precioWeb) return producto
+  return prisma.producto.update({
+    where: { id: producto.id },
+    data: { precioWeb },
+    include: { subcategoria: true },
+  })
+}
+
 export function computeConsultaPrecios(producto, categoria, proveedor) {
   const precioBase = toNumber(producto.precioLista)
   const pctSala = toNumber(proveedor?.porcVentaSala)
