@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["auth", "clientes", "catalogo", "ventas", "caja", "taller", "bodega", "config", "rrhh", "ai"]
+  schemas  = ["auth", "clientes", "catalogo", "ventas", "caja", "taller", "bodega", "config", "rrhh", "ai", "facturacion"]
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────────
@@ -1867,5 +1867,71 @@ model Vacuna {
   @@index([trabajadorId])
   @@map("vacunas")
   @@schema("rrhh")
+}
+
+// ── FACTURACION (DTE/SII) ────────────────────────────────────────────
+
+model FactEmpresa {
+  id          Int      @id @default(1)
+  rut         String
+  razonSocial String   @map("razon_social")
+  giro        String
+  direccion   String
+  comuna      String
+  ciudad      String?
+  acteco      String?
+  ambiente    String   @default("certificacion")
+  rutEnvia    String?  @map("rut_envia")
+  fchResol    String?  @map("fch_resol")
+  nroResol    Int      @default(0) @map("nro_resol")
+  certPass    String?  @map("cert_pass")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("empresa")
+  @@schema("facturacion")
+}
+
+model FactCaf {
+  id                Int      @id @default(autoincrement())
+  tipoDte           Int      @map("tipo_dte")
+  folioDesde        Int      @map("folio_desde")
+  folioHasta        Int      @map("folio_hasta")
+  siguienteFolio    Int      @map("siguiente_folio")
+  fechaAutorizacion String?  @map("fecha_autorizacion")
+  ambiente          String   @default("certificacion")
+  xml               String
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([tipoDte, ambiente])
+  @@map("cafs")
+  @@schema("facturacion")
+}
+
+model FactDocumento {
+  id             Int       @id @default(autoincrement())
+  clienteId      Int?      @map("cliente_id")
+  ordenId        Int?      @map("orden_id")
+  guiaDespachoId Int?      @map("guia_despacho_id")
+  tipoDte        Int       @map("tipo_dte")
+  folio          Int?
+  fechaEmision   String?   @map("fecha_emision")
+  receptor       Json      @default("{}")
+  items          Json      @default("[]")
+  referencias    Json      @default("[]")
+  extra          Json      @default("{}")
+  totales        Json      @default("{}")
+  estado         String    @default("borrador")
+  estadoDetalle  String?   @map("estado_detalle")
+  trackId        String?   @map("track_id")
+  ambiente       String?
+  xml            String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([tipoDte, folio])
+  @@index([clienteId])
+  @@index([ordenId])
+  @@map("documentos")
+  @@schema("facturacion")
 }
 
