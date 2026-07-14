@@ -1,0 +1,58 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import api from './client'
+
+const cleanParams = (params = {}) => Object.fromEntries(
+  Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+)
+
+export const useDocumentos = (params = {}) => {
+  const queryParams = cleanParams(params)
+  return useQuery({
+    queryKey: ['facturacion', 'documentos', queryParams],
+    queryFn: () => api.get('/facturacion/documentos', { params: queryParams }).then(r => r.data),
+    staleTime: 30_000,
+  })
+}
+
+export const useDocumento = (id) => useQuery({
+  queryKey: ['facturacion', 'documentos', id],
+  queryFn: () => api.get(`/facturacion/documentos/${id}`).then(r => r.data),
+  enabled: !!id,
+})
+
+export const useCrearDocumento = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data) => api.post('/facturacion/documentos', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'documentos'] }),
+  })
+}
+
+export const useEmitirDocumento = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.post(`/facturacion/documentos/${id}/emitir`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'documentos'] }),
+  })
+}
+
+// Keeps the create + issue sequence atomic from the UI's perspective. A failed issue
+// intentionally leaves the server-side document available as an error/borrador to retry.
+export const useEmitirDte = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (data) => {
+      const documento = await api.post('/facturacion/documentos', data).then(r => r.data)
+      const emitido = await api.post(`/facturacion/documentos/${documento.id}/emitir`).then(r => r.data)
+      return { documento, emitido }
+    },
+    onSettled: (_, __, data) => {
+      qc.invalidateQueries({ queryKey: ['facturacion', 'documentos'] })
+      if (data.ordenId) qc.invalidateQueries({ queryKey: ['ventas', Number(data.ordenId)] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      if (data.guiaDespachoId) qc.invalidateQueries({ queryKey: ['guias'] })
+    },
+  })
+}
+
+export const descargarXmlDocumento = (id) => api.get(`/facturacion/documentos/${id}/xml`, { responseType: 'blob' })
