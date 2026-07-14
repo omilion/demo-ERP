@@ -1,11 +1,13 @@
-import { toast, confirmDialog, promptDialog } from '../../store/notif'
+import { toast, promptDialog } from '../../store/notif'
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Badge, Btn, KpiCard, PageHeader, Pager, SearchBar, Table, Tabs } from '../../components/shared'
+import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { useDespachoMatriz, useDespachos, useGuias, useDespachoPacking, useDespachoTracking, useCreateDespacho, useUpdateDespacho, useCreateDespachoTrackingEvento, useUpdateDespachoPacking, useDeleteDespacho, useCreateGuia, useUpdateGuia, useDeleteGuia } from '../../api/despachos'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can, odtPath, ventaPath } from '../../utils/permissions'
+import { useVenta } from '../../api/ventas'
+import { EmitirDteModal } from '../../components/facturacion/DteModals'
 
 const TABS = [
   { id: 'matriz', label: 'Matriz despacho' },
@@ -81,6 +83,7 @@ export default function DespachosPage() {
   const { user } = useAuthStore()
   const canWriteDespacho = can(user, 'despacho', 'write')
   const canDeleteDespacho = can(user, 'despacho', 'delete')
+  const canWriteFacturacion = can(user, 'facturacion', 'write')
   const [tab, setTab] = useState('matriz')
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
@@ -111,6 +114,8 @@ export default function DespachosPage() {
   const [tracking, setTracking] = useState(null)
   const [creatingGuia, setCreatingGuia] = useState(null)
   const [editingGuia, setEditingGuia] = useState(null)
+  const [guiaDte, setGuiaDte] = useState(null)
+  const ventaGuiaDte = useVenta(guiaDte?.ordenId)
 
   useEffect(() => {
     const action = searchParams.get('action')
@@ -345,6 +350,12 @@ export default function DespachosPage() {
     { key: 'origen', label: 'Origen' },
     { key: '_acc', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 8 }}>
+        {canWriteFacturacion && <button
+          disabled={!row.ordenId}
+          title={row.ordenId ? 'Emitir guía de despacho electrónica' : 'Esta guía no tiene una orden asociada'}
+          onClick={(e) => { e.stopPropagation(); if (row.ordenId) setGuiaDte(row) }}
+          style={{ ...linkButton('var(--blue)'), opacity: row.ordenId ? 1 : 0.45, cursor: row.ordenId ? 'pointer' : 'not-allowed' }}
+        >Emitir DTE</button>}
         {canWriteDespacho && <button onClick={(e) => { e.stopPropagation(); setEditingGuia(row) }} style={linkButton('var(--green-700)')}>Editar</button>}
         {canDeleteDespacho && <button onClick={(e) => { e.stopPropagation(); solicitarEliminacion('guia', row.id, delGuiaMut) }} style={linkButton('var(--red)')}>Borrar</button>}
       </div>
@@ -544,6 +555,18 @@ export default function DespachosPage() {
           saving={updateGuiaMut.isPending}
           onClose={() => setEditingGuia(null)}
           onSave={(data) => updateGuiaMut.mutate({ id: editingGuia.id, data }, { onSuccess: () => setEditingGuia(null), onError: showError })}
+        />
+      )}
+      {guiaDte && ventaGuiaDte.data && (
+        <EmitirDteModal
+          venta={ventaGuiaDte.data}
+          guiaDespachoId={guiaDte.id}
+          tipoDte={52}
+          onClose={() => setGuiaDte(null)}
+          onSuccess={({ emitido, documento }) => {
+            setGuiaDte(null)
+            toast.success(`Guía DTE emitida${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`)
+          }}
         />
       )}
     </main>

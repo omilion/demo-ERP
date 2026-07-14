@@ -6,6 +6,7 @@ import cookiePlugin from './plugins/cookie.js'
 import jwtPlugin from './plugins/jwt.js'
 import prismaPlugin from './plugins/prisma.js'
 import auditPlugin from './plugins/audit.js'
+import multipartPlugin from './plugins/multipart.js'
 import authRoutes from './routes/auth/index.js'
 import productosRoutes from './routes/productos/index.js'
 import clientesRoutes from './routes/clientes/index.js'
@@ -47,6 +48,7 @@ import historicoRoutes from './routes/historico/index.js'
 import notificacionesRoutes from './routes/notificaciones/index.js'
 import uploadsRoutes from './routes/uploads/index.js'
 import aiRoutes from './routes/ai/index.js'
+import facturacionRoutes from './routes/facturacion/index.js'
 import { decorateRbac } from './middleware/rbac.js'
 import { isErpAccessToken } from './plugins/jwt.js'
 
@@ -72,6 +74,7 @@ export function buildApp(opts = {}) {
   app.register(jwtPlugin)
   app.register(prismaPlugin)
   app.register(auditPlugin)
+  app.register(multipartPlugin)
   app.register(authRoutes, { prefix: '/api/auth' })
   app.register(productosRoutes, { prefix: '/api/productos' })
   app.register(clientesRoutes, { prefix: '/api/clientes' })
@@ -112,6 +115,7 @@ export function buildApp(opts = {}) {
   app.register(historicoRoutes, { prefix: '/api/historico' })
   app.register(notificacionesRoutes, { prefix: '/api/notificaciones' })
   app.register(aiRoutes, { prefix: '/api/ai' })
+  app.register(facturacionRoutes, { prefix: '/api/facturacion' })
   app.register(uploadsRoutes, { prefix: '/uploads' })
 
   app.get('/api/health', async () => ({ status: 'ok' }))

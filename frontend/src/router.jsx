@@ -54,6 +54,7 @@ import HistoricoPage from './pages/admin/HistoricoPage'
 import SaneamientoLegacyPage from './pages/admin/SaneamientoLegacyPage'
 import ComisionesPage from './pages/admin/ComisionesPage'
 import IaBalancePage from './pages/admin/IaBalancePage'
+import DocumentosPage from './pages/facturacion/DocumentosPage'
 
 
 const ALL = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
@@ -115,6 +116,7 @@ export const router = createBrowserRouter([
       { path: 'config',        element: <ProtectedRoute allowedRoles={['admin']}><ConfigPage /></ProtectedRoute> },
       { path: 'matriz-ventas', element: protect(<MatrizVentasPage />, { module: 'ventas' }) },
       { path: 'despachos', element: protect(<DespachosPage />, { module: 'despacho' }) },
+      { path: 'facturacion/documentos', element: protect(<DocumentosPage />, { module: 'facturacion' }) },
       { path: 'bitacora-taller', element: protect(<BitacoraTallerPage />, { module: 'taller' }) },
       { path: 'historial-materiales', element: protect(<HistorialMaterialesPage />, { module: 'taller' }) },
       { path: 'stock-ingresos', element: protect(<StockIngresosPage />, { module: 'bodega' }) },
