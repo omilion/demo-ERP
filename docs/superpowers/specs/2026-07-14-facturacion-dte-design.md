@@ -147,7 +147,10 @@ error explícito "Falta certificado digital" — no falla silencioso.
 
 Nueva carpeta `backend/src/routes/facturacion/index.js`, registrada en `app.js` con el
 mismo patrón que el resto de módulos (`fastify.register(facturacionRoutes, ...)`).
-Espejo de los endpoints de HM ERP, sin las rutas de libros:
+Espejo de los endpoints de HM ERP, sin las rutas de libros. **Actualizado tras
+implementación** (2026-07-14, hallazgo de la revisión final de branch): los nombres
+reales difieren levemente de la tabla original de este spec — se documentan aquí los
+que efectivamente se implementaron y pasaron review:
 
 ```
 GET    /api/facturacion/empresa
@@ -155,19 +158,38 @@ PUT    /api/facturacion/empresa
 POST   /api/facturacion/empresa/certificado
 
 GET    /api/facturacion/cafs
-POST   /api/facturacion/cafs/upload
-DELETE /api/facturacion/cafs/:cafId
+POST   /api/facturacion/cafs
+DELETE /api/facturacion/cafs/:id
 
 GET    /api/facturacion/documentos
 POST   /api/facturacion/documentos
-PATCH  /api/facturacion/documentos/:docId
-DELETE /api/facturacion/documentos/:docId
-POST   /api/facturacion/documentos/:docId/emitir
-POST   /api/facturacion/documentos/enviar
-POST   /api/facturacion/documentos/:docId/estado
-GET    /api/facturacion/documentos/:docId/descargar
-GET    /api/facturacion/documentos/:docId/imprimir
+GET    /api/facturacion/documentos/:id
+PUT    /api/facturacion/documentos/:id
+DELETE /api/facturacion/documentos/:id
+POST   /api/facturacion/documentos/:id/emitir
+POST   /api/facturacion/documentos/:id/enviar
+POST   /api/facturacion/enviar-lote
+GET    /api/facturacion/documentos/:id/estado
+GET    /api/facturacion/documentos/:id/xml
+GET    /api/facturacion/documentos/:id/html
 ```
+
+Notas para el plan de frontend (que debe usar estos nombres, no los de la tabla
+original): `estado` es `GET` (no `POST`) porque consulta al SII y persiste el resultado
+(`estado`/`estadoDetalle`) como efecto colateral — mismo patrón que HM ERP original, no
+es un error nuevo. `/documentos/:id/estado` reemplaza `descargar`→`xml` e
+`imprimir`→`html`. Envío en lote quedó en su propia ruta `/enviar-lote` en vez de
+sobrecargar `/documentos/enviar`.
+
+**RBAC (hallazgo de la revisión final):** todas las rutas usan
+`fastify.rbac('facturacion', 'read'|'write', { allowExtra: false })`. Como
+`middleware/rbac.js` no tiene entrada `facturacion` en ningún rol salvo el wildcard
+`'*'` de `admin`, **hoy solo admin puede usar facturación** — decisión deliberada para
+esta fase (mantener superficie mínima), pero `allowExtra: false` bloquea también la
+vía de permisos extra por usuario, así que hoy no hay forma de delegar acceso sin tocar
+código. El plan de frontend debe decidir explícitamente qué roles (¿cajero? ¿vendedor?)
+necesitan acceso antes de construir los botones "Emitir DTE", y si corresponde
+agregar `facturacion` a `PERMISSIONS` o relajar `allowExtra`.
 
 ## Deploy
 
