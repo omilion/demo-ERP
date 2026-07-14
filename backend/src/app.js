@@ -6,6 +6,7 @@ import cookiePlugin from './plugins/cookie.js'
 import jwtPlugin from './plugins/jwt.js'
 import prismaPlugin from './plugins/prisma.js'
 import auditPlugin from './plugins/audit.js'
+import multipartPlugin from './plugins/multipart.js'
 import authRoutes from './routes/auth/index.js'
 import productosRoutes from './routes/productos/index.js'
 import clientesRoutes from './routes/clientes/index.js'
@@ -72,6 +73,7 @@ export function buildApp(opts = {}) {
   app.register(jwtPlugin)
   app.register(prismaPlugin)
   app.register(auditPlugin)
+  app.register(multipartPlugin)
   app.register(authRoutes, { prefix: '/api/auth' })
   app.register(productosRoutes, { prefix: '/api/productos' })
   app.register(clientesRoutes, { prefix: '/api/clientes' })
