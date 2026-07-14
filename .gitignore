@@ -16,3 +16,4 @@ gh_deploy_key
 gh_deploy_key.pub
 tmp/
 *-dump.sql
+.worktrees/
