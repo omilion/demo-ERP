@@ -91,4 +91,34 @@ describe('routes /api/facturacion', () => {
     expect(res.statusCode).toBe(200)
     expect(Array.isArray(JSON.parse(res.body).cafs)).toBe(true)
   })
+
+  it('GET /api/facturacion/documentos filters by ordenId (for the venta Documentos tab)', async () => {
+    const created = await app.inject({
+      method: 'POST', url: '/api/facturacion/documentos',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        tipoDte: 33,
+        ordenId: 987654321,
+        receptor: { rut: '11111111-1', razonSocial: 'Cliente Prueba' },
+        items: [{ nombre: 'Tela acabada', cantidad: 1, precio: 1000 }],
+        extra: { qaMarker: true }
+      }
+    })
+    expect(created.statusCode).toBe(201)
+    const doc = JSON.parse(created.body)
+
+    const filtered = await app.inject({
+      method: 'GET', url: `/api/facturacion/documentos?ordenId=${doc.ordenId}`,
+      headers: { authorization: `Bearer ${token}` }
+    })
+    expect(filtered.statusCode).toBe(200)
+    const { documentos } = JSON.parse(filtered.body)
+    expect(documentos.some((d) => d.id === doc.id)).toBe(true)
+    expect(documentos.every((d) => d.ordenId === doc.ordenId)).toBe(true)
+
+    await app.inject({
+      method: 'DELETE', url: `/api/facturacion/documentos/${doc.id}`,
+      headers: { authorization: `Bearer ${token}` }
+    })
+  })
 })

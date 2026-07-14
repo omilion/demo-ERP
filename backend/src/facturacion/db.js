@@ -45,11 +45,12 @@ export const createFacturacionDb = (prisma) => {
 
   const documentos = {
     get: (docId) => prisma.factDocumento.findUnique({ where: { id: Number(docId) } }),
-    list: ({ estado, tipoDte, clienteId } = {}) => prisma.factDocumento.findMany({
+    list: ({ estado, tipoDte, clienteId, ordenId } = {}) => prisma.factDocumento.findMany({
       where: {
         ...(estado ? { estado } : {}),
         ...(tipoDte ? { tipoDte: Number(tipoDte) } : {}),
-        ...(clienteId ? { clienteId: Number(clienteId) } : {})
+        ...(clienteId ? { clienteId: Number(clienteId) } : {}),
+        ...(ordenId ? { ordenId: Number(ordenId) } : {})
       },
       orderBy: { createdAt: 'desc' }
     }),

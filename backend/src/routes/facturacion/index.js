@@ -159,14 +159,15 @@ export default async function facturacionRoutes(fastify) {
   // --- Documentos ---
 
   fastify.get('/documentos', readAuth, async (request, reply) => {
-    const { estado, tipoDte, clienteId } = request.query
+    const { estado, tipoDte, clienteId, ordenId } = request.query
     if (estado && !ESTADOS.includes(String(estado))) {
       return reply.code(400).send({ error: `Estado inválido. Válidos: ${ESTADOS.join(', ')}.` })
     }
     const documentos = await db.documentos.list({
       estado: estado ? String(estado) : undefined,
       tipoDte: tipoDte ? Number(tipoDte) : undefined,
-      clienteId: clienteId ? Number(clienteId) : undefined
+      clienteId: clienteId ? Number(clienteId) : undefined,
+      ordenId: ordenId ? Number(ordenId) : undefined
     })
     return { documentos: documentos.map((doc) => ({ ...doc, tipoNombre: TIPOS_DTE[doc.tipoDte] || `DTE ${doc.tipoDte}` })) }
   })
