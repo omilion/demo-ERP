@@ -1,9 +1,14 @@
-import { toast, confirmDialog, promptDialog } from '../../store/notif'
+import { toast } from '../../store/notif'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, Icon } from '../shared'
 import { ViewPanel, FormDivider } from './index'
 import { useVenta, useDeleteVenta, useForzarTaller } from '../../api/ventas'
+import { useDocumentos } from '../../api/facturacion'
+import { EmitirDteModal, NotaDteModal } from '../facturacion/DteModals'
+import { TIPOS_DTE } from '../../utils/facturacion'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
@@ -69,7 +74,7 @@ function TabBtn({ active, onClick, children, badge }) {
 }
 
 // ── Tab: Detalle ───────────────────────────────────────────────────────────────
-function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespacho }) {
+function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespacho, canEmitirDte, onEmitirDte }) {
   const items = v.items || []
   const total = v.total || 0
   const abono = v.abono || 0
@@ -241,6 +246,19 @@ function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespac
           <Icon name="tool" size={14} />
           {forzarTallerMut.isPending ? 'Enviando...' : 'Gatillar Taller / ODT'}
         </button>
+
+        {canEmitirDte && (
+          <button
+            onClick={onEmitirDte}
+            style={{
+              flex: '1 1 140px', padding: '10px 12px', fontSize: 12, fontWeight: 600,
+              color: '#fff', background: 'var(--blue)', border: 'none', borderRadius: 8,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Icon name="fileText" size={14} /> Emitir DTE
+          </button>
+        )}
       </div>
     </>
   )
@@ -340,7 +358,9 @@ function DocumentoRow({ label, value, mono }) {
 }
 
 // ── Tab: Documentos ────────────────────────────────────────────────────────────
-function TabDocumentos({ v, pagos }) {
+const DTE_TONE = { borrador: 'gray', emitido: 'blue', enviado: 'amber', aceptado: 'green', rechazado: 'red', error: 'red' }
+
+function TabDocumentos({ v, pagos, dtes, canWriteFacturacion, onNota }) {
   const referenciales = (pagos || []).filter(isReferencialPago)
   const pagosReales = (pagos || []).filter(p => !isReferencialPago(p))
   const hasContent = v.licitacion || v.guias || v.facturado > 0 || v.observaciones || referenciales.length > 0
@@ -406,6 +426,33 @@ function TabDocumentos({ v, pagos }) {
         )}
       </div>
 
+      <FormDivider label="Documentos tributarios electrónicos" />
+      {dtes.length === 0 ? (
+        <div style={{ padding: '10px 0 18px', color: 'var(--text-3)', fontSize: 13 }}>No hay DTEs asociados a esta venta.</div>
+      ) : (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead><tr style={{ background: 'var(--bg)' }}>
+              {['Tipo', 'Folio', 'Total', 'Estado', 'Acciones'].map(label => <th key={label} style={{ padding: '7px 10px', textAlign: label === 'Total' ? 'right' : 'left', fontSize: 10, textTransform: 'uppercase', color: 'var(--text-3)' }}>{label}</th>)}
+            </tr></thead>
+            <tbody>{dtes.map(doc => (
+              <tr key={doc.id} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: '8px 10px' }}>{TIPOS_DTE[doc.tipoDte] || `DTE ${doc.tipoDte}`}</td>
+                <td style={{ padding: '8px 10px', fontFamily: "'DM Mono',monospace" }}>{doc.folio || '—'}</td>
+                <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: "'DM Mono',monospace" }}>{fmt(doc.totales?.total)}</td>
+                <td style={{ padding: '8px 10px' }}><Badge tone={DTE_TONE[doc.estado] || 'gray'}>{doc.estado}</Badge></td>
+                <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                  {canWriteFacturacion && ['aceptado', 'enviado'].includes(doc.estado) && <>
+                    <button onClick={() => onNota(doc, 61)} style={dteLink('var(--red)')}>Anular con NC</button>
+                    <button onClick={() => onNota(doc, 56)} style={dteLink('var(--blue)')}>Corregir con ND</button>
+                  </>}
+                </td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+
       {v.observaciones && (
         <>
           <FormDivider label="Observaciones / Notas" />
@@ -418,20 +465,29 @@ function TabDocumentos({ v, pagos }) {
   )
 }
 
+const dteLink = color => ({ background: 'none', border: 'none', color, cursor: 'pointer', fontSize: 11, fontWeight: 600, padding: '2px 4px', textDecoration: 'underline' })
+
 // ── Main panel ─────────────────────────────────────────────────────────────────
 export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDelete = false, variant = 'drawer' }) {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
   const [tab, setTab] = useState('detalle')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [emitirDte, setEmitirDte] = useState(false)
+  const [notaDte, setNotaDte] = useState(null)
 
   const { data: full, isLoading } = useVenta(venta.id)
   const deleteVenta = useDeleteVenta()
   const forzarTallerMut = useForzarTaller()
+  const documentosDteQuery = useDocumentos({ ordenId: venta.id })
 
   const v = full || venta
   const odts  = full?.odts  ?? []
   const pagos = full?.pagos ?? []
   const documentosCount = pagos.filter(isReferencialPago).length
+  const dtes = documentosDteQuery.data?.documentos || []
+  const canWriteFacturacion = can(user, 'facturacion', 'write')
+  const ventaYaEmitida = dtes.some(doc => ['emitido', 'enviado', 'aceptado'].includes(doc.estado))
   const fecha = v.createdAt
     ? new Date(v.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—'
@@ -503,11 +559,13 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
               handleForzarTaller={handleForzarTaller}
               forzarTallerMut={forzarTallerMut}
               handleCreateDespacho={handleCreateDespacho}
+              canEmitirDte={canWriteFacturacion && !ventaYaEmitida}
+              onEmitirDte={() => setEmitirDte(true)}
             />
           )}
           {tab === 'taller'     && <TabTaller odts={odts} onGoTaller={() => navigate('/taller')} />}
           {tab === 'pagos'      && <TabPagos pagos={pagos} />}
-          {tab === 'documentos' && <TabDocumentos v={v} pagos={pagos} />}
+          {tab === 'documentos' && <TabDocumentos v={v} pagos={pagos} dtes={dtes} canWriteFacturacion={canWriteFacturacion} onNota={(documento, tipoDte) => setNotaDte({ documento, tipoDte })} />}
         </div>
 
         {confirmDelete && canDelete && (
@@ -532,6 +590,8 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
             </div>
           </div>
         )}
+        {emitirDte && <EmitirDteModal venta={v} onClose={() => setEmitirDte(false)} onSuccess={({ emitido, documento }) => { setEmitirDte(false); toast.success(`DTE emitido${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`) }} />}
+        {notaDte && <NotaDteModal documento={notaDte.documento} tipoDte={notaDte.tipoDte} onClose={() => setNotaDte(null)} onSuccess={({ emitido, documento }) => { setNotaDte(null); toast.success(`DTE emitido${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`) }} />}
       </section>
     )
   }
@@ -569,11 +629,13 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
           handleForzarTaller={handleForzarTaller}
           forzarTallerMut={forzarTallerMut}
           handleCreateDespacho={handleCreateDespacho}
+          canEmitirDte={canWriteFacturacion && !ventaYaEmitida}
+          onEmitirDte={() => setEmitirDte(true)}
         />
       )}
       {tab === 'taller'     && <TabTaller odts={odts} onGoTaller={() => navigate('/taller')} />}
       {tab === 'pagos'      && <TabPagos pagos={pagos} />}
-      {tab === 'documentos' && <TabDocumentos v={v} pagos={pagos} />}
+      {tab === 'documentos' && <TabDocumentos v={v} pagos={pagos} dtes={dtes} canWriteFacturacion={canWriteFacturacion} onNota={(documento, tipoDte) => setNotaDte({ documento, tipoDte })} />}
 
       {/* Delete confirmation */}
       {confirmDelete && canDelete && (
@@ -598,6 +660,8 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
           </div>
         </div>
       )}
+      {emitirDte && <EmitirDteModal venta={v} onClose={() => setEmitirDte(false)} onSuccess={({ emitido, documento }) => { setEmitirDte(false); toast.success(`DTE emitido${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`) }} />}
+      {notaDte && <NotaDteModal documento={notaDte.documento} tipoDte={notaDte.tipoDte} onClose={() => setNotaDte(null)} onSuccess={({ emitido, documento }) => { setNotaDte(null); toast.success(`DTE emitido${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`) }} />}
     </ViewPanel>
   )
 }
