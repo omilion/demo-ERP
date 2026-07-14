@@ -28,15 +28,18 @@ export const createFacturacionDb = (prisma) => {
 
   const cafs = {
     tomarFolio: (tipoDte, ambiente) => prisma.$transaction(async (tx) => {
-      const candidatos = await tx.factCaf.findMany({
-        where: { tipoDte, ambiente },
-        orderBy: { folioDesde: 'asc' }
-      });
-      const caf = candidatos.find((c) => c.siguienteFolio <= c.folioHasta);
-      if (!caf) return null;
+      const locked = await tx.$queryRaw`
+        SELECT id FROM "facturacion"."cafs"
+        WHERE "tipo_dte" = ${tipoDte} AND "ambiente" = ${ambiente} AND "siguiente_folio" <= "folio_hasta"
+        ORDER BY "folio_desde" ASC
+        LIMIT 1
+        FOR UPDATE
+      `;
+      if (!locked.length) return null;
+      const caf = await tx.factCaf.findUniqueOrThrow({ where: { id: locked[0].id } });
       const folio = caf.siguienteFolio;
-      await tx.factCaf.update({ where: { id: caf.id }, data: { siguienteFolio: folio + 1 } });
-      return { caf, folio };
+      const updated = await tx.factCaf.update({ where: { id: caf.id }, data: { siguienteFolio: folio + 1 } });
+      return { caf: updated, folio };
     })
   };
 

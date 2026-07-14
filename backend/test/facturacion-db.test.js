@@ -52,6 +52,18 @@ describe('facturacion/db (Prisma adapter)', () => {
     expect(reloaded.siguienteFolio).toBe(502)
   })
 
+  it('cafs.tomarFolio does not double-issue a folio under concurrent calls', async () => {
+    await prisma.factCaf.create({
+      data: { tipoDte: 34, folioDesde: 700, folioHasta: 701, siguienteFolio: 700, fechaAutorizacion: marker, ambiente: 'certificacion', xml: '<CAF/>' }
+    })
+    const [r1, r2] = await Promise.all([
+      db.cafs.tomarFolio(34, 'certificacion'),
+      db.cafs.tomarFolio(34, 'certificacion')
+    ])
+    expect(new Set([r1.folio, r2.folio]).size).toBe(2)
+    expect([r1.folio, r2.folio].sort()).toEqual([700, 701])
+  })
+
   it('documentos.create/get/list/update round-trip JSON fields', async () => {
     const created = await db.documentos.create({
       tipoDte: 33,
