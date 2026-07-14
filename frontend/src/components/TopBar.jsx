@@ -31,6 +31,9 @@ const NAV_GROUPS = [
     { label: 'Cobranza', route: '/cobranza', module: 'cobranza' },
     { label: 'Pagos Proveedores', route: '/pagos-proveedores', module: 'proveedores' },
   ] },
+  { label: 'Facturación', items: [
+    { label: 'Documentos Emitidos', route: '/facturacion/documentos', module: 'facturacion' },
+  ] },
   { label: 'RRHH', items: [
     { label: 'Trabajadores', route: '/rrhh', module: 'rrhh' },
   ] },
