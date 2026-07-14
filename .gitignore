@@ -17,3 +17,5 @@ gh_deploy_key.pub
 tmp/
 *-dump.sql
 .worktrees/
+backend/data/facturacion/*.p12
+backend/data/facturacion/*.pfx
