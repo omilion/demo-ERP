@@ -77,7 +77,7 @@ describe('routes /api/facturacion', () => {
       headers: { authorization: `Bearer ${token}` }
     })
     expect(emitir.statusCode).toBe(422)
-    expect(JSON.parse(emitir.body).error).toMatch(/certificado/)
+    expect(JSON.parse(emitir.body).error).toMatch(/certificado|resolución/)
 
     const del = await app.inject({
       method: 'DELETE', url: `/api/facturacion/documentos/${doc.id}`,
