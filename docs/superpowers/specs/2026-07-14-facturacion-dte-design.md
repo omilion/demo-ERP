@@ -41,6 +41,15 @@ queda cableado pero no habilitado.
 - Intercambio de acuses de recibo automático
 - Ambiente producción
 
+**Ejecución en dos planes:** por el tamaño (7 módulos portados + adapter + engine +
+rutas + 3 tablas nuevas + UI en 2 pantallas existentes), se ejecuta en dos planes
+separados, cada uno con software probado y funcionando por sí solo:
+1. **Backend** (schema Prisma, motor DTE portado, adapter, rutas Fastify) — probable
+   por API/curl, sin UI. Bloqueado en "emitir real" por falta de certificado.
+2. **Frontend** (pantalla Configuración con carga de cert/CAF, botón "Emitir DTE" en
+   Orden y en Guía de Despacho, flujo NC/ND) — depende del backend, se planifica
+   después de verificar el backend.
+
 ## Qué se porta tal cual (sin modificar lógica)
 
 De `D:\analytics\backend\src\facturacion\` a `D:\plastimar-erp-v2\backend\src\facturacion\`:
@@ -50,9 +59,15 @@ Esta lógica ya está aceptada por el SII (canonicalización XML, XMLDSIG vía x
 límites de campo como `UnmdItem` maxLength=4). No se reescribe: solo se copia y se le
 inyecta un adapter de datos distinto.
 
-`engine.js` se copia con cambios mínimos: en vez de recibir `{ db: <sqlite>, dataDir }`
-recibe `{ db: <adapter Prisma>, dataDir }`, misma interfaz de métodos
-(`getEmpresa`, `getCaf`, `saveDocumento`, etc.) implementada contra Postgres.
+`engine.js` se copia con la misma interfaz pública (`getEmpresa`, `emitir`, `enviar`,
+`consultarEstado`, `descargarXml`, `certInfo`, `saveCert`) pero **su cuerpo se
+async-ifica**: en HM las llamadas a `db.facturacion.*` son síncronas (better-sqlite3);
+contra Prisma son todas async, así que cada función interna que toca la BD
+(`getEmpresa`, `resolveReceptor`, `resolveReferencias`, `emitir`, `descargarXml`) pasa a
+`await`. No es un copy-paste literal, pero sí la misma lógica y orden de validaciones —
+sin reinventar el flujo que ya está aceptado por el SII. Se excluyen `generarLibro`,
+`enviarLibro`, `estadoLibro` (libros fuera de alcance) y la resolución de receptor
+usa `Cliente` de Plastimar (`clientes.Cliente`) en vez del `clients` propio de HM.
 
 ## Modelo de datos (Prisma)
 
@@ -98,9 +113,14 @@ model FactDocumento {
 }
 ```
 
-`config.EmpresaConfig` (existente) se extiende con:
-`ambiente` (default "certificacion"), `rutEnvia`, `fchResol`, `nroResol`, `certPass`,
-`certPath`, `acteco`. Se precarga con los datos de Plastimar Limitada de arriba.
+**Corrección tras revisar el código real de HM (2026-07-14):** `config.EmpresaConfig`
+NO se extiende — esa tabla ya soporta múltiples empresas (`codigoEmpresa`, unicidad por
+nombre) para otros fines y mezclar ahí certPass/ambiente rompería esa semántica. En su
+lugar, `facturacion.FactEmpresa` es una tabla **singleton** (id=1 fijo) dedicada al
+emisor DTE, igual a como `fact_empresa` funciona en HM ERP: rut, razonSocial, giro,
+direccion, comuna, ciudad, acteco, ambiente (default "certificacion"), rutEnvia,
+fchResol, nroResol, certPass. Se precarga con los datos de Plastimar Limitada de arriba
+vía INSERT idempotente en la misma migración que crea la tabla.
 
 ## Certificado digital
 
