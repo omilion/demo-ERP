@@ -559,10 +559,17 @@ function AgregarProductoWidget({ venta, items, canWrite }) {
               key={p.id}
               onClick={() => agregarProducto(p)}
               disabled={updateVenta.isPending}
-              style={{ display: 'flex', justifyContent: 'space-between', width: '100%', padding: '7px 10px', background: '#fff', border: 'none', borderTop: '1px solid var(--border)', cursor: 'pointer', fontSize: 12, textAlign: 'left' }}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, width: '100%', padding: '7px 10px', background: '#fff', border: 'none', borderTop: '1px solid var(--border)', cursor: 'pointer', fontSize: 12, textAlign: 'left' }}
             >
-              <span>{p.nombre} <span style={{ color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>({p.codigoInterno})</span></span>
-              <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>{fmt(defaultPrecioUnitario(p, venta.tipo))}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                {p.fotoUrl ? (
+                  <img src={p.fotoUrl} alt="" style={{ width: 26, height: 26, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)', flexShrink: 0 }} />
+                ) : (
+                  <span style={{ width: 26, height: 26, borderRadius: 4, background: 'var(--bg)', border: '1px solid var(--border)', flexShrink: 0, display: 'inline-block' }} />
+                )}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre} <span style={{ color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>({p.codigoInterno})</span></span>
+              </span>
+              <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: 600, flexShrink: 0 }}>{fmt(defaultPrecioUnitario(p, venta.tipo))}</span>
             </button>
           ))}
         </div>
