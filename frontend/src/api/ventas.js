@@ -134,3 +134,31 @@ export const useForzarTaller = () => {
     },
   })
 }
+
+export const useOrdenesTransporte = (ordenId) => useQuery({
+  queryKey: ['ventas', ordenId, 'ordenes-transporte'],
+  queryFn: () => api.get(`/ventas/${ordenId}/ordenes-transporte`).then(r => r.data),
+  enabled: !!ordenId,
+})
+
+export const useCrearOrdenTransporte = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ordenId, data }) => api.post(`/ventas/${ordenId}/ordenes-transporte`, data).then(r => r.data),
+    onSuccess: (_, { ordenId }) => {
+      qc.invalidateQueries({ queryKey: ['ventas', ordenId, 'ordenes-transporte'] })
+      qc.invalidateQueries({ queryKey: ['ventas', ordenId] })
+    },
+  })
+}
+
+export const useDeleteOrdenTransporte = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id }) => api.delete(`/ventas/ordenes-transporte/${id}`),
+    onSuccess: (_, { ordenId }) => {
+      qc.invalidateQueries({ queryKey: ['ventas', ordenId, 'ordenes-transporte'] })
+      qc.invalidateQueries({ queryKey: ['ventas', ordenId] })
+    },
+  })
+}
