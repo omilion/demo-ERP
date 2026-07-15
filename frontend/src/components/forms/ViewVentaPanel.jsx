@@ -639,7 +639,7 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmit
       <button onClick={abrirNotaVenta} style={opBtnStyle('var(--blue)')}>
         <Icon name="printer" size={14} /> Nota de Venta
       </button>
-      <button onClick={() => navigate(`/taller/nueva?ordenId=${v.id}`)} style={opBtnStyle('var(--amber)')}>
+      <button onClick={() => navigate(`/pasar-taller?ordenId=${v.id}`)} style={opBtnStyle('var(--amber)')}>
         <Icon name="tool" size={14} /> Notificar a Taller
       </button>
       {canEmitirDte && (
