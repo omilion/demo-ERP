@@ -212,7 +212,9 @@ export default async function createVenta(fastify) {
             where: { id: cot.id },
             data: {
               ordenId: created.id,
-              estado: 'Adjudicada',
+              // No se toca el estado ni se auto-adjudica: las cantidades
+              // adjudicadas se confirman despues, item por item, segun lo que
+              // el organismo licitante realmente adjudique (LicitacionDetallePage).
               fecha: licitacionFecha ? new Date(licitacionFecha) : undefined,
               plazo: licitacionPlazo || undefined,
               referencia: licitacionReferencia || undefined,
@@ -226,7 +228,7 @@ export default async function createVenta(fastify) {
                   nombre: item.nombre,
                   descripcion: item.descripcion || null,
                   cantidad: item.cantidad,
-                  cantAdjudicados: item.cantidad,
+                  cantAdjudicados: 0,
                   precio: item.precioUnitario,
                 }))
               }
@@ -238,7 +240,9 @@ export default async function createVenta(fastify) {
               idLicitacion: licId,
               fecha: licitacionFecha ? new Date(licitacionFecha) : new Date(),
               rutCliente: cliente.rut || '',
-              estado: 'Adjudicada',
+              // Pendiente por defecto: se adjudica despues item por item segun
+              // lo que confirme el organismo licitante (LicitacionDetallePage).
+              estado: 'Pendiente',
               plazo: licitacionPlazo || '',
               referencia: licitacionReferencia || '',
               ordenCompra: licitacionOC || '',
@@ -254,7 +258,7 @@ export default async function createVenta(fastify) {
                   nombre: item.nombre,
                   descripcion: item.descripcion || null,
                   cantidad: item.cantidad,
-                  cantAdjudicados: item.cantidad,
+                  cantAdjudicados: 0,
                   precio: item.precioUnitario,
                 }))
               }

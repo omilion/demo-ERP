@@ -1671,7 +1671,8 @@ describe('Venta directa stock, lifecycle and sucursal scope', () => {
       created.ordenIds.push(body.id)
 
       const cot = await app.prisma.cotizacionLicitacion.findFirst({
-        where: { idLicitacion: marker }
+        where: { idLicitacion: marker },
+        include: { items: true },
       })
       expect(cot).toBeDefined()
       expect(cot.ordenId).toBe(body.id)
@@ -1679,6 +1680,10 @@ describe('Venta directa stock, lifecycle and sucursal scope', () => {
       expect(cot.plazo).toBe('30 días')
       expect(cot.referencia).toBe('Escuela A-100')
       expect(cot.ordenCompra).toBe('OC-123')
+      // No se auto-adjudica al crear la venta: el organismo licitante adjudica
+      // despues, item por item (ver LicitacionDetallePage).
+      expect(cot.estado).toBe('Pendiente')
+      expect(cot.items.every(item => item.cantAdjudicados === 0)).toBe(true)
 
       const updateRes = await app.inject({
         method: 'PUT',
