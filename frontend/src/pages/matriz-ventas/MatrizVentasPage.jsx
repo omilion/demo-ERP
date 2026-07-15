@@ -358,6 +358,36 @@ export default function MatrizVentasPage() {
         />
       </div>
 
+      {/* Estado operacional: cuanto falta despachar/cobrar ahora mismo (sin filtro de
+          fecha). Equivale a los contadores de la barra superior del sistema legacy.
+          Cada tarjeta aplica su filtro, igual que el boton rapido del mismo nombre. */}
+      <div className="kpi-strip">
+        <KpiCard
+          label="Pendiente entrega"
+          value={Number(tot?.kpis?.operacional?.pendienteEntrega || 0).toLocaleString('es-CL')}
+          sublabel="Ventas activas sin entregar"
+          icon="send"
+          tone={tot?.kpis?.operacional?.pendienteEntrega ? 'amber' : 'green'}
+          onClick={() => aplicarQuick('pendienteEntrega')}
+        />
+        <KpiCard
+          label="Entregadas no pagadas"
+          value={Number(tot?.kpis?.operacional?.entregadaNoPagada || 0).toLocaleString('es-CL')}
+          sublabel="Entregadas con cobro pendiente"
+          icon="alertTriangle"
+          tone={tot?.kpis?.operacional?.entregadaNoPagada ? 'red' : 'green'}
+          onClick={() => aplicarQuick('entregada')}
+        />
+        <KpiCard
+          label="No pagadas"
+          value={Number(tot?.kpis?.operacional?.noPagada || 0).toLocaleString('es-CL')}
+          sublabel="Total ventas activas por cobrar"
+          icon="creditCard"
+          tone={tot?.kpis?.operacional?.noPagada ? 'amber' : 'green'}
+          onClick={() => aplicarQuick('noPagada')}
+        />
+      </div>
+
       <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {QUICK_FILTERS.map(item => (

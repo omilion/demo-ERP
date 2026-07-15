@@ -760,6 +760,18 @@ export async function getMatrizTotales(fastify, query, user) {
   const lastYearStart = new Date(year - 1, 0, 1, 0, 0, 0, 0)
   const lastYearEnd = new Date(year - 1, month, day, 23, 59, 59, 999)
 
+  // Contadores operacionales (equivalentes a los del legacy): cuentan TODO lo
+  // pendiente sin filtrar por fecha, porque una entrega atrasada de la semana
+  // pasada sigue pendiente hoy. Mismo scope de sucursal que el resto.
+  const operacionalBase = { estado: 'Activa', eliminada: false, ...userSucursalWhere(user) }
+  const [pendienteEntrega, entregadaNoPagada, noPagada] = await Promise.all([
+    fastify.prisma.orden.count({ where: { ...operacionalBase, estadoEntrega: 'Pendiente entrega' } }),
+    fastify.prisma.orden.count({
+      where: { ...operacionalBase, estadoEntrega: { in: ['Entregado', 'Entregada'] }, estadoPago: 'No pagada' }
+    }),
+    fastify.prisma.orden.count({ where: { ...operacionalBase, estadoPago: 'No pagada' } }),
+  ])
+
   const [hoy, mes, ytd, prevYtd] = await Promise.all([
     getTotalsForPeriod(fastify, todayStart, todayEnd, user),
     getTotalsForPeriod(fastify, monthStart, todayEnd, user),
@@ -786,7 +798,8 @@ export async function getMatrizTotales(fastify, query, user) {
       mes,
       ytd: { total: ytdTotal },
       prevYtd: { total: prevYtdTotal },
-      variacionYtd
+      variacionYtd,
+      operacional: { pendienteEntrega, entregadaNoPagada, noPagada }
     }
   }
 }
