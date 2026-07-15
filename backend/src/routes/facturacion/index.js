@@ -74,8 +74,11 @@ export default async function facturacionRoutes(fastify) {
   const db = createFacturacionDb(fastify.prisma)
   const engine = createFacturacionEngine({ db, dataDir: path.join(process.cwd(), 'data', 'facturacion') })
 
-  const readAuth = { preHandler: [fastify.authenticate, fastify.rbac('facturacion', 'read', { allowExtra: false })] }
-  const writeAuth = { preHandler: [fastify.authenticate, fastify.rbac('facturacion', 'write', { allowExtra: false })] }
+  // Modulo de negocio: usa el rbac normal, igual que ventas/caja/despacho. El
+  // candado allowExtra:false queda reservado para el modulo 'admin', si no el
+  // permiso no se puede delegar a ningun usuario.
+  const readAuth = { preHandler: [fastify.authenticate, fastify.rbac('facturacion', 'read')] }
+  const writeAuth = { preHandler: [fastify.authenticate, fastify.rbac('facturacion', 'write')] }
 
   // --- Empresa (emisor) ---
 

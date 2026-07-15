@@ -19,6 +19,7 @@ const MODULOS = [
   ['taller', 'Taller / Bodega Taller / Telas'],
   ['caja', 'Caja'],
   ['cobranza', 'Cobranza'],
+  ['facturacion', 'Facturación electrónica'],
   ['descuentos', 'Descuentos'],
   ['rrhh', 'RRHH'],
   ['reportes', 'Reportes'],
