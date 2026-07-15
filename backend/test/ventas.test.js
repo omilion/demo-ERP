@@ -971,6 +971,25 @@ describe('Venta directa stock, lifecycle and sucursal scope', () => {
     }
   })
 
+  it('asigna nInterno secuencial al crear una venta', async () => {
+    const marker = `TEST-VENTA-NINTERNO-${Date.now()}`
+    const producto = await createInventariado(marker, 5)
+    const created = { ordenIds: [], productoIds: [producto.id] }
+    try {
+      const { res } = await createVentaSala({ producto, cantidad: 1 })
+      expect(res.statusCode).toBe(201)
+      const body = JSON.parse(res.body)
+      created.ordenIds.push(body.id)
+      expect(body.nInterno).toBeTypeOf('number')
+      expect(body.nInterno).toBeGreaterThan(0)
+
+      const maxExisting = await app.prisma.orden.aggregate({ _max: { nInterno: true }, where: { id: { not: body.id } } })
+      expect(body.nInterno).toBeGreaterThan(maxExisting._max.nInterno || 0)
+    } finally {
+      await cleanup(created)
+    }
+  })
+
   it('descuenta stock y normaliza OC al crear Convenio Marco', async () => {
     const marker = `TEST-VENTA-CM-STOCK-${Date.now()}`
     const producto = await createInventariado(marker, 5)

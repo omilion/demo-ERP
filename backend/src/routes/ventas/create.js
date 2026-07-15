@@ -169,9 +169,15 @@ export default async function createVenta(fastify) {
         }
       }
       const ordenData = convenioOc.applies ? { ...rest, licitacion: convenioOc.licitacion } : rest
+      // Asigna el siguiente n_interno de forma segura bajo concurrencia: lock
+      // advisory de transaccion (se libera solo al terminar la tx) + MAX()+1.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('ventas.orden.n_interno'))`
+      const maxNInterno = await tx.orden.aggregate({ _max: { nInterno: true } })
+      const nInterno = (maxNInterno._max.nInterno || 0) + 1
       const created = await tx.orden.create({
         data: {
           ...ordenData,
+          nInterno,
           ...descuentoData,
           enviosParciales: enviosParciales || false,
           montoDespacho: montoDespacho || 0,
