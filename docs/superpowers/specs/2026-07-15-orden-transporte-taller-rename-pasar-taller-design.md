@@ -78,7 +78,23 @@ tocar**: nombres de archivo, nombres de componente, nombres de variable, imports
 rutas de API, nombres de columnas/tablas — todo eso queda `Odt`/`odt` internamente, es
 invisible para el usuario.
 
-### Pieza 3 — Rediseño "Pasar a Taller" (página nueva, 2 columnas)
+### Pieza 3 — Rediseño "Pasar a Taller" — **YA RESUELTA, sin trabajo pendiente**
+
+Al planificar se descubrió que el backend completo (`backend/src/routes/pasar-taller/`,
+comentario propio "Paridad legacy pasar_taller") y el frontend completo
+(`frontend/src/pages/pasar-taller/PasarTallerPage.jsx`, ruta `/pasar-taller`) **ya
+existían**, ya cubren exactamente lo que pedía el dueño: buscar venta, prioridad
+Alta/Media/Baja, checkbox por taller (Confecciones/Espumas/Externo) por producto,
+observación por producto, notificar individual o en lote. El único problema era que el
+botón "Notificar a Taller" en `ViewVentaPanel.jsx` apuntaba a `/taller/nueva` (el form
+genérico vacío de creación de ODT) en vez de `/pasar-taller?ordenId=X`. Ya corregido y
+desplegado (commit `a33374e`). Sección de diseño original de esta pieza queda abajo solo
+como referencia histórica de la investigación, **no genera tareas en el plan**.
+
+<details>
+<summary>Diseño original (descartado, no implementar)</summary>
+
+Rediseño "Pasar a Taller" (página nueva, 2 columnas)
 
 **Backend — nuevos endpoints reutilizando el service existente
 (`backend/src/routes/pasar-taller/service.js`, ya tiene `ensureOdt`, `upsertOdtItem`,
@@ -114,6 +130,9 @@ invisible para el usuario.
   compartido si aplica).
 - En `ViewVentaPanel.jsx`, el botón "Notificar a Taller" cambia de
   `navigate('/taller/nueva?ordenId=X')` a `navigate('/taller/notificar?ordenId=X')`.
+
+
+</details>
 
 ## Fuera de alcance
 
