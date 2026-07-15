@@ -94,10 +94,10 @@ export default function BitacoraTallerPage() {
     { key: 'sucursalNombre', label: 'Sucursal', render: v => <span style={{ fontSize: 12 }}>{v || '-'}</span> },
     {
       key: 'odtId',
-      label: 'ODT',
+      label: 'OT',
       render: v => v
         ? <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>#{v}</span>
-        : <span style={{ color: 'var(--text-3)', fontSize: 12 }}>Sin ODT</span>,
+        : <span style={{ color: 'var(--text-3)', fontSize: 12 }}>Sin OT</span>,
     },
   ]
 
@@ -223,7 +223,7 @@ function BitacoraModal({ initial, operarioOptions, onClose, onSave, saving }) {
           <FormField label="Fecha" required>
             <Input type="date" value={form.fecha} onChange={v => set('fecha', v)} />
           </FormField>
-          <FormField label="ODT ID" hint="Opcional para bitacora diaria libre">
+          <FormField label="OT ID" hint="Opcional para bitacora diaria libre">
             <Input type="number" value={form.odtId} onChange={v => set('odtId', v)} disabled={!!initial.id} />
           </FormField>
         </div>

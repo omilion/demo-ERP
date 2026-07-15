@@ -7,14 +7,14 @@ import { useProductos } from '../../api/productos'
 
 const TIPOS = [
   { id: 'orden-items-huerfanos',     label: 'Orden items huérfanos',   key: 'orden_items_huerfanos',   cols: ['id', 'orden_id', 'producto_id', 'nombre', 'cantidad', 'precio_unitario'] },
-  { id: 'odt-items-huerfanos',       label: 'ODT items huérfanos',     key: 'odt_items_huerfanos',     cols: ['id', 'odt_id', 'producto_id', 'nombre', 'cantidad'] },
+  { id: 'odt-items-huerfanos',       label: 'OT items huérfanos',      key: 'odt_items_huerfanos',     cols: ['id', 'odt_id', 'producto_id', 'nombre', 'cantidad'] },
   { id: 'productos-stock-negativo',  label: 'Productos stock negativo', key: 'productos_stock_negativo', cols: ['id', 'codigo_interno', 'nombre', 'stock', 'stock_critico', 'bodega'] },
   { id: 'productos-sin-precio',      label: 'Productos sin precio',    key: 'productos_sin_precio',    cols: ['id', 'codigo_interno', 'nombre', 'stock', 'bodega', 'categoria'] },
   { id: 'productos-mojibake',        label: 'Productos texto corrupto', key: 'productos_mojibake',     cols: ['id', 'codigo_interno', 'nombre', 'categoria'] },
-  { id: 'odt-mojibake',              label: 'ODT texto corrupto',      key: 'odt_mojibake',            cols: ['id', 'descripcion', 'cliente_nombre', 'tipo', 'estado'] },
+  { id: 'odt-mojibake',              label: 'OT texto corrupto',       key: 'odt_mojibake',            cols: ['id', 'descripcion', 'cliente_nombre', 'tipo', 'estado'] },
   { id: 'crm-sin-contacto',          label: 'CRM sin teléfono/email',  key: 'crm_sin_contacto',        cols: ['id', 'nombre_cliente', 'empresa', 'estado', 'prioridad'] },
   { id: 'codigo-barra-basura',       label: 'Códigos barra inválidos', key: 'codigo_barra_basura',     cols: ['id', 'codigo_interno', 'codigo_barra', 'nombre', 'stock'] },
-  { id: 'odts-sin-cliente',          label: 'ODTs sin cliente',        key: 'odts_sin_cliente',        cols: ['id', 'cliente_orden', 'orden_id', 'descripcion', 'estado'] },
+  { id: 'odts-sin-cliente',          label: 'OT sin cliente',          key: 'odts_sin_cliente',        cols: ['id', 'cliente_orden', 'orden_id', 'descripcion', 'estado'] },
 ]
 
 const PRODUCT_TIPOS = new Set(['productos-stock-negativo', 'productos-sin-precio', 'productos-mojibake', 'codigo-barra-basura'])
@@ -109,7 +109,7 @@ export default function IntegridadPage() {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {tipo === 'odts-sin-cliente' && (
               <Btn size="sm" variant="primary"
-                onClick={async () => { if (await confirmDialog({ title: 'Confirmar', detail: 'Rellenar cliente_nombre desde orden.cliente_id en todas las ODTs huérfanas?' })) backfillOdtsCliente.mutate() }}
+                onClick={async () => { if (await confirmDialog({ title: 'Confirmar', detail: 'Rellenar cliente_nombre desde orden.cliente_id en todas las OT huérfanas?' })) backfillOdtsCliente.mutate() }}
                 disabled={backfillOdtsCliente.isPending}>
                 {backfillOdtsCliente.isPending ? 'Backfilling…' : 'Backfill desde Orden'}
               </Btn>
@@ -154,7 +154,7 @@ export default function IntegridadPage() {
                           <Btn size="xs" variant="secondary" onClick={() => navigate(`/ventas/${r.orden_id}/editar`)}>Venta</Btn>
                         )}
                         {isOdtHuerfano && r.odt_id && (
-                          <Btn size="xs" variant="secondary" onClick={() => navigate(`/taller/${r.odt_id}`)}>ODT</Btn>
+                          <Btn size="xs" variant="secondary" onClick={() => navigate(`/taller/${r.odt_id}`)}>OT</Btn>
                         )}
                         <Btn size="xs" variant="danger" onClick={() => handleEliminar(r.id)}>Eliminar</Btn>
                       </div>

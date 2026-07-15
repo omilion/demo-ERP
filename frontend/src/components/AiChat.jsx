@@ -21,7 +21,7 @@ export function AiChat() {
 
   const suggestions = isConfigAdmin
     ? [
-        '¿Cuántas ODT pendientes hay y cuántas atrasadas?',
+        '¿Cuántas OT de taller pendientes hay y cuántas atrasadas?',
         'Resumen de ventas del mes actual',
         'Genera un Excel con el stock crítico',
       ]

@@ -20,7 +20,7 @@ export default async function getVenta(fastify) {
     })
     if (!o) return reply.code(404).send({ error: 'Venta no encontrada' })
 
-    const [odts, pagos, multas, despachos, guias, cobranza, cotizaciones] = await Promise.all([
+    const [odts, pagos, multas, despachos, guias, cobranza, cotizaciones, ordenesTransporte] = await Promise.all([
       fastify.prisma.odt.findMany({
         where: { ordenId: id },
         orderBy: { createdAt: 'desc' },
@@ -36,11 +36,12 @@ export default async function getVenta(fastify) {
         select: { id: true, idLicitacion: true, estado: true, referencia: true, ordenCompra: true, rutCliente: true, fecha: true, plazo: true },
         orderBy: { fechaCreacion: 'desc' },
       }),
+      fastify.prisma.ordenTransporte.findMany({ where: { ordenId: id }, orderBy: { createdAt: 'desc' } }),
     ])
 
     const withCliente = await attachCliente(fastify, o)
     const items = await attachProductos(fastify, o.items)
     const financialState = computeVentaFinancialState(o, { movimientos: pagos, multas })
-    return { ...withCliente, ...financialState, items, odts, pagos, multas, despachos, guias, cobranza, cotizaciones }
+    return { ...withCliente, ...financialState, items, odts, pagos, multas, despachos, guias, cobranza, cotizaciones, ordenesTransporte }
   })
 }

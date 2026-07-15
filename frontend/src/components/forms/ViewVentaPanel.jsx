@@ -3,7 +3,7 @@ import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, Icon } from '../shared'
 import { ViewPanel, FormDivider } from './index'
-import { useVenta, useDeleteVenta, useForzarTaller, useUpdateVenta, useAnularVenta, useActivarVenta, useUpdateItemEntregados } from '../../api/ventas'
+import { useVenta, useDeleteVenta, useForzarTaller, useUpdateVenta, useAnularVenta, useActivarVenta, useUpdateItemEntregados, useOrdenesTransporte, useCrearOrdenTransporte, useDeleteOrdenTransporte } from '../../api/ventas'
 import { useProductos } from '../../api/productos'
 import { useDocumentos } from '../../api/facturacion'
 import { EmitirDteModal, NotaDteModal } from '../facturacion/DteModals'
@@ -245,7 +245,7 @@ function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespac
           }}
         >
           <Icon name="tool" size={14} />
-          {forzarTallerMut.isPending ? 'Enviando...' : 'Gatillar Taller / ODT'}
+          {forzarTallerMut.isPending ? 'Enviando...' : 'Gatillar Taller / OT'}
         </button>
 
         {canEmitirDte && (
@@ -283,7 +283,7 @@ function TabTaller({ odts, onGoTaller }) {
       {odts.map(odt => (
         <div key={odt.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', marginBottom: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-            <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, fontWeight: 600, color: 'var(--green-700)' }}>ODT #{odt.id}</span>
+            <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, fontWeight: 600, color: 'var(--green-700)' }}>OT #{odt.id}</span>
             <div style={{ display: 'flex', gap: 5 }}>
               {odt.prioridad && odt.prioridad !== 'normal' && (
                 <Badge tone={odt.prioridad === 'urgente' ? 'red' : 'amber'} style={{ fontSize: 10 }}>{odt.prioridad}</Badge>
@@ -606,6 +606,8 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmit
   const navigate = useNavigate()
   const anularVenta = useAnularVenta()
   const activarVenta = useActivarVenta()
+  const { data: ordenesTransporteData } = useOrdenesTransporte(v.id)
+  const [showOrdenTransporte, setShowOrdenTransporte] = useState(false)
 
   const abrirNotaVenta = () => {
     const w = window.open(`${window.location.origin}/ventas/${v.id}/imprimir`, '_blank')
@@ -636,6 +638,9 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmit
       <button onClick={() => navigate(`/despachos?ordenId=${v.id}`)} style={opBtnStyle('var(--green-600)')}>
         <Icon name="truck" size={14} /> Guías Despachos ({guiasCount})
       </button>
+      <button onClick={() => setShowOrdenTransporte(true)} style={opBtnStyle('var(--blue)')}>
+        <Icon name="truck" size={14} /> Orden de Transporte ({(ordenesTransporteData?.items || []).length})
+      </button>
       <button onClick={abrirNotaVenta} style={opBtnStyle('var(--blue)')}>
         <Icon name="printer" size={14} /> Nota de Venta
       </button>
@@ -657,11 +662,88 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmit
           <Icon name="refreshCw" size={14} /> {activarVenta.isPending ? 'Reactivando...' : 'Revertir a Activa'}
         </button>
       )}
+      {showOrdenTransporte && <OrdenTransporteModal venta={v} onClose={() => setShowOrdenTransporte(false)} />}
     </div>
   )
 }
 
 // ── Documentos + Pagos (columna izquierda) ───────────────────────────────────
+const TRANSPORTISTAS = [
+  'Pullman cargo', 'Starken', 'Correos de chile', 'Chilexpress', 'Bluexpress',
+  'Varmontt', 'Transporte JT', 'Transporte Espinoza', 'Don Carlos', 'Otro',
+]
+
+function OrdenTransporteModal({ venta, onClose }) {
+  const { data, isLoading } = useOrdenesTransporte(venta.id)
+  const crear = useCrearOrdenTransporte()
+  const eliminar = useDeleteOrdenTransporte()
+  const [numero, setNumero] = useState('')
+  const [fecha, setFecha] = useState('')
+  const [transportista, setTransportista] = useState('')
+
+  const items = data?.items || []
+
+  const handleCrear = () => {
+    if (!numero.trim() || !fecha || !transportista) {
+      toast.warning('Completa número, fecha y transportista')
+      return
+    }
+    crear.mutate({ ordenId: venta.id, data: { numero: numero.trim(), fecha, transportista } }, {
+      onSuccess: () => { setNumero(''); setFecha(''); setTransportista(''); toast.success('Orden de transporte creada.') },
+      onError: err => toast.error(err?.response?.data?.error || 'No se pudo crear la orden de transporte.'),
+    })
+  }
+
+  const handleEliminar = async (item) => {
+    if (!await confirmDialog({ title: 'Eliminar orden de transporte', detail: `¿Eliminar la orden de transporte ${item.numero}?`, tone: 'danger' })) return
+    eliminar.mutate({ id: item.id, ordenId: venta.id }, {
+      onSuccess: () => toast.success('Eliminada.'),
+      onError: err => toast.error(err?.response?.data?.error || 'No se pudo eliminar.'),
+    })
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'oklch(0 0 0 / .38)' }} onClick={onClose}>
+      <div style={{ background: '#fff', borderRadius: 12, padding: 22, width: 420, maxWidth: '90%', boxShadow: '0 16px 48px oklch(0 0 0 / .2)' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>Orden de Transporte — Venta #{venta.id}</div>
+          <button onClick={onClose} style={{ color: 'var(--text-3)', padding: 4 }}>×</button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+          <input value={numero} onChange={e => setNumero(e.target.value)} placeholder="Número / seguimiento" style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }} />
+          <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }} />
+          <select value={transportista} onChange={e => setTransportista(e.target.value)} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}>
+            <option value="">Selecciona transportista</option>
+            {TRANSPORTISTAS.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <button onClick={handleCrear} disabled={crear.isPending} style={{ padding: '9px 14px', borderRadius: 8, border: 'none', background: 'var(--green-900)', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+            {crear.isPending ? 'Guardando...' : 'Agregar'}
+          </button>
+        </div>
+
+        {isLoading ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Cargando...</div>
+        ) : items.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Sin órdenes de transporte registradas.</div>
+        ) : (
+          <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+            {items.map(item => (
+              <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderTop: '1px solid var(--border)', fontSize: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>{item.numero} — {item.transportista}</div>
+                  <div style={{ color: 'var(--text-3)', fontSize: 11 }}>{new Date(item.fecha).toLocaleDateString('es-CL')}</div>
+                </div>
+                <button onClick={() => handleEliminar(item)} style={{ color: 'var(--red)', fontSize: 11, fontWeight: 600 }}>Eliminar</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function DocumentosPagosList({ pagos, dtes }) {
   const pagosReales = (pagos || []).filter(p => !isReferencialPago(p))
   const totalPagado = pagosReales
@@ -727,7 +809,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const handleForzarTaller = () => {
     forzarTallerMut.mutate(v.id, {
       onSuccess: () => {
-        toast.warning('Orden de Trabajo (ODT) procesada correctamente.')
+        toast.warning('Orden de Trabajo procesada correctamente.')
       },
       onError: (err) => {
         toast.error('Error al forzar taller: ' + (err.response?.data?.error || err.message))

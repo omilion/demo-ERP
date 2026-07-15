@@ -424,11 +424,11 @@ export default function ReportesGerencialesPage() {
 
       {active === 'operacion' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
-          <Panel title="ODTs pendientes" icon="wrench" action={<Badge tone="amber">{statusCount(combinedProblem(perms.taller, [odtsQuery]), odtsPendientes.length)}</Badge>}>
+          <Panel title="OT pendientes" icon="wrench" action={<Badge tone="amber">{statusCount(combinedProblem(perms.taller, [odtsQuery]), odtsPendientes.length)}</Badge>}>
             <QueryBlock problem={combinedProblem(perms.taller, [odtsQuery])}>
               <Table
                 columns={[
-                  { key: 'id', label: 'ODT' },
+                  { key: 'id', label: 'OT' },
                   { key: 'createdAt', label: 'Fecha', render: value => date(value) },
                   { key: 'clienteNombre', label: 'Cliente', wrap: true },
                   { key: 'estado', label: 'Estado', render: value => <Badge tone={value === 'Prioritaria' ? 'red' : 'amber'}>{value || '-'}</Badge> },
@@ -436,8 +436,8 @@ export default function ReportesGerencialesPage() {
                 ]}
                 rows={odtsPendientes.slice(0, 14)}
                 onRowClick={row => navigate(`/taller/${row.id}`)}
-                emptyMessage="Sin ODTs pendientes"
-                ariaLabel="ODTs pendientes"
+                emptyMessage="Sin OT pendientes"
+                ariaLabel="OT pendientes"
                 getRowKey={row => row.id}
               />
             </QueryBlock>

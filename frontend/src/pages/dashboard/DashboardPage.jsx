@@ -572,7 +572,7 @@ export function DashboardOperativoPage() {
             sublabel="Pendientes revision" onClick={() => navigate('/ordenes-compra?estado=Pendiente')} />
         )}
         {show.taller && (
-          <KpiCard label="ODTs Activas" value={n(stats?.odts?.total)} icon="wrench"
+          <KpiCard label="OT Activas" value={n(stats?.odts?.total)} icon="wrench"
             sublabel={!isLoading ? `${stats.odts.urgentes} urgentes` : ''}
             tone={stats?.odts?.urgentes > 0 ? 'amber' : 'neutral'} onClick={() => navigate('/taller')} />
         )}
@@ -665,7 +665,7 @@ export function DashboardOperativoPage() {
         )}
 
         {show.taller && (
-          <SectionCard title="Talleres - ODTs Activas" icon="tool">
+          <SectionCard title="Talleres - OT Activas" icon="tool">
             <div style={{ padding: '4px 14px 8px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
@@ -684,7 +684,7 @@ export function DashboardOperativoPage() {
             </div>
             {(stats?.talleres ?? []).map(t => <TallerBar key={t.tipo} {...t} max={maxTaller} />)}
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
-            {canWriteTaller && <ActionRow icon="plusCircle" label="Nueva ODT" onClick={() => navigate('/taller/nueva')} />}
+            {canWriteTaller && <ActionRow icon="plusCircle" label="Nueva OT" onClick={() => navigate('/taller/nueva')} />}
             <ActionRow icon="edit" label="Registrar Bitácora" onClick={() => navigate('/bitacora-taller')} />
             {canWriteTaller && <ActionRow icon="package" label="Pasar a Taller" onClick={() => navigate('/pasar-taller')} />}
             <ActionRow icon="layers" label="Historial Materiales" onClick={() => navigate('/historial-materiales')} />
