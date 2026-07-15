@@ -15,7 +15,7 @@ export async function attachCliente(fastify, orden) {
   if (!orden.clienteId) return { ...orden, cliente: null }
   const cliente = await fastify.prisma.cliente.findUnique({
     where: { id: orden.clienteId },
-    select: { id: true, nombre: true, rut: true, email: true, telefono: true, ciudad: true, razonSocial: true, tipo: true },
+    select: { id: true, nombre: true, rut: true, email: true, telefono: true, ciudad: true, razonSocial: true, tipo: true, giro: true, direccion: true, region: true, comuna: true },
   })
   const clienteSucursal = orden.clienteSucursalId
     ? await fastify.prisma.clienteSucursal.findFirst({
@@ -31,7 +31,7 @@ export async function attachProductos(fastify, items = []) {
   const ids = [...new Set(items.map(i => i.productoId).filter(Boolean))]
   const productos = await fastify.prisma.producto.findMany({
     where: { id: { in: ids } },
-    select: { id: true, nombre: true, codigoInterno: true },
+    select: { id: true, nombre: true, codigoInterno: true, fotoUrl: true },
   })
   const map = Object.fromEntries(productos.map(p => [p.id, p]))
   return items.map(i => ({ ...i, producto: map[i.productoId] || null }))

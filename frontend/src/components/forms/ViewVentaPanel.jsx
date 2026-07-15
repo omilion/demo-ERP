@@ -756,6 +756,9 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
     const cargosTotal = (v.cargos || []).reduce((s, c) => s + Number(c.valor || 0), 0)
     const totalBase = subtotal + cargosTotal
     const descuentoMonto = resolvedDiscountAmount(totalBase, descuento, v.descuentoMonto)
+    // precioUnitario ya incluye IVA (precio de venta sala) — se desglosa desde el total, no se suma aparte.
+    const netoVenta = Math.round(total / 1.19)
+    const ivaVenta = total - netoVenta
 
     return (
       <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
@@ -806,10 +809,21 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                   <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 2 }}>{v.cliente.razonSocial}</div>
                 )}
                 {v.cliente?.rut && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace", marginBottom: 6 }}>{v.cliente.rut}</div>}
+                {v.cliente?.giro && <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>{v.cliente.giro}</div>}
+                {(v.clienteSucursal?.direccion || v.cliente?.direccion) && (
+                  <div style={{ fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'flex-start', gap: 4, marginBottom: 6 }}>
+                    <Icon name="mapPin" size={11} color="var(--text-3)" />
+                    <span>
+                      {v.clienteSucursal?.direccion || v.cliente?.direccion}
+                      {(v.clienteSucursal?.comuna || v.cliente?.comuna) && `, ${v.clienteSucursal?.comuna || v.cliente?.comuna}`}
+                      {(v.clienteSucursal?.region || v.cliente?.region) && ` — ${v.clienteSucursal?.region || v.cliente?.region}`}
+                    </span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 4 }}>
                   {v.cliente?.email && <span style={{ fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="mail" size={11} color="var(--text-3)" /> {v.cliente.email}</span>}
                   {v.cliente?.telefono && <span style={{ fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="phone" size={11} color="var(--text-3)" /> {v.cliente.telefono}</span>}
-                  {v.cliente?.ciudad && <span style={{ fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="mapPin" size={11} color="var(--text-3)" /> {v.cliente.ciudad}</span>}
+                  {!v.clienteSucursal?.direccion && !v.cliente?.direccion && v.cliente?.ciudad && <span style={{ fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="mapPin" size={11} color="var(--text-3)" /> {v.cliente.ciudad}</span>}
                 </div>
               </div>
 
@@ -820,14 +834,21 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                       <thead>
                         <tr style={{ background: 'var(--bg)' }}>
-                          {['Producto', 'Cant.', 'P. Unit.', 'Subtotal'].map((h, i) => (
-                            <th key={i} style={{ padding: '7px ' + (i === 0 ? '12px' : '8px'), textAlign: i === 0 ? 'left' : 'right', fontWeight: 600, color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>{h}</th>
+                          {['', 'Producto', 'Cant.', 'P. Unit.', 'Subtotal'].map((h, i) => (
+                            <th key={i} style={{ padding: i === 0 ? '7px 4px' : '7px ' + (i === 1 ? '12px' : '8px'), textAlign: i <= 1 ? 'left' : 'right', fontWeight: 600, color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {items.map((item, i) => (
                           <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                            <td style={{ padding: '8px 4px 8px 12px', width: 40 }}>
+                              {item.producto?.fotoUrl ? (
+                                <img src={item.producto.fotoUrl} alt="" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} />
+                              ) : (
+                                <div style={{ width: 32, height: 32, borderRadius: 4, background: 'var(--bg)', border: '1px solid var(--border)' }} />
+                              )}
+                            </td>
                             <td style={{ padding: '8px 12px' }}>
                               <div style={{ fontWeight: 500 }}>{item.producto?.nombre || item.nombre || `Producto #${item.productoId}`}</div>
                               {(item.producto?.codigoInterno || item.codigoInterno) && (
@@ -864,6 +885,18 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                     <span>{discountLabel(v, descuento)}</span>
                     <span style={{ fontFamily: "'DM Mono',monospace" }}>-{fmt(descuentoMonto)}</span>
                   </div>
+                )}
+                {total > 0 && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 16px', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ color: 'var(--text-2)' }}>Neto</span>
+                      <span style={{ fontFamily: "'DM Mono',monospace" }}>{fmt(netoVenta)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 16px', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ color: 'var(--text-2)' }}>IVA (19%)</span>
+                      <span style={{ fontFamily: "'DM Mono',monospace" }}>{fmt(ivaVenta)}</span>
+                    </div>
+                  </>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '11px 16px', fontSize: 14, fontWeight: 700, borderBottom: abono > 0 ? '1px solid var(--border)' : 'none' }}>
                   <span>Total Venta</span>
