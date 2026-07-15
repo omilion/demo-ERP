@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { createFacturacionDb } from '../../facturacion/db.js'
 import { createFacturacionEngine } from '../../facturacion/engine.js'
-import { TIPOS_DTE, computeTotales } from '../../facturacion/documento.js'
+import { TIPOS_DTE, computeTotales, IND_TRASLADO, TIPO_DESPACHO } from '../../facturacion/documento.js'
 import { normalizeRut, isValidRut } from '../../facturacion/xmlUtil.js'
 import { parseCaf } from '../../facturacion/caf.js'
 import { renderDteHtml } from '../../facturacion/printDte.js'
@@ -32,6 +32,21 @@ function validateDocumentoInput(body) {
       throw err
     }
   }
+  const extra = body.extra && typeof body.extra === 'object' ? body.extra : {}
+  // Guia de despacho: el SII exige IndTraslado y TipoDespacho. Se validan aca
+  // para rechazar antes de que emitir() consuma un folio del CAF (irrecuperable).
+  if (tipoDte === 52) {
+    if (!IND_TRASLADO[Number(extra.indTraslado)]) {
+      const err = new Error(`La guía de despacho requiere un motivo de traslado (IndTraslado) válido: ${Object.keys(IND_TRASLADO).join(', ')}.`)
+      err.statusCode = 400
+      throw err
+    }
+    if (!TIPO_DESPACHO[Number(extra.tipoDespacho)]) {
+      const err = new Error(`La guía de despacho requiere un tipo de despacho (TipoDespacho) válido: ${Object.keys(TIPO_DESPACHO).join(', ')}.`)
+      err.statusCode = 400
+      throw err
+    }
+  }
   return {
     clienteId: body.clienteId || null,
     ordenId: body.ordenId || null,
@@ -49,7 +64,9 @@ function validateDocumentoInput(body) {
       exento: Boolean(item.exento)
     })),
     referencias: Array.isArray(body.referencias) ? body.referencias : [],
-    extra: body.extra && typeof body.extra === 'object' ? body.extra : {}
+    extra: tipoDte === 52
+      ? { ...extra, indTraslado: Number(extra.indTraslado), tipoDespacho: Number(extra.tipoDespacho) }
+      : extra
   }
 }
 

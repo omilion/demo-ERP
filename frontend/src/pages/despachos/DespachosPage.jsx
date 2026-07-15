@@ -117,6 +117,14 @@ export default function DespachosPage() {
   const [guiaDte, setGuiaDte] = useState(null)
   const ventaGuiaDte = useVenta(guiaDte?.ordenId)
 
+  // Sin esto el modal nunca abre y el boton "Emitir DTE" parece muerto.
+  useEffect(() => {
+    if (guiaDte && ventaGuiaDte.isError) {
+      toast.error('No se pudo cargar la venta asociada a la guía.')
+      setGuiaDte(null)
+    }
+  }, [guiaDte, ventaGuiaDte.isError])
+
   useEffect(() => {
     const action = searchParams.get('action')
     if (action === 'new') {
@@ -569,6 +577,7 @@ export default function DespachosPage() {
           }}
         />
       )}
+      {guiaDte && ventaGuiaDte.isPending && <LoadingOverlay label="Cargando venta..." />}
     </main>
   )
 }
@@ -1011,6 +1020,14 @@ function showError(error) {
 
 function linkButton(color, fontWeight = 500) {
   return { background: 'transparent', border: 'none', color, cursor: 'pointer', fontSize: 12, fontWeight }
+}
+
+function LoadingOverlay({ label }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'oklch(0 0 0 / .45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#fff', padding: '16px 22px', borderRadius: 10, fontSize: 13, color: 'var(--text-2)' }}>{label}</div>
+    </div>
+  )
 }
 
 const btnSm = (color) => ({ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color, fontWeight: 500 })

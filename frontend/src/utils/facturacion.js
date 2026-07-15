@@ -6,6 +6,26 @@ export const TIPOS_DTE = {
   61: 'Nota de Crédito Electrónica',
 }
 
+// Codigos del SII para la guia de despacho (DTE 52). Deben coincidir con
+// IND_TRASLADO / TIPO_DESPACHO de backend/src/facturacion/documento.js.
+export const IND_TRASLADO = {
+  1: 'Operación constituye venta',
+  2: 'Ventas por efectuar',
+  3: 'Consignaciones',
+  4: 'Entrega gratuita',
+  5: 'Traslados internos',
+  6: 'Otros traslados no venta',
+  7: 'Guía de devolución',
+  8: 'Traslado para exportación',
+  9: 'Venta para exportación',
+}
+
+export const TIPO_DESPACHO = {
+  1: 'Despacho por cuenta del receptor',
+  2: 'Despacho por cuenta del emisor a instalaciones del cliente',
+  3: 'Despacho por cuenta del emisor a otras instalaciones',
+}
+
 export function isValidRut(value) {
   const rut = String(value || '').replace(/[^0-9kK]/g, '').toUpperCase()
   if (rut.length < 2) return false

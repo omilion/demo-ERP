@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Badge, Btn, Icon } from '../shared'
 import { useEmitirDte } from '../../api/facturacion'
-import { buildReceptor, isValidRut, mapVentaItems, TIPOS_DTE } from '../../utils/facturacion'
+import { buildReceptor, isValidRut, mapVentaItems, TIPOS_DTE, IND_TRASLADO, TIPO_DESPACHO } from '../../utils/facturacion'
 
 const fmt = value => '$' + Math.round(Number(value || 0)).toLocaleString('es-CL')
 
@@ -54,23 +54,58 @@ const Total = ({ label, value, strong }) => <div style={{ display: 'flex', justi
 export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSuccess }) {
   const emitir = useEmitirDte()
   const [error, setError] = useState('')
+  const [indTraslado, setIndTraslado] = useState('')
+  const [tipoDespacho, setTipoDespacho] = useState('')
   const receptor = buildReceptor(venta?.cliente)
   const items = mapVentaItems(venta)
   const detectedTipo = tipoDte || (isValidRut(receptor.rut) ? 33 : 39)
+  const esGuia = detectedTipo === 52
 
   const confirmar = async () => {
+    // El SII exige ambos codigos en la guia; sin ellos el envio se rechaza y el
+    // folio queda consumido, asi que se validan antes de llamar al backend.
+    if (esGuia && (!indTraslado || !tipoDespacho)) {
+      setError('Indica el motivo del traslado y el tipo de despacho.')
+      return
+    }
     setError('')
     try {
-      const result = await emitir.mutateAsync({ ordenId: venta.id, clienteId: venta.clienteId || venta.cliente?.id, guiaDespachoId, tipoDte: detectedTipo, receptor, items })
+      const result = await emitir.mutateAsync({
+        ordenId: venta.id,
+        clienteId: venta.clienteId || venta.cliente?.id,
+        guiaDespachoId,
+        tipoDte: detectedTipo,
+        receptor,
+        items,
+        ...(esGuia ? { extra: { indTraslado: Number(indTraslado), tipoDespacho: Number(tipoDespacho) } } : {}),
+      })
       onSuccess?.(result)
     } catch (cause) { setError(getError(cause)) }
   }
 
   return <Modal title="Confirmar emisión DTE" onClose={onClose}>
     <Preview receptor={receptor} items={items} tipoDte={detectedTipo} />
+    {esGuia && (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 4 }}>
+        <SelectField label="Motivo del traslado" value={indTraslado} options={IND_TRASLADO} onChange={value => { setIndTraslado(value); setError('') }} />
+        <SelectField label="Tipo de despacho" value={tipoDespacho} options={TIPO_DESPACHO} onChange={value => { setTipoDespacho(value); setError('') }} />
+      </div>
+    )}
     {error && <div style={errorStyle}>{error}</div>}
     <div style={footerStyle}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn icon="send" onClick={confirmar} disabled={emitir.isPending || !items.length}>{emitir.isPending ? 'Emitiendo...' : 'Confirmar y emitir'}</Btn></div>
   </Modal>
+}
+
+function SelectField({ label, value, options, onChange }) {
+  return (
+    <div>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{label} <span style={{ color: 'var(--red)' }}>*</span></label>
+      <select value={value} onChange={event => onChange(event.target.value)} style={{ width: '100%', padding: 9, border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'inherit', background: '#fff' }}>
+        <option value="">Seleccionar...</option>
+        {Object.entries(options).map(([code, text]) => <option key={code} value={code}>{code} — {text}</option>)}
+      </select>
+    </div>
+  )
 }
 
 export function NotaDteModal({ documento, tipoDte, onClose, onSuccess }) {

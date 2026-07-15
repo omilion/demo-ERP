@@ -17,6 +17,26 @@ export const TIPOS_DTE = {
   61: 'Nota de Crédito Electrónica'
 };
 
+// Guía de despacho (DTE 52): IndTraslado y TipoDespacho son obligatorios segun
+// el SII y no tienen default seguro (el motivo del traslado lo define quien emite).
+export const IND_TRASLADO = {
+  1: 'Operación constituye venta',
+  2: 'Ventas por efectuar',
+  3: 'Consignaciones',
+  4: 'Entrega gratuita',
+  5: 'Traslados internos',
+  6: 'Otros traslados no venta',
+  7: 'Guía de devolución',
+  8: 'Traslado para exportación',
+  9: 'Venta para exportación'
+};
+
+export const TIPO_DESPACHO = {
+  1: 'Despacho por cuenta del receptor',
+  2: 'Despacho por cuenta del emisor a instalaciones del cliente',
+  3: 'Despacho por cuenta del emisor a otras instalaciones'
+};
+
 export const IVA_RATE = 19;
 
 export const isBoleta = (tipoDte) => tipoDte === 39 || tipoDte === 41;

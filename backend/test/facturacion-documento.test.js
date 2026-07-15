@@ -67,4 +67,34 @@ describe('facturacion/documento', () => {
       caf: fakeCaf()
     })).toThrow(/no tiene ítems/)
   })
+
+  it('guia de despacho (52) incluye TipoDespacho e IndTraslado desde extra', () => {
+    const result = buildDocumento({
+      empresa: PLASTIMAR_EMPRESA,
+      receptor: { rut: '11111111-1', razonSocial: 'CLIENTE X', giro: 'Giro', direccion: 'Calle 1', comuna: 'Vina' },
+      doc: {
+        tipoDte: 52,
+        folio: 7,
+        items: [{ nombre: 'Colchoneta', cantidad: 2, precio: 10000 }],
+        extra: { indTraslado: 1, tipoDespacho: 2 }
+      },
+      caf: fakeCaf(),
+      timestamp: new Date('2026-07-14T10:00:00')
+    })
+    // El SII exige el orden TipoDespacho -> IndTraslado dentro de IdDoc.
+    expect(result.documentoXml).toContain('<TipoDespacho>2</TipoDespacho>')
+    expect(result.documentoXml).toContain('<IndTraslado>1</IndTraslado>')
+    expect(result.documentoXml.indexOf('<TipoDespacho>')).toBeLessThan(result.documentoXml.indexOf('<IndTraslado>'))
+  })
+
+  it('sin extra, la guia sale sin TipoDespacho/IndTraslado (por eso la ruta los valida)', () => {
+    const result = buildDocumento({
+      empresa: PLASTIMAR_EMPRESA,
+      receptor: { rut: '11111111-1', razonSocial: 'CLIENTE X' },
+      doc: { tipoDte: 52, folio: 8, items: [{ nombre: 'Colchoneta', cantidad: 1, precio: 1000 }] },
+      caf: fakeCaf()
+    })
+    expect(result.documentoXml).not.toContain('<TipoDespacho>')
+    expect(result.documentoXml).not.toContain('<IndTraslado>')
+  })
 })
