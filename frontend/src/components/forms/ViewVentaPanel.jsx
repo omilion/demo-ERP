@@ -677,19 +677,21 @@ function OrdenTransporteModal({ venta, onClose }) {
   const { data, isLoading } = useOrdenesTransporte(venta.id)
   const crear = useCrearOrdenTransporte()
   const eliminar = useDeleteOrdenTransporte()
-  const [numero, setNumero] = useState('')
   const [fecha, setFecha] = useState('')
   const [transportista, setTransportista] = useState('')
 
   const items = data?.items || []
+  // El "numero" no es un dato nuevo a inventar: es el numero interno de la
+  // venta, el mismo que se usa para cruzar con ODT/guias en todo el sistema.
+  const numeroInterno = String(venta.nInterno || venta.id)
 
   const handleCrear = () => {
-    if (!numero.trim() || !fecha || !transportista) {
-      toast.warning('Completa número, fecha y transportista')
+    if (!fecha || !transportista) {
+      toast.warning('Completa fecha y transportista')
       return
     }
-    crear.mutate({ ordenId: venta.id, data: { numero: numero.trim(), fecha, transportista } }, {
-      onSuccess: () => { setNumero(''); setFecha(''); setTransportista(''); toast.success('Orden de transporte creada.') },
+    crear.mutate({ ordenId: venta.id, data: { numero: numeroInterno, fecha, transportista } }, {
+      onSuccess: () => { setFecha(''); setTransportista(''); toast.success('Orden de transporte creada.') },
       onError: err => toast.error(err?.response?.data?.error || 'No se pudo crear la orden de transporte.'),
     })
   }
@@ -711,7 +713,9 @@ function OrdenTransporteModal({ venta, onClose }) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
-          <input value={numero} onChange={e => setNumero(e.target.value)} placeholder="Número / seguimiento" style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }} />
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+            Número interno: <strong style={{ color: 'var(--text-1)', fontFamily: "'DM Mono',monospace" }}>{numeroInterno}</strong>
+          </div>
           <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }} />
           <select value={transportista} onChange={e => setTransportista(e.target.value)} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}>
             <option value="">Selecciona transportista</option>
