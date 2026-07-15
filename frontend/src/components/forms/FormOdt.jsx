@@ -11,7 +11,7 @@ export function FormOdt({ initial, onClose, onSaved }) {
   const handleSave = () => { if (!validate({ cliente: { required: true }, descripcion: { required: true }, plazo: { required: true } })) return; save() }
 
   return (
-    <FormPanel title={isEdit ? `Editar ODT #${initial?.id}` : 'Nueva Orden de Trabajo'} subtitle="Asignar tarea al taller" onClose={onClose} onSave={handleSave} saving={saving}>
+    <FormPanel title={isEdit ? `Editar OT #${initial?.id}` : 'Nueva Orden de Trabajo'} subtitle="Asignar tarea al taller" onClose={onClose} onSave={handleSave} saving={saving}>
       <FormDivider label="Asignación" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <FormField label="Tipo de Taller" required>

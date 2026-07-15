@@ -68,7 +68,7 @@ export default function TallerOperarioPage() {
     <main className="page page-wide" style={{ maxWidth: 800, margin: '0 auto', padding: '16px' }}>
       <PageHeader
         title="Panel Móvil de Operarios"
-        subtitle="Gestión rápida de tareas de taller y ODTs"
+        subtitle="Gestión rápida de tareas de taller y OT"
         breadcrumb={['Inicio', 'Taller', 'Operario']}
       />
 

@@ -245,7 +245,7 @@ function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespac
           }}
         >
           <Icon name="tool" size={14} />
-          {forzarTallerMut.isPending ? 'Enviando...' : 'Gatillar Taller / ODT'}
+          {forzarTallerMut.isPending ? 'Enviando...' : 'Gatillar Taller / OT'}
         </button>
 
         {canEmitirDte && (
@@ -283,7 +283,7 @@ function TabTaller({ odts, onGoTaller }) {
       {odts.map(odt => (
         <div key={odt.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', marginBottom: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-            <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, fontWeight: 600, color: 'var(--green-700)' }}>ODT #{odt.id}</span>
+            <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, fontWeight: 600, color: 'var(--green-700)' }}>OT #{odt.id}</span>
             <div style={{ display: 'flex', gap: 5 }}>
               {odt.prioridad && odt.prioridad !== 'normal' && (
                 <Badge tone={odt.prioridad === 'urgente' ? 'red' : 'amber'} style={{ fontSize: 10 }}>{odt.prioridad}</Badge>
@@ -809,7 +809,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const handleForzarTaller = () => {
     forzarTallerMut.mutate(v.id, {
       onSuccess: () => {
-        toast.warning('Orden de Trabajo (ODT) procesada correctamente.')
+        toast.warning('Orden de Trabajo procesada correctamente.')
       },
       onError: (err) => {
         toast.error('Error al forzar taller: ' + (err.response?.data?.error || err.message))

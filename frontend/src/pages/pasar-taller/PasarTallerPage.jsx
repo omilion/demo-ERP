@@ -252,7 +252,7 @@ export default function PasarTallerPage() {
         breadcrumb={['Inicio', 'Ventas', 'Pasar a Taller']}
         actions={(
           <>
-            {odt?.id && <Btn variant="secondary" size="sm" icon="tool" onClick={() => navigate(`/taller/${odt.id}/editar`)}>Ver ODT</Btn>}
+            {odt?.id && <Btn variant="secondary" size="sm" icon="tool" onClick={() => navigate(`/taller/${odt.id}/editar`)}>Ver OT</Btn>}
             <Btn variant="primary" size="sm" icon="send" onClick={enviarPendientes} disabled={enviarMut.isPending || (!rowsToSend.length && !data.orden)}>
               {enviarMut.isPending ? 'Notificando...' : `Notificar ${rowsToSend.length || ''}`.trim()}
             </Btn>

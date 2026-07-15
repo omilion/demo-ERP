@@ -225,7 +225,7 @@ export default function DespachosPage() {
     <button
       onClick={(e) => { e.stopPropagation(); navigate(odtPath(value, user)) }}
       style={linkButton('var(--amber, #d97706)', 600)}
-      title={`Abrir ODT #${value}`}
+      title={`Abrir OT #${value}`}
     >#{value}</button>
   ) : '-'
 
@@ -250,7 +250,7 @@ export default function DespachosPage() {
     { key: 'estadoEntrega', label: 'Entrega', render: v => v ? <Badge tone={toneEntrega(v)}>{v}</Badge> : '-' },
     { key: 'itemsDetalle', label: 'Detalle', wrap: true, render: value => <DetalleProductos items={value || []} /> },
     { key: 'packing', label: 'Packing', render: (_, row) => <PackingProgress row={row} /> },
-    { key: 'odts', label: 'ODTs', render: value => <InlineList items={(value || []).map(odt => `#${odt.id} ${odt.estado || ''}`)} /> },
+    { key: 'odts', label: 'OT', render: value => <InlineList items={(value || []).map(odt => `#${odt.id} ${odt.estado || ''}`)} /> },
     { key: 'guias', label: 'Guias', render: (value, row) => {
       const list = (value || []).map(g => g.nGuia)
       if (!list.length && row.guiasLegacy) list.push(`#${row.guiasLegacy}`)
@@ -266,7 +266,7 @@ export default function DespachosPage() {
     { key: '_acc', label: 'Acciones', render: (_, row) => (
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
         <button onClick={e => { e.stopPropagation(); navigate(ventaPath(row.ordenId, user)) }} style={btnSm('var(--green-700)')}>Ver</button>
-        {row.odtCount > 0 && <button onClick={e => { e.stopPropagation(); navigate(`/odt?ordenId=${row.ordenId}`) }} style={btnSm('var(--amber)')}>ODT</button>}
+        {row.odtCount > 0 && <button onClick={e => { e.stopPropagation(); navigate(`/odt?ordenId=${row.ordenId}`) }} style={btnSm('var(--amber)')}>OT</button>}
         {row.nInterno && <button onClick={e => { e.stopPropagation(); navigate(`/caja?nInterno=${row.nInterno}`) }} style={btnSm('var(--text-2)')}>Pagos</button>}
         {canWriteDespacho && (
           <button
@@ -315,7 +315,7 @@ export default function DespachosPage() {
     ) },
     { key: 'interno', label: 'N interno', render: v => <Mono strong>{v || '-'}</Mono> },
     { key: 'ordenId', label: 'Orden', render: v => v ? <button onClick={(e) => { e.stopPropagation(); navigate(ventaPath(v, user)) }} style={linkButton('var(--blue)')}>#{v}</button> : '-' },
-    { key: 'odtId', label: 'ODT', render: renderOdtLink },
+    { key: 'odtId', label: 'OT', render: renderOdtLink },
     { key: 'tipoDespacho', label: 'Tipo', render: v => v ? <Badge tone="blue">{v}</Badge> : '-' },
     { key: 'transporte', label: 'Transporte' },
     { key: 'contacto', label: 'Contacto' },
@@ -346,7 +346,7 @@ export default function DespachosPage() {
     { key: 'nGuia', label: 'N guia', render: v => <Mono strong>{v}</Mono> },
     { key: 'nInterno', label: 'N interno' },
     { key: 'ordenId', label: 'Orden', render: v => v ? <button onClick={(e) => { e.stopPropagation(); navigate(ventaPath(v, user)) }} style={linkButton('var(--blue)')}>#{v}</button> : '-' },
-    { key: 'odtId', label: 'ODT', render: renderOdtLink },
+    { key: 'odtId', label: 'OT', render: renderOdtLink },
     { key: 'origen', label: 'Origen' },
     { key: '_acc', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 8 }}>
@@ -412,7 +412,7 @@ export default function DespachosPage() {
         <FilterField label="Guia"><input value={guia} onChange={e => setFilter(setGuia)(e.target.value)} style={inputFilter} /></FilterField>
         <FilterField label="NC"><input value={nc} onChange={e => setFilter(setNc)(e.target.value)} style={inputFilter} /></FilterField>
         <FilterField label="ND"><input value={nd} onChange={e => setFilter(setNd)(e.target.value)} style={inputFilter} /></FilterField>
-        <FilterField label="ODT"><input value={odtId} onChange={e => setFilter(setOdtId)(e.target.value)} style={inputFilter} /></FilterField>
+        <FilterField label="OT"><input value={odtId} onChange={e => setFilter(setOdtId)(e.target.value)} style={inputFilter} /></FilterField>
         <FilterField label="Tipo venta">
           <select value={tipoVenta} onChange={e => setFilter(setTipoVenta)(e.target.value)} style={inputFilter}>
             {TIPO_VENTA_OPTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -901,7 +901,7 @@ function DespachoModal({ title, initial, saving, onClose, onSave }) {
     <Modal title={title} onClose={onClose}>
       <div style={grid}>
         <Field label="Orden ID"><input value={form.ordenId || ''} onChange={e => set('ordenId', e.target.value)} style={input} /></Field>
-        <Field label="ODT ID"><input value={form.odtId || ''} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
+        <Field label="OT ID"><input value={form.odtId || ''} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
         <Field label="Interno"><input value={form.interno || ''} onChange={e => set('interno', e.target.value)} style={input} /></Field>
         <Field label="Plazo entrega"><input value={form.plazoEntrega || ''} onChange={e => set('plazoEntrega', e.target.value)} style={input} /></Field>
         <Field label="Fecha interno"><input type="date" value={form.fechaInterno || ''} onChange={e => set('fechaInterno', e.target.value)} style={input} /></Field>
@@ -940,7 +940,7 @@ function GuiaModal({ title = 'Nueva guia', initial, saving, onClose, onSave }) {
       <div style={grid}>
         <Field label="N guia"><input value={form.nGuia} onChange={e => set('nGuia', e.target.value)} style={input} /></Field>
         <Field label="Orden ID"><input value={form.ordenId} onChange={e => set('ordenId', e.target.value)} style={input} /></Field>
-        <Field label="ODT ID"><input value={form.odtId} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
+        <Field label="OT ID"><input value={form.odtId} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
         <Field label="N interno"><input value={form.nInterno} onChange={e => set('nInterno', e.target.value)} style={input} /></Field>
         <Field label="Fecha"><input type="date" value={form.fechaGuia} onChange={e => set('fechaGuia', e.target.value)} style={input} /></Field>
       </div>

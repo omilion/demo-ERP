@@ -286,7 +286,7 @@ function TabTaller({ odts, onOdtClick }) {
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 5 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, fontWeight: 700, color: 'var(--green-700)' }}>ODT #{odt.id}</span>
+              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, fontWeight: 700, color: 'var(--green-700)' }}>OT #{odt.id}</span>
               {odt.tipo && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{odt.tipo}</span>}
             </div>
             <div style={{ display: 'flex', gap: 5 }}>

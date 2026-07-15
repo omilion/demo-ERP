@@ -246,7 +246,7 @@ function HistorialCliente({ cliente, navigate }) {
 
   return (
     <>
-      <FormDivider label={`Historial · ${ventas.length} ventas · ${odts.length} ODT`} />
+      <FormDivider label={`Historial · ${ventas.length} ventas · ${odts.length} OT`} />
       {ventas.length > 0 && (
         <div style={{ borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden', marginBottom: 12, maxHeight: 280, overflowY: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -277,7 +277,7 @@ function HistorialCliente({ cliente, navigate }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
-                {['Fecha', 'ODT', 'Taller', 'Estado'].map(h => (
+                {['Fecha', 'OT', 'Taller', 'Estado'].map(h => (
                   <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--text-3)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.3, borderBottom: '1px solid var(--border)' }}>{h}</th>
                 ))}
               </tr>

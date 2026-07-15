@@ -96,7 +96,7 @@ export default function HistorialMaterialesPage() {
     { key: 'taller', label: 'Taller',
       render: v => v ? <Badge tone="blue">{v}</Badge> : '-' },
     { key: 'usuario', label: 'Operario' },
-    { key: 'odtId', label: 'ODT',
+    { key: 'odtId', label: 'OT',
       render: v => v ? <span style={mono}>#{v}</span> : '-' },
     { key: 'egreso', label: 'Egreso', align: 'right',
       render: v => Number(v || 0) ? <span style={{ ...mono, color: 'var(--red-700)', fontWeight: 600 }}>-{v}</span> : '-' },
@@ -156,7 +156,7 @@ export default function HistorialMaterialesPage() {
           <FormField label="Taller"><Input value={taller} onChange={setFilter(setTaller)} /></FormField>
           <FormField label="Codigo interno"><Input value={codigo} onChange={setFilter(setCodigo)} /></FormField>
           <FormField label="Material"><Input value={nombre} onChange={setFilter(setNombre)} /></FormField>
-          <FormField label="ODT"><Input type="number" value={odtId} onChange={setFilter(setOdtId)} /></FormField>
+          <FormField label="OT"><Input type="number" value={odtId} onChange={setFilter(setOdtId)} /></FormField>
           <FormField label="Movimiento">
             <Select value={tipoMovimiento} onChange={setFilter(setTipoMovimiento)} options={[
               { value: '', label: 'Todos' },

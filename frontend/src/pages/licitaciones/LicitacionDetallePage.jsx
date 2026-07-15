@@ -635,14 +635,14 @@ export default function LicitacionDetallePage() {
             <div><span style={{ color: 'var(--text-3)' }}>Total:</span> <strong style={{ fontFamily: "'DM Mono', monospace" }}>{fmt(data.orden.total)}</strong></div>
             <div><span style={{ color: 'var(--text-3)' }}>Estado pago:</span> {data.orden.estadoPago || '—'}</div>
             <div><span style={{ color: 'var(--text-3)' }}>Estado entrega:</span> {data.orden.estadoEntrega || '—'}</div>
-            <div><span style={{ color: 'var(--text-3)' }}>ODTs:</span> <strong>{(data.odts || []).length}</strong></div>
+            <div><span style={{ color: 'var(--text-3)' }}>OT:</span> <strong>{(data.odts || []).length}</strong></div>
             <div><span style={{ color: 'var(--text-3)' }}>Despachos:</span> <strong>{(data.despachos || []).length}</strong></div>
             <div><span style={{ color: 'var(--text-3)' }}>Guías:</span> <strong>{(data.guias || []).length}</strong></div>
           </div>
 
           {(data.odts || []).length > 0 && (
             <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 6 }}>ODTs ({data.odts.length})</div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: 6 }}>OT ({data.odts.length})</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {data.odts.map(o => (
                   <button key={o.id} onClick={() => navigate('/taller/' + o.id + '/editar')} style={chip}>

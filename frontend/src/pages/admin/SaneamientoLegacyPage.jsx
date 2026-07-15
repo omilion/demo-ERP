@@ -16,10 +16,10 @@ const CATEGORIES = [
   {
     id: 'odt-items-huerfanos',
     key: 'odt_items_huerfanos',
-    label: 'Items ODT huerfanos',
+    label: 'Items OT huerfanos',
     risk: 'alto',
     owner: 'Taller',
-    impact: 'ODTs con consumo o trabajo asociado a productos inexistentes.',
+    impact: 'OT con consumo o trabajo asociado a productos inexistentes.',
     sampleCols: ['id', 'odt_id', 'producto_id', 'nombre', 'cantidad'],
   },
   {
@@ -97,7 +97,7 @@ const CATEGORIES = [
   {
     id: 'odt-mojibake',
     key: 'odt_mojibake',
-    label: 'Texto corrupto ODT',
+    label: 'Texto corrupto OT',
     risk: 'medio',
     owner: 'Taller',
     impact: 'Descripciones de trabajo con texto ilegible o contaminado.',
@@ -124,7 +124,7 @@ const CATEGORIES = [
   {
     id: 'odts-sin-cliente',
     key: 'odts_sin_cliente',
-    label: 'ODTs sin cliente',
+    label: 'OT sin cliente',
     risk: 'alto',
     owner: 'Taller',
     impact: 'Ordenes de trabajo sin cliente visible para trazabilidad operacional.',

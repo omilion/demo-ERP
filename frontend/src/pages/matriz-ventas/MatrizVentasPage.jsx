@@ -105,7 +105,7 @@ export default function MatrizVentasPage() {
         style={{ marginBottom: 0, borderBottom: 'none', gap: 1 }} 
       />
       <SearchBar
-        placeholder="Buscar por cliente, ODT, guía, OC..."
+        placeholder="Buscar por cliente, OT, guía, OC..."
         value={search}
         onChange={setFilter(setSearch)}
         style={{ width: 220 }}
@@ -302,7 +302,7 @@ export default function MatrizVentasPage() {
     { key: 'detalleProductos', label: 'Detalle', width: 430, wrap: true, render: (_, row) => renderDetalle(row) },
     { key: 'fecha', label: 'Fecha Creacion', render: v => <span style={{ ...mono, fontSize: 11 }}>{formatDateTime(v)}</span> },
     { key: 'creadorNombre', label: 'Creada por', render: v => <span style={{ fontSize: 12 }}>{v || '-'}</span> },
-    { key: 'odtCount', label: 'ODTs', render: (_, row) => renderLinkedList(row.odts, odt => `#${odt.id} ${odt.estado || ''}`) },
+    { key: 'odtCount', label: 'OT', render: (_, row) => renderLinkedList(row.odts, odt => `#${odt.id} ${odt.estado || ''}`) },
     { key: 'guiasCount', label: 'Guias Desp.', render: (_, row) => row.guias?.length ? renderLinkedList(row.guias, guia => `#${guia.nGuia || guia.id}`) : (row.guiasLegacy ? <span style={{ ...mono, fontSize: 11 }}>#{row.guiasLegacy}</span> : '-') },
     { key: 'documentosCount', label: 'Documentos', wrap: true, render: (_, row) => renderDocumentos(row) },
     { key: 'cliente', label: 'Cliente', render: v => <span style={{ ...mono, fontSize: 11 }}>{v || '-'}</span> },
