@@ -759,6 +759,9 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
     // precioUnitario ya incluye IVA (precio de venta sala) — se desglosa desde el total, no se suma aparte.
     const netoVenta = Math.round(total / 1.19)
     const ivaVenta = total - netoVenta
+    const dtesValidos = doc => ['emitido', 'enviado', 'aceptado'].includes(doc.estado)
+    const totalNC = dtes.filter(d => d.tipoDte === 61 && dtesValidos(d)).reduce((s, d) => s + Number(d.totales?.total || 0), 0)
+    const totalND = dtes.filter(d => d.tipoDte === 56 && dtesValidos(d)).reduce((s, d) => s + Number(d.totales?.total || 0), 0)
 
     return (
       <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
@@ -908,6 +911,14 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                     <span style={{ fontFamily: "'DM Mono',monospace" }}>−{fmt(abono)}</span>
                   </div>
                 )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 16px', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ color: 'var(--text-2)' }}>NC Totales</span>
+                  <span style={{ fontFamily: "'DM Mono',monospace", color: totalNC > 0 ? 'var(--red)' : 'var(--text-3)' }}>{totalNC > 0 ? `−${fmt(totalNC)}` : fmt(0)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 16px', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ color: 'var(--text-2)' }}>ND Totales</span>
+                  <span style={{ fontFamily: "'DM Mono',monospace", color: totalND > 0 ? 'var(--amber)' : 'var(--text-3)' }}>{totalND > 0 ? `+${fmt(totalND)}` : fmt(0)}</span>
+                </div>
                 {(abono > 0 || saldo > 0) && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '11px 16px', fontSize: 14, fontWeight: 700, background: saldo > 0 ? '#fef2f2' : 'var(--green-50)' }}>
                     <span style={{ color: saldo > 0 ? 'var(--red)' : 'var(--green-700)' }}>Saldo Pendiente</span>
