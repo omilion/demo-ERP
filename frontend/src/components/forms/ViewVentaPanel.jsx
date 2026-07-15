@@ -654,6 +654,42 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, handleForzarTaller, 
   )
 }
 
+// ── Documentos + Pagos (columna izquierda) ───────────────────────────────────
+function DocumentosPagosList({ pagos, dtes }) {
+  const pagosReales = (pagos || []).filter(p => !isReferencialPago(p))
+  const totalPagado = pagosReales
+    .filter(p => p.tipo === 'Ingreso')
+    .reduce((s, p) => s + Math.abs(p.monto), 0)
+
+  if (pagosReales.length === 0 && (dtes || []).length === 0) return null
+
+  return (
+    <div>
+      <FormDivider label="Documentos emitidos" />
+      {totalPagado > 0 && (
+        <div style={{ background: 'var(--green-50)', borderRadius: 8, padding: '8px 12px', marginBottom: 10, display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+          <span style={{ color: 'var(--green-700)', fontWeight: 600 }}>Total recibido</span>
+          <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: 700, color: 'var(--green-700)' }}>{fmt(totalPagado)}</span>
+        </div>
+      )}
+      {dtes.map(doc => (
+        <div key={doc.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
+          <span>{TIPOS_DTE[doc.tipoDte] || `DTE ${doc.tipoDte}`} {doc.folio ? `#${doc.folio}` : ''}</span>
+          <Badge tone={DTE_TONE[doc.estado] || 'gray'}>{doc.estado}</Badge>
+        </div>
+      ))}
+      {pagosReales.map(p => (
+        <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
+          <span>{p.medioPago}</span>
+          <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: 600, color: p.tipo === 'Ingreso' ? 'var(--green-600)' : 'var(--red)' }}>
+            {p.tipo === 'Ingreso' ? '+' : '−'}{fmt(Math.abs(p.monto))}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Main panel ─────────────────────────────────────────────────────────────────
 export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDelete = false, variant = 'drawer' }) {
   const navigate = useNavigate()
