@@ -386,10 +386,12 @@ export default async function updateVenta(fastify) {
           }
 
           if (cot) {
+            // No se auto-adjudica: el estado se maneja aparte, item por item,
+            // desde LicitacionDetallePage segun lo que el organismo licitante
+            // realmente adjudique.
             const dataToUpdate = {
               ordenId: id,
               idLicitacion: licId,
-              estado: 'Adjudicada',
             }
             if (licitacionFecha !== undefined) dataToUpdate.fecha = licitacionFecha ? new Date(licitacionFecha) : null
             if (licitacionPlazo !== undefined) dataToUpdate.plazo = licitacionPlazo
@@ -412,7 +414,7 @@ export default async function updateVenta(fastify) {
                   codigoInterno: item.codigoInterno,
                   nombre: item.nombre,
                   cantidad: item.cantidad,
-                  cantAdjudicados: item.cantidad,
+                  cantAdjudicados: 0,
                   precio: item.precioUnitario,
                 }))
               })
@@ -428,7 +430,8 @@ export default async function updateVenta(fastify) {
                 idLicitacion: licId,
                 fecha: licitacionFecha ? new Date(licitacionFecha) : new Date(),
                 rutCliente: clientObj?.rut || '',
-                estado: 'Adjudicada',
+                // Pendiente por defecto, igual que al crear (ver create.js).
+                estado: 'Pendiente',
                 plazo: licitacionPlazo || '',
                 referencia: licitacionReferencia || '',
                 ordenCompra: licitacionOC || '',
@@ -443,7 +446,7 @@ export default async function updateVenta(fastify) {
                     codigoInterno: item.codigoInterno,
                     nombre: item.nombre,
                     cantidad: item.cantidad,
-                    cantAdjudicados: item.cantidad,
+                    cantAdjudicados: 0,
                     precio: item.precioUnitario,
                   }))
                 }

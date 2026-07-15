@@ -1703,6 +1703,8 @@ describe('Venta directa stock, lifecycle and sucursal scope', () => {
       })
       expect(new Date(cotUpdated.fecha).toISOString().slice(0, 10)).toBe('2026-05-28')
       expect(cotUpdated.plazo).toBe('45 días')
+      // Actualizar metadata de la venta tampoco debe forzar Adjudicada.
+      expect(cotUpdated.estado).toBe('Pendiente')
       expect(cotUpdated.referencia).toBe('Escuela A-101')
       expect(cotUpdated.ordenCompra).toBe('OC-124')
     } finally {
