@@ -16,9 +16,9 @@ const ItemSchema = z.object({
   cantidad: z.number().int().min(1),
   precioUnitario: z.number().min(0),
   // Overrides a nivel de item (p. ej. licitacion): no modifican el producto base.
-  nombre: z.string().optional(),
-  descripcion: z.string().optional(),
-  codigoInterno: z.string().optional(),
+  nombre: z.string().optional().nullable(),
+  descripcion: z.string().optional().nullable(),
+  codigoInterno: z.string().optional().nullable(),
 })
 
 const Schema = z.object({

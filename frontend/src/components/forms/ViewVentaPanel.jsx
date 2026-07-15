@@ -507,7 +507,7 @@ function AgregarProductoWidget({ venta, items, canWrite }) {
           codigoInterno: producto.codigoInterno || '',
         }]
     updateVenta.mutate(
-      { id: venta.id, data: { items: nuevosItems.map(({ productoId, cantidad, precioUnitario, nombre, descripcion, codigoInterno }) => ({ productoId, cantidad, precioUnitario, nombre, descripcion, codigoInterno })) } },
+      { id: venta.id, data: { items: nuevosItems.map(({ productoId, cantidad, precioUnitario, nombre, descripcion, codigoInterno }) => ({ productoId, cantidad, precioUnitario, nombre: nombre || undefined, descripcion: descripcion || undefined, codigoInterno: codigoInterno || undefined })) } },
       {
         onSuccess: () => {
           toast.success(`${producto.nombre} agregado (x${cant}).`)
@@ -832,16 +832,14 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                   ].filter(([, valor]) => valor)
                   if (!filas.length) return <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Sin cliente asociado</div>
                   return (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                      <tbody>
-                        {filas.map(([label, valor]) => (
-                          <tr key={label}>
-                            <td style={{ padding: '3px 10px 3px 0', color: 'var(--text-3)', fontWeight: 600, whiteSpace: 'nowrap', verticalAlign: 'top' }}>{label}</td>
-                            <td style={{ padding: '3px 0', color: 'var(--text-1)' }}>{valor}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 20, rowGap: 4 }}>
+                      {filas.map(([label, valor]) => (
+                        <div key={label} style={{ display: 'flex', gap: 8, fontSize: 12, minWidth: 0 }}>
+                          <span style={{ color: 'var(--text-3)', fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>
+                          <span style={{ color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{valor}</span>
+                        </div>
+                      ))}
+                    </div>
                   )
                 })()}
               </div>
