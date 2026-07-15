@@ -672,7 +672,7 @@ function DocumentosPagosList({ pagos, dtes }) {
           <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: 700, color: 'var(--green-700)' }}>{fmt(totalPagado)}</span>
         </div>
       )}
-      {dtes.map(doc => (
+      {(dtes || []).map(doc => (
         <div key={doc.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
           <span>{TIPOS_DTE[doc.tipoDte] || `DTE ${doc.tipoDte}`} {doc.folio ? `#${doc.folio}` : ''}</span>
           <Badge tone={DTE_TONE[doc.estado] || 'gray'}>{doc.estado}</Badge>
