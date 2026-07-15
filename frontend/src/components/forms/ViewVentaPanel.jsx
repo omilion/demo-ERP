@@ -707,6 +707,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const v = full || venta
   const odts  = full?.odts  ?? []
   const pagos = full?.pagos ?? []
+  const guias = full?.guias ?? []
   const documentosCount = pagos.filter(isReferencialPago).length
   const dtes = documentosDteQuery.data?.documentos || []
   const canWriteFacturacion = can(user, 'facturacion', 'write')
@@ -786,7 +787,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
               <OperacionesDisponibles
                 v={v}
                 odtsCount={odts.length}
-                guiasCount={(v.guias ? 1 : 0)}
+                guiasCount={guias.length}
                 handleForzarTaller={handleForzarTaller}
                 forzarTallerMut={forzarTallerMut}
                 canEmitirDte={canWriteFacturacion && !ventaYaEmitida}
