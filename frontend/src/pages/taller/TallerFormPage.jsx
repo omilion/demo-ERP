@@ -1,6 +1,6 @@
 import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState, useEffect, useRef } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../components/forms/index'
 import {
@@ -192,7 +192,9 @@ export default function TallerFormPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { id } = useParams()
+  const [searchParams] = useSearchParams()
   const isEdit = !!id
+  const ordenIdParam = !isEdit ? (searchParams.get('ordenId') || '') : ''
 
   const isUrlEdit = location.pathname.endsWith('/editar')
   const [isEditMode, setIsEditMode] = useState(!id || isUrlEdit)
@@ -213,7 +215,7 @@ export default function TallerFormPage() {
   const { data, set, errors, validate } = useForm({
     tipo: 'Espumas', clienteNombre: '', descripcion: '',
     obsGeneral: '', estado: 'Pendiente', prioridad: 'normal', plazo: '', fechaIngreso: '',
-    fechaInicio: '', fechaTermino: '', ordenId: '', operarioId: '',
+    fechaInicio: '', fechaTermino: '', ordenId: ordenIdParam, operarioId: '',
   })
 
   const initializedRef = useRef(false)

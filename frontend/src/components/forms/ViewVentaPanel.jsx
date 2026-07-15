@@ -595,7 +595,7 @@ function opBtnStyle(color) {
   }
 }
 
-function OperacionesDisponibles({ v, odtsCount, guiasCount, handleForzarTaller, forzarTallerMut, canEmitirDte, onEmitirDte, canDelete }) {
+function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmitirDte, canDelete }) {
   const navigate = useNavigate()
   const anularVenta = useAnularVenta()
   const activarVenta = useActivarVenta()
@@ -624,7 +624,7 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, handleForzarTaller, 
     <div style={{ marginBottom: 14 }}>
       <FormDivider label="Operaciones disponibles" />
       <button onClick={() => navigate(`/taller?search=${v.nInterno || v.id}`)} style={opBtnStyle('var(--blue)')}>
-        <Icon name="tool" size={14} /> ODTs ({odtsCount})
+        <Icon name="tool" size={14} /> Órdenes de Trabajo ({odtsCount})
       </button>
       <button onClick={() => navigate(`/despachos?ordenId=${v.id}`)} style={opBtnStyle('var(--green-600)')}>
         <Icon name="truck" size={14} /> Guías Despachos ({guiasCount})
@@ -632,8 +632,8 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, handleForzarTaller, 
       <button onClick={abrirNotaVenta} style={opBtnStyle('var(--blue)')}>
         <Icon name="printer" size={14} /> Nota de Venta
       </button>
-      <button onClick={handleForzarTaller} disabled={forzarTallerMut.isPending} style={{ ...opBtnStyle('var(--amber)'), opacity: forzarTallerMut.isPending ? 0.7 : 1 }}>
-        <Icon name="tool" size={14} /> {forzarTallerMut.isPending ? 'Enviando...' : 'Notificar a Taller'}
+      <button onClick={() => navigate(`/taller/nueva?ordenId=${v.id}`)} style={opBtnStyle('var(--amber)')}>
+        <Icon name="tool" size={14} /> Notificar a Taller
       </button>
       {canEmitirDte && (
         <button onClick={onEmitirDte} style={opBtnStyle('var(--blue)')}>
@@ -802,8 +802,6 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                 v={v}
                 odtsCount={odts.length}
                 guiasCount={guias.length}
-                handleForzarTaller={handleForzarTaller}
-                forzarTallerMut={forzarTallerMut}
                 canEmitirDte={canWriteFacturacion && !ventaYaEmitida}
                 onEmitirDte={() => setEmitirDte(true)}
                 canDelete={canDelete}
