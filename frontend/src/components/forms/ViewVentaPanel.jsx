@@ -746,50 +746,153 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
 
   if (variant === 'page') {
     const pageTitle = <span>Venta <span style={{ fontFamily: "'DM Mono',monospace", color: 'var(--green-700)' }}>#{v.id}</span></span>
-    const pageSubtitle = `${fecha} - ${v.creadorNombre || 'Sin vendedor'}`
+    const items = v.items || []
+    const total = v.total || 0
+    const abono = v.abono || 0
+    const saldo = total - abono
+    const descuento = Number(v.descuentoSnapshot?.porcentaje ?? v.descuentoPct ?? 0)
+    const subtotal = items.reduce((s, i) => s + (i.precioUnitario * i.cantidad), 0)
+    const cargosTotal = (v.cargos || []).reduce((s, c) => s + Number(c.valor || 0), 0)
+    const totalBase = subtotal + cargosTotal
+    const descuentoMonto = resolvedDiscountAmount(totalBase, descuento, v.descuentoMonto)
 
     return (
       <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
         <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--text-1)', letterSpacing: -0.3 }}>{pageTitle}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>{pageSubtitle}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>{v.tipo || 'Venta'}</div>
           </div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <TotalBadge total={total} />
             {canWrite && onEdit && <Btn variant="primary" icon="edit" onClick={onEdit}>Editar</Btn>}
-            <Btn variant="secondary" icon="printer" onClick={() => {
-              const w = window.open(`${window.location.origin}/ventas/${v.id}/imprimir`, '_blank')
-              if (!w) toast.warning('Habilita popups para imprimir')
-            }}>Imprimir</Btn>
             {canDelete && <Btn variant="ghost" icon="trash" onClick={() => setConfirmDelete(true)} style={{ color: 'var(--red)' }}>Eliminar</Btn>}
           </div>
         </div>
-        <div style={{ padding: '22px', maxWidth: 1180 }}>
-          <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 16, marginTop: -6 }}>
-            <TabBtn active={tab === 'detalle'}    onClick={() => setTab('detalle')}>Detalle</TabBtn>
-            <TabBtn active={tab === 'taller'}     onClick={() => setTab('taller')}  badge={odts.length}>Taller</TabBtn>
-            <TabBtn active={tab === 'pagos'}      onClick={() => setTab('pagos')}   badge={pagos.length}>Pagos</TabBtn>
-            <TabBtn active={tab === 'documentos'} onClick={() => setTab('documentos')} badge={documentosCount}>Documentos</TabBtn>
+
+        {isLoading && !full && (
+          <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Cargando detalles...</div>
+        )}
+
+        {(!isLoading || full) && (
+          <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 0 }}>
+            {/* Columna izquierda */}
+            <div style={{ padding: '18px 16px', borderRight: '1px solid var(--border)' }}>
+              <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 14px', marginBottom: 14, fontSize: 13 }}>
+                <div><strong>Ejecutivo(a):</strong> {v.creadorNombre || 'Sin vendedor'}</div>
+                <div style={{ marginTop: 4 }}><strong>Fecha:</strong> {fecha}</div>
+              </div>
+              <AgregarProductoWidget venta={v} items={items} canWrite={canWrite} />
+              <OperacionesDisponibles
+                v={v}
+                odtsCount={odts.length}
+                guiasCount={(v.guias ? 1 : 0)}
+                handleForzarTaller={handleForzarTaller}
+                forzarTallerMut={forzarTallerMut}
+                canEmitirDte={canWriteFacturacion && !ventaYaEmitida}
+                onEmitirDte={() => setEmitirDte(true)}
+                canDelete={canDelete}
+              />
+              <DocumentosPagosList pagos={pagos} dtes={dtes} />
+            </div>
+
+            {/* Columna derecha */}
+            <div style={{ padding: 22 }}>
+              <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-3)', marginBottom: 8 }}>Cliente</div>
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>{v.cliente?.nombre || '—'}</div>
+                {v.cliente?.razonSocial && v.cliente.razonSocial !== v.cliente?.nombre && (
+                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 2 }}>{v.cliente.razonSocial}</div>
+                )}
+                {v.cliente?.rut && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace", marginBottom: 6 }}>{v.cliente.rut}</div>}
+                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 4 }}>
+                  {v.cliente?.email && <span style={{ fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="mail" size={11} color="var(--text-3)" /> {v.cliente.email}</span>}
+                  {v.cliente?.telefono && <span style={{ fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="phone" size={11} color="var(--text-3)" /> {v.cliente.telefono}</span>}
+                  {v.cliente?.ciudad && <span style={{ fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="mapPin" size={11} color="var(--text-3)" /> {v.cliente.ciudad}</span>}
+                </div>
+              </div>
+
+              {items.length > 0 && (
+                <>
+                  <FormDivider label={`Productos (${items.length})`} />
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg)' }}>
+                          {['Producto', 'Cant.', 'P. Unit.', 'Subtotal'].map((h, i) => (
+                            <th key={i} style={{ padding: '7px ' + (i === 0 ? '12px' : '8px'), textAlign: i === 0 ? 'left' : 'right', fontWeight: 600, color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((item, i) => (
+                          <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                            <td style={{ padding: '8px 12px' }}>
+                              <div style={{ fontWeight: 500 }}>{item.producto?.nombre || item.nombre || `Producto #${item.productoId}`}</div>
+                              {(item.producto?.codigoInterno || item.codigoInterno) && (
+                                <div style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>{item.producto?.codigoInterno || item.codigoInterno}</div>
+                              )}
+                            </td>
+                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>{item.cantidad}</td>
+                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>{fmt(item.precioUnitario)}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>{fmt(item.precioUnitario * item.cantidad)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+
+              <FormDivider label="Resumen financiero" />
+              <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 14 }}>
+                {items.length > 0 && subtotal !== total && descuentoMonto > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 16px', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ color: 'var(--text-2)' }}>Subtotal</span>
+                    <span style={{ fontFamily: "'DM Mono',monospace" }}>{fmt(subtotal)}</span>
+                  </div>
+                )}
+                {cargosTotal > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 16px', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ color: 'var(--text-2)' }}>Cargos transporte</span>
+                    <span style={{ fontFamily: "'DM Mono',monospace" }}>{fmt(cargosTotal)}</span>
+                  </div>
+                )}
+                {descuentoMonto > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 16px', fontSize: 13, borderBottom: '1px solid var(--border)', color: 'var(--green-600)' }}>
+                    <span>{discountLabel(v, descuento)}</span>
+                    <span style={{ fontFamily: "'DM Mono',monospace" }}>-{fmt(descuentoMonto)}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '11px 16px', fontSize: 14, fontWeight: 700, borderBottom: abono > 0 ? '1px solid var(--border)' : 'none' }}>
+                  <span>Total Venta</span>
+                  <span style={{ fontFamily: "'DM Mono',monospace" }}>{fmt(total)}</span>
+                </div>
+                {abono > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 16px', fontSize: 13, borderBottom: '1px solid var(--border)', color: 'var(--green-600)' }}>
+                    <span>Abono recibido</span>
+                    <span style={{ fontFamily: "'DM Mono',monospace" }}>−{fmt(abono)}</span>
+                  </div>
+                )}
+                {(abono > 0 || saldo > 0) && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '11px 16px', fontSize: 14, fontWeight: 700, background: saldo > 0 ? '#fef2f2' : 'var(--green-50)' }}>
+                    <span style={{ color: saldo > 0 ? 'var(--red)' : 'var(--green-700)' }}>Saldo Pendiente</span>
+                    <span style={{ fontFamily: "'DM Mono',monospace", color: saldo > 0 ? 'var(--red)' : 'var(--green-700)' }}>{fmt(saldo)}</span>
+                  </div>
+                )}
+              </div>
+
+              {v.observaciones && (
+                <>
+                  <FormDivider label="Observaciones" />
+                  <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.7, whiteSpace: 'pre-wrap', marginBottom: 14 }}>
+                    {v.observaciones}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
-
-          {isLoading && !full && (
-            <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Cargando detalles...</div>
-          )}
-
-          {tab === 'detalle'    && (
-            <TabDetalle
-              v={v}
-              handleForzarTaller={handleForzarTaller}
-              forzarTallerMut={forzarTallerMut}
-              handleCreateDespacho={handleCreateDespacho}
-              canEmitirDte={canWriteFacturacion && !ventaYaEmitida}
-              onEmitirDte={() => setEmitirDte(true)}
-            />
-          )}
-          {tab === 'taller'     && <TabTaller odts={odts} onGoTaller={() => navigate('/taller')} />}
-          {tab === 'pagos'      && <TabPagos pagos={pagos} />}
-          {tab === 'documentos' && <TabDocumentos v={v} pagos={pagos} dtes={dtes} canWriteFacturacion={canWriteFacturacion} onNota={(documento, tipoDte) => setNotaDte({ documento, tipoDte })} />}
-        </div>
+        )}
 
         {confirmDelete && canDelete && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'oklch(0 0 0/0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
