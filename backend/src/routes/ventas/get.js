@@ -21,7 +21,11 @@ export default async function getVenta(fastify) {
     if (!o) return reply.code(404).send({ error: 'Venta no encontrada' })
 
     const [odts, pagos, multas, despachos, guias, cobranza, cotizaciones] = await Promise.all([
-      fastify.prisma.odt.findMany({ where: { ordenId: id }, orderBy: { createdAt: 'desc' } }),
+      fastify.prisma.odt.findMany({
+        where: { ordenId: id },
+        orderBy: { createdAt: 'desc' },
+        include: { items: { where: { eliminado: false }, select: { productoId: true, estado: true, fechaListo: true } } },
+      }),
       fastify.prisma.movimientoCaja.findMany({ where: { ordenId: id, eliminado: false }, orderBy: { createdAt: 'desc' } }),
       fastify.prisma.multa.findMany({ where: { ordenId: id }, orderBy: { fecha: 'desc' } }),
       fastify.prisma.despacho.findMany({ where: { ordenId: id, eliminado: false }, orderBy: { fechaEntrega: 'desc' } }),

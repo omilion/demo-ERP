@@ -3,7 +3,7 @@ import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, Icon } from '../shared'
 import { ViewPanel, FormDivider } from './index'
-import { useVenta, useDeleteVenta, useForzarTaller, useUpdateVenta, useAnularVenta, useActivarVenta } from '../../api/ventas'
+import { useVenta, useDeleteVenta, useForzarTaller, useUpdateVenta, useAnularVenta, useActivarVenta, useUpdateItemEntregados } from '../../api/ventas'
 import { useProductos } from '../../api/productos'
 import { useDocumentos } from '../../api/facturacion'
 import { EmitirDteModal, NotaDteModal } from '../facturacion/DteModals'
@@ -702,6 +702,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const { data: full, isLoading } = useVenta(venta.id)
   const deleteVenta = useDeleteVenta()
   const forzarTallerMut = useForzarTaller()
+  const updateEntregados = useUpdateItemEntregados()
   const documentosDteQuery = useDocumentos({ ordenId: venta.id })
 
   const v = full || venta
@@ -759,6 +760,13 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
     // precioUnitario ya incluye IVA (precio de venta sala) — se desglosa desde el total, no se suma aparte.
     const netoVenta = Math.round(total / 1.19)
     const ivaVenta = total - netoVenta
+    // odts ya viene ordenado por createdAt desc: el primer match por productoId es el mas reciente.
+    const estadoTallerPorProducto = new Map()
+    for (const odt of odts) {
+      for (const odtItem of odt.items || []) {
+        if (!estadoTallerPorProducto.has(odtItem.productoId)) estadoTallerPorProducto.set(odtItem.productoId, odtItem)
+      }
+    }
     const dtesValidos = doc => ['emitido', 'enviado', 'aceptado'].includes(doc.estado)
     const totalNC = dtes.filter(d => d.tipoDte === 61 && dtesValidos(d)).reduce((s, d) => s + Number(d.totales?.total || 0), 0)
     const totalND = dtes.filter(d => d.tipoDte === 56 && dtesValidos(d)).reduce((s, d) => s + Number(d.totales?.total || 0), 0)
@@ -837,7 +845,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                       <thead>
                         <tr style={{ background: 'var(--bg)' }}>
-                          {['', 'Producto', 'Cant.', 'P. Unit.', 'Subtotal'].map((h, i) => (
+                          {['', 'Producto', 'Cant.', 'P. Unit.', 'Subtotal', 'Entregados', 'Pendiente', 'Estado Taller'].map((h, i) => (
                             <th key={i} style={{ padding: i === 0 ? '7px 4px' : '7px ' + (i === 1 ? '12px' : '8px'), textAlign: i <= 1 ? 'left' : 'right', fontWeight: 600, color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>{h}</th>
                           ))}
                         </tr>
@@ -861,6 +869,38 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                             <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>{item.cantidad}</td>
                             <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>{fmt(item.precioUnitario)}</td>
                             <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>{fmt(item.precioUnitario * item.cantidad)}</td>
+                            <td style={{ padding: '4px 12px', textAlign: 'right' }}>
+                              {canWrite ? (
+                                <input
+                                  type="number" min={0} max={item.cantidad} defaultValue={item.nEntregados ?? 0}
+                                  onBlur={e => {
+                                    const n = parseInt(e.target.value || '0', 10)
+                                    if (n !== (item.nEntregados ?? 0)) updateEntregados.mutate({ itemId: item.id, nEntregados: n }, {
+                                      onError: err => toast.error(err.response?.data?.error || 'No se pudo actualizar entregados'),
+                                    })
+                                  }}
+                                  style={{ width: 60, padding: '4px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right' }}
+                                />
+                              ) : (
+                                <span style={{ fontFamily: "'DM Mono',monospace" }}>{item.nEntregados ?? 0}</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600, color: (item.cantidad - (item.nEntregados ?? 0)) > 0 ? 'var(--amber)' : 'var(--green-600)' }}>
+                              {item.cantidad - (item.nEntregados ?? 0)}
+                            </td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                              {(() => {
+                                const odtItem = estadoTallerPorProducto.get(item.productoId)
+                                if (!odtItem) return <span style={{ color: 'var(--text-3)', fontSize: 11 }}>—</span>
+                                const listo = odtItem.estado === 'Listo' || odtItem.estado === 'listo'
+                                return (
+                                  <span style={{ fontSize: 11, fontWeight: 600, color: listo ? 'var(--green-600)' : 'var(--amber)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                    {listo && <Icon name="check" size={11} color="var(--green-600)" />}
+                                    {odtItem.estado}
+                                  </span>
+                                )
+                              })()}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
