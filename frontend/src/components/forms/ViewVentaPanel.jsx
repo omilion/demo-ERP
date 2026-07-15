@@ -1,9 +1,11 @@
 import { toast } from '../../store/notif'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, Icon } from '../shared'
 import { ViewPanel, FormDivider } from './index'
 import { useVenta, useDeleteVenta, useForzarTaller } from '../../api/ventas'
+import { useUpdateVenta } from '../../api/ventas'
+import { useProductos } from '../../api/productos'
 import { useDocumentos } from '../../api/facturacion'
 import { EmitirDteModal, NotaDteModal } from '../facturacion/DteModals'
 import { TIPOS_DTE } from '../../utils/facturacion'
@@ -466,6 +468,109 @@ function TabDocumentos({ v, pagos, dtes, canWriteFacturacion, onNota }) {
 }
 
 const dteLink = color => ({ background: 'none', border: 'none', color, cursor: 'pointer', fontSize: 11, fontWeight: 600, padding: '2px 4px', textDecoration: 'underline' })
+
+// ── Widget: Agregar producto por código ─────────────────────────────────────────
+function isConvenioMarco(tipo) {
+  return normalizeText(tipo) === 'convenio marco'
+}
+
+function defaultPrecioUnitario(producto, tipoVenta) {
+  if (!isConvenioMarco(tipoVenta)) return Number(producto.consultaPrecios?.precioNormalSalaVentaIva ?? producto.precioLista ?? 0)
+  const precioMarco = Number(producto.consultaPrecios?.precioConvMarco ?? producto.precioMarco ?? producto.precioLista ?? 0)
+  return precioMarco > 0 ? Math.round(precioMarco * 1.19) : 0
+}
+
+function AgregarProductoWidget({ venta, items, canWrite }) {
+  const [codigoBarra, setCodigoBarra] = useState('')
+  const [codigoInterno, setCodigoInterno] = useState('')
+  const [cantidad, setCantidad] = useState(1)
+  const updateVenta = useUpdateVenta()
+  const barraRef = useRef(null)
+
+  const puedeAgregar = canWrite && venta.estadoPago === 'No pagada' && venta.estado === 'Activa'
+
+  const { data: porBarra } = useProductos(codigoBarra.length >= 3 ? { codigoBarra } : {})
+  const { data: porInterno } = useProductos(codigoInterno.length >= 2 ? { codigoInterno } : {})
+
+  if (!puedeAgregar) return null
+
+  const agregarProducto = (producto) => {
+    if (!producto) return
+    const cant = Math.max(1, Number(cantidad) || 1)
+    const existente = items.find(i => i.productoId === producto.id)
+    const nuevosItems = existente
+      ? items.map(i => i.productoId === producto.id ? { ...i, cantidad: i.cantidad + cant } : i)
+      : [...items, {
+          productoId: producto.id,
+          cantidad: cant,
+          precioUnitario: defaultPrecioUnitario(producto, venta.tipo),
+          nombre: producto.nombre,
+          codigoInterno: producto.codigoInterno || '',
+        }]
+    updateVenta.mutate(
+      { id: venta.id, data: { items: nuevosItems.map(({ productoId, cantidad, precioUnitario, nombre, descripcion, codigoInterno }) => ({ productoId, cantidad, precioUnitario, nombre, descripcion, codigoInterno })) } },
+      {
+        onSuccess: () => {
+          toast.success(`${producto.nombre} agregado (x${cant}).`)
+          setCodigoBarra('')
+          setCodigoInterno('')
+          setCantidad(1)
+          barraRef.current?.focus()
+        },
+        onError: err => toast.error(err?.response?.data?.error || 'No se pudo agregar el producto.'),
+      }
+    )
+  }
+
+  const matchBarra = codigoBarra.length >= 3 ? (porBarra?.items || [])[0] : null
+  const matchInterno = codigoInterno.length >= 2 ? (porInterno?.items || []) : []
+
+  return (
+    <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
+      <FormDivider label="Agregar producto" />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+        <input
+          type="number" min="1" value={cantidad}
+          onChange={e => setCantidad(e.target.value)}
+          style={{ width: 60, padding: '7px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}
+        />
+        <input
+          ref={barraRef}
+          type="text" value={codigoBarra}
+          onChange={e => setCodigoBarra(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && matchBarra) agregarProducto(matchBarra) }}
+          placeholder="Código de barra..."
+          autoFocus
+          style={{ flex: 1, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}
+        />
+      </div>
+      {codigoBarra.length >= 3 && !matchBarra && (
+        <div style={{ fontSize: 11, color: 'var(--red)', marginBottom: 8 }}>Código de barra no encontrado.</div>
+      )}
+      <input
+        type="text" value={codigoInterno}
+        onChange={e => setCodigoInterno(e.target.value)}
+        placeholder="...o código interno / nombre"
+        style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, marginBottom: 8 }}
+      />
+      {matchInterno.length > 0 && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', maxHeight: 160, overflowY: 'auto' }}>
+          {matchInterno.slice(0, 6).map(p => (
+            <button
+              key={p.id}
+              onClick={() => agregarProducto(p)}
+              disabled={updateVenta.isPending}
+              style={{ display: 'flex', justifyContent: 'space-between', width: '100%', padding: '7px 10px', background: '#fff', border: 'none', borderTop: '1px solid var(--border)', cursor: 'pointer', fontSize: 12, textAlign: 'left' }}
+            >
+              <span>{p.nombre} <span style={{ color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>({p.codigoInterno})</span></span>
+              <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>{fmt(defaultPrecioUnitario(p, venta.tipo))}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Main panel ─────────────────────────────────────────────────────────────────
 export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDelete = false, variant = 'drawer' }) {
