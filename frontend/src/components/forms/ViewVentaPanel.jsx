@@ -572,6 +572,20 @@ function AgregarProductoWidget({ venta, items, canWrite }) {
   )
 }
 
+// ── Total grande ──────────────────────────────────────────────────────────────
+function TotalBadge({ total }) {
+  return (
+    <div style={{
+      background: 'var(--green-900)', color: '#fff', borderRadius: 10,
+      padding: '10px 20px', fontSize: 26, fontWeight: 800,
+      fontFamily: "'DM Mono',monospace", letterSpacing: -0.5,
+      boxShadow: '0 4px 14px oklch(0 0 0 / .18)',
+    }}>
+      TOTAL {fmt(total)}
+    </div>
+  )
+}
+
 // ── Main panel ─────────────────────────────────────────────────────────────────
 export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDelete = false, variant = 'drawer' }) {
   const navigate = useNavigate()
