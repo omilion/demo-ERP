@@ -4,7 +4,6 @@ import getRoute from './get.js'
 import updateRoute from './update.js'
 import deleteRoute from './delete.js'
 import cargosRoute from './cargos.js'
-import ordenTransporteRoute from './orden-transporte.js'
 
 export default async function ventasRoutes(fastify) {
   fastify.register(listRoute)
@@ -13,5 +12,4 @@ export default async function ventasRoutes(fastify) {
   fastify.register(updateRoute)
   fastify.register(deleteRoute)
   fastify.register(cargosRoute)
-  fastify.register(ordenTransporteRoute)
 }

@@ -505,7 +505,6 @@ model Orden {
   cargos             OrdenCargo[]
   despachos          Despacho[]
   guiasDespacho      GuiaDespacho[]
-  ordenesTransporte  OrdenTransporte[]
   movimientosBodega  MovimientoBodega[]
   movimientosCaja    MovimientoCaja[]
   packingBultos      PackingBulto[]
@@ -517,21 +516,6 @@ model Orden {
   @@index([clienteSucursalId])
   @@index([rutCliente])
   @@map("ordenes")
-  @@schema("ventas")
-}
-
-model OrdenTransporte {
-  id            Int      @id @default(autoincrement())
-  ordenId       Int      @map("orden_id")
-  numero        String
-  fecha         DateTime
-  transportista String
-  usuario       String?
-  createdAt     DateTime @default(now()) @map("created_at")
-  orden         Orden    @relation(fields: [ordenId], references: [id], onDelete: Cascade)
-
-  @@index([ordenId])
-  @@map("ordenes_transporte")
   @@schema("ventas")
 }
 
