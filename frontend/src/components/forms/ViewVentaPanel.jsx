@@ -1,10 +1,9 @@
-import { toast } from '../../store/notif'
+import { toast, confirmDialog } from '../../store/notif'
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, Icon } from '../shared'
 import { ViewPanel, FormDivider } from './index'
-import { useVenta, useDeleteVenta, useForzarTaller } from '../../api/ventas'
-import { useUpdateVenta } from '../../api/ventas'
+import { useVenta, useDeleteVenta, useForzarTaller, useUpdateVenta, useAnularVenta, useActivarVenta } from '../../api/ventas'
 import { useProductos } from '../../api/productos'
 import { useDocumentos } from '../../api/facturacion'
 import { EmitirDteModal, NotaDteModal } from '../facturacion/DteModals'
@@ -582,6 +581,75 @@ function TotalBadge({ total }) {
       boxShadow: '0 4px 14px oklch(0 0 0 / .18)',
     }}>
       TOTAL {fmt(total)}
+    </div>
+  )
+}
+
+// ── Operaciones disponibles ──────────────────────────────────────────────────
+function opBtnStyle(color) {
+  return {
+    width: '100%', padding: '11px 14px', fontSize: 13, fontWeight: 600,
+    color: '#fff', background: color, border: 'none', borderRadius: 8,
+    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+    marginBottom: 8, transition: 'opacity 0.1s',
+  }
+}
+
+function OperacionesDisponibles({ v, odtsCount, guiasCount, handleForzarTaller, forzarTallerMut, canEmitirDte, onEmitirDte, canDelete }) {
+  const navigate = useNavigate()
+  const anularVenta = useAnularVenta()
+  const activarVenta = useActivarVenta()
+
+  const abrirNotaVenta = () => {
+    const w = window.open(`${window.location.origin}/ventas/${v.id}/imprimir`, '_blank')
+    if (!w) toast.warning('Habilita popups para imprimir')
+  }
+
+  const anular = async () => {
+    if (!await confirmDialog({ title: 'Anular venta', detail: `¿Anular la venta #${v.id}? Esta acción revierte el stock y bloquea nuevas acciones sobre la venta. No se puede deshacer directo (hay que Revertir a Activa).`, tone: 'danger' })) return
+    anularVenta.mutate(v.id, {
+      onSuccess: () => toast.success('Venta anulada.'),
+      onError: err => toast.error(err?.response?.data?.error || 'No se pudo anular la venta.'),
+    })
+  }
+
+  const revertir = () => {
+    activarVenta.mutate(v.id, {
+      onSuccess: () => toast.success('Venta reactivada.'),
+      onError: err => toast.error(err?.response?.data?.error || 'No se pudo reactivar la venta.'),
+    })
+  }
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <FormDivider label="Operaciones disponibles" />
+      <button onClick={() => navigate(`/taller?search=${v.nInterno || v.id}`)} style={opBtnStyle('var(--blue)')}>
+        <Icon name="tool" size={14} /> ODTs ({odtsCount})
+      </button>
+      <button onClick={() => navigate(`/despachos?ordenId=${v.id}`)} style={opBtnStyle('var(--green-600)')}>
+        <Icon name="truck" size={14} /> Guías Despachos ({guiasCount})
+      </button>
+      <button onClick={abrirNotaVenta} style={opBtnStyle('var(--blue)')}>
+        <Icon name="printer" size={14} /> Nota de Venta
+      </button>
+      <button onClick={handleForzarTaller} disabled={forzarTallerMut.isPending} style={{ ...opBtnStyle('var(--amber)'), opacity: forzarTallerMut.isPending ? 0.7 : 1 }}>
+        <Icon name="tool" size={14} /> {forzarTallerMut.isPending ? 'Enviando...' : 'Notificar a Taller'}
+      </button>
+      {canEmitirDte && (
+        <button onClick={onEmitirDte} style={opBtnStyle('var(--blue)')}>
+          <Icon name="fileText" size={14} /> Emitir DTE
+        </button>
+      )}
+      {!v.eliminada && canDelete && (
+        <button onClick={anular} disabled={anularVenta.isPending} style={{ ...opBtnStyle('var(--red)'), opacity: anularVenta.isPending ? 0.7 : 1 }}>
+          <Icon name="xCircle" size={14} /> {anularVenta.isPending ? 'Anulando...' : 'Anular Venta'}
+        </button>
+      )}
+      {v.eliminada && canDelete && (
+        <button onClick={revertir} disabled={activarVenta.isPending} style={{ ...opBtnStyle('var(--green-600)'), opacity: activarVenta.isPending ? 0.7 : 1 }}>
+          <Icon name="refreshCw" size={14} /> {activarVenta.isPending ? 'Reactivando...' : 'Revertir a Activa'}
+        </button>
+      )}
     </div>
   )
 }
