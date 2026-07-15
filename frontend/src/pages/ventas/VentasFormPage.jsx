@@ -1146,6 +1146,10 @@ export default function VentasFormPage() {
     const shouldSendItems = !isEdit || !itemsLocked
     const itemError = shouldSendItems ? validateItems(items) : null
     if (itemError) { toast.error(itemError); return }
+    if (!isEdit && !data.clienteId) {
+      toast.warning('Selecciona un cliente')
+      return
+    }
     if (isConvenioMarco(data.tipo) && !String(data.licitacion || '').replace(/\s+/g, '').trim()) {
       toast.warning('Ingresa la OC de Convenio Marco')
       return
@@ -1260,6 +1264,7 @@ export default function VentasFormPage() {
       breadcrumb={['Inicio', 'Ventas', isEdit ? 'Editar Venta' : 'Nueva Venta']}
       onSave={handleSave}
       saving={saving}
+      saveLabel={isEdit ? 'Guardar' : 'Crear Venta'}
     >
       <FormDivider label="Tipo de Venta" />
       <FormField label="Tipo de Venta">

@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Btn } from '../shared'
 
-export function FormPage({ title, subtitle, breadcrumb, onSave, saving, children, headerActions, footerActions }) {
+export function FormPage({ title, subtitle, breadcrumb, onSave, saving, children, headerActions, footerActions, saveLabel = 'Guardar' }) {
   const navigate = useNavigate()
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px' }}>
@@ -26,7 +26,7 @@ export function FormPage({ title, subtitle, breadcrumb, onSave, saving, children
             <>
               <Btn variant="ghost" onClick={() => navigate(-1)}>Cancelar</Btn>
               <Btn variant="primary" icon={saving ? 'refreshCw' : 'check'} onClick={onSave} disabled={saving}>
-                {saving ? 'Guardando…' : 'Guardar'}
+                {saving ? 'Guardando…' : saveLabel}
               </Btn>
             </>
           )}

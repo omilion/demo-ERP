@@ -814,44 +814,58 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
             {/* Columna derecha */}
             <div style={{ padding: 22 }}>
               <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-3)', marginBottom: 8 }}>Cliente</div>
-                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>{v.cliente?.nombre || '—'}</div>
-                {v.cliente?.razonSocial && v.cliente.razonSocial !== v.cliente?.nombre && (
-                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 2 }}>{v.cliente.razonSocial}</div>
-                )}
-                {v.cliente?.rut && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace", marginBottom: 6 }}>{v.cliente.rut}</div>}
-                {v.cliente?.giro && <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>{v.cliente.giro}</div>}
-                {(v.clienteSucursal?.direccion || v.cliente?.direccion) && (
-                  <div style={{ fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'flex-start', gap: 4, marginBottom: 6 }}>
-                    <Icon name="mapPin" size={11} color="var(--text-3)" />
-                    <span>
-                      {v.clienteSucursal?.direccion || v.cliente?.direccion}
-                      {(v.clienteSucursal?.comuna || v.cliente?.comuna) && `, ${v.clienteSucursal?.comuna || v.cliente?.comuna}`}
-                      {(v.clienteSucursal?.region || v.cliente?.region) && ` — ${v.clienteSucursal?.region || v.cliente?.region}`}
-                    </span>
-                  </div>
-                )}
-                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 4 }}>
-                  {v.cliente?.email && <span style={{ fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="mail" size={11} color="var(--text-3)" /> {v.cliente.email}</span>}
-                  {v.cliente?.telefono && <span style={{ fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="phone" size={11} color="var(--text-3)" /> {v.cliente.telefono}</span>}
-                  {!v.clienteSucursal?.direccion && !v.cliente?.direccion && v.cliente?.ciudad && <span style={{ fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="mapPin" size={11} color="var(--text-3)" /> {v.cliente.ciudad}</span>}
-                </div>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-3)', marginBottom: 10 }}>Cliente</div>
+                {(() => {
+                  const direccion = v.clienteSucursal?.direccion || v.cliente?.direccion
+                  const comuna = v.clienteSucursal?.comuna || v.cliente?.comuna
+                  const region = v.clienteSucursal?.region || v.cliente?.region
+                  const ciudad = v.clienteSucursal?.ciudad || v.cliente?.ciudad
+                  const filas = [
+                    ['Nombre', v.cliente?.nombre],
+                    ['Razón Social', v.cliente?.razonSocial],
+                    ['RUT', v.cliente?.rut],
+                    ['Giro', v.cliente?.giro],
+                    ['Dirección', direccion],
+                    ['Comuna', comuna],
+                    ['Región', region],
+                    ['Ciudad', ciudad],
+                    ['Teléfono', v.cliente?.telefono],
+                    ['Email', v.cliente?.email],
+                  ].filter(([, valor]) => valor)
+                  if (!filas.length) return <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Sin cliente asociado</div>
+                  return (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                      <tbody>
+                        {filas.map(([label, valor]) => (
+                          <tr key={label}>
+                            <td style={{ padding: '3px 10px 3px 0', color: 'var(--text-3)', fontWeight: 600, whiteSpace: 'nowrap', verticalAlign: 'top' }}>{label}</td>
+                            <td style={{ padding: '3px 0', color: 'var(--text-1)' }}>{valor}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )
+                })()}
               </div>
 
               {items.length > 0 && (
                 <>
                   <FormDivider label={`Productos (${items.length})`} />
-                  <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'auto', marginBottom: 14 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 820 }}>
                       <thead>
                         <tr style={{ background: 'var(--bg)' }}>
-                          {['', 'Producto', 'Cant.', 'P. Unit.', 'Subtotal', 'Entregados', 'Pendiente', 'Estado Taller'].map((h, i) => (
-                            <th key={i} style={{ padding: i === 0 ? '7px 4px' : '7px ' + (i === 1 ? '12px' : '8px'), textAlign: i <= 1 ? 'left' : 'right', fontWeight: 600, color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>{h}</th>
+                          {['', 'Producto', 'Cant.', 'P. Unit.', 'IVA', 'Subtotal', 'Entregados', 'Pendiente', 'Estado Taller'].map((h, i) => (
+                            <th key={i} style={{ padding: i === 0 ? '7px 4px' : '7px ' + (i === 1 ? '12px' : '8px'), textAlign: i <= 1 ? 'left' : 'right', fontWeight: 600, color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, whiteSpace: 'nowrap' }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {items.map((item, i) => (
+                        {items.map((item, i) => {
+                          const itemSubtotal = item.precioUnitario * item.cantidad
+                          const itemNeto = Math.round(itemSubtotal / 1.19)
+                          const itemIva = itemSubtotal - itemNeto
+                          return (
                           <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
                             <td style={{ padding: '8px 4px 8px 12px', width: 40 }}>
                               {item.producto?.fotoUrl ? (
@@ -868,7 +882,8 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                             </td>
                             <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>{item.cantidad}</td>
                             <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>{fmt(item.precioUnitario)}</td>
-                            <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>{fmt(item.precioUnitario * item.cantidad)}</td>
+                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-3)' }}>{fmt(itemIva)}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>{fmt(itemSubtotal)}</td>
                             <td style={{ padding: '4px 12px', textAlign: 'right' }}>
                               {canWrite ? (
                                 <input
@@ -902,7 +917,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                               })()}
                             </td>
                           </tr>
-                        ))}
+                        )})}
                       </tbody>
                     </table>
                   </div>
