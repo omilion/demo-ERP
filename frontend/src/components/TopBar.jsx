@@ -33,6 +33,7 @@ const NAV_GROUPS = [
   ] },
   { label: 'Facturación', items: [
     { label: 'Documentos Emitidos', route: '/facturacion/documentos', module: 'facturacion' },
+    { label: 'Configuración', route: '/facturacion/configuracion', module: 'facturacion' },
   ] },
   { label: 'RRHH', items: [
     { label: 'Trabajadores', route: '/rrhh', module: 'rrhh' },

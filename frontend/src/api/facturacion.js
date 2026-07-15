@@ -56,3 +56,45 @@ export const useEmitirDte = () => {
 }
 
 export const descargarXmlDocumento = (id) => api.get(`/facturacion/documentos/${id}/xml`, { responseType: 'blob' })
+
+export const useEmpresa = () => useQuery({
+  queryKey: ['facturacion', 'empresa'],
+  queryFn: () => api.get('/facturacion/empresa').then(r => r.data),
+})
+
+export const useUpdateEmpresa = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data) => api.put('/facturacion/empresa', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'empresa'] }),
+  })
+}
+
+export const useUploadCertificado = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (formData) => api.post('/facturacion/empresa/certificado', formData).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'empresa'] }),
+  })
+}
+
+export const useCafs = () => useQuery({
+  queryKey: ['facturacion', 'cafs'],
+  queryFn: () => api.get('/facturacion/cafs').then(r => r.data),
+})
+
+export const useUploadCaf = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (formData) => api.post('/facturacion/cafs', formData).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'cafs'] }),
+  })
+}
+
+export const useDeleteCaf = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/facturacion/cafs/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'cafs'] }),
+  })
+}
