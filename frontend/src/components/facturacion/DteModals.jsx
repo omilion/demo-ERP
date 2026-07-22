@@ -69,7 +69,7 @@ const td = { padding: '8px 10px' }
 const inputStyle = { width: '100%', padding: 9, border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'inherit' }
 const Total = ({ label, value, strong }) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderTop: strong ? '1px solid var(--border)' : 'none', fontWeight: strong ? 700 : 400 }}><span>{label}</span><span>{fmt(value)}</span></div>
 
-export function EmitirDteModal({ venta, guiaDespachoId, despachoId, tipoDte, onClose, onSuccess }) {
+export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSuccess }) {
   const emitir = useEmitirDte()
   const [error, setError] = useState('')
   const [indTraslado, setIndTraslado] = useState('')
@@ -91,11 +91,12 @@ export function EmitirDteModal({ venta, guiaDespachoId, despachoId, tipoDte, onC
   const documentosRef = useDocumentos({ tipoDte: refTipo, estado: 'emitido' }, { enabled: refEsInterna })
   const { data: empresaData } = useEmpresa()
   const empresa = empresaData?.empresa
-  // Si viene de una guia enlazada a un despacho, la DTE declara solo lo que
-  // se empaco para ESE despacho (envio parcial), no el total de la venta.
-  const packing = useDespachoPacking(venta?.id, despachoId, !!despachoId)
-  const cantidadPorItemId = despachoId
-    ? Object.fromEntries((packing.data?.packedDespacho || []).map(row => [row.ordenItemId, row.cantidad]))
+  // La DTE declara solo lo que se eligio enviar en ESTA guia (packing por
+  // guiaDespachoId, existe desde que se crea la guia sin importar si ya
+  // tiene despacho asignado), no el total de la venta.
+  const packing = useDespachoPacking(venta?.id, { guiaDespachoId }, !!guiaDespachoId)
+  const cantidadPorItemId = guiaDespachoId
+    ? Object.fromEntries((packing.data?.packedGuia || []).map(row => [row.ordenItemId, row.cantidad]))
     : null
   const receptor = buildReceptor(venta?.cliente)
   const items = mapVentaItems(venta, cantidadPorItemId)
@@ -151,9 +152,9 @@ export function EmitirDteModal({ venta, guiaDespachoId, despachoId, tipoDte, onC
         <SelectField label="Tipo de documento" value={String(tipoElegido)} options={{ 33: 'Factura Electrónica', 39: 'Boleta Electrónica' }} onChange={value => setTipoElegido(Number(value))} />
       </div>
     )}
-    {despachoId && !packing.isLoading && !items.length && (
+    {guiaDespachoId && !packing.isLoading && !items.length && (
       <div style={{ ...errorStyle, background: 'var(--bg)', color: 'var(--text-2)', marginBottom: 14, marginTop: 0 }}>
-        Este despacho todavía no tiene productos empacados (botón "Packing" en Matriz despacho). Sin cantidades empacadas no hay qué declarar en la guía.
+        Esta guía todavía no tiene productos seleccionados para enviar. Sin cantidades no hay qué declarar en la guía.
       </div>
     )}
     <Preview empresa={empresa} receptor={receptor} items={items} tipoDte={detectedTipo} referencia={referenciaResumen} />

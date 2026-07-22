@@ -48,6 +48,7 @@ const GuiaUpdate = GuiaCreate.partial()
 const PackingUpdate = z.object({
   despachoId: optionalId,
   bultoId: optionalId,
+  guiaDespachoId: optionalId,
   bultoNumero: z.string().optional().nullable(),
   bultoEstado: z.string().optional().nullable(),
   bultoObservacion: z.string().optional().nullable(),
@@ -638,7 +639,7 @@ export function buildPackingUpdatePlan(orderItems = [], requestedItems = []) {
   return { updates }
 }
 
-export function buildPackingEventRows({ ordenId, updates = [], despachoId = null, bultoId = null, usuario = null, observacion = null } = {}) {
+export function buildPackingEventRows({ ordenId, updates = [], despachoId = null, bultoId = null, guiaDespachoId = null, usuario = null, observacion = null } = {}) {
   return updates
     .filter(update => Number(update.delta || 0) !== 0)
     .map(update => ({
@@ -646,6 +647,7 @@ export function buildPackingEventRows({ ordenId, updates = [], despachoId = null
       ordenItemId: update.id,
       despachoId,
       bultoId,
+      guiaDespachoId,
       cantidadAnterior: update.cantidadAnterior,
       cantidadNueva: update.nEntregados,
       delta: update.delta,
@@ -661,6 +663,7 @@ const PACKING_EVENT_SELECT = {
   ordenItemId: true,
   despachoId: true,
   bultoId: true,
+  guiaDespachoId: true,
   cantidadAnterior: true,
   cantidadNueva: true,
   delta: true,
@@ -679,8 +682,8 @@ const PACKING_EVENT_SELECT = {
   },
 }
 
-async function buildPackingTrace(prisma, ordenId, despachoId = null) {
-  const [items, bultos, eventos, packedDespacho] = await Promise.all([
+async function buildPackingTrace(prisma, ordenId, despachoId = null, guiaDespachoId = null) {
+  const [items, bultos, eventos, packedDespacho, packedGuia] = await Promise.all([
     prisma.ordenItem.findMany({
       where: { ordenId, eliminado: false },
       select: { id: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true },
@@ -707,10 +710,26 @@ async function buildPackingTrace(prisma, ordenId, despachoId = null) {
         _sum: { delta: true },
       })
       : Promise.resolve(null),
+    // Igual que packedDespacho pero por Guia: una guia puede existir sin
+    // despacho asignado todavia (queda pendiente), asi que lo que se
+    // selecciono para enviar en ELLA se rastrea aparte.
+    guiaDespachoId
+      ? prisma.packingEvento.groupBy({
+        by: ['ordenItemId'],
+        where: { ordenId, guiaDespachoId },
+        _sum: { delta: true },
+      })
+      : Promise.resolve(null),
   ])
   const result = { items, bultos, eventos }
   if (packedDespacho) {
     result.packedDespacho = packedDespacho.map(row => ({
+      ordenItemId: row.ordenItemId,
+      cantidad: Math.max(0, Number(row._sum.delta || 0)),
+    }))
+  }
+  if (packedGuia) {
+    result.packedGuia = packedGuia.map(row => ({
       ordenItemId: row.ordenItemId,
       cantidad: Math.max(0, Number(row._sum.delta || 0)),
     }))
@@ -829,7 +848,8 @@ export default async function despachosRoutes(fastify) {
     if (!orden) return reply.code(404).send({ error: 'Orden no encontrada' })
     if (!userCanAccessOrden(request.user, orden)) return reply.code(403).send({ error: 'Forbidden' })
     const despachoId = parsePositiveInt(request.query.despachoId) || null
-    return { orden, ...(await buildPackingTrace(fastify.prisma, ordenId, despachoId)) }
+    const guiaDespachoId = parsePositiveInt(request.query.guiaDespachoId) || null
+    return { orden, ...(await buildPackingTrace(fastify.prisma, ordenId, despachoId, guiaDespachoId)) }
   })
 
   fastify.put('/ordenes/:ordenId/packing', {
@@ -861,8 +881,11 @@ export default async function despachosRoutes(fastify) {
     if (despachoRef.error) return reply.code(400).send({ error: despachoRef.error })
     const bultoRef = parsePackingReferenceId(parsed.data.bultoId, 'bultoId')
     if (bultoRef.error) return reply.code(400).send({ error: bultoRef.error })
+    const guiaRef = parsePackingReferenceId(parsed.data.guiaDespachoId, 'guiaDespachoId')
+    if (guiaRef.error) return reply.code(400).send({ error: guiaRef.error })
     const despachoId = despachoRef.id
     const bultoId = bultoRef.id
+    const guiaDespachoId = guiaRef.id
     const bultoNumero = cleanText(parsed.data.bultoNumero)
     const bultoEstado = cleanText(parsed.data.bultoEstado) || 'Preparado'
     const bultoObservacion = cleanText(parsed.data.bultoObservacion)
@@ -882,6 +905,13 @@ export default async function despachosRoutes(fastify) {
         select: { id: true },
       })
       if (!existingBulto) return reply.code(400).send({ error: 'Bulto no pertenece a la orden' })
+    }
+    if (guiaDespachoId) {
+      const existingGuia = await fastify.prisma.guiaDespacho.findFirst({
+        where: { id: guiaDespachoId, ordenId, eliminado: false },
+        select: { id: true },
+      })
+      if (!existingGuia) return reply.code(400).send({ error: 'Guia no pertenece a la orden' })
     }
 
     return fastify.prisma.$transaction(async (tx) => {
@@ -929,6 +959,7 @@ export default async function despachosRoutes(fastify) {
         updates: plan.updates,
         despachoId: despachoId || null,
         bultoId: bulto?.id || null,
+        guiaDespachoId: guiaDespachoId || null,
         usuario,
         observacion,
       })
@@ -1307,6 +1338,15 @@ export default async function despachosRoutes(fastify) {
 
     return fastify.prisma.$transaction(async (tx) => {
       const guia = await tx.guiaDespacho.update({ where: { id }, data })
+      // Lo que se empaco para esta guia mientras estaba pendiente (sin
+      // despacho) queda tambien contado en el despacho recien asignado, para
+      // que el resumen de packing del despacho sea consistente.
+      if (data.despachoId) {
+        await tx.packingEvento.updateMany({
+          where: { guiaDespachoId: id, despachoId: null },
+          data: { despachoId: data.despachoId },
+        })
+      }
       const affectedOrdenIds = new Set([existing.ordenId, data.ordenId !== undefined ? data.ordenId : existing.ordenId].filter(Boolean))
       for (const affectedOrdenId of affectedOrdenIds) {
         await recalculateOrdenEntrega(tx, affectedOrdenId)

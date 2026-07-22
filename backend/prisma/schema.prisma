@@ -1309,6 +1309,7 @@ model GuiaDespacho {
   orden      Orden?   @relation(fields: [ordenId], references: [id], onDelete: SetNull)
   odt        Odt?     @relation(fields: [odtId], references: [id], onDelete: SetNull)
   despacho   Despacho? @relation(fields: [despachoId], references: [id], onDelete: SetNull)
+  packingEventos PackingEvento[]
 
   @@index([nInterno])
   @@index([ordenId])
@@ -1410,6 +1411,7 @@ model PackingEvento {
   ordenItemId      Int      @map("orden_item_id")
   despachoId       Int?     @map("despacho_id")
   bultoId          Int?     @map("bulto_id")
+  guiaDespachoId   Int?     @map("guia_despacho_id")
   cantidadAnterior Int      @map("cantidad_anterior")
   cantidadNueva    Int      @map("cantidad_nueva")
   delta            Int
@@ -1421,10 +1423,12 @@ model PackingEvento {
   ordenItem        OrdenItem @relation(fields: [ordenItemId], references: [id], onDelete: Cascade)
   despacho         Despacho? @relation(fields: [despachoId], references: [id], onDelete: SetNull)
   bulto            PackingBulto? @relation(fields: [bultoId], references: [id], onDelete: SetNull)
+  guiaDespacho     GuiaDespacho? @relation(fields: [guiaDespachoId], references: [id], onDelete: SetNull)
 
   @@index([ordenId, createdAt])
   @@index([ordenItemId, createdAt])
   @@index([despachoId])
+  @@index([guiaDespachoId])
   @@index([bultoId])
   @@map("packing_eventos")
   @@schema("bodega")

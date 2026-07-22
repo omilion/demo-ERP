@@ -221,8 +221,6 @@ export default function DespachosPage() {
   const updatePackingMut = useUpdateDespachoPacking()
   const createTrackingMut = useCreateDespachoTrackingEvento()
   const delMut = useDeleteDespacho()
-  const createGuiaMut = useCreateGuia()
-  const updateGuiaMut = useUpdateGuia()
   const delGuiaMut = useDeleteGuia()
 
   const currentResult = tab === 'matriz' ? matriz.data : tab === 'registros' ? despachos.data : guias.data
@@ -554,25 +552,22 @@ export default function DespachosPage() {
         <GuiaModal
           title="Nueva guia"
           initial={creatingGuia}
-          saving={createGuiaMut.isPending}
           onClose={() => setCreatingGuia(null)}
-          onSave={(data) => createGuiaMut.mutate(data, { onSuccess: () => setCreatingGuia(null), onError: showError })}
+          onSuccess={() => { setCreatingGuia(null); toast.success('Guía generada.') }}
         />
       )}
       {editingGuia && (
         <GuiaModal
           title={`Editar guia #${editingGuia.id}`}
           initial={editingGuia}
-          saving={updateGuiaMut.isPending}
           onClose={() => setEditingGuia(null)}
-          onSave={(data) => updateGuiaMut.mutate({ id: editingGuia.id, data }, { onSuccess: () => setEditingGuia(null), onError: showError })}
+          onSuccess={() => { setEditingGuia(null); toast.success('Guía actualizada.') }}
         />
       )}
       {guiaDte && ventaGuiaDte.data && (
         <EmitirDteModal
           venta={ventaGuiaDte.data}
           guiaDespachoId={guiaDte.id}
-          despachoId={guiaDte.despachoId || undefined}
           tipoDte={52}
           onClose={() => setGuiaDte(null)}
           onSuccess={({ emitido, documento }) => {
@@ -901,45 +896,22 @@ function DespachoTrackingModal({ row, canWrite, saving, onClose, onSave }) {
   )
 }
 
-function DespachoModal({ title, initial, saving, onClose, onSave }) {
-  const [form, setForm] = useState(() => ({
-    ...emptyDespacho,
-    ...initial,
-    fechaInterno: initial.fechaInterno ? String(initial.fechaInterno).slice(0, 10) : '',
-    fechaEntrega: initial.fechaEntrega ? String(initial.fechaEntrega).slice(0, 10) : '',
-    plazoEntrega: initial.plazoEntrega && /^\d{4}-\d{2}-\d{2}/.test(initial.plazoEntrega) ? initial.plazoEntrega.slice(0, 10) : '',
-  }))
-  const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
-
-  const { data: venta } = useVenta(form.ordenId || undefined)
+// Campos de logistica del despacho, reutilizados tal cual en DespachoModal
+// (standalone) y dentro de GuiaModal (crear despacho sin salir del flujo).
+function DespachoCamposFields({ form, set }) {
   const { data: regiones = [] } = useRegiones()
   const regionSel = regiones.find(r => r.nombre === form.region)
   const { data: comunas = [] } = useComunas(regionSel?.codigo)
   const transporteEsOtro = !!form.transporte && !TRANSPORTISTAS.includes(form.transporte)
 
   return (
-    <Modal title={title} onClose={onClose}>
-      {(form.parcial || form.tieneMulta) && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-          {form.parcial && <Badge tone="amber">Envío parcial</Badge>}
-          {form.tieneMulta && <Badge tone="red">Tiene multa</Badge>}
-        </div>
-      )}
-      <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
-        <label style={checkLabel}><input type="checkbox" checked={!!form.parcial} onChange={e => set('parcial', e.target.checked)} /> Parcial</label>
-        <label style={checkLabel}><input type="checkbox" checked={!!form.tieneMulta} onChange={e => set('tieneMulta', e.target.checked)} /> Tiene multa</label>
-      </div>
+    <>
       <div style={grid}>
-        <Field label="Orden ID"><input value={form.ordenId || ''} onChange={e => set('ordenId', e.target.value)} style={input} /></Field>
-        <Field label="OT ID"><input value={form.odtId || ''} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
-        <Field label="Interno"><input value={form.interno || ''} disabled style={{ ...input, background: 'var(--bg)', color: 'var(--text-3)' }} title="Es el numero interno de la venta, no se edita aca" /></Field>
-        <Field label="Tipo de venta"><input value={venta?.tipo || '—'} disabled style={{ ...input, background: 'var(--bg)', color: 'var(--text-3)' }} /></Field>
         <Field label="Fecha límite de entrega (plazo)"><input type="date" value={form.plazoEntrega || ''} onChange={e => set('plazoEntrega', e.target.value)} style={input} /></Field>
-        <Field label="Fecha interno"><input type="date" value={form.fechaInterno || ''} onChange={e => set('fechaInterno', e.target.value)} style={input} /></Field>
         <Field label="Fecha entrega"><input type="date" value={form.fechaEntrega || ''} onChange={e => set('fechaEntrega', e.target.value)} style={input} /></Field>
         <Field label="Tipo"><input value={form.tipoDespacho || ''} onChange={e => set('tipoDespacho', e.target.value)} style={input} /></Field>
         <Field label="Transporte">
-          <select value={transporteEsOtro ? 'Otro' : (form.transporte || '')} onChange={e => set('transporte', e.target.value === 'Otro' ? '' : e.target.value)} style={input}>
+          <select value={(!!form.transporte && !TRANSPORTISTAS.includes(form.transporte)) ? 'Otro' : (form.transporte || '')} onChange={e => set('transporte', e.target.value === 'Otro' ? '' : e.target.value)} style={input}>
             <option value="">Seleccionar...</option>
             {TRANSPORTISTAS.map(t => <option key={t} value={t}>{t}</option>)}
             <option value="Otro">Otro: indicar</option>
@@ -965,45 +937,187 @@ function DespachoModal({ title, initial, saving, onClose, onSave }) {
         </Field>
       </div>
       <Field label="Direccion"><textarea value={form.direccion || ''} onChange={e => set('direccion', e.target.value)} rows={2} style={{ ...input, resize: 'vertical' }} /></Field>
+    </>
+  )
+}
+
+function DespachoModal({ title, initial, saving, onClose, onSave }) {
+  const [form, setForm] = useState(() => ({
+    ...emptyDespacho,
+    ...initial,
+    fechaInterno: initial.fechaInterno ? String(initial.fechaInterno).slice(0, 10) : '',
+    fechaEntrega: initial.fechaEntrega ? String(initial.fechaEntrega).slice(0, 10) : '',
+    plazoEntrega: initial.plazoEntrega && /^\d{4}-\d{2}-\d{2}/.test(initial.plazoEntrega) ? initial.plazoEntrega.slice(0, 10) : '',
+  }))
+  const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
+  const { data: venta } = useVenta(form.ordenId || undefined)
+
+  return (
+    <Modal title={title} onClose={onClose}>
+      {(form.parcial || form.tieneMulta) && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          {form.parcial && <Badge tone="amber">Envío parcial</Badge>}
+          {form.tieneMulta && <Badge tone="red">Tiene multa</Badge>}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
+        <label style={checkLabel}><input type="checkbox" checked={!!form.parcial} onChange={e => set('parcial', e.target.checked)} /> Parcial</label>
+        <label style={checkLabel}><input type="checkbox" checked={!!form.tieneMulta} onChange={e => set('tieneMulta', e.target.checked)} /> Tiene multa</label>
+      </div>
+      <div style={grid}>
+        <Field label="Orden ID"><input value={form.ordenId || ''} onChange={e => set('ordenId', e.target.value)} style={input} /></Field>
+        <Field label="OT ID"><input value={form.odtId || ''} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
+        <Field label="Interno"><input value={form.interno || ''} disabled style={{ ...input, background: 'var(--bg)', color: 'var(--text-3)' }} title="Es el numero interno de la venta, no se edita aca" /></Field>
+        <Field label="Tipo de venta"><input value={venta?.tipo || '—'} disabled style={{ ...input, background: 'var(--bg)', color: 'var(--text-3)' }} /></Field>
+      </div>
+      <DespachoCamposFields form={form} set={set} />
       <Footer saving={saving} onClose={onClose} onSave={() => onSave(form)} />
     </Modal>
   )
 }
 
-function GuiaModal({ title = 'Nueva guia', initial, saving, onClose, onSave }) {
+const DESPACHO_MODO_OPTS = [
+  ['ninguno', 'Sin despacho todavía (queda pendiente)'],
+  ['existente', 'Usar despacho existente'],
+  ['nuevo', 'Crear despacho nuevo'],
+]
+
+// Guia de despacho: elegir que enviar del pedido, generar el documento, y
+// resolver el despacho (orden de transporte) sin salir del flujo - antes
+// habia que ir a la venta o a Despachos por separado y se perdia el hilo.
+function GuiaModal({ title = 'Nueva guia', initial, onClose, onSuccess }) {
+  const isEdit = !!initial.id
   const [form, setForm] = useState(() => ({
     ordenId: '',
     odtId: '',
     nInterno: '',
     nGuia: '',
     origen: '',
-    despachoId: '',
     ...initial,
     fechaGuia: initial.fechaGuia ? String(initial.fechaGuia).slice(0, 10) : '',
   }))
   const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
+
+  const [despachoModo, setDespachoModo] = useState(initial.despachoId ? 'existente' : 'ninguno')
+  const [despachoIdExistente, setDespachoIdExistente] = useState(initial.despachoId ? String(initial.despachoId) : '')
+  const [despachoNuevo, setDespachoNuevo] = useState(() => ({ ...emptyDespacho, ordenId: initial.ordenId || '' }))
+  const setDespachoNuevoField = (key, value) => setDespachoNuevo(prev => ({ ...prev, [key]: value }))
   const despachosOrden = useDespachos(form.ordenId ? { ordenId: form.ordenId } : {})
   const despachos = form.ordenId ? (despachosOrden.data?.items || []) : []
+
+  const packing = useDespachoPacking(form.ordenId || undefined, undefined, !isEdit && !!form.ordenId)
+  const [envios, setEnvios] = useState({})
+  const items = (packing.data?.items || []).map(item => {
+    const pendiente = Math.max(0, Number(item.cantidad || 0) - Number(item.nEntregados || 0))
+    const envio = Math.min(pendiente, Math.max(0, Number.parseInt(envios[item.id] || '0', 10) || 0))
+    return { ...item, pendiente, envio }
+  })
+  const hayItemsSeleccionados = items.some(i => i.envio > 0)
+
+  const createDespachoMut = useCreateDespacho()
+  const createGuiaMut = useCreateGuia()
+  const updateGuiaMut = useUpdateGuia()
+  const updatePackingMut = useUpdateDespachoPacking()
+  const saving = createDespachoMut.isPending || createGuiaMut.isPending || updateGuiaMut.isPending || updatePackingMut.isPending
+
+  const guardar = async () => {
+    if (!form.nGuia.trim()) { toast.error('Indica el N° de guia.'); return }
+    if (despachoModo === 'existente' && !despachoIdExistente) { toast.error('Elige el despacho.'); return }
+    try {
+      let despachoId = null
+      if (despachoModo === 'existente') {
+        despachoId = Number(despachoIdExistente)
+      } else if (despachoModo === 'nuevo') {
+        const nuevo = await createDespachoMut.mutateAsync({ ...despachoNuevo, ordenId: form.ordenId })
+        despachoId = nuevo.id
+      }
+
+      if (isEdit) {
+        const guia = await updateGuiaMut.mutateAsync({ id: initial.id, data: { nGuia: form.nGuia, fechaGuia: form.fechaGuia, origen: form.origen, despachoId } })
+        onSuccess(guia)
+      } else {
+        const guia = await createGuiaMut.mutateAsync({ ordenId: form.ordenId, odtId: form.odtId, nInterno: form.nInterno, nGuia: form.nGuia, fechaGuia: form.fechaGuia, origen: form.origen, despachoId })
+        if (hayItemsSeleccionados) {
+          await updatePackingMut.mutateAsync({
+            ordenId: form.ordenId,
+            guiaDespachoId: guia.id,
+            despachoId: despachoId || undefined,
+            items: items.filter(i => i.envio > 0).map(i => ({ itemId: i.id, nEntregados: Number(i.nEntregados || 0) + i.envio })),
+          })
+        }
+        onSuccess(guia)
+      }
+    } catch (cause) {
+      toast.error(cause?.response?.data?.error || cause?.message || 'No se pudo guardar la guia.')
+    }
+  }
 
   return (
     <Modal title={title} onClose={onClose}>
       <div style={grid}>
         <Field label="N guia"><input value={form.nGuia} onChange={e => set('nGuia', e.target.value)} style={input} /></Field>
-        <Field label="Orden ID"><input value={form.ordenId} onChange={e => set('ordenId', e.target.value)} style={input} /></Field>
+        <Field label="Orden ID"><input value={form.ordenId} onChange={e => set('ordenId', e.target.value)} style={input} disabled={isEdit} /></Field>
         <Field label="OT ID"><input value={form.odtId} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
         <Field label="N interno"><input value={form.nInterno} disabled style={{ ...input, background: 'var(--bg)', color: 'var(--text-3)' }} title="Es el numero interno de la venta, no se edita aca" /></Field>
         <Field label="Fecha"><input type="date" value={form.fechaGuia} onChange={e => set('fechaGuia', e.target.value)} style={input} /></Field>
-        <Field label="Despacho (orden de transporte)">
-          <select value={form.despachoId || ''} onChange={e => set('despachoId', e.target.value)} style={input} disabled={!form.ordenId}>
-            <option value="">Sin despacho asociado</option>
+      </div>
+      <Field label="Origen"><input value={form.origen} onChange={e => set('origen', e.target.value)} style={input} /></Field>
+
+      {!isEdit && form.ordenId && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Qué enviar en esta guía</div>
+          {packing.isLoading ? (
+            <div style={{ color: 'var(--text-3)', fontSize: 12 }}>Cargando ítems...</div>
+          ) : !items.length ? (
+            <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}>Sin ítems de venta.</div>
+          ) : (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg)' }}>
+                    {['Producto', 'Pendiente', 'Enviar ahora'].map((h, i) => (
+                      <th key={h} style={{ padding: '6px 10px', textAlign: i ? 'right' : 'left', fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map(item => (
+                    <tr key={item.id} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: '6px 10px' }}>{item.nombre}</td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right' }}><Mono>{item.pendiente}</Mono></td>
+                      <td style={{ padding: '4px 10px', textAlign: 'right' }}>
+                        <input
+                          type="number" min="0" max={item.pendiente} value={envios[item.id] ?? ''} placeholder="0"
+                          onChange={event => setEnvios(prev => ({ ...prev, [item.id]: event.target.value }))}
+                          style={{ width: 70, padding: '4px 6px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, textAlign: 'right' }}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ marginTop: 16 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Despacho (orden de transporte)</div>
+        <select value={despachoModo} onChange={e => setDespachoModo(e.target.value)} style={{ ...input, marginBottom: 10 }}>
+          {DESPACHO_MODO_OPTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+        {despachoModo === 'existente' && (
+          <select value={despachoIdExistente} onChange={e => setDespachoIdExistente(e.target.value)} style={input}>
+            <option value="">Seleccionar despacho...</option>
             {despachos.map(d => (
               <option key={d.id} value={String(d.id)}>#{d.id} {d.transporte || ''} {d.numeroSeguimiento ? `· ${d.numeroSeguimiento}` : ''}</option>
             ))}
           </select>
-        </Field>
+        )}
+        {despachoModo === 'nuevo' && <DespachoCamposFields form={despachoNuevo} set={setDespachoNuevoField} />}
       </div>
-      <Field label="Origen"><input value={form.origen} onChange={e => set('origen', e.target.value)} style={input} /></Field>
-      <Footer saving={saving} onClose={onClose} onSave={() => onSave(form)} />
+
+      <Footer saving={saving} onClose={onClose} onSave={guardar} />
     </Modal>
   )
 }

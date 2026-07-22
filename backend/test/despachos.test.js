@@ -720,4 +720,67 @@ describe('despachos legacy matrix parity', () => {
       await cleanupFixture(app, fixtureB)
     }
   })
+
+  it('packs against a pending guia (sin despacho) and backfills despachoId once se asigna', async () => {
+    const fixture = await createFixture(app)
+    try {
+      const item = await app.prisma.ordenItem.findFirst({ where: { ordenId: fixture.orden.id } })
+
+      const guiaRes = await app.inject({
+        method: 'POST',
+        url: '/api/despachos/guias',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { ordenId: fixture.orden.id, nGuia: `GD-PEND-${fixture.marker}` },
+      })
+      expect(guiaRes.statusCode).toBe(200)
+      const guia = JSON.parse(guiaRes.body)
+      expect(guia.despachoId).toBeNull()
+
+      // Empaca 1 de 2 directo contra la guia, sin ningun despacho todavia.
+      const packRes = await app.inject({
+        method: 'PUT',
+        url: `/api/despachos/ordenes/${fixture.orden.id}/packing`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { guiaDespachoId: guia.id, items: [{ itemId: item.id, nEntregados: 1 }] },
+      })
+      expect(packRes.statusCode).toBe(200)
+
+      const traceGuia = await app.inject({
+        method: 'GET',
+        url: `/api/despachos/ordenes/${fixture.orden.id}/packing?guiaDespachoId=${guia.id}`,
+        headers: { authorization: `Bearer ${adminToken}` },
+      })
+      expect(JSON.parse(traceGuia.body).packedGuia).toEqual([{ ordenItemId: item.id, cantidad: 1 }])
+
+      const eventoPendiente = await app.prisma.packingEvento.findFirst({ where: { guiaDespachoId: guia.id } })
+      expect(eventoPendiente.despachoId).toBeNull()
+
+      // Se crea el despacho y se le asigna la guia -> el evento de packing
+      // que estaba pendiente debe quedar tambien contado en ese despacho.
+      const despachoRes = await app.inject({
+        method: 'POST',
+        url: '/api/despachos',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { ordenId: fixture.orden.id },
+      })
+      const despacho = JSON.parse(despachoRes.body)
+      const asignarRes = await app.inject({
+        method: 'PUT',
+        url: `/api/despachos/guias/${guia.id}`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { despachoId: despacho.id },
+      })
+      expect(asignarRes.statusCode).toBe(200)
+      expect(JSON.parse(asignarRes.body).despachoId).toBe(despacho.id)
+
+      const traceDespacho = await app.inject({
+        method: 'GET',
+        url: `/api/despachos/ordenes/${fixture.orden.id}/packing?despachoId=${despacho.id}`,
+        headers: { authorization: `Bearer ${adminToken}` },
+      })
+      expect(JSON.parse(traceDespacho.body).packedDespacho).toEqual([{ ordenItemId: item.id, cantidad: 1 }])
+    } finally {
+      await cleanupFixture(app, fixture)
+    }
+  })
 })
