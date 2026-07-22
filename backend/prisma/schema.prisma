@@ -1326,6 +1326,7 @@ model Despacho {
   fechaEntrega DateTime? @map("fecha_entrega")
   tipoDespacho String?   @map("tipo_despacho")
   transporte   String?
+  numeroSeguimiento String? @map("numero_seguimiento")
   montoEnvio   Int?      @map("monto_envio")
   direccion    String?
   contacto     String?

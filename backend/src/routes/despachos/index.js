@@ -19,6 +19,7 @@ const DespachoCreate = z.object({
   fechaEntrega: z.string().optional().nullable(),
   tipoDespacho: z.string().optional().nullable(),
   transporte: z.string().optional().nullable(),
+  numeroSeguimiento: z.string().optional().nullable(),
   montoEnvio: z.union([z.number(), z.string()]).optional().nullable(),
   direccion: z.string().optional().nullable(),
   contacto: z.string().optional().nullable(),
@@ -764,6 +765,7 @@ export default async function despachosRoutes(fastify) {
       { key: 'odtId', label: 'ODT' },
       { key: 'tipoDespacho', label: 'Tipo' },
       { key: 'transporte', label: 'Transporte' },
+      { key: 'numeroSeguimiento', label: 'N Seguimiento' },
       { key: 'contacto', label: 'Contacto' },
       { key: 'direccion', label: 'Direccion' },
       { key: 'region', label: 'Region' },
@@ -1004,6 +1006,7 @@ export default async function despachosRoutes(fastify) {
       fechaEntrega,
       tipoDespacho: b.tipoDespacho || null,
       transporte: b.transporte || null,
+      numeroSeguimiento: b.numeroSeguimiento || null,
       montoEnvio,
       direccion: b.direccion || null,
       contacto: b.contacto || null,
@@ -1061,7 +1064,7 @@ export default async function despachosRoutes(fastify) {
       data.origenId = resolved.origenId
     }
 
-    for (const f of ['plazoEntrega', 'tipoDespacho', 'transporte', 'direccion', 'contacto', 'region', 'comuna', 'usuario']) {
+    for (const f of ['plazoEntrega', 'tipoDespacho', 'transporte', 'numeroSeguimiento', 'direccion', 'contacto', 'region', 'comuna', 'usuario']) {
       if (b[f] !== undefined) data[f] = b[f]
     }
     if (b.fechaInterno !== undefined) {
