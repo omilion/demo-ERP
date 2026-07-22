@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Badge, Btn, Icon } from '../shared'
 import { useEmitirDte } from '../../api/facturacion'
-import { buildReceptor, isValidRut, mapVentaItems, TIPOS_DTE, IND_TRASLADO, TIPO_DESPACHO } from '../../utils/facturacion'
+import { buildReceptor, isValidRut, mapVentaItems, TIPOS_DTE, IND_TRASLADO, TIPO_DESPACHO, REFERENCIA_TIPOS } from '../../utils/facturacion'
 
 const fmt = value => '$' + Math.round(Number(value || 0)).toLocaleString('es-CL')
 
@@ -49,6 +49,7 @@ function Preview({ receptor, items, tipoDte }) {
 
 const th = { padding: '8px 10px', textAlign: 'left', color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase' }
 const td = { padding: '8px 10px' }
+const inputStyle = { width: '100%', padding: 9, border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'inherit' }
 const Total = ({ label, value, strong }) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderTop: strong ? '1px solid var(--border)' : 'none', fontWeight: strong ? 700 : 400 }}><span>{label}</span><span>{fmt(value)}</span></div>
 
 export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSuccess }) {
@@ -56,6 +57,10 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSucc
   const [error, setError] = useState('')
   const [indTraslado, setIndTraslado] = useState('')
   const [tipoDespacho, setTipoDespacho] = useState('')
+  const [refTipo, setRefTipo] = useState('')
+  const [refFolio, setRefFolio] = useState('')
+  const [refFecha, setRefFecha] = useState(() => new Date().toISOString().slice(0, 10))
+  const [refRazon, setRefRazon] = useState('')
   const receptor = buildReceptor(venta?.cliente)
   const items = mapVentaItems(venta)
   const detectedTipo = tipoDte || (isValidRut(receptor.rut) ? 33 : 39)
@@ -70,6 +75,9 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSucc
     }
     setError('')
     try {
+      const referencias = (refTipo && refFolio.trim())
+        ? [{ tipoDocRef: refTipo, folioRef: refFolio.trim(), fechaRef: refFecha, razon: refRazon.trim() || undefined }]
+        : []
       const result = await emitir.mutateAsync({
         ordenId: venta.id,
         clienteId: venta.clienteId || venta.cliente?.id,
@@ -78,6 +86,7 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSucc
         receptor,
         items,
         ...(esGuia ? { extra: { indTraslado: Number(indTraslado), tipoDespacho: Number(tipoDespacho) } } : {}),
+        ...(referencias.length ? { referencias } : {}),
       })
       onSuccess?.(result)
     } catch (cause) { setError(getError(cause)) }
@@ -91,6 +100,22 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSucc
         <SelectField label="Tipo de despacho" value={tipoDespacho} options={TIPO_DESPACHO} onChange={value => { setTipoDespacho(value); setError('') }} />
       </div>
     )}
+    <div style={{ marginBottom: 4 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Referencia (opcional)</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+        <SelectField label="Tipo de documento referenciado" value={refTipo} options={REFERENCIA_TIPOS} onChange={setRefTipo} />
+        <div>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>N° / Folio</label>
+          <input value={refFolio} onChange={event => setRefFolio(event.target.value)} style={inputStyle} placeholder="Ej: 1234" />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Fecha</label>
+          <input type="date" value={refFecha} onChange={event => setRefFecha(event.target.value)} style={inputStyle} />
+        </div>
+      </div>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Razón</label>
+      <input value={refRazon} onChange={event => setRefRazon(event.target.value)} style={inputStyle} placeholder="Ej: Orden de compra del cliente" />
+    </div>
     {error && <div style={errorStyle}>{error}</div>}
     <div style={footerStyle}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn icon="send" onClick={confirmar} disabled={emitir.isPending || !items.length}>{emitir.isPending ? 'Emitiendo...' : 'Confirmar y emitir'}</Btn></div>
   </Modal>

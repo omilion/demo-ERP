@@ -26,6 +26,20 @@ export const TIPO_DESPACHO = {
   3: 'Despacho por cuenta del emisor a otras instalaciones',
 }
 
+// Catalogo TpoDocRef del SII para el bloque <Referencia>: tipos de DTE mas
+// los codigos no-DTE mas usados (orden de compra del cliente, etc.).
+export const REFERENCIA_TIPOS = {
+  33: 'Factura Electrónica',
+  52: 'Guía de Despacho Electrónica',
+  56: 'Nota de Débito Electrónica',
+  61: 'Nota de Crédito Electrónica',
+  801: 'Nota de Pedido',
+  802: 'Contrato',
+  803: 'Resolución',
+  805: 'Orden de Compra',
+  806: 'Otro',
+}
+
 export function isValidRut(value) {
   const rut = String(value || '').replace(/[^0-9kK]/g, '').toUpperCase()
   if (rut.length < 2) return false
