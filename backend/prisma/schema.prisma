@@ -1314,6 +1314,11 @@ model ProductoReceta {
   margenTransferencia Float            @default(35) @map("margen_transferencia")
   ajusteGlobalPct     Float            @default(0) @map("ajuste_global_pct")
   accesoriosMonto     Float            @default(0) @map("accesorios_monto")
+  // Materiales sin desglose, traidos del Excel legacy: ahi el costo de espuma y
+  // tela viene ya totalizado y sin precio unitario limpio, asi que se guarda el
+  // monto tal cual en vez de inventar lineas de BOM. Se reemplaza por lineas
+  // reales en `materiales` a medida que se carguen las materias primas.
+  materialesMonto     Float            @default(0) @map("materiales_monto")
   notas               String?
   activo              Boolean          @default(true)
   createdAt           DateTime         @default(now()) @map("created_at")

@@ -77,8 +77,11 @@ export async function getRecetas(prisma, { tallerId, conReceta, search, page = 1
   }
 
   if (conReceta === 'true' || conReceta === true) {
-    where.receta = { isNot: null, activo: true };
-    if (tallerId) where.receta.tallerId = parseInt(tallerId, 10);
+    // Relacion to-one: los campos van dentro de `is`. Con `isNot: null` +
+    // campos sueltos Prisma tira "Unknown argument `activo`".
+    const recetaFiltro = { activo: true };
+    if (tallerId) recetaFiltro.tallerId = parseInt(tallerId, 10);
+    where.receta = { is: recetaFiltro };
   } else if (conReceta === 'false' || conReceta === false) {
     where.receta = null;
   } else if (tallerId) {
@@ -176,6 +179,7 @@ export async function upsertReceta(prisma, productoId, data) {
     margenTransferencia = 35,
     ajusteGlobalPct = 0,
     accesoriosMonto = 0,
+    materialesMonto = 0,
     notas = null,
     materiales = [],
     procesos = [],
@@ -205,6 +209,7 @@ export async function upsertReceta(prisma, productoId, data) {
           margenTransferencia: Number(margenTransferencia) || 0,
           ajusteGlobalPct: Number(ajusteGlobalPct) || 0,
           accesoriosMonto: Number(accesoriosMonto) || 0,
+          materialesMonto: Number(materialesMonto) || 0,
           notas,
           activo: true,
         },
@@ -221,6 +226,7 @@ export async function upsertReceta(prisma, productoId, data) {
           margenTransferencia: Number(margenTransferencia) || 0,
           ajusteGlobalPct: Number(ajusteGlobalPct) || 0,
           accesoriosMonto: Number(accesoriosMonto) || 0,
+          materialesMonto: Number(materialesMonto) || 0,
           notas,
           activo: true,
         },
@@ -341,8 +347,14 @@ export async function calcularCosteoProducto(prisma, productoId) {
     };
   });
 
+  // El monto importado del Excel entra como una linea mas de material, para que
+  // el motor no tenga que saber de donde vino y quede visible en el desglose.
+  const materialesConImportado = receta.materialesMonto > 0
+    ? [...materialesInput, { nombre: 'Materiales (importado del Excel, sin desglose)', cantidad: 1, precioUnitario: receta.materialesMonto, unidad: null }]
+    : materialesInput;
+
   const costeoResult = calcularCosteo({
-    materiales: materialesInput,
+    materiales: materialesConImportado,
     procesos: procesosInput,
     accesoriosMonto: receta.accesoriosMonto,
     ajusteGlobalPct: receta.ajusteGlobalPct,

@@ -318,6 +318,45 @@ describe('costeo rutas (integracion con base real)', () => {
     expect(write.statusCode).toBe(403);
   });
 
+  it('21. filtro conReceta=true no rompe (relacion to-one con `is`)', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/costeo/recetas?conReceta=true',
+      headers: auth(adminToken),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.data.some(p => p.id === producto.id)).toBe(true);
+  });
+
+  it('22. materialesMonto (importado del Excel) entra al costo', async () => {
+    await app.inject({
+      method: 'PUT',
+      url: `/api/costeo/recetas/${producto.id}`,
+      headers: auth(adminToken),
+      payload: { ...recetaPayload(), materiales: [], procesos: [], accesoriosMonto: 0, materialesMonto: 10000 },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/costeo/recetas/${producto.id}/calcular`,
+      headers: auth(adminToken),
+    });
+    expect(res.statusCode).toBe(200);
+    const calc = JSON.parse(res.body);
+    expect(calc.costoFabricacion).toBe(10000);
+    expect(calc.costoAjustado).toBe(10300);
+    expect(calc.costoTransferencia).toBe(13905);
+
+    // dejar la receta como estaba para los demas casos
+    await app.inject({
+      method: 'PUT',
+      url: `/api/costeo/recetas/${producto.id}`,
+      headers: auth(adminToken),
+      payload: recetaPayload(),
+    });
+  });
+
   it('GET /recetas devuelve el listado paginado', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/costeo/recetas', headers: auth(adminToken) });
     expect(res.statusCode).toBe(200);
