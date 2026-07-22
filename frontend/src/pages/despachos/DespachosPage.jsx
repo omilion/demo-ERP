@@ -117,16 +117,18 @@ export default function DespachosPage() {
   const [tracking, setTracking] = useState(null)
   const [creatingGuia, setCreatingGuia] = useState(null)
   const [editingGuia, setEditingGuia] = useState(null)
-  const [guiaDte, setGuiaDte] = useState(null)
-  const ventaGuiaDte = useVenta(guiaDte?.ordenId)
+  // { ordenId, guiaDespachoId? } - guiaDespachoId solo cuando se abre desde
+  // una guia puntual; desde una fila de despacho se emite a nivel de venta.
+  const [dteTarget, setDteTarget] = useState(null)
+  const ventaGuiaDte = useVenta(dteTarget?.ordenId)
 
-  // Sin esto el modal nunca abre y el boton "Emitir DTE" parece muerto.
+  // Sin esto el modal nunca abre y el boton "Emitir DTE"/"Emitir factura" parece muerto.
   useEffect(() => {
-    if (guiaDte && ventaGuiaDte.isError) {
-      toast.error('No se pudo cargar la venta asociada a la guía.')
-      setGuiaDte(null)
+    if (dteTarget && ventaGuiaDte.isError) {
+      toast.error('No se pudo cargar la venta asociada.')
+      setDteTarget(null)
     }
-  }, [guiaDte, ventaGuiaDte.isError])
+  }, [dteTarget, ventaGuiaDte.isError])
 
   useEffect(() => {
     const action = searchParams.get('action')
@@ -344,6 +346,12 @@ export default function DespachosPage() {
     { key: '_acc', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={(e) => { e.stopPropagation(); setTracking(row) }} style={linkButton('var(--blue)')}>Track</button>
+        {canWriteFacturacion && <button
+          disabled={!row.ordenId}
+          title={row.ordenId ? 'Emitir factura electrónica' : 'Este despacho no tiene una venta asociada'}
+          onClick={(e) => { e.stopPropagation(); if (row.ordenId) setDteTarget({ ordenId: row.ordenId }) }}
+          style={{ ...linkButton('var(--blue)'), opacity: row.ordenId ? 1 : 0.45, cursor: row.ordenId ? 'pointer' : 'not-allowed' }}
+        >Emitir factura</button>}
         {canWriteDespacho && <button onClick={(e) => { e.stopPropagation(); setEditing(row) }} style={linkButton('var(--green-700)')}>Editar</button>}
         {canDeleteDespacho && <button onClick={(e) => { e.stopPropagation(); solicitarEliminacion('despacho', row.id, delMut) }} style={linkButton('var(--red)')}>Borrar</button>}
       </div>
@@ -362,7 +370,7 @@ export default function DespachosPage() {
         {canWriteFacturacion && <button
           disabled={!row.ordenId}
           title={row.ordenId ? 'Emitir guía de despacho electrónica' : 'Esta guía no tiene una orden asociada'}
-          onClick={(e) => { e.stopPropagation(); if (row.ordenId) setGuiaDte(row) }}
+          onClick={(e) => { e.stopPropagation(); if (row.ordenId) setDteTarget({ ordenId: row.ordenId, guiaDespachoId: row.id }) }}
           style={{ ...linkButton('var(--blue)'), opacity: row.ordenId ? 1 : 0.45, cursor: row.ordenId ? 'pointer' : 'not-allowed' }}
         >Emitir DTE</button>}
         <button onClick={(e) => { e.stopPropagation(); window.open(`${window.location.origin}/despachos/guias/${row.id}/imprimir`, '_blank') }} style={linkButton('var(--text-2)')}>Imprimir</button>
@@ -575,19 +583,19 @@ export default function DespachosPage() {
           onSuccess={() => { setEditingGuia(null); toast.success('Guía actualizada.') }}
         />
       )}
-      {guiaDte && ventaGuiaDte.data && (
+      {dteTarget && ventaGuiaDte.data && (
         <EmitirDteModal
           venta={ventaGuiaDte.data}
-          guiaDespachoId={guiaDte.id}
-          tipoDte={52}
-          onClose={() => setGuiaDte(null)}
+          guiaDespachoId={dteTarget.guiaDespachoId}
+          tipoDte={dteTarget.guiaDespachoId ? 52 : undefined}
+          onClose={() => setDteTarget(null)}
           onSuccess={({ emitido, documento }) => {
-            setGuiaDte(null)
-            toast.success(`Guía DTE emitida${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`)
+            setDteTarget(null)
+            toast.success(`DTE emitido${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`)
           }}
         />
       )}
-      {guiaDte && ventaGuiaDte.isPending && <LoadingOverlay label="Cargando venta..." />}
+      {dteTarget && ventaGuiaDte.isPending && <LoadingOverlay label="Cargando venta..." />}
     </main>
   )
 }
