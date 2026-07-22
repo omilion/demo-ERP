@@ -40,6 +40,7 @@ export default function GuiaPrintPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 18 }}>
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: '#777', marginBottom: 4 }}>Cliente</div>
+          {!orden && <div style={{ fontSize: 12, color: '#a00', marginBottom: 4 }}>Sin venta asociada</div>}
           <div style={{ fontSize: 13, fontWeight: 600 }}>{cliente?.razonSocial || cliente?.nombre || '—'}</div>
           <div style={{ fontSize: 12, color: '#444', fontFamily: 'monospace' }}>{orden?.rutCliente || '—'}</div>
           {(despacho?.direccion || cliente?.direccion) && <div style={{ fontSize: 11, color: '#555' }}>{despacho?.direccion || cliente?.direccion}</div>}
