@@ -74,12 +74,20 @@ export function EmitirDteModal({ venta, guiaDespachoId, despachoId, tipoDte, onC
   const [error, setError] = useState('')
   const [indTraslado, setIndTraslado] = useState('')
   const [tipoDespacho, setTipoDespacho] = useState('')
-  const [refTipo, setRefTipo] = useState('')
+  const [mostrarReferencia, setMostrarReferencia] = useState(false)
+  // "Otro" por defecto: al abrir la referencia se ve directo N°/Folio + Razon
+  // para escribir sin elegir nada antes. Solo si es una Guia/Factura/NC/ND
+  // real del sistema hace falta cambiar el tipo arriba.
+  const [refTipo, setRefTipo] = useState('806')
   const [refDocLocalId, setRefDocLocalId] = useState('')
   const [refFolio, setRefFolio] = useState('')
   const [refFecha, setRefFecha] = useState(() => new Date().toISOString().slice(0, 10))
   const [refRazon, setRefRazon] = useState('')
   const refEsInterna = REFERENCIA_TIPOS_INTERNOS.includes(refTipo)
+  // Se eligio un tipo pero falta terminar de elegir el documento/folio: no se
+  // manda ninguna referencia en ese estado, asi que no se deja confirmar a
+  // medias (antes quedaba en silencio como si no se hubiera tocado nada).
+  const referenciaIncompleta = mostrarReferencia && !!refTipo && (refEsInterna ? !refDocLocalId : !refFolio.trim())
   const documentosRef = useDocumentos({ tipoDte: refTipo, estado: 'emitido' }, { enabled: refEsInterna })
   const { data: empresaData } = useEmpresa()
   const empresa = empresaData?.empresa
@@ -110,6 +118,10 @@ export function EmitirDteModal({ venta, guiaDespachoId, despachoId, tipoDte, onC
     // folio queda consumido, asi que se validan antes de llamar al backend.
     if (esGuia && (!indTraslado || !tipoDespacho)) {
       setError('Indica el motivo del traslado y el tipo de despacho.')
+      return
+    }
+    if (referenciaIncompleta) {
+      setError(refEsInterna ? 'Elige el documento al que referencia, o quita la referencia.' : 'Completa el N°/Folio de la referencia, o quítala.')
       return
     }
     setError('')
@@ -151,41 +163,55 @@ export function EmitirDteModal({ venta, guiaDespachoId, despachoId, tipoDte, onC
         <SelectField label="Tipo de despacho" value={tipoDespacho} options={TIPO_DESPACHO} onChange={value => { setTipoDespacho(value); setError('') }} />
       </div>
     )}
-    <div style={{ marginBottom: 4 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Referencia (opcional)</div>
-      <div style={{ display: 'grid', gridTemplateColumns: refEsInterna ? '1.4fr 2fr' : '1.4fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
-        <SelectField label="Tipo de documento referenciado" value={refTipo} options={REFERENCIA_TIPOS} onChange={value => { setRefTipo(value); setRefDocLocalId(''); setRefFolio('') }} />
-        {refEsInterna ? (
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Documento emitido</label>
-            <select value={refDocLocalId} onChange={event => setRefDocLocalId(event.target.value)} style={{ ...inputStyle, background: '#fff' }} disabled={documentosRef.isLoading}>
-              <option value="">{documentosRef.isLoading ? 'Cargando...' : 'Seleccionar...'}</option>
-              {(documentosRef.data?.documentos || []).map(doc => (
-                <option key={doc.id} value={doc.id}>Folio {doc.folio} — {doc.receptor?.razonSocial || 'sin receptor'} — {dateFmt(doc.fechaEmision)}</option>
-              ))}
-            </select>
-            {!documentosRef.isLoading && !(documentosRef.data?.documentos || []).length && (
-              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>No hay {TIPOS_DTE[Number(refTipo)]?.toLowerCase()} emitidas todavía.</div>
-            )}
+    {!mostrarReferencia ? (
+      <button type="button" onClick={() => setMostrarReferencia(true)} style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', fontWeight: 600, fontSize: 13, padding: 0, marginBottom: 4 }}>
+        + Agregar referencia (opcional — guía ya enviada, orden de compra del cliente, etc.)
+      </button>
+    ) : (
+      <div style={{ marginBottom: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 600 }}>Referencia</div>
+          <button type="button" onClick={() => { setMostrarReferencia(false); setRefTipo('806'); setRefDocLocalId(''); setRefFolio(''); setRefRazon(''); setError('') }} style={{ background: 'none', border: 'none', color: 'var(--text-3)', cursor: 'pointer', fontSize: 12 }}>Quitar</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: refEsInterna ? '1.4fr 2fr' : '1.4fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <SelectField label="Tipo de documento referenciado" value={refTipo} options={REFERENCIA_TIPOS} onChange={value => { setRefTipo(value); setRefDocLocalId(''); setRefFolio('') }} />
+          {refEsInterna ? (
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Documento emitido</label>
+              <select value={refDocLocalId} onChange={event => setRefDocLocalId(event.target.value)} style={{ ...inputStyle, background: '#fff' }} disabled={documentosRef.isLoading}>
+                <option value="">{documentosRef.isLoading ? 'Cargando...' : 'Seleccionar...'}</option>
+                {(documentosRef.data?.documentos || []).map(doc => (
+                  <option key={doc.id} value={doc.id}>Folio {doc.folio} — {doc.receptor?.razonSocial || 'sin receptor'} — {dateFmt(doc.fechaEmision)}</option>
+                ))}
+              </select>
+              {!documentosRef.isLoading && !(documentosRef.data?.documentos || []).length && (
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>No hay {TIPOS_DTE[Number(refTipo)]?.toLowerCase()} emitidas todavía.</div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>N° / Folio</label>
+                <input value={refFolio} onChange={event => setRefFolio(event.target.value)} style={inputStyle} placeholder="Ej: 1234" />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Fecha</label>
+                <input type="date" value={refFecha} onChange={event => setRefFecha(event.target.value)} style={inputStyle} />
+              </div>
+            </>
+          )}
+        </div>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Razón</label>
+        <input value={refRazon} onChange={event => setRefRazon(event.target.value)} style={inputStyle} placeholder="Ej: Orden de compra del cliente" />
+        {referenciaIncompleta && (
+          <div style={{ fontSize: 11, color: 'var(--amber)', marginTop: 6 }}>
+            {refEsInterna ? 'Falta elegir el documento.' : 'Falta el N°/Folio.'} Complétalo o quita la referencia para seguir.
           </div>
-        ) : (
-          <>
-            <div>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>N° / Folio</label>
-              <input value={refFolio} onChange={event => setRefFolio(event.target.value)} style={inputStyle} placeholder="Ej: 1234" />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Fecha</label>
-              <input type="date" value={refFecha} onChange={event => setRefFecha(event.target.value)} style={inputStyle} />
-            </div>
-          </>
         )}
       </div>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Razón</label>
-      <input value={refRazon} onChange={event => setRefRazon(event.target.value)} style={inputStyle} placeholder="Ej: Orden de compra del cliente" />
-    </div>
+    )}
     {error && <div style={errorStyle}>{error}</div>}
-    <div style={footerStyle}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn icon="send" onClick={confirmar} disabled={emitir.isPending || !items.length}>{emitir.isPending ? 'Emitiendo...' : 'Confirmar y emitir'}</Btn></div>
+    <div style={footerStyle}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn icon="send" onClick={confirmar} disabled={emitir.isPending || !items.length || referenciaIncompleta}>{emitir.isPending ? 'Emitiendo...' : 'Confirmar y emitir'}</Btn></div>
   </Modal>
 }
 
