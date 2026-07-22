@@ -306,7 +306,7 @@ export default function DespachosPage() {
           <button
             onClick={e => {
               e.stopPropagation()
-              setCreatingGuia({ ordenId: row.ordenId || '', odtId: '', nInterno: row.nInterno || '', nGuia: '', fechaGuia: '', origen: '' })
+              setCreatingGuia({ ordenId: row.ordenId || '', odtId: '', nInterno: row.nInterno || '', nGuia: row.nInterno ? String(row.nInterno) : '', fechaGuia: '', origen: '' })
             }}
             style={btnSm('var(--blue)')}
           >Guia</button>
@@ -1054,6 +1054,11 @@ function GuiaModal({ title = 'Nueva guia', initial, onClose, onSuccess }) {
 
   return (
     <Modal title={title} onClose={onClose}>
+      {!isEdit && (
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 14, lineHeight: 1.5 }}>
+          1. Elige abajo qué productos y cuánto enviar de este pedido. 2. Resuelve el despacho (o déjalo pendiente). 3. Guarda: la guía queda lista para emitir su DTE desde la pestaña Guías.
+        </div>
+      )}
       <div style={grid}>
         <Field label="N guia"><input value={form.nGuia} onChange={e => set('nGuia', e.target.value)} style={input} /></Field>
         <Field label="Orden ID"><input value={form.ordenId} onChange={e => set('ordenId', e.target.value)} style={input} disabled={isEdit} /></Field>
