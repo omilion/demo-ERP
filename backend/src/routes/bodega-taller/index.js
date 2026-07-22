@@ -169,6 +169,7 @@ export default async function bodegaTallerRoutes(fastify) {
       codigoInterno,
       codigoBarra,
       nombre,
+      detalle,
       unidadMedida,
       stock,
       stockCritico,
@@ -227,6 +228,7 @@ export default async function bodegaTallerRoutes(fastify) {
           codigoInterno: codigoFinal,
           codigoBarra: cleanText(codigoBarra),
           nombre: nombreFinal,
+          detalle: cleanText(detalle),
           unidadMedida: cleanText(unidadMedida),
           categoriaId: categoriaFinal,
           subcategoriaId: subcategoriaFinal,
@@ -265,7 +267,7 @@ export default async function bodegaTallerRoutes(fastify) {
       if (!codigo) return reply.code(400).send({ error: 'codigoInterno requerido' })
       data.codigoInterno = codigo
     }
-    for (const field of ['codigoBarra', 'nombre', 'unidadMedida']) {
+    for (const field of ['codigoBarra', 'nombre', 'detalle', 'unidadMedida']) {
       if (body[field] !== undefined) data[field] = cleanText(body[field])
     }
     if (body.nombre !== undefined && !data.nombre) return reply.code(400).send({ error: 'nombre requerido' })

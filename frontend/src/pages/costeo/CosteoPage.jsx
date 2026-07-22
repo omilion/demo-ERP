@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Badge, Btn, Icon, PageHeader, SearchBar, Table } from '../../components/shared';
 import { useRecetas, useTarifas, useCreateTarifa, useDeleteTarifa, useMaterialesHistorialPrecios, useRecalcularMasivo } from '../../api/costeo';
-import { useBodegaTaller, useUpdateBodegaTaller } from '../../api/bodegaTaller';
+import { useBodegaTaller, useUpdateBodegaTaller, useCreateBodegaTaller } from '../../api/bodegaTaller';
+import { useTalleres } from '../../api/pasarTaller';
 import { EditorRecetaModal } from './components/EditorRecetaModal';
 import { toast, confirmDialog } from '../../store/notif';
 
@@ -79,6 +80,10 @@ function RecetasTab() {
   const [tallerIdFilter, setTallerIdFilter] = useState('');
   const [conRecetaFilter, setConRecetaFilter] = useState('');
   const [selectedProducto, setSelectedProducto] = useState(null);
+  // Los talleres se leen de la base: estaban fijos en el codigo y ademas mal
+  // mapeados (decia 1=Espumas cuando 1 es confecciones, y "Madera" no existe).
+  const { data: talleresData } = useTalleres();
+  const talleres = Array.isArray(talleresData) ? talleresData : (talleresData?.data || []);
 
   const { data: recetasData, isLoading } = useRecetas({
     search,
@@ -153,9 +158,7 @@ function RecetasTab() {
             style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}
           >
             <option value="">Todos los talleres</option>
-            <option value="1">Espumas</option>
-            <option value="2">Confecciones</option>
-            <option value="3">Madera</option>
+            {talleres.map((t) => <option key={t.id} value={String(t.id)}>{t.label || t.nombre}</option>)}
           </select>
 
           <select
@@ -189,15 +192,32 @@ function RecetasTab() {
 
 // ── TAB 2: MATERIAS PRIMAS ──────────────────────────────────────────────────
 function MateriasPrimasTab() {
+  const [tallerFiltro, setTallerFiltro] = useState('');
+  const [busqueda, setBusqueda] = useState('');
   const { data: bodegaData, isLoading } = useBodegaTaller();
+  const { data: talleresData } = useTalleres();
   const updateBodega = useUpdateBodegaTaller();
 
   const [editingItem, setEditingItem] = useState(null);
   const [newPrecio, setNewPrecio] = useState('');
   const [motivo, setMotivo] = useState('');
   const [historyMaterialId, setHistoryMaterialId] = useState(null);
+  const [creando, setCreando] = useState(false);
 
-  const items = Array.isArray(bodegaData) ? bodegaData : (bodegaData?.data || []);
+  const talleres = Array.isArray(talleresData) ? talleresData : (talleresData?.data || []);
+  const todos = Array.isArray(bodegaData) ? bodegaData : (bodegaData?.data || []);
+  const tallerNombre = id => { const t = talleres.find(x => x.id === id); return t ? (t.label || t.nombre) : null; };
+
+  // Filtro en memoria: el listado de materias primas es chico (decenas), no
+  // vale la pena ida y vuelta al servidor por cada tecla.
+  const items = todos.filter(item => {
+    const porTaller = !tallerFiltro
+      || (tallerFiltro === 'sin' ? !item.tallerId : String(item.tallerId) === tallerFiltro);
+    const texto = busqueda.trim().toLowerCase();
+    const porTexto = !texto
+      || [item.codigoInterno, item.nombre, item.detalle].filter(Boolean).join(' ').toLowerCase().includes(texto);
+    return porTaller && porTexto;
+  });
 
   const handleSavePrecio = async () => {
     if (!editingItem || !newPrecio) return;
@@ -216,6 +236,14 @@ function MateriasPrimasTab() {
   const columns = [
     { key: 'codigoInterno', label: 'Código', render: (v) => <span style={{ fontWeight: 600 }}>{v}</span> },
     { key: 'nombre', label: 'Nombre Material' },
+    { key: 'detalle', label: 'Detalle', render: (v) => v || <span style={{ color: 'var(--text-3)' }}>—</span> },
+    {
+      key: 'tallerId',
+      label: 'Taller',
+      render: (v) => v
+        ? <Badge tone="blue">{tallerNombre(v) || `#${v}`}</Badge>
+        : <Badge tone="gray">Sin asignar</Badge>,
+    },
     { key: 'unidadMedida', label: 'Unidad', render: (v) => v || 'u' },
     { key: 'stock', label: 'Stock', render: (v) => (v || 0).toLocaleString('es-CL') },
     { key: 'precio', label: 'Precio Unitario', render: (v) => `$${(v || 0).toLocaleString('es-CL')}` },
@@ -237,7 +265,26 @@ function MateriasPrimasTab() {
 
   return (
     <div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+        <SearchBar placeholder="Buscar por código, nombre o detalle" value={busqueda} onChange={setBusqueda} style={{ width: 300 }} />
+        <select
+          value={tallerFiltro}
+          onChange={(e) => setTallerFiltro(e.target.value)}
+          style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', background: '#fff' }}
+        >
+          <option value="">Todos los talleres</option>
+          {talleres.map((t) => <option key={t.id} value={String(t.id)}>{t.label || t.nombre}</option>)}
+          <option value="sin">Sin taller asignado</option>
+        </select>
+        <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{items.length} de {todos.length}</span>
+        <div style={{ marginLeft: 'auto' }}>
+          <Btn icon="plusCircle" onClick={() => setCreando(true)}>Nueva materia prima</Btn>
+        </div>
+      </div>
+
       <Table columns={columns} data={items} isLoading={isLoading} />
+
+      {creando && <NuevaMateriaPrimaModal talleres={talleres} onClose={() => setCreando(false)} />}
 
       {/* Edit Price Modal */}
       {editingItem && (
@@ -278,6 +325,92 @@ function MateriasPrimasTab() {
 
       {/* History Modal */}
       {historyMaterialId && <MaterialHistoryModal materialId={historyMaterialId} onClose={() => setHistoryMaterialId(null)} />}
+    </div>
+  );
+}
+
+const UNIDADES = ['kg', 'mt', 'm2', 'm3', 'lt', 'plancha', 'rollo', 'unidad'];
+
+function NuevaMateriaPrimaModal({ talleres, onClose }) {
+  const crear = useCreateBodegaTaller();
+  const [form, setForm] = useState({
+    codigoInterno: '', nombre: '', detalle: '', unidadMedida: 'kg', precio: '', tallerId: '',
+  });
+  const set = (campo, valor) => setForm((f) => ({ ...f, [campo]: valor }));
+
+  const guardar = async () => {
+    if (!form.codigoInterno.trim() || !form.nombre.trim()) {
+      toast.warning('Código y nombre son obligatorios');
+      return;
+    }
+    try {
+      await crear.mutateAsync({
+        codigoInterno: form.codigoInterno.trim(),
+        nombre: form.nombre.trim(),
+        detalle: form.detalle.trim() || undefined,
+        unidadMedida: form.unidadMedida || undefined,
+        precio: Number(form.precio) || 0,
+        tallerId: form.tallerId ? Number(form.tallerId) : undefined,
+      });
+      toast.success('Materia prima creada');
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'No se pudo crear la materia prima');
+    }
+  };
+
+  const campo = { width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', marginTop: 4, fontFamily: 'inherit' };
+  const etiqueta = { fontSize: 12, fontWeight: 600 };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: '#fff', padding: 24, borderRadius: 8, width: 520, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+        <h3 style={{ margin: '0 0 16px 0', fontSize: 16 }}>Nueva materia prima</h3>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={etiqueta}>Código <span style={{ color: 'var(--red)' }}>*</span></label>
+              <input value={form.codigoInterno} onChange={(e) => set('codigoInterno', e.target.value)} placeholder="ej. MP-ALGODON" style={campo} />
+            </div>
+            <div>
+              <label style={etiqueta}>Taller</label>
+              <select value={form.tallerId} onChange={(e) => set('tallerId', e.target.value)} style={{ ...campo, background: '#fff' }}>
+                <option value="">Sin asignar</option>
+                {talleres.map((t) => <option key={t.id} value={String(t.id)}>{t.label || t.nombre}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label style={etiqueta}>Nombre <span style={{ color: 'var(--red)' }}>*</span></label>
+            <input value={form.nombre} onChange={(e) => set('nombre', e.target.value)} placeholder="ej. Algodón" style={campo} />
+          </div>
+
+          <div>
+            <label style={etiqueta}>Detalle</label>
+            <input value={form.detalle} onChange={(e) => set('detalle', e.target.value)} placeholder="marca, formato u observación" style={campo} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={etiqueta}>Unidad</label>
+              <select value={form.unidadMedida} onChange={(e) => set('unidadMedida', e.target.value)} style={{ ...campo, background: '#fff' }}>
+                {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={etiqueta}>Costo por unidad ($)</label>
+              <input type="number" value={form.precio} onChange={(e) => set('precio', e.target.value)} placeholder="0" style={campo} />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+            <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+            <Btn onClick={guardar} disabled={crear.isPending}>{crear.isPending ? 'Creando…' : 'Crear'}</Btn>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

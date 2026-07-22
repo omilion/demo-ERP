@@ -1101,6 +1101,7 @@ model BodegaTaller {
   codigoInterno  String  @unique @map("codigo_interno")
   codigoBarra    String? @map("codigo_barra")
   nombre         String
+  detalle        String?
   unidadMedida   String? @map("unidad_medida")
   categoriaId    Int?    @map("categoria_id")
   subcategoriaId Int?    @map("subcategoria_id")
