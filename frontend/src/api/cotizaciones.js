@@ -74,6 +74,13 @@ export const useDeleteCotizacionItem = () => {
   })
 }
 
+export const useCotizacionItemHistorial = (itemId) =>
+  useQuery({
+    queryKey: ['cotizaciones-item-historial', itemId],
+    queryFn: () => api.get(`/cotizaciones/items/${itemId}/historial-precios`).then(r => r.data),
+    enabled: !!itemId,
+  })
+
 export const useCrearVentaDesdeLicitacion = () => {
   const qc = useQueryClient()
   return useMutation({

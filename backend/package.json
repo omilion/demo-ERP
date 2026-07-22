@@ -12,7 +12,7 @@
     "start": "node src/app.js",
     "test": "vitest run",
     "test:full": "vitest run",
-    "test:ci": "vitest run staging-smoke.test.js app.test.js rrhh-helpers.test.js despachos-traceability.test.js bitacora-taller.test.js cobranza-pagos-proveedores.test.js cobranza-cliente.test.js odts.test.js lifecycle-route-permissions.test.js odt-consumos.test.js odt-item-workflow.test.js odt-operations.test.js pasar-taller.test.js stock-critico-job.test.js descuentos.test.js gastos.test.js cargo-transporte.test.js ordenes-compra-web.test.js web-public.test.js uploads.test.js costeo-engine.test.js costeo-service.test.js costeo-routes.test.js",
+    "test:ci": "vitest run staging-smoke.test.js app.test.js rrhh-helpers.test.js despachos-traceability.test.js bitacora-taller.test.js cobranza-pagos-proveedores.test.js cobranza-cliente.test.js odts.test.js lifecycle-route-permissions.test.js odt-consumos.test.js odt-item-workflow.test.js odt-operations.test.js pasar-taller.test.js stock-critico-job.test.js descuentos.test.js gastos.test.js cargo-transporte.test.js ordenes-compra-web.test.js web-public.test.js uploads.test.js costeo-engine.test.js costeo-service.test.js costeo-routes.test.js cotizaciones-flow.test.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "node prisma/seed.js",

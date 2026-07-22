@@ -1,12 +1,13 @@
 import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Badge, PageHeader, Btn, Table } from '../../components/shared'
+import { Badge, PageHeader, Btn, Table, Icon } from '../../components/shared'
 import { FormField, Input, Select, Textarea } from '../../components/forms'
 import {
   useCotizacion, useUpdateCotizacion, useDeleteCotizacion,
   useAddCotizacionItem, useUpdateCotizacionItem, useDeleteCotizacionItem,
   useCrearVentaDesdeLicitacion, useActualizarVentaDesdeLicitacion,
+  useCotizacionItemHistorial,
 } from '../../api/cotizaciones'
 import { useEvaluarDescuentoCotizacion, useSolicitarDescuentoCotizacion } from '../../api/descuentos'
 import { useProductos } from '../../api/productos'
@@ -313,6 +314,7 @@ export default function LicitacionDetallePage() {
   const [editItemId, setEditItemId] = useState(null)
   const [itemForm, setItemForm] = useState({})
   const [newItem, setNewItem] = useState({ codigoInterno: '', nombre: '', descripcion: '', cantidad: '', cantAdjudicados: '', precio: '' })
+  const [historialItemId, setHistorialItemId] = useState(null)
 
   if (isLoading) return <main style={{ padding: 24 }}>Cargando…</main>
   if (!data) return <main style={{ padding: 24 }}>No encontrada</main>
@@ -448,12 +450,13 @@ export default function LicitacionDetallePage() {
             <button onClick={() => setEditItemId(null)} style={btnTiny}>Cancelar</button>
           </div>
         )
-        return canWriteLicitaciones || canDeleteLicitaciones ? (
+        return (
           <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+            <button onClick={() => setHistorialItemId(row.id)} title="Ver historial de precio" style={btnTiny}><Icon name="history" size={12} /></button>
             {canWriteLicitaciones && <button onClick={() => startEditItem(row)} style={btnTiny}>Editar</button>}
             {canDeleteLicitaciones && <button onClick={() => deleteItem(row.id)} style={{ ...btnTiny, color: 'var(--red)' }}>×</button>}
           </div>
-        ) : null
+        )
       } },
   ]
 
@@ -694,7 +697,40 @@ export default function LicitacionDetallePage() {
         totalAdjudicado={totalAdjudicado}
         canRequest={canWriteLicitaciones}
       />
+
+      {historialItemId && <ItemPrecioHistorialModal itemId={historialItemId} onClose={() => setHistorialItemId(null)} />}
     </main>
+  )
+}
+
+function ItemPrecioHistorialModal({ itemId, onClose }) {
+  const { data: history = [] } = useCotizacionItemHistorial(itemId)
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#fff', padding: 24, borderRadius: 8, width: 500, maxHeight: '80vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h3 style={{ margin: 0, fontSize: 16 }}>Historial de Precio del Ítem</h3>
+          <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}><Icon name="x" size={18} /></button>
+        </div>
+        {history.length === 0 ? (
+          <p style={{ fontSize: 13, color: 'var(--text-3)' }}>Sin cambios registrados.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {history.map(h => (
+              <div key={h.id} style={{ padding: 10, background: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 13 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
+                  <span>{fmt(h.precioAnterior)} ➔ {fmt(h.precioNuevo)}</span>
+                  <span style={{ fontSize: 11, color: '#64748b' }}>{new Date(h.createdAt).toLocaleDateString('es-CL')}</span>
+                </div>
+                {h.usuarioNombre && <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>{h.usuarioNombre}</div>}
+                {h.motivo && <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>Motivo: {h.motivo}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 

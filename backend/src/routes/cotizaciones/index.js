@@ -786,6 +786,17 @@ export default async function cotizacionesRoutes(fastify) {
       const data = parsedPatch.data
       const item = await fastify.prisma.$transaction(async (tx) => {
         const updated = await tx.cotizacionLicitacionItem.update({ where: { id: itemId }, data })
+        if (data.precio !== undefined && Number(data.precio) !== Number(current.precio || 0)) {
+          await tx.cotizacionLicitacionPrecioHistorial.create({
+            data: {
+              itemId,
+              precioAnterior: Number(current.precio || 0),
+              precioNuevo: Number(data.precio),
+              motivo: cleanOptionalText(body.motivo),
+              usuarioNombre: request.user?.nombre ?? null,
+            },
+          })
+        }
         await tx.cotizacionLicitacion.update({ where: { id: current.cotizacionId }, data: clearCotizacionDiscountData() })
         return updated
       })
@@ -794,6 +805,22 @@ export default async function cotizacionesRoutes(fastify) {
       if (e.code === 'P2025') return reply.code(404).send({ error: 'Item no encontrado' })
       throw e
     }
+  })
+
+  fastify.get('/items/:itemId/historial-precios', {
+    preHandler: [fastify.authenticate, fastify.rbac('licitaciones', 'read')],
+  }, async (request, reply) => {
+    const itemId = parseInt(request.params.itemId, 10)
+    if (isNaN(itemId)) return reply.code(400).send({ error: 'ID inválido' })
+    const item = await fastify.prisma.cotizacionLicitacionItem.findFirst({
+      where: scopedItemWhere(request.user, itemId),
+      select: { id: true },
+    })
+    if (!item) return reply.code(404).send({ error: 'Item no encontrado' })
+    return fastify.prisma.cotizacionLicitacionPrecioHistorial.findMany({
+      where: { itemId },
+      orderBy: { createdAt: 'desc' },
+    })
   })
 
   fastify.delete('/:id/items/:itemId', {
