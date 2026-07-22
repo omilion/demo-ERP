@@ -511,6 +511,7 @@ model Orden {
   movimientosCaja    MovimientoCaja[]
   packingBultos      PackingBulto[]
   packingEventos     PackingEvento[]
+  despachoAjustes    DespachoAjusteHistorial[]
   clienteSucursal    ClienteSucursal? @relation(fields: [clienteSucursalId], references: [id], onDelete: SetNull)
   descuentoSolicitud DescuentoSolicitud? @relation("OrdenDescuentoSolicitud", fields: [descuentoSolicitudId], references: [id], onDelete: SetNull)
 
@@ -629,9 +630,25 @@ model CotizacionLicitacionItem {
   cantAdjudicados Int                  @default(0) @map("cant_adjudicados")
   precio          Float                @default(0)
   cotizacion      CotizacionLicitacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+  precioHistorial CotizacionLicitacionPrecioHistorial[]
 
   @@index([cotizacionId])
   @@map("cotizacion_licitacion_items")
+  @@schema("ventas")
+}
+
+model CotizacionLicitacionPrecioHistorial {
+  id             Int                      @id @default(autoincrement())
+  itemId         Int                      @map("item_id")
+  precioAnterior Float                    @map("precio_anterior")
+  precioNuevo    Float                    @map("precio_nuevo")
+  usuarioNombre  String?                  @map("usuario_nombre")
+  motivo         String?
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  item           CotizacionLicitacionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId])
+  @@map("cotizacion_licitacion_precio_historial")
   @@schema("ventas")
 }
 
@@ -1482,6 +1499,21 @@ model Despacho {
   @@index([odtId])
   @@index([origenTipo, origenId])
   @@map("despachos")
+  @@schema("bodega")
+}
+
+model DespachoAjusteHistorial {
+  id            Int      @id @default(autoincrement())
+  ordenId       Int      @map("orden_id")
+  montoAnterior Float    @map("monto_anterior")
+  montoNuevo    Float    @map("monto_nuevo")
+  motivo        String?
+  usuarioNombre String?  @map("usuario_nombre")
+  createdAt     DateTime @default(now()) @map("created_at")
+  orden         Orden    @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+
+  @@index([ordenId])
+  @@map("despacho_ajuste_historial")
   @@schema("bodega")
 }
 
