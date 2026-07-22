@@ -184,22 +184,18 @@ export default async function bodegaTallerRoutes(fastify) {
 
     const parsedCategoria = parseOptionalPositiveInt(categoriaId)
     const parsedSubcategoria = parseOptionalPositiveInt(subcategoriaId)
+    const parsedTaller = parseOptionalPositiveInt(tallerId)
     const parsedProveedor = parseOptionalPositiveInt(proveedorId)
     const parsedSucursal = parsePositiveIntValue(sucursalId, 'sucursalId')
     if (parsedCategoria.error) return reply.code(400).send({ error: 'categoriaId invalido' })
     if (parsedSubcategoria.error) return reply.code(400).send({ error: 'subcategoriaId invalido' })
+    if (parsedTaller.error) return reply.code(400).send({ error: 'tallerId invalido' })
     if (parsedProveedor.error) return reply.code(400).send({ error: 'proveedorId invalido' })
     if (parsedSucursal.error) return reply.code(400).send({ error: parsedSucursal.error })
 
-    const parsedStock = parseOptionalNumber(stock, 'stock', { min: 0 })
-    const parsedStockCritico = parseOptionalNumber(stockCritico, 'stockCritico', { min: 0 })
-    const parsedPrecio = parseOptionalNumber(precio, 'precio', { min: 0 })
-    if (parsedStock.error) return reply.code(400).send({ error: parsedStock.error })
-    if (parsedStockCritico.error) return reply.code(400).send({ error: parsedStockCritico.error })
-    if (parsedPrecio.error) return reply.code(400).send({ error: parsedPrecio.error })
-
     const categoriaFinal = parsedCategoria.value ?? null
     const subcategoriaFinal = parsedSubcategoria.value ?? null
+    const tallerFinal = parsedTaller.value ?? null
     const proveedorFinal = parsedProveedor.value ?? null
     const sucursalFinal = resolveSucursalForWrite(request.user, parsedSucursal)
 
@@ -227,6 +223,7 @@ export default async function bodegaTallerRoutes(fastify) {
           unidadMedida: cleanText(unidadMedida),
           categoriaId: categoriaFinal,
           subcategoriaId: subcategoriaFinal,
+          tallerId: tallerFinal,
           proveedorId: proveedorFinal,
           sucursalId: sucursalFinal,
           stock: parsedStock.value ?? 0,
@@ -251,7 +248,7 @@ export default async function bodegaTallerRoutes(fastify) {
     if (filter.error) return reply.code(400).send({ error: filter.error })
     const current = await fastify.prisma.bodegaTaller.findFirst({
       where: { ...filter.where, id },
-      select: { id: true, categoriaId: true, subcategoriaId: true, sucursalId: true, stock: true, codigoInterno: true, codigoBarra: true },
+      select: { id: true, categoriaId: true, subcategoriaId: true, sucursalId: true, stock: true, precio: true, codigoInterno: true, codigoBarra: true },
     })
     if (!current) return reply.code(404).send({ error: 'No encontrado' })
 
@@ -276,10 +273,12 @@ export default async function bodegaTallerRoutes(fastify) {
 
     const parsedCategoria = parseOptionalPositiveInt(body.categoriaId)
     const parsedSubcategoria = parseOptionalPositiveInt(body.subcategoriaId)
+    const parsedTaller = parseOptionalPositiveInt(body.tallerId)
     const parsedProveedor = parseOptionalPositiveInt(body.proveedorId)
     const parsedSucursal = parsePositiveIntValue(body.sucursalId, 'sucursalId')
     if (parsedCategoria.error) return reply.code(400).send({ error: 'categoriaId invalido' })
     if (parsedSubcategoria.error) return reply.code(400).send({ error: 'subcategoriaId invalido' })
+    if (parsedTaller.error) return reply.code(400).send({ error: 'tallerId invalido' })
     if (parsedProveedor.error) return reply.code(400).send({ error: 'proveedorId invalido' })
     if (parsedSucursal.error) return reply.code(400).send({ error: parsedSucursal.error })
 
@@ -292,6 +291,7 @@ export default async function bodegaTallerRoutes(fastify) {
     if (clasificacionError) return reply.code(clasificacionError.status).send({ error: clasificacionError.error })
     if (parsedCategoria.provided) data.categoriaId = parsedCategoria.value
     if (parsedSubcategoria.provided) data.subcategoriaId = parsedSubcategoria.value
+    if (parsedTaller.provided) data.tallerId = parsedTaller.value
     if (parsedProveedor.provided) {
       const proveedorError = await validateProveedor(fastify.prisma, parsedProveedor.value)
       if (proveedorError) return reply.code(proveedorError.status).send({ error: proveedorError.error })
@@ -323,6 +323,18 @@ export default async function bodegaTallerRoutes(fastify) {
               userId: request.user?.id ?? null,
               origenTipo: 'ajuste_manual',
               origenId: id,
+            },
+          })
+        }
+        if (data.precio !== undefined && Number(data.precio) !== Number(current.precio || 0)) {
+          await tx.bodegaTallerPrecioHistorial.create({
+            data: {
+              bodegaTallerId: id,
+              precioAnterior: Number(current.precio || 0),
+              precioNuevo: Number(data.precio),
+              motivo: body.motivo || 'Actualización de precio',
+              userId: request.user?.id ?? null,
+              userNombre: request.user?.nombre ?? null,
             },
           })
         }

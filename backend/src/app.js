@@ -49,6 +49,7 @@ import notificacionesRoutes from './routes/notificaciones/index.js'
 import uploadsRoutes from './routes/uploads/index.js'
 import aiRoutes from './routes/ai/index.js'
 import facturacionRoutes from './routes/facturacion/index.js'
+import costeoRoutes from './routes/costeo/index.js'
 import { decorateRbac } from './middleware/rbac.js'
 import { isErpAccessToken } from './plugins/jwt.js'
 
@@ -116,6 +117,7 @@ export function buildApp(opts = {}) {
   app.register(notificacionesRoutes, { prefix: '/api/notificaciones' })
   app.register(aiRoutes, { prefix: '/api/ai' })
   app.register(facturacionRoutes, { prefix: '/api/facturacion' })
+  app.register(costeoRoutes, { prefix: '/api/costeo' })
   app.register(uploadsRoutes, { prefix: '/uploads' })
 
   app.get('/api/health', async () => ({ status: 'ok' }))

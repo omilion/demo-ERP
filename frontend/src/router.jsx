@@ -57,6 +57,7 @@ import ComisionesPage from './pages/admin/ComisionesPage'
 import IaBalancePage from './pages/admin/IaBalancePage'
 import DocumentosPage from './pages/facturacion/DocumentosPage'
 import ConfiguracionPage from './pages/facturacion/ConfiguracionPage'
+import CosteoPage from './pages/costeo/CosteoPage'
 
 
 const ALL = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
@@ -109,6 +110,7 @@ export const router = createBrowserRouter([
       { path: 'telas', element: protect(<TelasPage />, { module: 'taller' }) },
       { path: 'telas/:id', element: protect(<TelaDetallePage />, { module: 'taller' }) },
       { path: 'bodega-taller', element: protect(<BodegaTallerPage />, { module: 'taller' }) },
+      { path: 'costeo', element: protect(<CosteoPage />, { module: 'costeo' }) },
       { path: 'accesos',    element: <ProtectedRoute allowedRoles={['admin']}><AccesosPage /></ProtectedRoute> },
       { path: 'usuarios',   element: <ProtectedRoute allowedRoles={['admin']}><UsuariosPage /></ProtectedRoute> },
       { path: 'descuentos', element: protect(<DescuentosPage />, { module: 'descuentos', permission: 'write' }) },

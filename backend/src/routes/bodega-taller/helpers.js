@@ -43,6 +43,7 @@ export async function buildBodegaTallerWhere(prisma, query = {}, user = null) {
     nombre,
     categoriaId,
     subcategoriaId,
+    tallerId,
     proveedor,
     proveedorId,
     sucursalId,
@@ -65,12 +66,15 @@ export async function buildBodegaTallerWhere(prisma, query = {}, user = null) {
 
   const parsedCategoria = parsePositiveIntValue(categoriaId, 'categoriaId')
   const parsedSubcategoria = parsePositiveIntValue(subcategoriaId, 'subcategoriaId')
+  const parsedTaller = parsePositiveIntValue(tallerId, 'tallerId')
   const parsedProveedor = parsePositiveIntValue(proveedorId, 'proveedorId')
   if (parsedCategoria.error) return { error: parsedCategoria.error }
   if (parsedSubcategoria.error) return { error: parsedSubcategoria.error }
+  if (parsedTaller.error) return { error: parsedTaller.error }
   if (parsedProveedor.error) return { error: parsedProveedor.error }
   if (parsedCategoria.provided) where.categoriaId = parsedCategoria.value
   if (parsedSubcategoria.provided) where.subcategoriaId = parsedSubcategoria.value
+  if (parsedTaller.provided) where.tallerId = parsedTaller.value
   if (parsedProveedor.provided) where.proveedorId = parsedProveedor.value
 
   if (codigoInterno) where.codigoInterno = { contains: String(codigoInterno).trim(), mode: 'insensitive' }

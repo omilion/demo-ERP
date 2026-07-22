@@ -22,6 +22,7 @@ const MODULOS = [
   ['facturacion', 'Facturación electrónica'],
   ['descuentos', 'Descuentos'],
   ['rrhh', 'RRHH'],
+  ['costeo', 'Costeo de fabricación'],
   ['reportes', 'Reportes'],
 ]
 const PERMS = ['read', 'write', 'delete']

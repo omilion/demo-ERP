@@ -282,6 +282,8 @@ model Producto {
   ubicacionCatalogo Ubicacion?   @relation(fields: [ubicacionId], references: [id])
   proveedores      ProductoProveedor[]
   taller           Taller?       @relation("ProductoTaller", fields: [tallerId], references: [id])
+  receta           ProductoReceta?
+  costeoSnapshots  CosteoSnapshot[]
 
   @@index([subcategoriaId])
   @@index([categoriaId])
@@ -1107,9 +1109,14 @@ model BodegaTaller {
   proveedorId    Int?    @map("proveedor_id")
   sucursalId     Int?    @map("sucursal_id")
   precio         Float   @default(0)
+  tallerId       Int?    @map("taller_id")
   activo         Boolean @default(true)
+  taller         Taller? @relation(fields: [tallerId], references: [id], onDelete: SetNull)
   movimientos    BodegaTallerMovimiento[]
+  recetaLineas   RecetaMaterial[]
+  precioHistorial BodegaTallerPrecioHistorial[]
 
+  @@index([tallerId])
   @@map("bodega_taller")
   @@schema("taller")
 }
@@ -1168,11 +1175,15 @@ model TallerHistorialMaterial {
 }
 
 model Taller {
-  id        Int             @id @default(autoincrement())
-  nombre    String          @unique
-  activo    Boolean         @default(true)
-  estados   OdtItemTaller[]
-  productos Producto[]      @relation("ProductoTaller")
+  id             Int             @id @default(autoincrement())
+  nombre         String          @unique
+  activo         Boolean         @default(true)
+  estados        OdtItemTaller[]
+  productos      Producto[]      @relation("ProductoTaller")
+  materiales     BodegaTaller[]
+  tarifas        TarifaProceso[]
+  recetas        ProductoReceta[]
+  recetaProcesos RecetaProceso[]
 
   @@map("talleres")
   @@schema("taller")
@@ -1235,6 +1246,7 @@ model Tela {
   activo      Boolean          @default(true)
   createdAt   DateTime         @default(now()) @map("created_at")
   movimientos TelaMovimiento[]
+  recetaLineas RecetaMaterial[]
 
   @@map("telas")
   @@schema("taller")
@@ -1260,6 +1272,113 @@ model TelaMovimiento {
   @@index([pagoProveedorId])
   @@index([origenTipo, origenId])
   @@map("tela_movimientos")
+  @@schema("taller")
+}
+
+model BodegaTallerPrecioHistorial {
+  id              Int          @id @default(autoincrement())
+  bodegaTallerId  Int          @map("bodega_taller_id")
+  precioAnterior  Float        @map("precio_anterior")
+  precioNuevo     Float        @map("precio_nuevo")
+  motivo          String?
+  userId          Int?         @map("user_id")
+  userNombre      String?      @map("user_nombre")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  item            BodegaTaller @relation(fields: [bodegaTallerId], references: [id], onDelete: Cascade)
+
+  @@index([bodegaTallerId])
+  @@map("bodega_taller_precio_historial")
+  @@schema("taller")
+}
+
+model TarifaProceso {
+  id           Int      @id @default(autoincrement())
+  tallerId     Int      @map("taller_id")
+  proceso      String
+  valorHora    Float    @map("valor_hora")
+  vigenteDesde DateTime @default(now()) @map("vigente_desde")
+  activo       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  taller       Taller   @relation(fields: [tallerId], references: [id], onDelete: Cascade)
+
+  @@unique([tallerId, proceso, vigenteDesde])
+  @@index([tallerId, activo])
+  @@map("tarifas_proceso")
+  @@schema("taller")
+}
+
+model ProductoReceta {
+  id                  Int              @id @default(autoincrement())
+  productoId          Int              @unique @map("producto_id")
+  tallerId            Int?             @map("taller_id")
+  margenTransferencia Float            @default(35) @map("margen_transferencia")
+  ajusteGlobalPct     Float            @default(0) @map("ajuste_global_pct")
+  accesoriosMonto     Float            @default(0) @map("accesorios_monto")
+  notas               String?
+  activo              Boolean          @default(true)
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+  producto            Producto         @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  taller              Taller?          @relation(fields: [tallerId], references: [id], onDelete: SetNull)
+  materiales          RecetaMaterial[]
+  procesos            RecetaProceso[]
+
+  @@map("producto_recetas")
+  @@schema("taller")
+}
+
+model RecetaMaterial {
+  id             Int            @id @default(autoincrement())
+  recetaId       Int            @map("receta_id")
+  bodegaTallerId Int?           @map("bodega_taller_id")
+  telaId         Int?           @map("tela_id")
+  cantidad       Float
+  unidad         String?
+  notas          String?
+  receta         ProductoReceta @relation(fields: [recetaId], references: [id], onDelete: Cascade)
+  material       BodegaTaller?  @relation(fields: [bodegaTallerId], references: [id], onDelete: Restrict)
+  tela           Tela?          @relation(fields: [telaId], references: [id], onDelete: Restrict)
+
+  @@index([recetaId])
+  @@map("receta_materiales")
+  @@schema("taller")
+}
+
+model RecetaProceso {
+  id       Int            @id @default(autoincrement())
+  recetaId Int            @map("receta_id")
+  tallerId Int            @map("taller_id")
+  proceso  String
+  horas    Float
+  receta   ProductoReceta @relation(fields: [recetaId], references: [id], onDelete: Cascade)
+  taller   Taller         @relation(fields: [tallerId], references: [id], onDelete: Restrict)
+
+  @@index([recetaId])
+  @@map("receta_procesos")
+  @@schema("taller")
+}
+
+model CosteoSnapshot {
+  id                  Int      @id @default(autoincrement())
+  productoId          Int      @map("producto_id")
+  costoMateriales     Float    @map("costo_materiales")
+  costoManoObra       Float    @map("costo_mano_obra")
+  costoAccesorios     Float    @map("costo_accesorios")
+  costoFabricacion    Float    @map("costo_fabricacion")
+  ajusteGlobalPct     Float    @map("ajuste_global_pct")
+  costoAjustado       Float    @map("costo_ajustado")
+  margenTransferencia Float    @map("margen_transferencia")
+  costoTransferencia  Float    @map("costo_transferencia")
+  precioListaAnterior Float?   @map("precio_lista_anterior")
+  aplicado            Boolean  @default(false)
+  detalle             Json
+  userId              Int?     @map("user_id")
+  userNombre          String?  @map("user_nombre")
+  createdAt           DateTime @default(now()) @map("created_at")
+  producto            Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+
+  @@index([productoId, createdAt])
+  @@map("costeo_snapshots")
   @@schema("taller")
 }
 

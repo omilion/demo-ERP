@@ -46,6 +46,7 @@ const NAV_GROUPS = [
   { label: 'Taller', items: [
     { label: 'Órdenes de Taller', route: '/taller', module: 'taller' },
     { label: 'Pasar a Taller', route: '/pasar-taller', module: 'taller', permission: 'write' },
+    { label: 'Costeo de Fabricación', route: '/costeo', module: 'costeo' },
     { label: 'Bitacora', route: '/bitacora-taller', module: 'taller' },
     { label: 'Historial Materiales', route: '/historial-materiales', module: 'taller' },
   ] },
