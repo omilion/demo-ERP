@@ -36,7 +36,10 @@ const GuiaCreate = z.object({
   ordenId: optionalId,
   odtId: optionalId,
   nInterno: optionalId,
-  nGuia: z.string().min(1),
+  // N guia es independiente del n_interno de la venta (numeros distintos:
+  // el interno cruza todo, el n guia solo identifica ese documento). Si no
+  // se indica, se autogenera (ver POST /guias) - no lo confundir con nInterno.
+  nGuia: z.string().optional().nullable(),
   fechaGuia: z.string().optional().nullable(),
   origen: z.string().optional().nullable(),
   origenTipo: z.string().optional().nullable(),
@@ -1281,8 +1284,10 @@ export default async function despachosRoutes(fastify) {
     if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
     if (!userCanAccessOrden(request.user, resolved.orden)) return reply.code(403).send({ error: 'Forbidden' })
     if (fechaGuia && !parsedFechaGuia) return reply.code(400).send({ error: 'fechaGuia invalida' })
-    const duplicate = await ensureUniqueGuia(fastify.prisma, cleanNGuia)
-    if (duplicate) return reply.code(duplicate.status).send({ error: duplicate.error })
+    if (cleanNGuia) {
+      const duplicate = await ensureUniqueGuia(fastify.prisma, cleanNGuia)
+      if (duplicate) return reply.code(duplicate.status).send({ error: duplicate.error })
+    }
     const despachoRef = parsePackingReferenceId(despachoId, 'despachoId')
     if (despachoRef.error) return reply.code(400).send({ error: despachoRef.error })
     if (despachoRef.id) {
@@ -1292,11 +1297,14 @@ export default async function despachosRoutes(fastify) {
       })
       if (!despacho) return reply.code(400).send({ error: 'Despacho no pertenece a la orden' })
     }
+    const autoNGuia = !cleanNGuia
     const data = {
       ordenId: resolved.orden.id,
       odtId: resolved.odt?.id ?? null,
       nInterno: resolved.nInterno,
-      nGuia: cleanNGuia,
+      // Placeholder temporal unico si no se indico N guia: se reemplaza por
+      // el id real de la guia (autogenerado, nunca choca) despues de crearla.
+      nGuia: autoNGuia ? `__auto_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` : cleanNGuia,
       fechaGuia: parsedFechaGuia,
       origen: origen || null,
       origenTipo: resolved.origenTipo,
@@ -1304,7 +1312,10 @@ export default async function despachosRoutes(fastify) {
       despachoId: despachoRef.id,
     }
     return fastify.prisma.$transaction(async (tx) => {
-      const guia = await tx.guiaDespacho.create({ data })
+      let guia = await tx.guiaDespacho.create({ data })
+      if (autoNGuia) {
+        guia = await tx.guiaDespacho.update({ where: { id: guia.id }, data: { nGuia: String(guia.id) } })
+      }
       const orden = await tx.orden.findUnique({
         where: { id: data.ordenId },
         select: { estadoEntrega: true },

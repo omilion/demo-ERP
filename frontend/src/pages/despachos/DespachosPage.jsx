@@ -306,7 +306,7 @@ export default function DespachosPage() {
           <button
             onClick={e => {
               e.stopPropagation()
-              setCreatingGuia({ ordenId: row.ordenId || '', odtId: '', nInterno: row.nInterno || '', nGuia: row.nInterno ? String(row.nInterno) : '', fechaGuia: '', origen: '' })
+              setCreatingGuia({ ordenId: row.ordenId || '', odtId: '', nInterno: row.nInterno || '', nGuia: '', fechaGuia: '', origen: '' })
             }}
             style={btnSm('var(--blue)')}
           >Guia</button>
@@ -1022,7 +1022,7 @@ function GuiaModal({ title = 'Nueva guia', initial, onClose, onSuccess }) {
   const saving = createDespachoMut.isPending || createGuiaMut.isPending || updateGuiaMut.isPending || updatePackingMut.isPending
 
   const guardar = async () => {
-    if (!form.nGuia.trim()) { toast.error('Indica el N° de guia.'); return }
+    if (isEdit && !form.nGuia.trim()) { toast.error('Indica el N° de guia.'); return }
     if (despachoModo === 'existente' && !despachoIdExistente) { toast.error('Elige el despacho.'); return }
     try {
       let despachoId = null
@@ -1061,7 +1061,9 @@ function GuiaModal({ title = 'Nueva guia', initial, onClose, onSuccess }) {
         </div>
       )}
       <div style={grid}>
-        <Field label="N guia"><input value={form.nGuia} onChange={e => set('nGuia', e.target.value)} style={input} /></Field>
+        <Field label="N guia">
+          <input value={form.nGuia} onChange={e => set('nGuia', e.target.value)} style={input} placeholder={isEdit ? '' : 'Automático si lo dejas vacío'} />
+        </Field>
         <Field label="Orden ID"><input value={form.ordenId} onChange={e => set('ordenId', e.target.value)} style={input} disabled={isEdit} /></Field>
         <Field label="OT ID"><input value={form.odtId} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
         <Field label="N interno"><input value={form.nInterno} disabled style={{ ...input, background: 'var(--bg)', color: 'var(--text-3)' }} title="Es el numero interno de la venta, no se edita aca" /></Field>

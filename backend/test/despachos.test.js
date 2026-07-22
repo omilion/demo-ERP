@@ -825,4 +825,36 @@ describe('despachos legacy matrix parity', () => {
       await cleanupFixture(app, fixture)
     }
   })
+
+  it('auto-genera N guia unico (distinto de n_interno) cuando no se indica, incluso para 2 guias de la misma orden', async () => {
+    const fixture = await createFixture(app)
+    try {
+      const primera = await app.inject({
+        method: 'POST',
+        url: '/api/despachos/guias',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { ordenId: fixture.orden.id },
+      })
+      expect(primera.statusCode).toBe(200)
+      const guia1 = JSON.parse(primera.body)
+      expect(guia1.nGuia).toBe(String(guia1.id))
+      expect(guia1.nGuia).not.toBe(String(fixture.orden.nInterno))
+
+      // Segunda guia para la MISMA orden (segundo envio parcial): no debe
+      // chocar por N guia duplicado aunque comparta n_interno con la primera.
+      const segunda = await app.inject({
+        method: 'POST',
+        url: '/api/despachos/guias',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { ordenId: fixture.orden.id },
+      })
+      expect(segunda.statusCode).toBe(200)
+      const guia2 = JSON.parse(segunda.body)
+      expect(guia2.nGuia).toBe(String(guia2.id))
+      expect(guia2.nGuia).not.toBe(guia1.nGuia)
+      expect(guia2.nInterno).toBe(guia1.nInterno)
+    } finally {
+      await cleanupFixture(app, fixture)
+    }
+  })
 })
