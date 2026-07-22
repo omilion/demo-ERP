@@ -400,6 +400,18 @@ export function applyDespachoEstadoFilter(where, estado) {
   return { status: 400, error: 'estado debe ser pendiente, entregada, parcial o multa' }
 }
 
+// Vista "Pendientes": el backlog viejo se pierde entre los pendientes de hoy
+// si se ordena por fechaEntrega desc (que ademas es null en todos). Con
+// estado=pendiente se ordena por antiguedad (mas viejo primero) salvo que se
+// pida explicitamente sort=reciente para volver al orden por defecto.
+export function resolveDespachoOrderBy({ estado, sort } = {}) {
+  const normalizedEstado = String(estado || '').trim().toLowerCase()
+  const isPendienteView = ['pendiente', 'pendientes'].includes(normalizedEstado)
+  const wantsOldestFirst = sort === 'antiguedad' || (isPendienteView && sort !== 'reciente')
+  if (wantsOldestFirst) return [{ fechaInterno: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }]
+  return { fechaEntrega: 'desc' }
+}
+
 async function buildDespachoListWhere(prisma, user, query = {}) {
   const { desde, hasta, ordenId, odtId, nInterno, interno, origenTipo, origenId, tipo, contacto, transporte, region, comuna, cliente, estado, parcial, tieneMulta, conIncidencia, search, includeEliminados } = query
   const includeDeleted = wantsEliminados(includeEliminados)
@@ -755,7 +767,7 @@ export default async function despachosRoutes(fastify) {
     const { where } = listWhere
     const [items, total, parciales, multas] = await Promise.all([
       fastify.prisma.despacho.findMany({
-        where, orderBy: { fechaEntrega: 'desc' }, take: LIST_LIMIT, skip,
+        where, orderBy: resolveDespachoOrderBy(request.query), take: LIST_LIMIT, skip,
       }),
       fastify.prisma.despacho.count({ where }),
       fastify.prisma.despacho.count({ where: { ...where, parcial: true } }),
@@ -772,7 +784,7 @@ export default async function despachosRoutes(fastify) {
     if (listWhere.error) return reply.code(listWhere.status).send({ error: listWhere.error })
     const items = await fastify.prisma.despacho.findMany({
       where: listWhere.where,
-      orderBy: { fechaEntrega: 'desc' },
+      orderBy: resolveDespachoOrderBy(request.query),
     })
     const trackedItems = await attachLatestDespachoTracking(fastify.prisma, items)
     const csv = rowsToCsv(trackedItems.map(row => {

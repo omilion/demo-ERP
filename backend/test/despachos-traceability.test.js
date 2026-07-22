@@ -11,6 +11,7 @@ import {
   normalizeTrackingEstado,
   parsePackingReferenceId,
   buildPackingUpdatePlan,
+  resolveDespachoOrderBy,
   resolveDispatchTraceability,
   validateDispatchFilterCoherence,
 } from '../src/routes/despachos/index.js'
@@ -359,6 +360,33 @@ describe('dispatch list filters', () => {
       status: 400,
       error: 'estado debe ser pendiente, entregada, parcial o multa',
     })
+  })
+
+  it('orders by delivery date desc by default, unchanged from before', () => {
+    expect(resolveDespachoOrderBy({})).toEqual({ fechaEntrega: 'desc' })
+    expect(resolveDespachoOrderBy({ estado: 'entregada' })).toEqual({ fechaEntrega: 'desc' })
+  })
+
+  it('orders pendientes oldest-first so old backlog surfaces before today', () => {
+    expect(resolveDespachoOrderBy({ estado: 'pendiente' })).toEqual([
+      { fechaInterno: { sort: 'asc', nulls: 'last' } },
+      { createdAt: 'asc' },
+    ])
+    expect(resolveDespachoOrderBy({ estado: 'pendientes' })).toEqual([
+      { fechaInterno: { sort: 'asc', nulls: 'last' } },
+      { createdAt: 'asc' },
+    ])
+  })
+
+  it('lets sort=reciente override the oldest-first default for pendientes', () => {
+    expect(resolveDespachoOrderBy({ estado: 'pendiente', sort: 'reciente' })).toEqual({ fechaEntrega: 'desc' })
+  })
+
+  it('lets sort=antiguedad force oldest-first even outside the pendientes view', () => {
+    expect(resolveDespachoOrderBy({ estado: 'entregada', sort: 'antiguedad' })).toEqual([
+      { fechaInterno: { sort: 'asc', nulls: 'last' } },
+      { createdAt: 'asc' },
+    ])
   })
 })
 
