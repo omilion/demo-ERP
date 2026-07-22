@@ -32,6 +32,13 @@ export const useDespacho = (id) =>
     enabled: !!id,
   })
 
+export const useGuiaDetalle = (id) =>
+  useQuery({
+    queryKey: ['guias', id, 'detalle'],
+    queryFn: () => api.get(`/despachos/guias/${id}`).then(r => r.data),
+    enabled: !!id,
+  })
+
 export const useDespachoPacking = (ordenId, { despachoId, guiaDespachoId } = {}, enabled = true) => {
   const params = {}
   if (despachoId) params.despachoId = despachoId

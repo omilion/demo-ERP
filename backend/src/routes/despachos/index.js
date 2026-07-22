@@ -5,6 +5,7 @@ import { rowsToCsv, sendCsv } from '../../utils/csv.js'
 import { applyDateRange, parseDate, parseOptionalInt, parsePage, parsePositiveInt } from '../operational-utils.js'
 import { resolveOdtForWrite, resolveOrdenForWrite } from '../relation-guards.js'
 import { registerDespachoMatrizRoutes } from './matriz.js'
+import { attachCliente } from '../ventas/helpers.js'
 
 const LIST_LIMIT = 100
 
@@ -1190,6 +1191,50 @@ export default async function despachosRoutes(fastify) {
       fastify.prisma.guiaDespacho.count({ where }),
     ])
     return { items, total, limit: LIST_LIMIT }
+  })
+
+  // Detalle enriquecido de una guia (para impresion): guia + despacho +
+  // orden/cliente + items realmente enviados en ESTA guia (packing por
+  // guiaDespachoId), no el pedido completo.
+  fastify.get('/guias/:id', {
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
+    const guia = await fastify.prisma.guiaDespacho.findFirst({
+      where: withOrdenSucursalScope(request.user, { id, eliminado: false }),
+    })
+    if (!guia) return reply.code(404).send({ error: 'no encontrada' })
+    const [despacho, ordenBase, packed] = await Promise.all([
+      guia.despachoId ? fastify.prisma.despacho.findUnique({ where: { id: guia.despachoId } }) : Promise.resolve(null),
+      guia.ordenId ? fastify.prisma.orden.findUnique({
+        where: { id: guia.ordenId },
+        select: {
+          id: true,
+          nInterno: true,
+          tipo: true,
+          rutCliente: true,
+          clienteId: true,
+          items: { where: { eliminado: false }, select: { id: true, nombre: true, codigoInterno: true, cantidad: true }, orderBy: { id: 'asc' } },
+        },
+      }) : Promise.resolve(null),
+      fastify.prisma.packingEvento.groupBy({
+        by: ['ordenItemId'],
+        where: { guiaDespachoId: id },
+        _sum: { delta: true },
+      }),
+    ])
+    const orden = ordenBase ? await attachCliente(fastify, ordenBase) : null
+    const packedMap = new Map(packed.map(row => [row.ordenItemId, Math.max(0, Number(row._sum.delta || 0))]))
+    const items = (orden?.items || [])
+      .map(item => ({ ...item, enviado: packedMap.get(item.id) || 0 }))
+      .filter(item => item.enviado > 0)
+    return {
+      guia,
+      despacho,
+      orden: orden ? { id: orden.id, nInterno: orden.nInterno, tipo: orden.tipo, rutCliente: orden.rutCliente, cliente: orden.cliente } : null,
+      items,
+    }
   })
 
   fastify.get('/guias/export', {

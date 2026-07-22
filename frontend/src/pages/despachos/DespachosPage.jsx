@@ -365,6 +365,7 @@ export default function DespachosPage() {
           onClick={(e) => { e.stopPropagation(); if (row.ordenId) setGuiaDte(row) }}
           style={{ ...linkButton('var(--blue)'), opacity: row.ordenId ? 1 : 0.45, cursor: row.ordenId ? 'pointer' : 'not-allowed' }}
         >Emitir DTE</button>}
+        <button onClick={(e) => { e.stopPropagation(); window.open(`${window.location.origin}/despachos/guias/${row.id}/imprimir`, '_blank') }} style={linkButton('var(--text-2)')}>Imprimir</button>
         {canWriteDespacho && <button onClick={(e) => { e.stopPropagation(); setEditingGuia(row) }} style={linkButton('var(--green-700)')}>Editar</button>}
         {canDeleteDespacho && <button onClick={(e) => { e.stopPropagation(); solicitarEliminacion('guia', row.id, delGuiaMut) }} style={linkButton('var(--red)')}>Borrar</button>}
       </div>
@@ -1130,12 +1131,14 @@ function GuiaModal({ title = 'Nueva guia', initial, onClose, onSuccess }) {
 function Modal({ title, onClose, children }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 8, padding: 20, width: 760, maxWidth: '95vw', boxShadow: '0 16px 48px oklch(0 0 0 / 0.20)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 8, width: 760, maxWidth: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 48px oklch(0 0 0 / 0.20)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 20px 16px', flexShrink: 0 }}>
           <h2 style={{ fontSize: 16, fontWeight: 700 }}>{title}</h2>
           <button onClick={onClose} style={linkButton('var(--text-3)')}>Cerrar</button>
         </div>
-        {children}
+        <div style={{ padding: '0 20px 20px', overflowY: 'auto' }}>
+          {children}
+        </div>
       </div>
     </div>
   )

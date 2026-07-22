@@ -38,6 +38,7 @@ import CrmPage from './pages/crm/CrmPage'
 import ConfigPage from './pages/config/ConfigPage'
 import MatrizVentasPage from './pages/matriz-ventas/MatrizVentasPage'
 import DespachosPage from './pages/despachos/DespachosPage'
+import GuiaPrintPage from './pages/despachos/GuiaPrintPage'
 import BitacoraTallerPage from './pages/bitacora-taller/BitacoraTallerPage'
 import HistorialMaterialesPage from './pages/historial-materiales/HistorialMaterialesPage'
 import StockIngresosPage from './pages/stock-ingresos/StockIngresosPage'
@@ -117,6 +118,7 @@ export const router = createBrowserRouter([
       { path: 'config',        element: <ProtectedRoute allowedRoles={['admin']}><ConfigPage /></ProtectedRoute> },
       { path: 'matriz-ventas', element: protect(<MatrizVentasPage />, { module: 'ventas' }) },
       { path: 'despachos', element: protect(<DespachosPage />, { module: 'despacho' }) },
+      { path: 'despachos/guias/:id/imprimir', element: protect(<GuiaPrintPage />, { module: 'despacho' }) },
       { path: 'facturacion/documentos', element: protect(<DocumentosPage />, { module: 'facturacion' }) },
       { path: 'facturacion/configuracion', element: protect(<ConfiguracionPage />, { module: 'facturacion' }) },
       { path: 'bitacora-taller', element: protect(<BitacoraTallerPage />, { module: 'taller' }) },

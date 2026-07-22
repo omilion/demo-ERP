@@ -783,4 +783,46 @@ describe('despachos legacy matrix parity', () => {
       await cleanupFixture(app, fixture)
     }
   })
+
+  it('returns guia detail with despacho, orden/cliente and only the items sent in that guia', async () => {
+    const fixture = await createFixture(app)
+    try {
+      const item = await app.prisma.ordenItem.findFirst({ where: { ordenId: fixture.orden.id } })
+      const despachoRes = await app.inject({
+        method: 'POST',
+        url: '/api/despachos',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { ordenId: fixture.orden.id, transporte: 'Starken' },
+      })
+      const despacho = JSON.parse(despachoRes.body)
+      const guiaRes = await app.inject({
+        method: 'POST',
+        url: '/api/despachos/guias',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { ordenId: fixture.orden.id, nGuia: `GD-PRINT-${fixture.marker}`, despachoId: despacho.id },
+      })
+      const guia = JSON.parse(guiaRes.body)
+      await app.inject({
+        method: 'PUT',
+        url: `/api/despachos/ordenes/${fixture.orden.id}/packing`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { guiaDespachoId: guia.id, despachoId: despacho.id, items: [{ itemId: item.id, nEntregados: 1 }] },
+      })
+
+      const detalleRes = await app.inject({
+        method: 'GET',
+        url: `/api/despachos/guias/${guia.id}`,
+        headers: { authorization: `Bearer ${adminToken}` },
+      })
+      expect(detalleRes.statusCode).toBe(200)
+      const detalle = JSON.parse(detalleRes.body)
+      expect(detalle.guia.id).toBe(guia.id)
+      expect(detalle.despacho.transporte).toBe('Starken')
+      expect(detalle.orden.nInterno).toBe(fixture.orden.nInterno)
+      expect(detalle.orden.cliente.razonSocial).toBe(fixture.cliente.razonSocial)
+      expect(detalle.items).toEqual([{ id: item.id, nombre: item.nombre, codigoInterno: item.codigoInterno, cantidad: item.cantidad, enviado: 1 }])
+    } finally {
+      await cleanupFixture(app, fixture)
+    }
+  })
 })
