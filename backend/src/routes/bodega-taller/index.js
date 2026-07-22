@@ -175,6 +175,7 @@ export default async function bodegaTallerRoutes(fastify) {
       precio,
       categoriaId,
       subcategoriaId,
+      tallerId,
       proveedorId,
       sucursalId,
     } = request.body || {}
@@ -187,11 +188,17 @@ export default async function bodegaTallerRoutes(fastify) {
     const parsedTaller = parseOptionalPositiveInt(tallerId)
     const parsedProveedor = parseOptionalPositiveInt(proveedorId)
     const parsedSucursal = parsePositiveIntValue(sucursalId, 'sucursalId')
+    const parsedStock = parseOptionalNumber(stock, 'stock', { min: 0 })
+    const parsedStockCritico = parseOptionalNumber(stockCritico, 'stockCritico', { min: 0 })
+    const parsedPrecio = parseOptionalNumber(precio, 'precio', { min: 0 })
     if (parsedCategoria.error) return reply.code(400).send({ error: 'categoriaId invalido' })
     if (parsedSubcategoria.error) return reply.code(400).send({ error: 'subcategoriaId invalido' })
     if (parsedTaller.error) return reply.code(400).send({ error: 'tallerId invalido' })
     if (parsedProveedor.error) return reply.code(400).send({ error: 'proveedorId invalido' })
     if (parsedSucursal.error) return reply.code(400).send({ error: parsedSucursal.error })
+    if (parsedStock.error) return reply.code(400).send({ error: parsedStock.error })
+    if (parsedStockCritico.error) return reply.code(400).send({ error: parsedStockCritico.error })
+    if (parsedPrecio.error) return reply.code(400).send({ error: parsedPrecio.error })
 
     const categoriaFinal = parsedCategoria.value ?? null
     const subcategoriaFinal = parsedSubcategoria.value ?? null
