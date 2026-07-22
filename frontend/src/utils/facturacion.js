@@ -20,6 +20,14 @@ export const IND_TRASLADO = {
   9: 'Venta para exportación',
 }
 
+// Transportistas historicos de Plastimar (mismo listado del sistema legacy,
+// formularios venta_directa/venta_web/licitacion_venta odts/index.php).
+export const TRANSPORTISTAS = [
+  'Pullman Cargo', 'Starken', 'Correos de Chile', 'Chilexpress', 'Bluexpress',
+  'Varmontt', 'Transporte JT', 'Transporte Espinoza', 'Don Carlos', 'Don Héctor',
+  'Flota propia', 'Por Confirmar',
+]
+
 export const TIPO_DESPACHO = {
   1: 'Despacho por cuenta del receptor',
   2: 'Despacho por cuenta del emisor a instalaciones del cliente',
@@ -39,6 +47,11 @@ export const REFERENCIA_TIPOS = {
   805: 'Orden de Compra',
   806: 'Otro',
 }
+
+// Tipos que corresponden a un DTE propio ya emitido en el sistema: se eligen
+// de una lista (folio/fecha reales), no se tipean a mano. El resto (OC,
+// contrato, resolucion, etc.) son documentos externos sin registro local.
+export const REFERENCIA_TIPOS_INTERNOS = ['33', '52', '56', '61']
 
 export function isValidRut(value) {
   const rut = String(value || '').replace(/[^0-9kK]/g, '').toUpperCase()
@@ -65,13 +78,22 @@ export const buildReceptor = (cliente = {}) => ({
   ciudad: cliente.ciudad || '',
 })
 
-export const mapVentaItems = (venta = {}) => (venta.items || []).map(item => ({
-  nombre: item.nombre || item.producto?.nombre || `Producto #${item.productoId || item.id}`,
-  descripcion: item.descripcion || null,
-  cantidad: Number(item.cantidad || 0),
-  unidad: null,
-  // precioUnitario en la venta es el precio de venta CON IVA incluido (precio
-  // sala/marco, ver defaultPrecioUnitario en VentasFormPage). El motor DTE
-  // espera precio neto y le suma el 19% el solo: dividir aca evita el doble IVA.
-  precio: Math.round(Number(item.precioUnitario || 0) / 1.19),
-}))
+// cantidadPorItemId (opcional): { [ordenItemId]: cantidad } para declarar en
+// el DTE solo lo que va en ESTE envio (packing de una guia especifica) en vez
+// de la cantidad total del item en la venta. Items sin cantidad > 0 se omiten.
+export const mapVentaItems = (venta = {}, cantidadPorItemId = null) => (venta.items || [])
+  .map(item => ({
+    item,
+    cantidad: cantidadPorItemId ? Number(cantidadPorItemId[item.id] || 0) : Number(item.cantidad || 0),
+  }))
+  .filter(({ cantidad }) => cantidad > 0)
+  .map(({ item, cantidad }) => ({
+    nombre: item.nombre || item.producto?.nombre || `Producto #${item.productoId || item.id}`,
+    descripcion: item.descripcion || null,
+    cantidad,
+    unidad: null,
+    // precioUnitario en la venta es el precio de venta CON IVA incluido (precio
+    // sala/marco, ver defaultPrecioUnitario en VentasFormPage). El motor DTE
+    // espera precio neto y le suma el 19% el solo: dividir aca evita el doble IVA.
+    precio: Math.round(Number(item.precioUnitario || 0) / 1.19),
+  }))

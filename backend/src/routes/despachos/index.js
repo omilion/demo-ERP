@@ -40,6 +40,7 @@ const GuiaCreate = z.object({
   origen: z.string().optional().nullable(),
   origenTipo: z.string().optional().nullable(),
   origenId: optionalId,
+  despachoId: optionalId,
 })
 
 const GuiaUpdate = GuiaCreate.partial()
@@ -678,8 +679,8 @@ const PACKING_EVENT_SELECT = {
   },
 }
 
-async function buildPackingTrace(prisma, ordenId) {
-  const [items, bultos, eventos] = await Promise.all([
+async function buildPackingTrace(prisma, ordenId, despachoId = null) {
+  const [items, bultos, eventos, packedDespacho] = await Promise.all([
     prisma.ordenItem.findMany({
       where: { ordenId, eliminado: false },
       select: { id: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true },
@@ -695,8 +696,26 @@ async function buildPackingTrace(prisma, ordenId) {
       orderBy: { createdAt: 'desc' },
       take: 80,
     }),
+    // Cantidad neta empacada especificamente para ESTE despacho (no el total
+    // de la orden): suma de deltas de packing_eventos filtrados por despachoId,
+    // agrupados por item. Usado por la Guia DTE para declarar solo lo que va
+    // en este envio, no el pedido completo.
+    despachoId
+      ? prisma.packingEvento.groupBy({
+        by: ['ordenItemId'],
+        where: { ordenId, despachoId },
+        _sum: { delta: true },
+      })
+      : Promise.resolve(null),
   ])
-  return { items, bultos, eventos }
+  const result = { items, bultos, eventos }
+  if (packedDespacho) {
+    result.packedDespacho = packedDespacho.map(row => ({
+      ordenItemId: row.ordenItemId,
+      cantidad: Math.max(0, Number(row._sum.delta || 0)),
+    }))
+  }
+  return result
 }
 
 export default async function despachosRoutes(fastify) {
@@ -809,7 +828,8 @@ export default async function despachosRoutes(fastify) {
     })
     if (!orden) return reply.code(404).send({ error: 'Orden no encontrada' })
     if (!userCanAccessOrden(request.user, orden)) return reply.code(403).send({ error: 'Forbidden' })
-    return { orden, ...(await buildPackingTrace(fastify.prisma, ordenId)) }
+    const despachoId = parsePositiveInt(request.query.despachoId) || null
+    return { orden, ...(await buildPackingTrace(fastify.prisma, ordenId, despachoId)) }
   })
 
   fastify.put('/ordenes/:ordenId/packing', {
@@ -1172,7 +1192,7 @@ export default async function despachosRoutes(fastify) {
   }, async (request, reply) => {
     const parsed = GuiaCreate.safeParse(request.body || {})
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
-    const { ordenId, odtId, nInterno, nGuia, fechaGuia, origen, origenTipo, origenId } = parsed.data
+    const { ordenId, odtId, nInterno, nGuia, fechaGuia, origen, origenTipo, origenId, despachoId } = parsed.data
     const cleanNGuia = cleanText(nGuia)
     const resolved = await resolveDispatchTraceability(fastify.prisma, {
       ordenId,
@@ -1187,6 +1207,15 @@ export default async function despachosRoutes(fastify) {
     if (fechaGuia && !parsedFechaGuia) return reply.code(400).send({ error: 'fechaGuia invalida' })
     const duplicate = await ensureUniqueGuia(fastify.prisma, cleanNGuia)
     if (duplicate) return reply.code(duplicate.status).send({ error: duplicate.error })
+    const despachoRef = parsePackingReferenceId(despachoId, 'despachoId')
+    if (despachoRef.error) return reply.code(400).send({ error: despachoRef.error })
+    if (despachoRef.id) {
+      const despacho = await fastify.prisma.despacho.findFirst({
+        where: { id: despachoRef.id, ordenId: resolved.orden.id, eliminado: false },
+        select: { id: true },
+      })
+      if (!despacho) return reply.code(400).send({ error: 'Despacho no pertenece a la orden' })
+    }
     const data = {
       ordenId: resolved.orden.id,
       odtId: resolved.odt?.id ?? null,
@@ -1196,6 +1225,7 @@ export default async function despachosRoutes(fastify) {
       origen: origen || null,
       origenTipo: resolved.origenTipo,
       origenId: resolved.origenId,
+      despachoId: despachoRef.id,
     }
     return fastify.prisma.$transaction(async (tx) => {
       const guia = await tx.guiaDespacho.create({ data })
@@ -1261,6 +1291,19 @@ export default async function despachosRoutes(fastify) {
       data.fechaGuia = fechaGuia || new Date()
     }
     if (b.origen !== undefined) data.origen = b.origen || null
+    if (b.despachoId !== undefined) {
+      const despachoRef = parsePackingReferenceId(b.despachoId, 'despachoId')
+      if (despachoRef.error) return reply.code(400).send({ error: despachoRef.error })
+      const targetOrdenId = data.ordenId !== undefined ? data.ordenId : existing.ordenId
+      if (despachoRef.id) {
+        const despacho = await fastify.prisma.despacho.findFirst({
+          where: { id: despachoRef.id, ordenId: targetOrdenId, eliminado: false },
+          select: { id: true },
+        })
+        if (!despacho) return reply.code(400).send({ error: 'Despacho no pertenece a la orden' })
+      }
+      data.despachoId = despachoRef.id
+    }
 
     return fastify.prisma.$transaction(async (tx) => {
       const guia = await tx.guiaDespacho.update({ where: { id }, data })

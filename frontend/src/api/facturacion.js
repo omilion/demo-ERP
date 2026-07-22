@@ -5,12 +5,13 @@ const cleanParams = (params = {}) => Object.fromEntries(
   Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
 )
 
-export const useDocumentos = (params = {}) => {
+export const useDocumentos = (params = {}, options = {}) => {
   const queryParams = cleanParams(params)
   return useQuery({
     queryKey: ['facturacion', 'documentos', queryParams],
     queryFn: () => api.get('/facturacion/documentos', { params: queryParams }).then(r => r.data),
     staleTime: 30_000,
+    ...options,
   })
 }
 

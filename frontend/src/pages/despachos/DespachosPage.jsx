@@ -7,6 +7,8 @@ import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can, odtPath, ventaPath } from '../../utils/permissions'
 import { useVenta } from '../../api/ventas'
+import { useRegiones, useComunas } from '../../api/locations'
+import { TRANSPORTISTAS } from '../../utils/facturacion'
 import { EmitirDteModal } from '../../components/facturacion/DteModals'
 
 const TABS = [
@@ -36,6 +38,7 @@ const emptyDespacho = {
   fechaEntrega: '',
   tipoDespacho: '',
   transporte: '',
+  numeroSeguimiento: '',
   montoEnvio: '',
   direccion: '',
   contacto: '',
@@ -569,6 +572,7 @@ export default function DespachosPage() {
         <EmitirDteModal
           venta={ventaGuiaDte.data}
           guiaDespachoId={guiaDte.id}
+          despachoId={guiaDte.despachoId || undefined}
           tipoDte={52}
           onClose={() => setGuiaDte(null)}
           onSuccess={({ emitido, documento }) => {
@@ -903,30 +907,64 @@ function DespachoModal({ title, initial, saving, onClose, onSave }) {
     ...initial,
     fechaInterno: initial.fechaInterno ? String(initial.fechaInterno).slice(0, 10) : '',
     fechaEntrega: initial.fechaEntrega ? String(initial.fechaEntrega).slice(0, 10) : '',
+    plazoEntrega: initial.plazoEntrega && /^\d{4}-\d{2}-\d{2}/.test(initial.plazoEntrega) ? initial.plazoEntrega.slice(0, 10) : '',
   }))
   const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
 
+  const { data: venta } = useVenta(form.ordenId || undefined)
+  const { data: regiones = [] } = useRegiones()
+  const regionSel = regiones.find(r => r.nombre === form.region)
+  const { data: comunas = [] } = useComunas(regionSel?.codigo)
+  const transporteEsOtro = !!form.transporte && !TRANSPORTISTAS.includes(form.transporte)
+
   return (
     <Modal title={title} onClose={onClose}>
-      <div style={grid}>
-        <Field label="Orden ID"><input value={form.ordenId || ''} onChange={e => set('ordenId', e.target.value)} style={input} /></Field>
-        <Field label="OT ID"><input value={form.odtId || ''} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
-        <Field label="Interno"><input value={form.interno || ''} onChange={e => set('interno', e.target.value)} style={input} /></Field>
-        <Field label="Plazo entrega"><input value={form.plazoEntrega || ''} onChange={e => set('plazoEntrega', e.target.value)} style={input} /></Field>
-        <Field label="Fecha interno"><input type="date" value={form.fechaInterno || ''} onChange={e => set('fechaInterno', e.target.value)} style={input} /></Field>
-        <Field label="Fecha entrega"><input type="date" value={form.fechaEntrega || ''} onChange={e => set('fechaEntrega', e.target.value)} style={input} /></Field>
-        <Field label="Tipo"><input value={form.tipoDespacho || ''} onChange={e => set('tipoDespacho', e.target.value)} style={input} /></Field>
-        <Field label="Transporte"><input value={form.transporte || ''} onChange={e => set('transporte', e.target.value)} style={input} /></Field>
-        <Field label="Monto envio"><input value={form.montoEnvio || ''} onChange={e => set('montoEnvio', e.target.value)} style={input} /></Field>
-        <Field label="Contacto"><input value={form.contacto || ''} onChange={e => set('contacto', e.target.value)} style={input} /></Field>
-        <Field label="Region"><input value={form.region || ''} onChange={e => set('region', e.target.value)} style={input} /></Field>
-        <Field label="Comuna"><input value={form.comuna || ''} onChange={e => set('comuna', e.target.value)} style={input} /></Field>
-      </div>
-      <Field label="Direccion"><textarea value={form.direccion || ''} onChange={e => set('direccion', e.target.value)} rows={2} style={{ ...input, resize: 'vertical' }} /></Field>
-      <div style={{ display: 'flex', gap: 14, marginTop: 8 }}>
+      {(form.parcial || form.tieneMulta) && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          {form.parcial && <Badge tone="amber">Envío parcial</Badge>}
+          {form.tieneMulta && <Badge tone="red">Tiene multa</Badge>}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
         <label style={checkLabel}><input type="checkbox" checked={!!form.parcial} onChange={e => set('parcial', e.target.checked)} /> Parcial</label>
         <label style={checkLabel}><input type="checkbox" checked={!!form.tieneMulta} onChange={e => set('tieneMulta', e.target.checked)} /> Tiene multa</label>
       </div>
+      <div style={grid}>
+        <Field label="Orden ID"><input value={form.ordenId || ''} onChange={e => set('ordenId', e.target.value)} style={input} /></Field>
+        <Field label="OT ID"><input value={form.odtId || ''} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
+        <Field label="Interno"><input value={form.interno || ''} disabled style={{ ...input, background: 'var(--bg)', color: 'var(--text-3)' }} title="Es el numero interno de la venta, no se edita aca" /></Field>
+        <Field label="Tipo de venta"><input value={venta?.tipo || '—'} disabled style={{ ...input, background: 'var(--bg)', color: 'var(--text-3)' }} /></Field>
+        <Field label="Fecha límite de entrega (plazo)"><input type="date" value={form.plazoEntrega || ''} onChange={e => set('plazoEntrega', e.target.value)} style={input} /></Field>
+        <Field label="Fecha interno"><input type="date" value={form.fechaInterno || ''} onChange={e => set('fechaInterno', e.target.value)} style={input} /></Field>
+        <Field label="Fecha entrega"><input type="date" value={form.fechaEntrega || ''} onChange={e => set('fechaEntrega', e.target.value)} style={input} /></Field>
+        <Field label="Tipo"><input value={form.tipoDespacho || ''} onChange={e => set('tipoDespacho', e.target.value)} style={input} /></Field>
+        <Field label="Transporte">
+          <select value={transporteEsOtro ? 'Otro' : (form.transporte || '')} onChange={e => set('transporte', e.target.value === 'Otro' ? '' : e.target.value)} style={input}>
+            <option value="">Seleccionar...</option>
+            {TRANSPORTISTAS.map(t => <option key={t} value={t}>{t}</option>)}
+            <option value="Otro">Otro: indicar</option>
+          </select>
+          {(transporteEsOtro || form.transporte === '') && (
+            <input value={transporteEsOtro ? form.transporte : ''} onChange={e => set('transporte', e.target.value)} placeholder="Nombre del transportista" style={{ ...input, marginTop: 6 }} />
+          )}
+        </Field>
+        <Field label="N° de seguimiento"><input value={form.numeroSeguimiento || ''} onChange={e => set('numeroSeguimiento', e.target.value)} style={input} /></Field>
+        <Field label="Monto envío"><input value={form.montoEnvio || ''} onChange={e => set('montoEnvio', e.target.value)} style={input} /></Field>
+        <Field label="Contacto"><input value={form.contacto || ''} onChange={e => set('contacto', e.target.value)} style={input} /></Field>
+        <Field label="Región">
+          <select value={form.region || ''} onChange={e => { set('region', e.target.value); set('comuna', '') }} style={input}>
+            <option value="">Seleccionar región...</option>
+            {regiones.map(r => <option key={r.codigo} value={r.nombre}>{r.nombre}</option>)}
+          </select>
+        </Field>
+        <Field label="Comuna">
+          <select value={form.comuna || ''} onChange={e => set('comuna', e.target.value)} style={input} disabled={!form.region}>
+            <option value="">{form.region ? 'Seleccionar comuna...' : 'Elige región primero'}</option>
+            {comunas.map(c => <option key={c.nombre} value={c.nombre}>{c.nombre}</option>)}
+          </select>
+        </Field>
+      </div>
+      <Field label="Direccion"><textarea value={form.direccion || ''} onChange={e => set('direccion', e.target.value)} rows={2} style={{ ...input, resize: 'vertical' }} /></Field>
       <Footer saving={saving} onClose={onClose} onSave={() => onSave(form)} />
     </Modal>
   )
@@ -939,10 +977,13 @@ function GuiaModal({ title = 'Nueva guia', initial, saving, onClose, onSave }) {
     nInterno: '',
     nGuia: '',
     origen: '',
+    despachoId: '',
     ...initial,
     fechaGuia: initial.fechaGuia ? String(initial.fechaGuia).slice(0, 10) : '',
   }))
   const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
+  const despachosOrden = useDespachos(form.ordenId ? { ordenId: form.ordenId } : {})
+  const despachos = form.ordenId ? (despachosOrden.data?.items || []) : []
 
   return (
     <Modal title={title} onClose={onClose}>
@@ -950,8 +991,16 @@ function GuiaModal({ title = 'Nueva guia', initial, saving, onClose, onSave }) {
         <Field label="N guia"><input value={form.nGuia} onChange={e => set('nGuia', e.target.value)} style={input} /></Field>
         <Field label="Orden ID"><input value={form.ordenId} onChange={e => set('ordenId', e.target.value)} style={input} /></Field>
         <Field label="OT ID"><input value={form.odtId} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
-        <Field label="N interno"><input value={form.nInterno} onChange={e => set('nInterno', e.target.value)} style={input} /></Field>
+        <Field label="N interno"><input value={form.nInterno} disabled style={{ ...input, background: 'var(--bg)', color: 'var(--text-3)' }} title="Es el numero interno de la venta, no se edita aca" /></Field>
         <Field label="Fecha"><input type="date" value={form.fechaGuia} onChange={e => set('fechaGuia', e.target.value)} style={input} /></Field>
+        <Field label="Despacho (orden de transporte)">
+          <select value={form.despachoId || ''} onChange={e => set('despachoId', e.target.value)} style={input} disabled={!form.ordenId}>
+            <option value="">Sin despacho asociado</option>
+            {despachos.map(d => (
+              <option key={d.id} value={String(d.id)}>#{d.id} {d.transporte || ''} {d.numeroSeguimiento ? `· ${d.numeroSeguimiento}` : ''}</option>
+            ))}
+          </select>
+        </Field>
       </div>
       <Field label="Origen"><input value={form.origen} onChange={e => set('origen', e.target.value)} style={input} /></Field>
       <Footer saving={saving} onClose={onClose} onSave={() => onSave(form)} />

@@ -1300,6 +1300,7 @@ model GuiaDespacho {
   origen     String?
   origenTipo String?  @map("origen_tipo")
   origenId   Int?     @map("origen_id")
+  despachoId Int?     @map("despacho_id")
   eliminado  Boolean  @default(false)
   userMod    String?  @map("user_mod")
   fecham     DateTime?
@@ -1307,10 +1308,12 @@ model GuiaDespacho {
   createdAt  DateTime @default(now()) @map("created_at")
   orden      Orden?   @relation(fields: [ordenId], references: [id], onDelete: SetNull)
   odt        Odt?     @relation(fields: [odtId], references: [id], onDelete: SetNull)
+  despacho   Despacho? @relation(fields: [despachoId], references: [id], onDelete: SetNull)
 
   @@index([nInterno])
   @@index([ordenId])
   @@index([odtId])
+  @@index([despachoId])
   @@index([origenTipo, origenId])
   @@map("guias_despachos")
   @@schema("bodega")
@@ -1347,6 +1350,7 @@ model Despacho {
   packingBultos  PackingBulto[]
   packingEventos PackingEvento[]
   trackingEventos DespachoTrackingEvento[]
+  guias          GuiaDespacho[]
 
   @@index([ordenId])
   @@index([odtId])

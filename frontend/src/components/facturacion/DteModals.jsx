@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { Badge, Btn, Icon } from '../shared'
-import { useEmitirDte } from '../../api/facturacion'
-import { buildReceptor, isValidRut, mapVentaItems, TIPOS_DTE, IND_TRASLADO, TIPO_DESPACHO, REFERENCIA_TIPOS } from '../../utils/facturacion'
+import { useEmitirDte, useDocumentos, useEmpresa } from '../../api/facturacion'
+import { useDespachoPacking } from '../../api/despachos'
+import { buildReceptor, isValidRut, mapVentaItems, TIPOS_DTE, IND_TRASLADO, TIPO_DESPACHO, REFERENCIA_TIPOS, REFERENCIA_TIPOS_INTERNOS } from '../../utils/facturacion'
+
+const dateFmt = value => value ? new Date(value).toLocaleDateString('es-CL') : '—'
 
 const fmt = value => '$' + Math.round(Number(value || 0)).toLocaleString('es-CL')
 
@@ -21,18 +24,25 @@ function Modal({ title, onClose, children }) {
   )
 }
 
-function Preview({ receptor, items, tipoDte }) {
+function Preview({ empresa, receptor, items, tipoDte, referencia }) {
   const neto = items.reduce((sum, item) => sum + Number(item.cantidad || 0) * Number(item.precio || 0), 0)
   const iva = Math.round(neto * 0.19)
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 16, background: 'var(--bg)', padding: 12, borderRadius: 8 }}>
-        <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <Badge tone={tipoDte === 39 ? 'amber' : 'blue'}>{TIPOS_DTE[tipoDte]}</Badge>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+        <div style={{ background: 'var(--bg)', padding: 12, borderRadius: 8 }}>
+          <div style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Emisor</div>
+          <div style={{ fontWeight: 700 }}>{empresa?.razonSocial || 'Sin configurar'}</div>
+          <div style={{ color: 'var(--text-2)', fontSize: 12 }}>{[empresa?.rut, empresa?.giro, [empresa?.direccion, empresa?.comuna].filter(Boolean).join(', ')].filter(Boolean).join(' · ') || 'Falta configuración del emisor'}</div>
+        </div>
+        <div style={{ background: 'var(--bg)', padding: 12, borderRadius: 8 }}>
           <div style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Receptor</div>
           <div style={{ fontWeight: 700 }}>{receptor.razonSocial || 'Consumidor final'}</div>
           <div style={{ color: 'var(--text-2)', fontSize: 12 }}>{[receptor.rut, receptor.direccion, receptor.comuna].filter(Boolean).join(' · ') || 'Sin dirección registrada'}</div>
         </div>
-        <Badge tone={tipoDte === 39 ? 'amber' : 'blue'}>{TIPOS_DTE[tipoDte]}</Badge>
       </div>
       <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -40,9 +50,16 @@ function Preview({ receptor, items, tipoDte }) {
           <tbody>{items.map((item, index) => <tr key={index} style={{ borderTop: '1px solid var(--border)' }}><td style={td}>{item.nombre}</td><td style={{ ...td, textAlign: 'right' }}>{item.cantidad}</td><td style={{ ...td, textAlign: 'right' }}>{fmt(item.precio)}</td><td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{fmt(Number(item.cantidad) * Number(item.precio))}</td></tr>)}</tbody>
         </table>
       </div>
-      <div style={{ marginLeft: 'auto', width: 240, fontSize: 13 }}>
+      <div style={{ marginLeft: 'auto', width: 240, fontSize: 13, marginBottom: referencia ? 14 : 0 }}>
         <Total label="Neto" value={neto} /><Total label="IVA 19%" value={iva} /><Total label="Total" value={neto + iva} strong />
       </div>
+      {referencia && (
+        <div style={{ background: 'var(--bg)', padding: 12, borderRadius: 8, fontSize: 12 }}>
+          <div style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Referencia</div>
+          <div>{referencia.tipoLabel}{referencia.folio ? ` N° ${referencia.folio}` : ''}{referencia.fecha ? ` — ${dateFmt(referencia.fecha)}` : ''}</div>
+          {referencia.razon && <div style={{ color: 'var(--text-2)', marginTop: 2 }}>{referencia.razon}</div>}
+        </div>
+      )}
     </>
   )
 }
@@ -52,22 +69,41 @@ const td = { padding: '8px 10px' }
 const inputStyle = { width: '100%', padding: 9, border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'inherit' }
 const Total = ({ label, value, strong }) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderTop: strong ? '1px solid var(--border)' : 'none', fontWeight: strong ? 700 : 400 }}><span>{label}</span><span>{fmt(value)}</span></div>
 
-export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSuccess }) {
+export function EmitirDteModal({ venta, guiaDespachoId, despachoId, tipoDte, onClose, onSuccess }) {
   const emitir = useEmitirDte()
   const [error, setError] = useState('')
   const [indTraslado, setIndTraslado] = useState('')
   const [tipoDespacho, setTipoDespacho] = useState('')
   const [refTipo, setRefTipo] = useState('')
+  const [refDocLocalId, setRefDocLocalId] = useState('')
   const [refFolio, setRefFolio] = useState('')
   const [refFecha, setRefFecha] = useState(() => new Date().toISOString().slice(0, 10))
   const [refRazon, setRefRazon] = useState('')
+  const refEsInterna = REFERENCIA_TIPOS_INTERNOS.includes(refTipo)
+  const documentosRef = useDocumentos({ tipoDte: refTipo, estado: 'emitido' }, { enabled: refEsInterna })
+  const { data: empresaData } = useEmpresa()
+  const empresa = empresaData?.empresa
+  // Si viene de una guia enlazada a un despacho, la DTE declara solo lo que
+  // se empaco para ESE despacho (envio parcial), no el total de la venta.
+  const packing = useDespachoPacking(venta?.id, despachoId, !!despachoId)
+  const cantidadPorItemId = despachoId
+    ? Object.fromEntries((packing.data?.packedDespacho || []).map(row => [row.ordenItemId, row.cantidad]))
+    : null
   const receptor = buildReceptor(venta?.cliente)
-  const items = mapVentaItems(venta)
+  const items = mapVentaItems(venta, cantidadPorItemId)
   const autoTipo = isValidRut(receptor.rut) ? 33 : 39
   const [tipoElegido, setTipoElegido] = useState(autoTipo)
   const puedeElegirTipo = !tipoDte
   const detectedTipo = tipoDte || tipoElegido
   const esGuia = detectedTipo === 52
+
+  let referenciaResumen = null
+  if (refEsInterna && refDocLocalId) {
+    const doc = (documentosRef.data?.documentos || []).find(d => String(d.id) === String(refDocLocalId))
+    if (doc) referenciaResumen = { tipoLabel: TIPOS_DTE[Number(refTipo)], folio: doc.folio, fecha: doc.fechaEmision, razon: refRazon.trim() }
+  } else if (!refEsInterna && refTipo && refFolio.trim()) {
+    referenciaResumen = { tipoLabel: REFERENCIA_TIPOS[refTipo], folio: refFolio.trim(), fecha: refFecha, razon: refRazon.trim() }
+  }
 
   const confirmar = async () => {
     // El SII exige ambos codigos en la guia; sin ellos el envio se rechaza y el
@@ -78,9 +114,11 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSucc
     }
     setError('')
     try {
-      const referencias = (refTipo && refFolio.trim())
-        ? [{ tipoDocRef: refTipo, folioRef: refFolio.trim(), fechaRef: refFecha, razon: refRazon.trim() || undefined }]
-        : []
+      const referencias = refEsInterna
+        ? (refDocLocalId ? [{ docLocalId: Number(refDocLocalId), razon: refRazon.trim() || undefined }] : [])
+        : (refTipo && refFolio.trim())
+          ? [{ tipoDocRef: refTipo, folioRef: refFolio.trim(), fechaRef: refFecha, razon: refRazon.trim() || undefined }]
+          : []
       const result = await emitir.mutateAsync({
         ordenId: venta.id,
         clienteId: venta.clienteId || venta.cliente?.id,
@@ -101,7 +139,12 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSucc
         <SelectField label="Tipo de documento" value={String(tipoElegido)} options={{ 33: 'Factura Electrónica', 39: 'Boleta Electrónica' }} onChange={value => setTipoElegido(Number(value))} />
       </div>
     )}
-    <Preview receptor={receptor} items={items} tipoDte={detectedTipo} />
+    {despachoId && !packing.isLoading && !items.length && (
+      <div style={{ ...errorStyle, background: 'var(--bg)', color: 'var(--text-2)', marginBottom: 14, marginTop: 0 }}>
+        Este despacho todavía no tiene productos empacados (botón "Packing" en Matriz despacho). Sin cantidades empacadas no hay qué declarar en la guía.
+      </div>
+    )}
+    <Preview empresa={empresa} receptor={receptor} items={items} tipoDte={detectedTipo} referencia={referenciaResumen} />
     {esGuia && (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 4 }}>
         <SelectField label="Motivo del traslado" value={indTraslado} options={IND_TRASLADO} onChange={value => { setIndTraslado(value); setError('') }} />
@@ -110,16 +153,33 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSucc
     )}
     <div style={{ marginBottom: 4 }}>
       <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Referencia (opcional)</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
-        <SelectField label="Tipo de documento referenciado" value={refTipo} options={REFERENCIA_TIPOS} onChange={setRefTipo} />
-        <div>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>N° / Folio</label>
-          <input value={refFolio} onChange={event => setRefFolio(event.target.value)} style={inputStyle} placeholder="Ej: 1234" />
-        </div>
-        <div>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Fecha</label>
-          <input type="date" value={refFecha} onChange={event => setRefFecha(event.target.value)} style={inputStyle} />
-        </div>
+      <div style={{ display: 'grid', gridTemplateColumns: refEsInterna ? '1.4fr 2fr' : '1.4fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+        <SelectField label="Tipo de documento referenciado" value={refTipo} options={REFERENCIA_TIPOS} onChange={value => { setRefTipo(value); setRefDocLocalId(''); setRefFolio('') }} />
+        {refEsInterna ? (
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Documento emitido</label>
+            <select value={refDocLocalId} onChange={event => setRefDocLocalId(event.target.value)} style={{ ...inputStyle, background: '#fff' }} disabled={documentosRef.isLoading}>
+              <option value="">{documentosRef.isLoading ? 'Cargando...' : 'Seleccionar...'}</option>
+              {(documentosRef.data?.documentos || []).map(doc => (
+                <option key={doc.id} value={doc.id}>Folio {doc.folio} — {doc.receptor?.razonSocial || 'sin receptor'} — {dateFmt(doc.fechaEmision)}</option>
+              ))}
+            </select>
+            {!documentosRef.isLoading && !(documentosRef.data?.documentos || []).length && (
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>No hay {TIPOS_DTE[Number(refTipo)]?.toLowerCase()} emitidas todavía.</div>
+            )}
+          </div>
+        ) : (
+          <>
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>N° / Folio</label>
+              <input value={refFolio} onChange={event => setRefFolio(event.target.value)} style={inputStyle} placeholder="Ej: 1234" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Fecha</label>
+              <input type="date" value={refFecha} onChange={event => setRefFecha(event.target.value)} style={inputStyle} />
+            </div>
+          </>
+        )}
       </div>
       <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Razón</label>
       <input value={refRazon} onChange={event => setRefRazon(event.target.value)} style={inputStyle} placeholder="Ej: Orden de compra del cliente" />

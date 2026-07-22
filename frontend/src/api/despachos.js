@@ -32,10 +32,10 @@ export const useDespacho = (id) =>
     enabled: !!id,
   })
 
-export const useDespachoPacking = (ordenId, enabled = true) =>
+export const useDespachoPacking = (ordenId, despachoId, enabled = true) =>
   useQuery({
-    queryKey: ['despachos', 'packing', ordenId],
-    queryFn: () => api.get(`/despachos/ordenes/${ordenId}/packing`).then(r => r.data),
+    queryKey: ['despachos', 'packing', ordenId, despachoId || null],
+    queryFn: () => api.get(`/despachos/ordenes/${ordenId}/packing`, { params: despachoId ? { despachoId } : {} }).then(r => r.data),
     enabled: enabled && !!ordenId,
     placeholderData: { items: [], bultos: [], eventos: [] },
     staleTime: 30_000,

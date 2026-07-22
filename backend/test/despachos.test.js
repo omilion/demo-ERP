@@ -649,4 +649,75 @@ describe('despachos legacy matrix parity', () => {
       await cleanupFixture(app, fixture)
     }
   })
+
+  it('links a guia to a despacho and scopes packing quantities to that despacho', async () => {
+    const fixtureA = await createFixture(app)
+    const fixtureB = await createFixture(app)
+    try {
+      const item = await app.prisma.ordenItem.findFirst({ where: { ordenId: fixtureA.orden.id } })
+
+      const despachoRes = await app.inject({
+        method: 'POST',
+        url: '/api/despachos',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { ordenId: fixtureA.orden.id, tipoDespacho: 'Parcial' },
+      })
+      expect(despachoRes.statusCode).toBe(200)
+      const despacho = JSON.parse(despachoRes.body)
+
+      // Un despacho de otra orden no puede asociarse a esta guia.
+      const otroDespachoRes = await app.inject({
+        method: 'POST',
+        url: '/api/despachos',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { ordenId: fixtureB.orden.id },
+      })
+      const otroDespacho = JSON.parse(otroDespachoRes.body)
+      const guiaMismatch = await app.inject({
+        method: 'POST',
+        url: '/api/despachos/guias',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { ordenId: fixtureA.orden.id, nGuia: `GD-LINK-BAD-${fixtureA.marker}`, despachoId: otroDespacho.id },
+      })
+      expect(guiaMismatch.statusCode).toBe(400)
+
+      const guiaRes = await app.inject({
+        method: 'POST',
+        url: '/api/despachos/guias',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { ordenId: fixtureA.orden.id, nGuia: `GD-LINK-${fixtureA.marker}`, despachoId: despacho.id },
+      })
+      expect(guiaRes.statusCode).toBe(200)
+      expect(JSON.parse(guiaRes.body).despachoId).toBe(despacho.id)
+
+      // Empaca solo 1 de los 2 unidades del item para este despacho (envio parcial).
+      const packRes = await app.inject({
+        method: 'PUT',
+        url: `/api/despachos/ordenes/${fixtureA.orden.id}/packing`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { despachoId: despacho.id, items: [{ itemId: item.id, nEntregados: 1 }] },
+      })
+      expect(packRes.statusCode).toBe(200)
+
+      const trace = await app.inject({
+        method: 'GET',
+        url: `/api/despachos/ordenes/${fixtureA.orden.id}/packing?despachoId=${despacho.id}`,
+        headers: { authorization: `Bearer ${adminToken}` },
+      })
+      expect(trace.statusCode).toBe(200)
+      const traceBody = JSON.parse(trace.body)
+      expect(traceBody.packedDespacho).toEqual([{ ordenItemId: item.id, cantidad: 1 }])
+
+      // Sin despachoId en la query no se calcula el desglose por despacho.
+      const traceSinFiltro = await app.inject({
+        method: 'GET',
+        url: `/api/despachos/ordenes/${fixtureA.orden.id}/packing`,
+        headers: { authorization: `Bearer ${adminToken}` },
+      })
+      expect(JSON.parse(traceSinFiltro.body).packedDespacho).toBeUndefined()
+    } finally {
+      await cleanupFixture(app, fixtureA)
+      await cleanupFixture(app, fixtureB)
+    }
+  })
 })
