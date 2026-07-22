@@ -63,7 +63,10 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSucc
   const [refRazon, setRefRazon] = useState('')
   const receptor = buildReceptor(venta?.cliente)
   const items = mapVentaItems(venta)
-  const detectedTipo = tipoDte || (isValidRut(receptor.rut) ? 33 : 39)
+  const autoTipo = isValidRut(receptor.rut) ? 33 : 39
+  const [tipoElegido, setTipoElegido] = useState(autoTipo)
+  const puedeElegirTipo = !tipoDte
+  const detectedTipo = tipoDte || tipoElegido
   const esGuia = detectedTipo === 52
 
   const confirmar = async () => {
@@ -93,6 +96,11 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSucc
   }
 
   return <Modal title="Confirmar emisión DTE" onClose={onClose}>
+    {puedeElegirTipo && (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginBottom: 14, maxWidth: 260 }}>
+        <SelectField label="Tipo de documento" value={String(tipoElegido)} options={{ 33: 'Factura Electrónica', 39: 'Boleta Electrónica' }} onChange={value => setTipoElegido(Number(value))} />
+      </div>
+    )}
     <Preview receptor={receptor} items={items} tipoDte={detectedTipo} />
     {esGuia && (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 4 }}>

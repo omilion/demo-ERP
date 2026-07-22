@@ -70,6 +70,8 @@ export const mapVentaItems = (venta = {}) => (venta.items || []).map(item => ({
   descripcion: item.descripcion || null,
   cantidad: Number(item.cantidad || 0),
   unidad: null,
-  // precioUnitario is net. precioConIva would apply IVA twice in the DTE engine.
-  precio: Number(item.precioUnitario || 0),
+  // precioUnitario en la venta es el precio de venta CON IVA incluido (precio
+  // sala/marco, ver defaultPrecioUnitario en VentasFormPage). El motor DTE
+  // espera precio neto y le suma el 19% el solo: dividir aca evita el doble IVA.
+  precio: Math.round(Number(item.precioUnitario || 0) / 1.19),
 }))
