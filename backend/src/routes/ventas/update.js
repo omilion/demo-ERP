@@ -43,6 +43,7 @@ const Schema = z.object({
   licitacionOC: z.string().optional().nullable(),
   enviosParciales: z.boolean().optional(),
   montoDespacho: z.number().min(0).optional(),
+  motivoAjusteDespacho: z.string().max(500).optional().nullable(),
   fechaPlazo: z.string().optional().nullable(),
   direccionDespacho: z.string().optional().nullable(),
   direccionDespachoExtra: z.string().optional().nullable(),
@@ -92,6 +93,7 @@ export default async function updateVenta(fastify) {
         licitacionOC,
         enviosParciales,
         montoDespacho,
+        motivoAjusteDespacho,
         fechaPlazo,
         direccionDespacho,
         direccionDespachoExtra,
@@ -119,6 +121,7 @@ export default async function updateVenta(fastify) {
           descuentoPct: true,
           descuentoMonto: true,
           descuentoSolicitudId: true,
+          montoDespacho: true,
           eliminada: true,
           items: { where: { eliminado: false }, select: { productoId: true, codigoInterno: true, nombre: true, cantidad: true, precioUnitario: true, nEntregados: true } },
         },
@@ -237,6 +240,7 @@ export default async function updateVenta(fastify) {
             descuentoPct: true,
             descuentoMonto: true,
             descuentoSolicitudId: true,
+            montoDespacho: true,
             eliminada: true,
             items: { where: { eliminado: false }, select: { productoId: true, codigoInterno: true, nombre: true, cantidad: true, precioUnitario: true, nEntregados: true } },
           },
@@ -359,6 +363,17 @@ export default async function updateVenta(fastify) {
           await tx.orden.update({
             where: { id },
             data: ordenData,
+          })
+        }
+        if (ordenData.montoDespacho !== undefined && Number(ordenData.montoDespacho) !== Number(lockedCurrent.montoDespacho || 0)) {
+          await tx.despachoAjusteHistorial.create({
+            data: {
+              ordenId: id,
+              montoAnterior: Number(lockedCurrent.montoDespacho || 0),
+              montoNuevo: Number(ordenData.montoDespacho),
+              motivo: motivoAjusteDespacho ? String(motivoAjusteDespacho).trim() || null : null,
+              usuarioNombre: request.user?.nombre ?? null,
+            },
           })
         }
         if (appliedDiscountSolicitudId) {

@@ -41,6 +41,7 @@ export default async function getVenta(fastify) {
     const withCliente = await attachCliente(fastify, o)
     const items = await attachProductos(fastify, o.items)
     const financialState = computeVentaFinancialState(o, { movimientos: pagos, multas })
-    return { ...withCliente, ...financialState, items, odts, pagos, multas, despachos, guias, cobranza, cotizaciones }
+    const montoDespachoReal = despachos.reduce((sum, d) => sum + Number(d.montoEnvio || 0), 0)
+    return { ...withCliente, ...financialState, items, odts, pagos, multas, despachos, guias, cobranza, cotizaciones, montoDespachoReal }
   })
 }

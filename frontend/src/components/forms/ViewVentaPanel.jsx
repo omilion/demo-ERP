@@ -3,7 +3,7 @@ import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, Icon } from '../shared'
 import { ViewPanel, FormDivider } from './index'
-import { useVenta, useDeleteVenta, useForzarTaller, useUpdateVenta, useAnularVenta, useActivarVenta, useUpdateItemEntregados } from '../../api/ventas'
+import { useVenta, useDeleteVenta, useForzarTaller, useUpdateVenta, useAnularVenta, useActivarVenta, useUpdateItemEntregados, useVentaDespachoHistorial } from '../../api/ventas'
 import { useProductos } from '../../api/productos'
 import { useDocumentos } from '../../api/facturacion'
 import { EmitirDteModal, NotaDteModal } from '../facturacion/DteModals'
@@ -361,10 +361,12 @@ function DocumentoRow({ label, value, mono }) {
 // ── Tab: Documentos ────────────────────────────────────────────────────────────
 const DTE_TONE = { borrador: 'gray', emitido: 'blue', enviado: 'amber', aceptado: 'green', rechazado: 'red', error: 'red' }
 
-function TabDocumentos({ v, pagos, dtes, canWriteFacturacion, onNota }) {
+function TabDocumentos({ v, pagos, dtes, canWrite, canWriteFacturacion, onNota }) {
   const referenciales = (pagos || []).filter(isReferencialPago)
   const pagosReales = (pagos || []).filter(p => !isReferencialPago(p))
   const hasContent = v.licitacion || v.guias || v.facturado > 0 || v.observaciones || referenciales.length > 0
+  const [ajustarPresupuesto, setAjustarPresupuesto] = useState(false)
+  const saldoDespacho = Number(v.montoDespacho || 0) - Number(v.montoDespachoReal || 0)
 
   return (
     <div>
@@ -391,6 +393,22 @@ function TabDocumentos({ v, pagos, dtes, canWriteFacturacion, onNota }) {
         <DocumentoRow label="ID Licitación / OC" value={v.licitacion} mono />
         <DocumentoRow label="N° Guía de despacho" value={v.guias ? `#${v.guias}` : null} mono />
         <DocumentoRow label="Monto facturado" value={v.facturado > 0 ? fmt(v.facturado) : null} mono />
+        <DocumentoRow label="Presupuesto de despacho" value={v.montoDespacho > 0 ? fmt(v.montoDespacho) : null} mono />
+        {v.montoDespacho > 0 && (
+          <>
+            <DocumentoRow label="Real despachado" value={fmt(v.montoDespachoReal || 0)} mono />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>Saldo</span>
+              <Badge tone={saldoDespacho >= 0 ? 'green' : 'red'}>{fmt(saldoDespacho)}</Badge>
+            </div>
+          </>
+        )}
+        {canWrite && (
+          <div style={{ padding: '10px 0' }}>
+            <button onClick={() => setAjustarPresupuesto(true)} style={dteLink('var(--blue)')}>Ajustar presupuesto de despacho</button>
+          </div>
+        )}
+        <DespachoAjusteHistorialTable ventaId={v.id} />
         {referenciales.length > 0 && (
           <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginTop: 10 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -462,11 +480,80 @@ function TabDocumentos({ v, pagos, dtes, canWriteFacturacion, onNota }) {
           </div>
         </>
       )}
+      {ajustarPresupuesto && <AjustarPresupuestoModal venta={v} onClose={() => setAjustarPresupuesto(false)} />}
     </div>
   )
 }
 
 const dteLink = color => ({ background: 'none', border: 'none', color, cursor: 'pointer', fontSize: 11, fontWeight: 600, padding: '2px 4px', textDecoration: 'underline' })
+
+function DespachoAjusteHistorialTable({ ventaId }) {
+  const { data: historial = [] } = useVentaDespachoHistorial(ventaId)
+  if (!historial.length) return null
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginTop: 10 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead>
+          <tr style={{ background: 'var(--bg)' }}>
+            {['Fecha', 'Monto anterior', 'Monto nuevo', 'Motivo', 'Usuario'].map((h, i) => (
+              <th key={h} style={{ padding: '7px 10px', textAlign: i === 1 || i === 2 ? 'right' : 'left', fontWeight: 600, color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {historial.map(h => (
+            <tr key={h.id} style={{ borderTop: '1px solid var(--border)' }}>
+              <td style={{ padding: '8px 10px', fontFamily: "'DM Mono',monospace" }}>{new Date(h.createdAt).toLocaleDateString('es-CL')}</td>
+              <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: "'DM Mono',monospace" }}>{fmt(h.montoAnterior)}</td>
+              <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>{fmt(h.montoNuevo)}</td>
+              <td style={{ padding: '8px 10px', color: 'var(--text-2)' }}>{h.motivo || '—'}</td>
+              <td style={{ padding: '8px 10px', color: 'var(--text-2)' }}>{h.usuarioNombre || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function AjustarPresupuestoModal({ venta, onClose }) {
+  const [monto, setMonto] = useState(String(venta.montoDespacho || 0))
+  const [motivo, setMotivo] = useState('')
+  const [error, setError] = useState('')
+  const updateVenta = useUpdateVenta()
+
+  const guardar = () => {
+    const montoDespacho = Number(monto)
+    if (!Number.isFinite(montoDespacho) || montoDespacho < 0) {
+      setError('Ingresa un monto válido.')
+      return
+    }
+    setError('')
+    updateVenta.mutate({ id: venta.id, data: { montoDespacho, motivoAjusteDespacho: motivo.trim() || undefined } }, {
+      onSuccess: () => { onClose(); toast.success('Presupuesto de despacho actualizado.') },
+      onError: err => setError(err.response?.data?.error || err.message || 'No se pudo actualizar el presupuesto.'),
+    })
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'oklch(0 0 0/0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: '#fff', width: 420, maxWidth: '100%', borderRadius: 12, boxShadow: '0 16px 48px oklch(0 0 0/0.2)', padding: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 14 }}>Ajustar presupuesto de despacho</div>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Nuevo monto</label>
+        <input type="number" min="0" value={monto} onChange={e => setMonto(e.target.value)} style={{ width: '100%', padding: 9, border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'inherit', marginBottom: 12, boxSizing: 'border-box' }} />
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Motivo (opcional)</label>
+        <textarea value={motivo} onChange={e => setMotivo(e.target.value)} rows={3} style={{ width: '100%', padding: 9, border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }} placeholder="Ej: ajuste para cuadrar despacho real" />
+        {error && <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, background: 'var(--red-bg)', color: 'var(--red)', fontSize: 13 }}>{error}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+          <button onClick={onClose} style={{ padding: '8px 16px', fontSize: 13, borderRadius: 8, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', fontWeight: 500 }}>Cancelar</button>
+          <button onClick={guardar} disabled={updateVenta.isPending} style={{ padding: '8px 16px', fontSize: 13, borderRadius: 8, border: 'none', background: 'var(--green-600)', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: updateVenta.isPending ? 0.6 : 1 }}>
+            {updateVenta.isPending ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ── Widget: Agregar producto por código ─────────────────────────────────────────
 function isConvenioMarco(tipo) {
@@ -1080,7 +1167,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
       )}
       {tab === 'taller'     && <TabTaller odts={odts} onGoTaller={() => navigate('/taller')} />}
       {tab === 'pagos'      && <TabPagos pagos={pagos} />}
-      {tab === 'documentos' && <TabDocumentos v={v} pagos={pagos} dtes={dtes} canWriteFacturacion={canWriteFacturacion} onNota={(documento, tipoDte) => setNotaDte({ documento, tipoDte })} />}
+      {tab === 'documentos' && <TabDocumentos v={v} pagos={pagos} dtes={dtes} canWrite={canWrite} canWriteFacturacion={canWriteFacturacion} onNota={(documento, tipoDte) => setNotaDte({ documento, tipoDte })} />}
 
       {/* Delete confirmation */}
       {confirmDelete && canDelete && (

@@ -893,6 +893,77 @@ describe('PUT /api/ventas/:id', () => {
       await app.prisma.orden.delete({ where: { id: orden.id } }).catch(() => {})
     }
   })
+
+  it('ajusta el presupuesto de despacho y registra historial con motivo y usuario', async () => {
+    const [cliente, user] = await Promise.all([
+      app.prisma.cliente.findFirst(),
+      app.prisma.user.findFirst(),
+    ])
+    const orden = await app.prisma.orden.create({
+      data: { tipo: 'Normal', clienteId: cliente.id, userId: user.id, montoDespacho: 10000 },
+    })
+    try {
+      const put = await app.inject({
+        method: 'PUT', url: `/api/ventas/${orden.id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { montoDespacho: 15000, motivoAjusteDespacho: 'Ajuste para cuadrar despacho real' },
+      })
+      expect(put.statusCode).toBe(200)
+
+      const historial = await app.prisma.despachoAjusteHistorial.findMany({ where: { ordenId: orden.id } })
+      expect(historial).toHaveLength(1)
+      expect(historial[0]).toMatchObject({
+        montoAnterior: 10000,
+        montoNuevo: 15000,
+        motivo: 'Ajuste para cuadrar despacho real',
+        usuarioNombre: 'Test admin',
+      })
+
+      const putUnchanged = await app.inject({
+        method: 'PUT', url: `/api/ventas/${orden.id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { montoDespacho: 15000 },
+      })
+      expect(putUnchanged.statusCode).toBe(200)
+      expect(await app.prisma.despachoAjusteHistorial.count({ where: { ordenId: orden.id } })).toBe(1)
+
+      const getHistorial = await app.inject({
+        method: 'GET', url: `/api/ventas/${orden.id}/despacho-historial`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(getHistorial.statusCode).toBe(200)
+      expect(JSON.parse(getHistorial.body)).toHaveLength(1)
+    } finally {
+      await app.prisma.despachoAjusteHistorial.deleteMany({ where: { ordenId: orden.id } }).catch(() => {})
+      await app.prisma.orden.delete({ where: { id: orden.id } }).catch(() => {})
+    }
+  })
+
+  it('GET /api/ventas/:id suma montoDespachoReal desde los despachos no eliminados', async () => {
+    const [cliente, user] = await Promise.all([
+      app.prisma.cliente.findFirst(),
+      app.prisma.user.findFirst(),
+    ])
+    const orden = await app.prisma.orden.create({
+      data: { tipo: 'Normal', clienteId: cliente.id, userId: user.id, montoDespacho: 20000 },
+    })
+    const despachos = await Promise.all([
+      app.prisma.despacho.create({ data: { ordenId: orden.id, montoEnvio: 5000 } }),
+      app.prisma.despacho.create({ data: { ordenId: orden.id, montoEnvio: 3000 } }),
+      app.prisma.despacho.create({ data: { ordenId: orden.id, montoEnvio: 9999, eliminado: true } }),
+    ])
+    try {
+      const res = await app.inject({
+        method: 'GET', url: `/api/ventas/${orden.id}`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(res.statusCode).toBe(200)
+      expect(JSON.parse(res.body).montoDespachoReal).toBe(8000)
+    } finally {
+      await app.prisma.despacho.deleteMany({ where: { id: { in: despachos.map(d => d.id) } } }).catch(() => {})
+      await app.prisma.orden.delete({ where: { id: orden.id } }).catch(() => {})
+    }
+  })
 })
 
 describe('Venta directa stock, lifecycle and sucursal scope', () => {

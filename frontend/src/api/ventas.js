@@ -15,6 +15,13 @@ export const useVenta = (id) =>
     enabled: !!id,
   })
 
+export const useVentaDespachoHistorial = (id) =>
+  useQuery({
+    queryKey: ['ventas', id, 'despacho-historial'],
+    queryFn: () => api.get(`/ventas/${id}/despacho-historial`).then(r => r.data),
+    enabled: !!id,
+  })
+
 export const useCreateVenta = () => {
   const qc = useQueryClient()
   return useMutation({
