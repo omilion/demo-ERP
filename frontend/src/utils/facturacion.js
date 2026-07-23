@@ -95,5 +95,7 @@ export const mapVentaItems = (venta = {}, cantidadPorItemId = null) => (venta.it
     // precioUnitario en la venta es el precio de venta CON IVA incluido (precio
     // sala/marco, ver defaultPrecioUnitario en VentasFormPage). El motor DTE
     // espera precio neto y le suma el 19% el solo: dividir aca evita el doble IVA.
-    precio: Math.round(Number(item.precioUnitario || 0) / 1.19),
+    // Items exentos (venta manual sin OrdenItem detras) no llevan IVA: se pasan tal cual.
+    precio: item.exento ? Number(item.precioUnitario || 0) : Math.round(Number(item.precioUnitario || 0) / 1.19),
+    exento: Boolean(item.exento),
   }))

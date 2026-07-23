@@ -57,6 +57,7 @@ import ComisionesPage from './pages/admin/ComisionesPage'
 import IaBalancePage from './pages/admin/IaBalancePage'
 import DocumentosPage from './pages/facturacion/DocumentosPage'
 import ConfiguracionPage from './pages/facturacion/ConfiguracionPage'
+import EmitirManualPage from './pages/facturacion/EmitirManualPage'
 import CosteoPage from './pages/costeo/CosteoPage'
 
 
@@ -122,6 +123,7 @@ export const router = createBrowserRouter([
       { path: 'despachos', element: protect(<DespachosPage />, { module: 'despacho' }) },
       { path: 'despachos/guias/:id/imprimir', element: protect(<GuiaPrintPage />, { module: 'despacho' }) },
       { path: 'facturacion/documentos', element: protect(<DocumentosPage />, { module: 'facturacion' }) },
+      { path: 'facturacion/emitir', element: protect(<EmitirManualPage />, { module: 'facturacion', permission: 'write' }) },
       { path: 'facturacion/configuracion', element: protect(<ConfiguracionPage />, { module: 'facturacion' }) },
       { path: 'bitacora-taller', element: protect(<BitacoraTallerPage />, { module: 'taller' }) },
       { path: 'historial-materiales', element: protect(<HistorialMaterialesPage />, { module: 'taller' }) },
