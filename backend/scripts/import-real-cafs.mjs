@@ -31,13 +31,16 @@ async function main() {
   console.log(`DB: ${process.env.DATABASE_URL?.replace(/:[^:@]+@/, ':***@')}`);
 
   const certFile = fs.readdirSync(inputDir).find(f => /\.(p12|pfx)$/i.test(f));
-  if (!certFile) throw new Error(`No se encontro .p12/.pfx en ${inputDir}`);
-  console.log(`1) Instalando certificado: ${certFile}`);
-  const certBuffer = fs.readFileSync(path.join(inputDir, certFile));
-  const info = await engine.saveCert(certBuffer, certPassword);
-  if (!info.valido) throw new Error(`Certificado invalido: ${info.error}`);
-  console.log(`   OK. Titular: ${info.subject}`);
-  console.log(`   Vigencia: ${info.validFrom} -> ${info.validTo}`);
+  if (certFile) {
+    console.log(`1) Instalando certificado: ${certFile}`);
+    const certBuffer = fs.readFileSync(path.join(inputDir, certFile));
+    const info = await engine.saveCert(certBuffer, certPassword);
+    if (!info.valido) throw new Error(`Certificado invalido: ${info.error}`);
+    console.log(`   OK. Titular: ${info.subject}`);
+    console.log(`   Vigencia: ${info.validFrom} -> ${info.validTo}`);
+  } else {
+    console.log('1) Sin .p12/.pfx en la carpeta, se usa el certificado ya instalado.');
+  }
 
   const empresa = await engine.getEmpresa();
   console.log(`2) Empresa configurada: ${empresa.rut} (${empresa.razonSocial}), ambiente=${empresa.ambiente}`);
