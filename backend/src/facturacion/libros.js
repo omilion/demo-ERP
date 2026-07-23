@@ -49,6 +49,9 @@ export const buildLibroCompraVenta = ({ empresa, cert, rutEnvia, periodo, tipoOp
     acc.exento += det.exento || 0;
     acc.neto += det.neto || 0;
     acc.ivaNoRec += det.ivaNoRec || 0;
+    // En ventas el IVA proviene del DTE; en compras se puede deducir desde
+    // total - neto - exento cuando no viene informado separadamente.
+    acc.iva += det.iva ?? Math.max(0, (det.total || 0) - (det.exento || 0) - (det.neto || 0));
     acc.total += det.total || 0;
   }
 
@@ -60,7 +63,7 @@ export const buildLibroCompraVenta = ({ empresa, cert, rutEnvia, periodo, tipoOp
       // TotMntExe, TotMntNeto y TotMntIVA son obligatorios en el schema aunque sean 0
       ['TotMntExe', formatMonto(acc.exento)],
       ['TotMntNeto', formatMonto(acc.neto)],
-      ['TotMntIVA', '0']
+      ['TotMntIVA', formatMonto(acc.iva)]
     ]) + (acc.ivaNoRec > 0
       ? tag('TotIVANoRec', tags([['CodIVANoRec', 1], ['TotOpIVANoRec', acc.docs], ['TotMntIVANoRec', formatMonto(acc.ivaNoRec)]]), null, { raw: true })
       : '')

@@ -21,12 +21,29 @@ function fakeCaf() {
 }
 
 describe('facturacion/documento', () => {
-  it('TIPOS_DTE covers factura/boleta/guia/NC/ND', () => {
+  it('TIPOS_DTE covers factura/boleta/guia/NC/ND y factura de compra', () => {
     expect(TIPOS_DTE[33]).toBe('Factura Electrónica')
     expect(TIPOS_DTE[39]).toBe('Boleta Electrónica')
+    expect(TIPOS_DTE[46]).toBe('Factura de Compra Electrónica')
     expect(TIPOS_DTE[52]).toBe('Guía de Despacho Electrónica')
     expect(TIPOS_DTE[56]).toBe('Nota de Débito Electrónica')
     expect(TIPOS_DTE[61]).toBe('Nota de Crédito Electrónica')
+  })
+
+  it('factura de compra (46) usa el esquema Documento de una factura afecta', () => {
+    const result = buildDocumento({
+      empresa: PLASTIMAR_EMPRESA,
+      receptor: { rut: '11111111-1', razonSocial: 'Proveedor Prueba SpA', giro: 'Servicios', direccion: 'Av Test 1', comuna: 'Santiago' },
+      doc: { tipoDte: 46, folio: 9, items: [{ nombre: 'Insumo', cantidad: 2, precio: 5000 }] },
+      caf: fakeCaf(),
+      timestamp: new Date('2026-07-14T10:00:00')
+    })
+
+    expect(result.id).toBe('F9T46')
+    expect(result.documentoXml).toContain('<TipoDTE>46</TipoDTE>')
+    expect(result.documentoXml).toContain('<MntNeto>10000</MntNeto>')
+    expect(result.documentoXml).toContain('<IVA>1900</IVA>')
+    expect(result.documentoXml).toContain('<MntTotal>11900</MntTotal>')
   })
 
   it('isBoleta true only for 39/41', () => {

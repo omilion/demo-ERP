@@ -156,6 +156,11 @@ export const uploadEnvioDte = async ({ ambiente, token, rutEnvia, rutEmisor, fil
   return { trackId, respuesta: res.body };
 };
 
+// El upload histórico de libros de certificación usa el mismo endpoint y
+// contrato multipart que un EnvioDTE. Se mantiene una función separada para
+// no confundir ambos flujos en los llamados de aplicación.
+export const uploadLibroCompraVenta = async (args) => uploadEnvioDte(args);
+
 // --- Estado de envío DTE (SOAP) ---
 
 export const consultarEstadoEnvio = async ({ ambiente, token, rutEmisor, trackId }) => {

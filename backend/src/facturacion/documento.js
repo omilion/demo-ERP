@@ -12,6 +12,7 @@ export const TIPOS_DTE = {
   34: 'Factura No Afecta o Exenta Electrónica',
   39: 'Boleta Electrónica',
   41: 'Boleta No Afecta o Exenta Electrónica',
+  46: 'Factura de Compra Electrónica',
   52: 'Guía de Despacho Electrónica',
   56: 'Nota de Débito Electrónica',
   61: 'Nota de Crédito Electrónica'

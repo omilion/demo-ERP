@@ -1,6 +1,7 @@
 export const TIPOS_DTE = {
   33: 'Factura Electrónica',
   39: 'Boleta Electrónica',
+  46: 'Factura de Compra Electrónica',
   52: 'Guía de Despacho Electrónica',
   56: 'Nota de Débito Electrónica',
   61: 'Nota de Crédito Electrónica',
