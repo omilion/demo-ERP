@@ -22,6 +22,12 @@ describe('facturacion/envio', () => {
     expect(dte.endsWith('</DTE>')).toBe(true)
   })
 
+  it.each(['Liquidacion', 'Exportaciones'])('buildDte firma el wrapper propio %s', (root) => {
+    const dte = buildDte(`<${root} ID="F1T110"><A>1</A></${root}>`, fakeCert())
+    expect(dte).toContain(`<${root} xmlns="http://www.sii.cl/SiiDte" ID="F1T110">`)
+    expect(dte).toContain('<Signature')
+  })
+
   it('buildEnvio wraps one factura DTE in a signed EnvioDTE with Caratula', () => {
     const documentoXml = '<Documento ID="F1T33"><A>1</A></Documento>'
     const cert = fakeCert()

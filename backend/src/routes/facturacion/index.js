@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { createFacturacionDb } from '../../facturacion/db.js'
 import { createFacturacionEngine } from '../../facturacion/engine.js'
-import { TIPOS_DTE, computeTotales, IND_TRASLADO, TIPO_DESPACHO } from '../../facturacion/documento.js'
+import { TIPOS_DTE, computeTotales, computeTotalesExportacion, IND_TRASLADO, TIPO_DESPACHO } from '../../facturacion/documento.js'
 import { normalizeRut, isValidRut } from '../../facturacion/xmlUtil.js'
 import { parseCaf } from '../../facturacion/caf.js'
 import { renderDteHtml } from '../../facturacion/printDte.js'
@@ -20,7 +20,27 @@ function validateDocumentoInput(body) {
     throw err
   }
   const items = Array.isArray(body.items) ? body.items : []
-  if (!items.length) {
+  const detalles = Array.isArray(body.detalles) ? body.detalles : []
+  if (tipoDte === 43) {
+    if (!detalles.length) {
+      const err = new Error('La liquidación requiere al menos un detalle.')
+      err.statusCode = 400
+      throw err
+    }
+    if (!body.totales || body.totales.total === undefined) {
+      const err = new Error('La liquidación requiere totales explícitos.')
+      err.statusCode = 400
+      throw err
+    }
+    for (const detalle of detalles) {
+      if (!detalle.nombre || !detalle.tpoDocLiq || detalle.monto === undefined) {
+        const err = new Error('Cada detalle de liquidación requiere TpoDocLiq, nombre y monto.')
+        err.statusCode = 400
+        throw err
+      }
+    }
+  }
+  if (tipoDte !== 43 && !items.length) {
     const err = new Error('El documento requiere al menos un ítem.')
     err.statusCode = 400
     throw err
@@ -63,10 +83,24 @@ function validateDocumentoInput(body) {
       descuentoMonto: Number(item.descuentoMonto) || 0,
       exento: Boolean(item.exento)
     })),
+    detalles: detalles.map((detalle) => ({
+      tpoDocLiq: String(detalle.tpoDocLiq),
+      codigo: detalle.codigo ? String(detalle.codigo) : null,
+      tipoCodigo: detalle.tipoCodigo ? String(detalle.tipoCodigo) : null,
+      exento: Boolean(detalle.exento),
+      nombre: String(detalle.nombre || '').trim(),
+      descripcion: detalle.descripcion ? String(detalle.descripcion).trim() : null,
+      cantidad: detalle.cantidad === undefined ? undefined : Number(detalle.cantidad),
+      unidad: detalle.unidad ? String(detalle.unidad).trim() : null,
+      precio: detalle.precio === undefined ? undefined : Number(detalle.precio),
+      monto: detalle.monto === undefined ? undefined : Number(detalle.monto)
+    })),
+    comisiones: Array.isArray(body.comisiones) ? body.comisiones : [],
     referencias: Array.isArray(body.referencias) ? body.referencias : [],
     extra: tipoDte === 52
       ? { ...extra, indTraslado: Number(extra.indTraslado), tipoDespacho: Number(extra.tipoDespacho) }
-      : extra
+      : extra,
+    totales: tipoDte === 43 && body.totales && typeof body.totales === 'object' ? body.totales : {}
   }
 }
 
@@ -195,7 +229,7 @@ export default async function facturacionRoutes(fastify) {
   fastify.post('/documentos', writeAuth, async (request, reply) => {
     try {
       const input = validateDocumentoInput(request.body)
-      input.totales = computeTotales(input.items, input.tipoDte)
+      input.totales = input.tipoDte === 43 ? input.totales : (input.tipoDte >= 110 && input.tipoDte <= 112 ? computeTotalesExportacion(input.items) : computeTotales(input.items, input.tipoDte))
       const created = await db.documentos.create(input)
       return reply.code(201).send(created)
     } catch (error) {
@@ -218,7 +252,7 @@ export default async function facturacionRoutes(fastify) {
         return reply.code(409).send({ error: 'Sólo se pueden editar borradores. Los documentos emitidos son inmutables (usa una nota de crédito).' })
       }
       const input = validateDocumentoInput({ ...current, ...request.body })
-      input.totales = computeTotales(input.items, input.tipoDte)
+      input.totales = input.tipoDte === 43 ? input.totales : (input.tipoDte >= 110 && input.tipoDte <= 112 ? computeTotalesExportacion(input.items) : computeTotales(input.items, input.tipoDte))
       input.estado = 'borrador'
       input.estadoDetalle = null
       return db.documentos.update(request.params.id, input)

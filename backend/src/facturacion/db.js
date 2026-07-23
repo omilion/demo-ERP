@@ -6,7 +6,7 @@
 
 const DOCUMENTO_UPDATABLE_FIELDS = [
   'clienteId', 'ordenId', 'guiaDespachoId', 'tipoDte', 'folio', 'fechaEmision',
-  'receptor', 'items', 'referencias', 'extra', 'totales',
+  'receptor', 'items', 'detalles', 'comisiones', 'referencias', 'extra', 'totales',
   'estado', 'estadoDetalle', 'trackId', 'ambiente', 'xml'
 ];
 
@@ -64,6 +64,8 @@ export const createFacturacionDb = (prisma) => {
         fechaEmision: input.fechaEmision ?? null,
         receptor: input.receptor ?? {},
         items: input.items ?? [],
+        detalles: input.detalles ?? [],
+        comisiones: input.comisiones ?? [],
         referencias: input.referencias ?? [],
         extra: input.extra ?? {},
         totales: input.totales ?? {},

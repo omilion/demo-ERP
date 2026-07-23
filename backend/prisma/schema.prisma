@@ -2083,6 +2083,8 @@ model FactDocumento {
   fechaEmision   String?   @map("fecha_emision")
   receptor       Json      @default("{}")
   items          Json      @default("[]")
+  detalles       Json      @default("[]")
+  comisiones     Json      @default("[]")
   referencias    Json      @default("[]")
   extra          Json      @default("{}")
   totales        Json      @default("{}")

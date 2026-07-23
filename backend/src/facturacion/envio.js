@@ -10,10 +10,14 @@ export const RUT_SII = '60803000-K';
 const C14N_ALGORITHM = 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315';
 const stripInheritedSiiNamespaces = (xml) => xml
   .replaceAll(`<DTE xmlns="${SII_NS}" `, '<DTE ')
-  .replaceAll(`<Documento xmlns="${SII_NS}" `, '<Documento ');
+  .replaceAll(`<Documento xmlns="${SII_NS}" `, '<Documento ')
+  .replaceAll(`<Liquidacion xmlns="${SII_NS}" `, '<Liquidacion ')
+  .replaceAll(`<Exportaciones xmlns="${SII_NS}" `, '<Exportaciones ');
 
 export const buildDte = (documentoXml, cert) => {
-  const canonicalDocumento = documentoXml.replace('<Documento ', `<Documento xmlns="${SII_NS}" `);
+  const rootTag = documentoXml.match(/^<([A-Za-z][A-Za-z0-9]*)\s/);
+  if (!rootTag) throw new Error('DTE inválido: falta el elemento raíz firmado.');
+  const canonicalDocumento = documentoXml.replace(`<${rootTag[1]} `, `<${rootTag[1]} xmlns="${SII_NS}" `);
   const signature = signXml(canonicalDocumento, `#${documentoXml.match(/ID="([^"]+)"/)[1]}`, cert, {
     transformAlgorithm: C14N_ALGORITHM
   });

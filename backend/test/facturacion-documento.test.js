@@ -46,6 +46,61 @@ describe('facturacion/documento', () => {
     expect(result.documentoXml).toContain('<MntTotal>11900</MntTotal>')
   })
 
+  it('liquidación factura (43) usa Liquidacion con detalles y comisiones propios', () => {
+    const result = buildDocumento({
+      empresa: PLASTIMAR_EMPRESA,
+      receptor: { rut: '11111111-1', razonSocial: 'Mandante Prueba', giro: 'Comercial', direccion: 'Av Test 1', comuna: 'Santiago', email: 'dte@example.com' },
+      doc: {
+        tipoDte: 43, folio: 51, fechaEmision: '2026-07-23',
+        detalles: [{ tpoDocLiq: 33, codigo: '001', nombre: 'Ventas consignadas', cantidad: 2, unidad: 'UN', monto: 100000 }, { tpoDocLiq: 33, nombre: 'Venta exenta', exento: true, monto: 50000 }],
+        comisiones: [{ tipoMovim: 'C', glosa: 'Comisión de consignación', tasaComision: 10, valComNeto: 10000, valComExe: 0, valComIva: 1900 }],
+        totales: { neto: 100000, exento: 50000, tasaIva: 19, iva: 19000, ivaProp: 1900, ivaTerc: 17100, valComNeto: 10000, valComIva: 1900, total: 169000 },
+        extra: { rutMandante: '15915915-9' }
+      },
+      caf: fakeCaf(), timestamp: new Date('2026-07-23T10:00:00')
+    })
+
+    expect(result.id).toBe('F51T43')
+    expect(result.documentoXml).toMatch(/^<Liquidacion ID="F51T43">/)
+    expect(result.documentoXml).toContain('<TpoDocLiq>33</TpoDocLiq>')
+    expect(result.documentoXml).toContain('<RUTMandante>15915915-9</RUTMandante>')
+    expect(result.documentoXml).toContain('<NroLinCom>1</NroLinCom>')
+    expect(result.documentoXml).toContain('<ValComIVA>1900</ValComIVA>')
+    expect(result.documentoXml).not.toContain('<Documento ID=')
+  })
+
+  it('factura de exportación (110) usa Exportaciones, Aduana y OtraMoneda sin IVA', () => {
+    const result = buildDocumento({
+      empresa: PLASTIMAR_EMPRESA,
+      receptor: { rut: '55555555-5', razonSocial: 'Importador de prueba', nacionalidad: '225' },
+      doc: {
+        tipoDte: 110, folio: 201, fechaEmision: '2026-07-23',
+        items: [{ codigo: 'SKU-1', nombre: 'Tela exportación', cantidad: 4, unidad: 'MT', precio: 250, descuentoPct: 5, descuentoMonto: 50 }],
+        extra: { fechaVencimiento: '2026-08-23', tipoDespacho: 2, moneda: 'DOLAR USA', otraMoneda: { tipoMoneda: 'PESO CL', tipoCambio: 950, mntExe: 950000, mntTotal: 950000 }, transporte: { dirDestino: 'Puerto', aduana: { codModVenta: 2, codClauVenta: 1, codViaTransp: 4, codPtoEmbarque: 992, codPtoDesemb: 134, totBultos: 2, codPaisRecep: '225', codPaisDestin: '225' } } }
+      },
+      caf: fakeCaf(), timestamp: new Date('2026-07-23T10:00:00')
+    })
+
+    expect(result.id).toBe('F201T110')
+    expect(result.documentoXml).toMatch(/^<Exportaciones ID="F201T110">/)
+    expect(result.documentoXml).toContain('<IndExe>1</IndExe>')
+    expect(result.documentoXml).toContain('<Aduana>')
+    expect(result.documentoXml).toContain('<TotBultos>2</TotBultos>')
+    expect(result.documentoXml).toContain('<CodPaisRecep>225</CodPaisRecep>')
+    expect(result.documentoXml).toContain('<OtraMoneda>')
+    expect(result.documentoXml).toContain('<MntTotal>950</MntTotal>')
+    expect(result.documentoXml).not.toContain('<IVA>')
+  })
+
+  it.each([111, 112])('notas de exportación %s requieren referencia a una 110', (tipoDte) => {
+    const base = { empresa: PLASTIMAR_EMPRESA, receptor: { rut: '55555555-5', razonSocial: 'Importador' }, caf: fakeCaf() }
+    expect(() => buildDocumento({ ...base, doc: { tipoDte, folio: 9, items: [{ nombre: 'Ajuste', cantidad: 1, precio: 100 }], referencias: [] } })).toThrow(/referencia/)
+    const result = buildDocumento({ ...base, doc: { tipoDte, folio: 9, items: [{ nombre: 'Ajuste', cantidad: 1, precio: 100 }], referencias: [{ tipoDocRef: 110, folioRef: 201, fechaRef: '2026-07-23', codRef: 3, razon: 'Corrige monto' }] } })
+    expect(result.documentoXml).toContain(`<TipoDTE>${tipoDte}</TipoDTE>`)
+    expect(result.documentoXml).toContain('<TpoDocRef>110</TpoDocRef>')
+    expect(result.documentoXml).toContain('<CodRef>3</CodRef>')
+  })
+
   it('isBoleta true only for 39/41', () => {
     expect(isBoleta(39)).toBe(true)
     expect(isBoleta(33)).toBe(false)
