@@ -63,7 +63,7 @@ describe('facturacion/engine', () => {
     // Asegura que la empresa ya tenga los datos obligatorios (incluido
     // fchResol) para que emitir() llegue hasta la validacion de certificado.
     const empresaPrevia = await db.getEmpresa()
-    await db.saveEmpresa({ ...empresaPrevia, fchResol: empresaPrevia.fchResol || '2026-07-01' })
+    await db.saveEmpresa({ ...empresaPrevia, fchResol: empresaPrevia.fchResol || '2026-07-01', acteco: empresaPrevia.acteco || '999999' })
     const engine = createFacturacionEngine({ db, dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'no-cert-')) })
     const doc = await db.documentos.create({
       tipoDte: 33,
@@ -79,7 +79,7 @@ describe('facturacion/engine', () => {
     beforeEach(async () => {
       writeThrowawayTestCert(dataDir, 'clave123')
       const empresa = await db.getEmpresa()
-      await db.saveEmpresa({ ...empresa, certPass: 'clave123', fchResol: empresa.fchResol || '2026-07-01' })
+      await db.saveEmpresa({ ...empresa, certPass: 'clave123', fchResol: empresa.fchResol || '2026-07-01', acteco: empresa.acteco || '999999' })
       engine = createFacturacionEngine({ db, dataDir })
       // El CAF trae su propia llave RSA (RSASK) con la que buildTed() firma el
       // TED — debe ser una PEM real (generada aqui) o crypto.createSign()

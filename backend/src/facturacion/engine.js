@@ -157,6 +157,13 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
 
     const empresa = await requireEmpresa();
     const cert = loadCert(empresa);
+    // Acteco no es obligatorio para boletas (buildEmisor no lo incluye en ese
+    // schema) pero el SII SI lo exige para factura/guia/NC/ND: sin este check
+    // el rechazo llega recien en enviar() (STATUS 7, XSD invalido) despues de
+    // haber consumido un folio local.
+    if (!isBoleta(doc.tipoDte) && !empresa.acteco) {
+      throw new Error('Configura el Acteco (código de actividad económica) de la empresa antes de emitir.');
+    }
     const receptor = await resolveReceptor(doc, empresa);
     const referencias = await resolveReferencias(doc);
 
