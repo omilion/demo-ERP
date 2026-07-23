@@ -38,6 +38,20 @@ describe('facturacion/envio', () => {
     expect(xml).toContain('<SubTotDTE><TpoDTE>33</TpoDTE><NroDTE>1</NroDTE></SubTotDTE>')
   })
 
+  it('buildEnvio limpia los puntos de empresa.rut en RutEmisor', () => {
+    const documentoXml = '<Documento ID="F1T33"><A>1</A></Documento>'
+    const cert = fakeCert()
+    const dteXml = buildDte(documentoXml, cert)
+    const { xml } = buildEnvio({
+      dtes: [{ tipoDte: 33, dteXml }],
+      empresa: { rut: '76.354.051-0', fchResol: '2026-07-01', nroResol: 0 },
+      cert,
+      rutEnvia: '76354051-0'
+    })
+    expect(xml).toContain('<RutEmisor>76354051-0</RutEmisor>')
+    expect(xml).not.toContain('76.354.051-0')
+  })
+
   it('buildEnvio rejects mixing boletas with other DTE types', () => {
     const cert = fakeCert()
     expect(() => buildEnvio({

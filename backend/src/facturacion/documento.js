@@ -2,7 +2,7 @@
 // (DTE_v10.xsd para facturas/guías/notas, BOLETA_v11.xsd para boletas).
 // El orden de los elementos es una secuencia estricta del schema: no reordenar.
 
-import { tag, tags, formatMonto, formatQty, formatDate, formatTimestamp } from './xmlUtil.js';
+import { tag, tags, formatMonto, formatQty, formatDate, formatTimestamp, normalizeRut } from './xmlUtil.js';
 import { buildTed } from './ted.js';
 
 export const SII_NS = 'http://www.sii.cl/SiiDte';
@@ -99,9 +99,13 @@ const buildIdDoc = (doc, boleta) => {
 };
 
 const buildEmisor = (empresa, boleta) => {
+  // empresa.rut se guarda con puntos (formato de display); el XML del SII
+  // exige el RUT limpio (sin puntos), igual que RUTEmisor en el TED y en el
+  // sobre EnvioDTE (ver ted.js/envio.js).
+  const rutEmisor = normalizeRut(empresa.rut) || empresa.rut;
   if (boleta) {
     return tag('Emisor', tags([
-      ['RUTEmisor', empresa.rut],
+      ['RUTEmisor', rutEmisor],
       ['RznSocEmisor', empresa.razonSocial],
       ['GiroEmisor', empresa.giro],
       ['DirOrigen', empresa.direccion],
@@ -110,7 +114,7 @@ const buildEmisor = (empresa, boleta) => {
     ]), null, { raw: true });
   }
   return tag('Emisor', tags([
-    ['RUTEmisor', empresa.rut],
+    ['RUTEmisor', rutEmisor],
     ['RznSoc', empresa.razonSocial],
     ['GiroEmis', empresa.giro],
     ['Acteco', empresa.acteco],
@@ -190,7 +194,7 @@ export const buildDocumento = ({ empresa, receptor, doc, caf, timestamp = new Da
   const id = `F${doc.folio}T${doc.tipoDte}`;
 
   const ted = buildTed({
-    rutEmisor: empresa.rut,
+    rutEmisor: normalizeRut(empresa.rut) || empresa.rut,
     tipoDte: doc.tipoDte,
     folio: doc.folio,
     fechaEmision,

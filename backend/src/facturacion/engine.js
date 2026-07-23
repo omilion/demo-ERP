@@ -222,13 +222,20 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
     const xmlLatin1 = toLatin1Buffer(xml);
     const filename = `EnvioDTE_${empresa.rut}_${Date.now()}.xml`;
 
+    // uploadEnvioDte/uploadEnvioBoleta parten el RUT por "-" para armar los
+    // campos rutSender/dvSender; empresa.rut se guarda formateado con puntos
+    // (ver EmpresaConfig) y el SII rechaza esos puntos (STATUS 6 en DTE,
+    // HTTP 400 "RUT de la Empresa invalido" en boletas si no se limpia antes.
+    const rutEmisorSii = normalizeRut(empresa.rut);
+    if (!rutEmisorSii) throw new Error('El RUT de la empresa emisora no es válido.');
+
     let resultado;
     if (esBoleta) {
       const token = await sii.getTokenBoleta(ambiente, cert);
-      resultado = await sii.uploadEnvioBoleta({ ambiente, token, rutEnvia: firmante, rutEmisor: empresa.rut, filename, xmlLatin1 });
+      resultado = await sii.uploadEnvioBoleta({ ambiente, token, rutEnvia: firmante, rutEmisor: rutEmisorSii, filename, xmlLatin1 });
     } else {
       const token = await sii.getToken(ambiente, cert);
-      resultado = await sii.uploadEnvioDte({ ambiente, token, rutEnvia: firmante, rutEmisor: empresa.rut, filename, xmlLatin1 });
+      resultado = await sii.uploadEnvioDte({ ambiente, token, rutEnvia: firmante, rutEmisor: rutEmisorSii, filename, xmlLatin1 });
     }
 
     const actualizados = [];
@@ -251,13 +258,14 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
     const cert = loadCert(empresa);
     const ambiente = doc.ambiente || empresa.ambiente;
 
+    const rutEmisorSii = normalizeRut(empresa.rut);
     let resultado;
     if (isBoleta(doc.tipoDte)) {
       const token = await sii.getTokenBoleta(ambiente, cert);
-      resultado = await sii.consultarEstadoBoleta({ ambiente, token, rutEmisor: empresa.rut, trackId: doc.trackId });
+      resultado = await sii.consultarEstadoBoleta({ ambiente, token, rutEmisor: rutEmisorSii, trackId: doc.trackId });
     } else {
       const token = await sii.getToken(ambiente, cert);
-      resultado = await sii.consultarEstadoEnvio({ ambiente, token, rutEmisor: empresa.rut, trackId: doc.trackId });
+      resultado = await sii.consultarEstadoEnvio({ ambiente, token, rutEmisor: rutEmisorSii, trackId: doc.trackId });
     }
 
     const codigo = String(resultado.estado || '').toUpperCase();

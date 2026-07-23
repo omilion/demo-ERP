@@ -2,7 +2,7 @@
 // El DTE individual se firma standalone y luego se incrusta en el SetDTE,
 // que a su vez se firma completo (mismo enfoque que LibreDTE).
 
-import { XML_DECL, tag, tags, formatTimestamp } from './xmlUtil.js';
+import { XML_DECL, tag, tags, formatTimestamp, normalizeRut } from './xmlUtil.js';
 import { signXml } from './firma.js';
 import { isBoleta, SII_NS } from './documento.js';
 
@@ -32,7 +32,7 @@ export const buildEnvio = ({ dtes, empresa, cert, rutEnvia, timestamp = new Date
   }
 
   const caratulaCampos = [
-    ['RutEmisor', empresa.rut],
+    ['RutEmisor', normalizeRut(empresa.rut) || empresa.rut],
     ['RutEnvia', rutEnvia],
     ['RutReceptor', RUT_SII],
     ['FchResol', empresa.fchResol],

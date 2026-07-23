@@ -59,6 +59,20 @@ describe('facturacion/documento', () => {
     expect(result.totales.total).toBe(59500)
   })
 
+  it('limpia los puntos de empresa.rut al armar RUTEmisor (EmpresaConfig lo guarda con puntos)', () => {
+    const empresaConPuntos = { ...PLASTIMAR_EMPRESA, rut: '76.354.051-0' }
+    const doc = {
+      tipoDte: 33,
+      folio: 1,
+      items: [{ nombre: 'Tela acabada', cantidad: 10, precio: 5000, unidad: 'MT' }]
+    }
+    const receptor = { rut: '11111111-1', razonSocial: 'Cliente Prueba SpA', direccion: 'Av Test 1', comuna: 'Santiago' }
+    const result = buildDocumento({ empresa: empresaConPuntos, receptor, doc, caf: fakeCaf(), timestamp: new Date('2026-07-14T10:00:00') })
+
+    expect(result.documentoXml).toContain('<RUTEmisor>76354051-0</RUTEmisor>')
+    expect(result.documentoXml).not.toContain('76.354.051-0')
+  })
+
   it('buildDocumento throws with no items', () => {
     expect(() => buildDocumento({
       empresa: PLASTIMAR_EMPRESA,
