@@ -1,10 +1,10 @@
-// Genera los libros IECV del Set de Pruebas y, sólo con --send, los transmite
-// al SII. Por defecto no hace llamadas externas: deja XML firmados para
-// revisión manual, evitando un envío tributario accidental.
+// Genera los libros IECV del Set de Pruebas para carga manual en el portal
+// SII. No transmite: no hay un contrato público de servicio web verificado
+// para estos libros y no se debe reutilizar el endpoint de EnvioDTE. Guía
+// SII: https://www.sii.cl/destacados/factura_electronica/guias_ayuda/como_generar_enviar_librocv.pdf
 //
 // Uso (VPS):
-//   node scripts/run-real-libros.mjs --period=2026-07
-//   node scripts/run-real-libros.mjs --period=2026-07 --send
+//   node scripts/run-real-libros.mjs --period=2026-07 --documentos=33:101,39:205
 
 import 'dotenv/config';
 import fs from 'node:fs';
@@ -16,17 +16,30 @@ import { createFacturacionEngine } from '../src/facturacion/engine.js';
 import { loadCertificate } from '../src/facturacion/firma.js';
 import { buildLibroCompraVenta, COMPRAS_SET_PLASTIMAR } from '../src/facturacion/libros.js';
 import { normalizeRut, toLatin1Buffer } from '../src/facturacion/xmlUtil.js';
-import { getToken, uploadLibroCompraVenta } from '../src/facturacion/siiClient.js';
 
 const DATA_DIR = 'data/facturacion';
 const args = process.argv.slice(2);
 const periodArg = args.find(arg => arg.startsWith('--period='));
 const periodo = periodArg ? periodArg.slice('--period='.length) : new Date().toISOString().slice(0, 7);
 const send = args.includes('--send');
+const documentosArg = args.find(arg => arg.startsWith('--documentos='));
 
 if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(periodo)) {
   throw new Error('El período debe tener formato YYYY-MM (por ejemplo, --period=2026-07).');
 }
+if (send) {
+  throw new Error('El envío automático de libros está deshabilitado. Genera los XML sin --send y cárgalos en el portal autenticado del SII tras validar el esquema y el set aplicable.');
+}
+if (!documentosArg) {
+  throw new Error('Indica exactamente los documentos del Set con --documentos=tipo:folio,tipo:folio. No se incluyen automáticamente todos los DTE del período.');
+}
+const documentosSet = documentosArg.slice('--documentos='.length).split(',').filter(Boolean).map(value => {
+  const [tipo, folio] = value.split(':').map(Number);
+  if (!Number.isInteger(tipo) || !Number.isInteger(folio) || tipo <= 0 || folio <= 0) {
+    throw new Error(`Documento inválido "${value}". Usa tipo:folio, por ejemplo 33:101.`);
+  }
+  return `${tipo}:${folio}`;
+});
 
 const detalleVenta = (doc) => ({
   tpoDoc: doc.tipoDte,
@@ -59,12 +72,16 @@ async function main() {
     // Excluye borradores, emitidos locales, errores y folios huérfanos. Los
     // documentos aún "enviado" se incluyen porque el SII puede procesarlos
     // mientras se arma el libro del set.
-    const documentos = await prisma.factDocumento.findMany({
+    const documentosPeriodo = await prisma.factDocumento.findMany({
       where: { estado: { in: ['enviado', 'aceptado'] }, fechaEmision: { startsWith: periodo } },
       orderBy: [{ tipoDte: 'asc' }, { folio: 'asc' }]
     });
+    const documentos = documentosPeriodo.filter(doc => documentosSet.includes(`${doc.tipoDte}:${doc.folio}`));
     if (!documentos.length) {
-      throw new Error(`No hay documentos enviados/aceptados para ${periodo}. Indica el período del Set de Pruebas.`);
+      throw new Error(`No se encontraron documentos del Set enviados/aceptados para ${periodo}.`);
+    }
+    if (documentos.length !== new Set(documentosSet).size) {
+      throw new Error('Falta al menos un documento solicitado o no está enviado/aceptado; no se generó un libro parcial.');
     }
     if (documentos.some(doc => !doc.folio || !doc.fechaEmision || !doc.receptor?.rut || !doc.receptor?.razonSocial)) {
       throw new Error('Hay documentos del período sin folio, fecha o receptor; revisa sus datos antes de generar el libro.');
@@ -84,21 +101,7 @@ async function main() {
 
     console.log(`Libro de ventas: ${ventas.length} documentos -> ${ventaPath}`);
     console.log(`Libro de compras: ${compras.length} documentos -> ${compraPath}`);
-    if (!send) {
-      console.log('No se envió nada al SII. Revisa los XML y vuelve a ejecutar con --send para transmitirlos.');
-      return;
-    }
-
-    const token = await getToken(empresa.ambiente, cert);
-    for (const [nombre, filename, xml] of [
-      ['ventas', path.basename(ventaPath), ventaXml],
-      ['compras', path.basename(compraPath), compraXml]
-    ]) {
-      const result = await uploadLibroCompraVenta({
-        ambiente: empresa.ambiente, token, rutEnvia, rutEmisor, filename, xmlLatin1: toLatin1Buffer(xml)
-      });
-      console.log(`SII recibió libro de ${nombre}; trackId=${result.trackId}`);
-    }
+    console.log('No se envió nada al SII. Revisa y carga manualmente los XML en el portal autenticado del SII.');
   } finally {
     await prisma.$disconnect();
   }

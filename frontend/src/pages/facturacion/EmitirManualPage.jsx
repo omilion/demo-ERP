@@ -5,6 +5,7 @@ import { FormField, Input } from '../../components/forms'
 import { EmitirDteModal } from '../../components/facturacion/DteModals'
 import { useClientes } from '../../api/clientes'
 import { toast } from '../../store/notif'
+import { computeDteTotales, mapVentaItems } from '../../utils/facturacion'
 
 const emptyItem = () => ({ nombre: '', cantidad: 1, precioUnitario: 0, exento: false })
 
@@ -83,7 +84,7 @@ export default function EmitirManualPage() {
 
   const itemsValidos = items.filter(item => item.nombre.trim() && Number(item.cantidad) > 0)
   const puedeContinuar = itemsValidos.length > 0
-  const totalEstimado = itemsValidos.reduce((sum, item) => sum + Number(item.cantidad) * Number(item.precioUnitario || 0), 0)
+  const totalEstimado = computeDteTotales(mapVentaItems({ items: itemsValidos })).total
 
   // EmitirDteModal solo necesita un objeto "venta" con cliente + items en la
   // forma que ya usa el resto del sistema (mapVentaItems/buildReceptor) — se

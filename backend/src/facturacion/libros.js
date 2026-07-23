@@ -49,9 +49,10 @@ export const buildLibroCompraVenta = ({ empresa, cert, rutEnvia, periodo, tipoOp
     acc.exento += det.exento || 0;
     acc.neto += det.neto || 0;
     acc.ivaNoRec += det.ivaNoRec || 0;
-    // En ventas el IVA proviene del DTE; en compras se puede deducir desde
-    // total - neto - exento cuando no viene informado separadamente.
-    acc.iva += det.iva ?? Math.max(0, (det.total || 0) - (det.exento || 0) - (det.neto || 0));
+    // Sólo se informa IVA cuando el detalle lo declara explícitamente. No se
+    // puede deducir desde el total: en compras hay IVA no recuperable, uso
+    // común y retenciones que, de inferirse, se contabilizarían dos veces.
+    acc.iva += det.iva || 0;
     acc.total += det.total || 0;
   }
 

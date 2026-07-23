@@ -34,6 +34,7 @@ const NAV_GROUPS = [
   { label: 'Facturación', items: [
     { label: 'Documentos Emitidos', route: '/facturacion/documentos', module: 'facturacion' },
     { label: 'Emitir documento', route: '/facturacion/emitir', module: 'facturacion' },
+    { label: 'Emitir factura de compra', route: '/facturacion/factura-compra', module: 'facturacion', permission: 'write' },
     { label: 'Configuración', route: '/facturacion/configuracion', module: 'facturacion' },
   ] },
   { label: 'RRHH', items: [

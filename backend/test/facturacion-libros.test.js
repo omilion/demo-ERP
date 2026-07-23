@@ -48,4 +48,28 @@ describe('facturacion/libros', () => {
     expect(xml).toContain('<TotMntTotal>11900</TotMntTotal>')
     expect(xml).toContain('<Signature')
   })
+
+  it('no confunde IVA no recuperable de compras con IVA recuperable', () => {
+    const xml = buildLibroCompraVenta({
+      empresa,
+      cert: fakeCert(),
+      rutEnvia: '8833435-3',
+      periodo: '2026-07',
+      tipoOperacion: 'COMPRA',
+      folioNotificacion: '4964720',
+      detalles: [{
+        tpoDoc: 33,
+        folio: 2,
+        fecha: '2026-07-23',
+        rut: '11111111-1',
+        razonSocial: 'PROVEEDOR PRUEBA',
+        neto: 10000,
+        ivaNoRec: 1900,
+        total: 11900
+      }]
+    })
+
+    expect(xml).toContain('<TotMntIVA>0</TotMntIVA>')
+    expect(xml).toContain('<TotMntIVANoRec>1900</TotMntIVANoRec>')
+  })
 })

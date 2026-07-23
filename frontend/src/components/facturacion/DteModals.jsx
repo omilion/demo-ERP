@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Badge, Btn, Icon } from '../shared'
 import { useEmitirDte, useDocumentos, useEmpresa } from '../../api/facturacion'
 import { useDespachoPacking } from '../../api/despachos'
-import { buildReceptor, isValidRut, mapVentaItems, TIPOS_DTE, IND_TRASLADO, TIPO_DESPACHO, REFERENCIA_TIPOS, REFERENCIA_TIPOS_INTERNOS } from '../../utils/facturacion'
+import { buildReceptor, computeDteTotales, isValidRut, mapVentaItems, TIPOS_DTE, IND_TRASLADO, TIPO_DESPACHO, REFERENCIA_TIPOS, REFERENCIA_TIPOS_INTERNOS } from '../../utils/facturacion'
 
 const dateFmt = value => value ? new Date(value).toLocaleDateString('es-CL') : '—'
 
@@ -25,8 +25,7 @@ function Modal({ title, onClose, children }) {
 }
 
 function Preview({ empresa, receptor, items, tipoDte, referencias }) {
-  const neto = items.reduce((sum, item) => sum + Number(item.cantidad || 0) * Number(item.precio || 0), 0)
-  const iva = Math.round(neto * 0.19)
+  const { neto, exento, iva, total } = computeDteTotales(items)
   const referenciasCompletas = (referencias || []).filter(r => {
     const esInterna = REFERENCIA_TIPOS_INTERNOS.includes(r.tipo)
     return esInterna ? !!r.docLocalId : !!r.folio?.trim()
@@ -43,7 +42,7 @@ function Preview({ empresa, receptor, items, tipoDte, referencias }) {
           <div style={{ color: 'var(--text-2)', fontSize: 12 }}>{[empresa?.rut, empresa?.giro, [empresa?.direccion, empresa?.comuna].filter(Boolean).join(', ')].filter(Boolean).join(' · ') || 'Falta configuración del emisor'}</div>
         </div>
         <div style={{ background: 'var(--bg)', padding: 12, borderRadius: 8 }}>
-          <div style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Receptor</div>
+          <div style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>{tipoDte === 46 ? 'Proveedor (receptor DTE)' : 'Receptor'}</div>
           <div style={{ fontWeight: 700 }}>{receptor.razonSocial || 'Consumidor final'}</div>
           <div style={{ color: 'var(--text-2)', fontSize: 12 }}>{[receptor.rut, receptor.direccion, receptor.comuna].filter(Boolean).join(' · ') || 'Sin dirección registrada'}</div>
         </div>
@@ -55,7 +54,10 @@ function Preview({ empresa, receptor, items, tipoDte, referencias }) {
         </table>
       </div>
       <div style={{ marginLeft: 'auto', width: 240, fontSize: 13, marginBottom: referenciasCompletas.length ? 14 : 0 }}>
-        <Total label="Neto" value={neto} /><Total label="IVA 19%" value={iva} /><Total label="Total" value={neto + iva} strong />
+        <Total label="Neto" value={neto} />
+        {exento > 0 && <Total label="Exento" value={exento} />}
+        <Total label="IVA 19%" value={iva} />
+        <Total label="Total" value={total} strong />
       </div>
       {!!referenciasCompletas.length && (
         <div style={{ background: 'var(--bg)', padding: 12, borderRadius: 8, fontSize: 12 }}>

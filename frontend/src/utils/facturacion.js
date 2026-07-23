@@ -100,3 +100,17 @@ export const mapVentaItems = (venta = {}, cantidadPorItemId = null) => (venta.it
     precio: item.exento ? Number(item.precioUnitario || 0) : Math.round(Number(item.precioUnitario || 0) / 1.19),
     exento: Boolean(item.exento),
   }))
+
+// Los items DTE llegan con precio neto (salvo los exentos, que se mantienen
+// tal cual). Este cálculo se comparte entre la vista previa y la pantalla
+// manual para que el total que se muestra antes de emitir sea el mismo.
+export const computeDteTotales = (items = []) => {
+  const { neto, exento } = items.reduce((acc, item) => {
+    const monto = Number(item.cantidad || 0) * Number(item.precio ?? item.precioUnitario ?? 0)
+    if (item.exento) acc.exento += monto
+    else acc.neto += monto
+    return acc
+  }, { neto: 0, exento: 0 })
+  const iva = Math.round(neto * 0.19)
+  return { neto, exento, iva, total: neto + exento + iva }
+}
