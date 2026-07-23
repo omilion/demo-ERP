@@ -76,7 +76,7 @@ describe('facturacion/documento', () => {
       doc: {
         tipoDte: 110, folio: 201, fechaEmision: '2026-07-23',
         items: [{ codigo: 'SKU-1', nombre: 'Tela exportación', cantidad: 4, unidad: 'MT', precio: 250, descuentoPct: 5, descuentoMonto: 50 }],
-        extra: { fechaVencimiento: '2026-08-23', tipoDespacho: 2, moneda: 'DOLAR USA', otraMoneda: { tipoMoneda: 'PESO CL', tipoCambio: 950, mntExe: 950000, mntTotal: 950000 }, transporte: { dirDestino: 'Puerto', aduana: { codModVenta: 2, codClauVenta: 1, codViaTransp: 4, codPtoEmbarque: 992, codPtoDesemb: 134, totBultos: 2, codPaisRecep: '225', codPaisDestin: '225' } } }
+        extra: { fechaVencimiento: '2026-08-23', tipoDespacho: 2, moneda: 'DOLAR USA', otraMoneda: { tipoMoneda: 'PESO CL', tipoCambio: 950, mntExe: 950000, mntTotal: 950000 }, transporte: { dirDestino: 'Puerto', aduana: { codModVenta: 2, codClauVenta: 1, codViaTransp: 4, codPtoEmbarque: 992, codPtoDesemb: 134, tipoBultos: [{ codTpoBultos: 1, cantBultos: 2, marcas: 'PLASTIMAR' }], totBultos: 2, codPaisRecep: '225', codPaisDestin: '225' } } }
       },
       caf: fakeCaf(), timestamp: new Date('2026-07-23T10:00:00')
     })
@@ -86,6 +86,8 @@ describe('facturacion/documento', () => {
     expect(result.documentoXml).toContain('<IndExe>1</IndExe>')
     expect(result.documentoXml).toContain('<Aduana>')
     expect(result.documentoXml).toContain('<TotBultos>2</TotBultos>')
+    expect(result.documentoXml).toContain('<TipoBultos><CodTpoBultos>1</CodTpoBultos><CantBultos>2</CantBultos><Marcas>PLASTIMAR</Marcas></TipoBultos>')
+    expect(result.documentoXml).not.toContain('<TipoBultos><TipoBultos>')
     expect(result.documentoXml).toContain('<CodPaisRecep>225</CodPaisRecep>')
     expect(result.documentoXml).toContain('<OtraMoneda>')
     expect(result.documentoXml).toContain('<MntTotal>950</MntTotal>')
