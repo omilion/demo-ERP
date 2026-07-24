@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../shared'
 import { useProductos } from '../../api/productos'
 import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
-import { computeDteTotales } from '../../utils/facturacion'
+import { computeDteTotales, dteDetailLimitMessage, MAX_DTE_DETAIL_LINES } from '../../utils/facturacion'
+import { toast } from '../../store/notif'
 
 const inputStyle = { width: '100%', padding: '6px 7px', borderRadius: 5, border: '1px solid var(--border)', fontFamily: 'inherit', fontSize: 12, boxSizing: 'border-box' }
 const fmt = value => '$' + Math.round(Number(value) || 0).toLocaleString('es-CL')
@@ -24,14 +25,21 @@ function ProductoSearch({ onAdd }) {
 }
 
 export function DteItemsEditor({ items, onChange }) {
-  const addProducto = producto => onChange([...items, { productoId: producto.id, codigoInterno: producto.codigoInterno || '', fotoUrl: producto.fotoUrl || '', nombre: producto.nombre || '', descripcion: producto.descripcion || '', cantidad: 1, precioUnitario: Number(producto.precioLista || 0), exento: false }])
+  const appendItem = item => {
+    if (items.length >= MAX_DTE_DETAIL_LINES) {
+      toast.warning(dteDetailLimitMessage(items.length + 1))
+      return
+    }
+    onChange([...items, item])
+  }
+  const addProducto = producto => appendItem({ productoId: producto.id, codigoInterno: producto.codigoInterno || '', fotoUrl: producto.fotoUrl || '', nombre: producto.nombre || '', descripcion: producto.descripcion || '', cantidad: 1, precioUnitario: Number(producto.precioLista || 0), exento: false })
   const update = (index, patch) => onChange(items.map((item, current) => current === index ? { ...item, ...patch } : item))
   const remove = index => onChange(items.filter((_, current) => current !== index))
   const mapped = items.filter(item => item.nombre?.trim() && Number(item.cantidad) > 0).map(item => ({ ...item, precio: item.exento ? Number(item.precioUnitario) : Math.round(Number(item.precioUnitario) / 1.19) }))
   const totals = computeDteTotales(mapped)
   return <section>
     <ProductoSearch onAdd={addProducto} />
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0 12px' }}><span style={{ color: 'var(--text-3)', fontSize: 12 }}>Busca en catálogo o</span><button type="button" onClick={() => onChange([...items, emptyDteItem()])} style={{ border: 0, background: 'none', color: 'var(--blue)', fontWeight: 600, cursor: 'pointer', padding: 0 }}>+ agregar ítem manual</button></div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0 12px' }}><span style={{ color: 'var(--text-3)', fontSize: 12 }}>Busca en catálogo o</span><button type="button" onClick={() => appendItem(emptyDteItem())} style={{ border: 0, background: 'none', color: 'var(--blue)', fontWeight: 600, cursor: 'pointer', padding: 0 }}>+ agregar ítem manual</button><span style={{ marginLeft: 'auto', color: items.length >= MAX_DTE_DETAIL_LINES ? 'var(--red)' : 'var(--text-3)', fontSize: 12 }}>{items.length}/{MAX_DTE_DETAIL_LINES} líneas</span></div>
     {!items.length ? <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-3)', border: '1px dashed var(--border)', borderRadius: 8, fontSize: 13 }}>Busca y agrega productos con el catálogo o declara un servicio manual.</div> : <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflowX: 'auto' }}><table style={{ width: '100%', minWidth: 780, borderCollapse: 'collapse', fontSize: 13 }}><thead><tr style={{ background: 'var(--bg)' }}>{[['Producto', 'left'], ['SKU', 'left'], ['Descripción', 'left'], ['Cant.', 'right'], ['P. Unit. (IVA inc.)', 'right'], ['Exento', 'center'], ['Subtotal', 'right'], ['', 'center']].map(([label, align]) => <th key={label} style={{ padding: '8px', color: 'var(--text-3)', fontSize: 10, fontWeight: 600, textAlign: align, textTransform: 'uppercase' }}>{label}</th>)}</tr></thead><tbody>{items.map((item, index) => { const subtotal = Number(item.cantidad || 0) * Number(item.precioUnitario || 0); return <tr key={`${item.productoId || 'manual'}-${index}`} style={{ borderTop: '1px solid var(--border)' }}><td style={{ padding: '8px 12px' }}><div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}><img src={item.fotoUrl || PRODUCT_PLACEHOLDER_IMAGE} alt="" loading="lazy" onError={useProductPlaceholderOnError} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 5, border: '1px solid var(--border)' }} /><input value={item.nombre} onChange={event => update(index, { nombre: event.target.value })} placeholder="Producto o servicio" style={{ ...inputStyle, fontWeight: 500 }} /></div></td><td style={{ padding: 8 }}><span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: 'var(--text-3)' }}>{item.codigoInterno || '—'}</span></td><td style={{ padding: 8 }}><input value={item.descripcion || ''} onChange={event => update(index, { descripcion: event.target.value })} placeholder="Descripción" style={inputStyle} /></td><td style={{ padding: 8 }}><input type="number" min="1" value={item.cantidad} onChange={event => update(index, { cantidad: event.target.value })} style={{ ...inputStyle, textAlign: 'right' }} /></td><td style={{ padding: 8 }}><input type="number" min="0" value={item.precioUnitario} onChange={event => update(index, { precioUnitario: event.target.value })} style={{ ...inputStyle, textAlign: 'right' }} /></td><td style={{ padding: 8, textAlign: 'center' }}><input type="checkbox" checked={item.exento} onChange={event => update(index, { exento: event.target.checked })} /></td><td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>{fmt(subtotal)}</td><td style={{ padding: 6, textAlign: 'center' }}><button type="button" onClick={() => remove(index)} title="Quitar ítem" style={{ border: 0, background: 'none', color: 'var(--text-3)', cursor: 'pointer' }}><Icon name="trash" size={14} /></button></td></tr> })}</tbody></table></div>}
     {!!items.length && <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}><div style={{ width: 245, fontSize: 13 }}><Total label="Neto" value={totals.neto} /><Total label="Exento" value={totals.exento} /><Total label="IVA 19%" value={totals.iva} /><Total label="Total" value={totals.total} strong /></div></div>}
   </section>

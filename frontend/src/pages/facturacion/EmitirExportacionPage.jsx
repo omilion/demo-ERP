@@ -6,7 +6,7 @@ import { EmitirDteModal } from '../../components/facturacion/DteModals'
 import { useDocumentos } from '../../api/facturacion'
 import { useClientes } from '../../api/clientes'
 import { toast } from '../../store/notif'
-import { buildExportacionInput, TIPOS_DTE } from '../../utils/facturacion'
+import { buildExportacionInput, dteDetailLimitMessage, MAX_DTE_DETAIL_LINES, TIPOS_DTE } from '../../utils/facturacion'
 
 const inputStyle = { width: '100%', padding: 9, border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'inherit', boxSizing: 'border-box' }
 const emptyItem = () => ({ nombre: '', cantidad: 1, unidad: 'UN', precio: 0, descuentoMonto: 0 })
@@ -55,6 +55,10 @@ export default function EmitirExportacionPage() {
   const setReceptorField = (field, value) => setReceptor(current => ({ ...current, [field]: value }))
   const selectImportador = item => setReceptor({ rut: item.rut || '55555555-5', razonSocial: item.razonSocial || item.nombre || '', nacionalidad: item.nacionalidad || '', giro: item.giro || '', contacto: item.contacto || '', email: item.email || '', direccion: item.direccion || '', comuna: item.comuna || '', ciudad: item.ciudad || '' })
   const updateItem = (index, patch) => setItems(rows => rows.map((row, i) => i === index ? { ...row, ...patch } : row))
+  const addItem = () => {
+    if (items.length >= MAX_DTE_DETAIL_LINES) return toast.warning(dteDetailLimitMessage(items.length + 1))
+    setItems(rows => [...rows, emptyItem()])
+  }
   const updateAduana = (field, value) => setAduana(current => ({ ...current, [field]: value }))
   const itemsValidos = items.filter(row => row.nombre.trim() && Number(row.cantidad) > 0)
   const itemsNormalizados = itemsValidos.map(row => ({ ...row, cantidad: Number(row.cantidad), precio: Number(row.precio), descuentoMonto: Number(row.descuentoMonto || 0), exento: true }))
@@ -82,7 +86,7 @@ export default function EmitirExportacionPage() {
 
       <h3 style={{ margin: '22px 0 10px', fontSize: 15 }}>Ítems / montos del documento</h3>
       {items.map((row, index) => <div key={index} style={{ display: 'grid', gridTemplateColumns: '2fr .6fr .6fr 1fr 1fr auto', gap: 8, marginBottom: 8, alignItems: 'end' }}><div><label style={{ fontSize: 11 }}>Nombre</label><input value={row.nombre} onChange={event => updateItem(index, { nombre: event.target.value })} style={inputStyle} /></div><div><label style={{ fontSize: 11 }}>Cant.</label><Numeric value={row.cantidad} onChange={value => updateItem(index, { cantidad: value })} min="1" /></div><div><label style={{ fontSize: 11 }}>Unid.</label><input value={row.unidad} onChange={event => updateItem(index, { unidad: event.target.value })} style={inputStyle} /></div><div><label style={{ fontSize: 11 }}>Precio</label><Numeric value={row.precio} onChange={value => updateItem(index, { precio: value })} /></div><div><label style={{ fontSize: 11 }}>Descuento</label><Numeric value={row.descuentoMonto} onChange={value => updateItem(index, { descuentoMonto: value })} /></div><button type="button" disabled={items.length === 1} onClick={() => setItems(rows => rows.filter((_, i) => i !== index))} style={{ border: 0, background: 'none', color: 'var(--red)', padding: 9 }}>×</button></div>)}
-      <button type="button" onClick={() => setItems(rows => [...rows, emptyItem()])} style={{ border: 0, background: 'none', color: 'var(--blue)', fontWeight: 600 }}>+ Agregar ítem</button>
+      <button type="button" onClick={addItem} style={{ border: 0, background: 'none', color: 'var(--blue)', fontWeight: 600 }}>+ Agregar ítem ({items.length}/{MAX_DTE_DETAIL_LINES})</button>
 
       <div style={{ marginTop: 22, borderTop: '1px solid var(--border)', paddingTop: 16 }}><h3 style={{ margin: '0 0 10px', fontSize: 15 }}>Moneda y despacho</h3><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}><FormField label="Moneda"><Input value={moneda} onChange={setMoneda} /></FormField>{tipoDte === 110 && <FormField label="Fecha vencimiento *"><input type="date" value={fechaVencimiento} onChange={event => setFechaVencimiento(event.target.value)} style={inputStyle} /></FormField>}{tipoDte === 110 && <FormField label="Tipo despacho"><select value={tipoDespacho} onChange={event => setTipoDespacho(event.target.value)} style={inputStyle}><option value="">No informar</option><option value="1">1 — Receptor</option><option value="2">2 — Emisor a receptor</option><option value="3">3 — Emisor a otra instalación</option></select></FormField>}</div></div>
       <label style={{ display: 'block', marginTop: 16, fontWeight: 600 }}><input type="checkbox" checked={usarOtraMoneda} onChange={event => setUsarOtraMoneda(event.target.checked)} /> Informar conversión a otra moneda</label>

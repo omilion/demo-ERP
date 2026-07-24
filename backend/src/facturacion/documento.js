@@ -43,6 +43,21 @@ export const TIPO_DESPACHO = {
 };
 
 export const IVA_RATE = 19;
+export const MAX_DTE_DETAIL_LINES = 60;
+export const MAX_DTE_COMMISSION_LINES = 20;
+
+export const assertDteLineLimits = (doc = {}) => {
+  const detailLines = Number(doc.tipoDte) === 43
+    ? (Array.isArray(doc.detalles) ? doc.detalles.length : 0)
+    : (Array.isArray(doc.items) ? doc.items.length : 0);
+  if (detailLines > MAX_DTE_DETAIL_LINES) {
+    throw new Error(`Máximo ${MAX_DTE_DETAIL_LINES} ítems por documento (límite del SII); tienes ${detailLines}. Divide en más de un documento.`);
+  }
+  const commissionLines = Array.isArray(doc.comisiones) ? doc.comisiones.length : 0;
+  if (commissionLines > MAX_DTE_COMMISSION_LINES) {
+    throw new Error(`Máximo ${MAX_DTE_COMMISSION_LINES} comisiones u otros cargos por documento (límite del SII); tienes ${commissionLines}.`);
+  }
+};
 
 export const isBoleta = (tipoDte) => tipoDte === 39 || tipoDte === 41;
 export const isExportacion = (tipoDte) => [110, 111, 112].includes(Number(tipoDte));
@@ -239,7 +254,7 @@ const buildLiquidacionComisiones = (comisiones = []) => comisiones.map((comision
 const buildLiquidacion = ({ empresa, receptor, doc, caf, timestamp }) => {
   const detalles = doc.detalles || [];
   if (!detalles.length) throw new Error('La liquidación no tiene detalles.');
-  if (detalles.length > 1000) throw new Error('La liquidación excede el máximo de 1000 detalles.');
+  assertDteLineLimits(doc);
   if (!doc.totales || doc.totales.total === undefined) throw new Error('La liquidación requiere totales explícitos.');
   const fechaEmision = doc.fechaEmision || formatDate(timestamp);
   const id = `F${doc.folio}T43`;
@@ -284,6 +299,7 @@ const buildDetalleExportacion = (items = []) => items.map((item, index) => {
 const buildExportacion = ({ empresa, receptor, doc, caf, timestamp }) => {
   const items = doc.items || [];
   if (!items.length) throw new Error('El documento de exportación no tiene ítems.');
+  assertDteLineLimits(doc);
   const fechaEmision = doc.fechaEmision || formatDate(timestamp);
   const extra = doc.extra || {};
   const transporte = extra.transporte || {};
@@ -329,6 +345,7 @@ export const buildDocumento = ({ empresa, receptor, doc, caf, timestamp = new Da
   const boleta = isBoleta(doc.tipoDte);
   const items = doc.items || [];
   if (!items.length) throw new Error('El documento no tiene ítems.');
+  assertDteLineLimits(doc);
   const totales = computeTotales(items, doc.tipoDte);
   const fechaEmision = doc.fechaEmision || formatDate(timestamp);
   const id = `F${doc.folio}T${doc.tipoDte}`;

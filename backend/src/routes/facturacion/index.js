@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { createFacturacionDb } from '../../facturacion/db.js'
 import { createFacturacionEngine } from '../../facturacion/engine.js'
-import { TIPOS_DTE, computeTotales, computeTotalesExportacion, IND_TRASLADO, TIPO_DESPACHO, isBoleta } from '../../facturacion/documento.js'
+import { assertDteLineLimits, TIPOS_DTE, computeTotales, computeTotalesExportacion, IND_TRASLADO, TIPO_DESPACHO, isBoleta } from '../../facturacion/documento.js'
 import { normalizeRut, isValidRut } from '../../facturacion/xmlUtil.js'
 import { parseCaf } from '../../facturacion/caf.js'
 import { renderDteHtml, renderDteRecibidoHtml } from '../../facturacion/printDte.js'
@@ -22,6 +22,8 @@ function validateDocumentoInput(body) {
   }
   const items = Array.isArray(body.items) ? body.items : []
   const detalles = Array.isArray(body.detalles) ? body.detalles : []
+  const comisiones = Array.isArray(body.comisiones) ? body.comisiones : []
+  assertDteLineLimits({ tipoDte, items, detalles, comisiones })
   if (tipoDte === 43) {
     if (!detalles.length) {
       const err = new Error('La liquidación requiere al menos un detalle.')
@@ -96,7 +98,7 @@ function validateDocumentoInput(body) {
       precio: detalle.precio === undefined ? undefined : Number(detalle.precio),
       monto: detalle.monto === undefined ? undefined : Number(detalle.monto)
     })),
-    comisiones: Array.isArray(body.comisiones) ? body.comisiones : [],
+    comisiones,
     referencias: Array.isArray(body.referencias) ? body.referencias : [],
     extra: tipoDte === 52
       ? { ...extra, indTraslado: Number(extra.indTraslado), tipoDespacho: Number(extra.tipoDespacho) }

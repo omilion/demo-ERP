@@ -57,6 +57,10 @@ export const REFERENCIA_TIPOS = {
 // de una lista (folio/fecha reales), no se tipean a mano. El resto (OC,
 // contrato, resolucion, etc.) son documentos externos sin registro local.
 export const REFERENCIA_TIPOS_INTERNOS = ['33', '52', '56', '61']
+export const MAX_DTE_DETAIL_LINES = 60
+export const MAX_DTE_COMMISSION_LINES = 20
+export const dteDetailLimitMessage = count => `Máximo ${MAX_DTE_DETAIL_LINES} ítems por documento (límite del SII); tienes ${count}. Divide en más de un documento.`
+export const dteCommissionLimitMessage = count => `Máximo ${MAX_DTE_COMMISSION_LINES} comisiones u otros cargos por documento (límite del SII); tienes ${count}.`
 
 // Un DTE sigue siendo una referencia valida despues de enviarlo al SII.
 // Borradores, errores y documentos rechazados no deben aparecer en el picker.

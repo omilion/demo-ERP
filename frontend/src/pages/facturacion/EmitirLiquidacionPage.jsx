@@ -6,7 +6,7 @@ import { EmitirDteModal } from '../../components/facturacion/DteModals'
 import { useClientes } from '../../api/clientes'
 import { useProveedores } from '../../api/proveedores'
 import { toast } from '../../store/notif'
-import { buildLiquidacionInput, TIPOS_DTE } from '../../utils/facturacion'
+import { buildLiquidacionInput, dteCommissionLimitMessage, dteDetailLimitMessage, MAX_DTE_COMMISSION_LINES, MAX_DTE_DETAIL_LINES, TIPOS_DTE } from '../../utils/facturacion'
 
 const inputStyle = { width: '100%', padding: 9, border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'inherit', boxSizing: 'border-box' }
 const emptyDetalle = () => ({ tpoDocLiq: 33, codigo: '', nombre: '', descripcion: '', cantidad: 1, unidad: 'UN', precio: '', monto: 0, exento: false })
@@ -52,6 +52,14 @@ export default function EmitirLiquidacionPage() {
   const selectContraparte = item => setReceptor({ rut: item.rut || '', razonSocial: item.razonSocial || item.nombre || '', giro: item.giro || '', contacto: item.contacto || '', email: item.email || '', direccion: item.direccion || '', comuna: item.comuna || '', ciudad: item.ciudad || '' })
   const updateDetalle = (index, patch) => setDetalles(rows => rows.map((row, i) => i === index ? { ...row, ...patch } : row))
   const updateComision = (index, patch) => setComisiones(rows => rows.map((row, i) => i === index ? { ...row, ...patch } : row))
+  const addDetalle = () => {
+    if (detalles.length >= MAX_DTE_DETAIL_LINES) return toast.warning(dteDetailLimitMessage(detalles.length + 1))
+    setDetalles(rows => [...rows, emptyDetalle()])
+  }
+  const addComision = () => {
+    if (comisiones.length >= MAX_DTE_COMMISSION_LINES) return toast.warning(dteCommissionLimitMessage(comisiones.length + 1))
+    setComisiones(rows => [...rows, emptyComision()])
+  }
   const detallesValidos = detalles.filter(row => row.nombre.trim() && row.tpoDocLiq && row.monto !== '')
   const normalizados = detallesValidos.map(row => ({ ...row, tpoDocLiq: Number(row.tpoDocLiq), cantidad: row.cantidad === '' ? undefined : Number(row.cantidad), precio: row.precio === '' ? undefined : Number(row.precio), monto: Number(row.monto), exento: Boolean(row.exento) }))
   const comisionesNormalizadas = comisiones.filter(row => row.glosa.trim()).map(row => ({ ...row, tasaComision: row.tasaComision === '' ? undefined : Number(row.tasaComision), valComNeto: Number(row.valComNeto || 0), valComExe: Number(row.valComExe || 0), valComIva: row.valComIva === '' ? undefined : Number(row.valComIva) }))
@@ -83,11 +91,11 @@ export default function EmitirLiquidacionPage() {
         <label style={{ fontSize: 12, paddingBottom: 9 }}><input type="checkbox" checked={row.exento} onChange={event => updateDetalle(index, { exento: event.target.checked })} /> Exento</label>
         <button type="button" onClick={() => setDetalles(rows => rows.filter((_, i) => i !== index))} disabled={detalles.length === 1} style={{ border: 0, background: 'none', color: 'var(--red)', padding: 9 }}>×</button>
       </div>)}
-      <button type="button" onClick={() => setDetalles(rows => [...rows, emptyDetalle()])} style={{ border: 0, background: 'none', color: 'var(--blue)', fontWeight: 600 }}>+ Agregar documento</button>
+      <button type="button" onClick={addDetalle} style={{ border: 0, background: 'none', color: 'var(--blue)', fontWeight: 600 }}>+ Agregar documento ({detalles.length}/{MAX_DTE_DETAIL_LINES})</button>
 
       <h3 style={{ margin: '22px 0 10px', fontSize: 15 }}>Comisiones (opcional)</h3>
       {comisiones.map((row, index) => <div key={index} style={{ display: 'grid', gridTemplateColumns: '70px 2fr .8fr 1fr 1fr 1fr auto', gap: 8, marginBottom: 8, alignItems: 'end' }}><div><label style={{ fontSize: 11 }}>Mov.</label><select value={row.tipoMovim} onChange={event => updateComision(index, { tipoMovim: event.target.value })} style={inputStyle}><option value="C">C</option><option value="R">R</option></select></div><div><label style={{ fontSize: 11 }}>Glosa</label><input value={row.glosa} onChange={event => updateComision(index, { glosa: event.target.value })} style={inputStyle} /></div><div><label style={{ fontSize: 11 }}>%</label><Numeric value={row.tasaComision} onChange={value => updateComision(index, { tasaComision: value })} /></div><div><label style={{ fontSize: 11 }}>Neto</label><Numeric value={row.valComNeto} onChange={value => updateComision(index, { valComNeto: value })} /></div><div><label style={{ fontSize: 11 }}>Exento</label><Numeric value={row.valComExe} onChange={value => updateComision(index, { valComExe: value })} /></div><div><label style={{ fontSize: 11 }}>IVA</label><Numeric value={row.valComIva} onChange={value => updateComision(index, { valComIva: value })} /></div><button type="button" onClick={() => setComisiones(rows => rows.filter((_, i) => i !== index))} style={{ border: 0, background: 'none', color: 'var(--red)', padding: 9 }}>×</button></div>)}
-      <button type="button" onClick={() => setComisiones(rows => [...rows, emptyComision()])} style={{ border: 0, background: 'none', color: 'var(--blue)', fontWeight: 600 }}>+ Agregar comisión</button>
+      <button type="button" onClick={addComision} style={{ border: 0, background: 'none', color: 'var(--blue)', fontWeight: 600 }}>+ Agregar comisión ({comisiones.length}/{MAX_DTE_COMMISSION_LINES})</button>
 
       <h3 style={{ margin: '22px 0 10px', fontSize: 15 }}>Totales declarados</h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>{Object.entries(totales).map(([field, value]) => <FormField key={field} label={field === 'total' ? 'Total *' : field}><Numeric value={value} onChange={next => setTotales(current => ({ ...current, [field]: next }))} /></FormField>)}</div>

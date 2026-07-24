@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadCertificate } from './firma.js';
 import { parseCaf } from './caf.js';
-import { buildDocumento, isBoleta, TIPOS_DTE } from './documento.js';
+import { assertDteLineLimits, buildDocumento, isBoleta, TIPOS_DTE } from './documento.js';
 import { buildDte, buildEnvio } from './envio.js';
 import { toLatin1Buffer, XML_DECL, normalizeRut, isValidRut, formatDate } from './xmlUtil.js';
 import * as sii from './siiClient.js';
@@ -181,6 +181,9 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
       throw new Error(`El documento ya fue emitido (estado: ${doc.estado}).`);
     }
     if (!TIPOS_DTE[doc.tipoDte]) throw new Error(`Tipo de DTE no soportado: ${doc.tipoDte}.`);
+    // Debe ejecutarse antes de cargar certificado o tomar folio: un documento
+    // fuera del schema del SII no puede consumir un folio irrecuperable.
+    assertDteLineLimits(doc);
 
     if (doc.ordenId && TIPOS_VENTA_TRIBUTARIA.has(Number(doc.tipoDte))) {
       const documentosVenta = await db.documentos.list({ ordenId: doc.ordenId });
