@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from './client'
 
-export const useVentas = (params = {}) =>
+export const useVentas = (params = {}, options = {}) =>
   useQuery({
     queryKey: ['ventas', params],
     queryFn: () => api.get('/ventas', { params }).then(r => r.data),
     staleTime: 30_000,
+    ...options,
   })
 
 export const useVenta = (id) =>

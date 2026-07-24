@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Badge, Btn, Icon } from '../shared'
 import { useEmitirDte, useDocumentos, useEmpresa } from '../../api/facturacion'
 import { useDespachoPacking } from '../../api/despachos'
+import { useVentas } from '../../api/ventas'
 import { buildReceptor, computeDteTotales, isValidRut, mapVentaItems, TIPOS_DTE, IND_TRASLADO, TIPO_DESPACHO, REFERENCIA_TIPOS, REFERENCIA_TIPOS_INTERNOS } from '../../utils/facturacion'
 
 const dateFmt = value => value ? new Date(value).toLocaleDateString('es-CL') : '—'
@@ -98,9 +99,11 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
   // documento: guia ya enviada + OC del cliente + resolucion, por ejemplo).
   const emptyReferenciaRow = () => ({ tipo: '806', docLocalId: '', folio: '', fecha: new Date().toISOString().slice(0, 10), razon: '' })
   const [referencias, setReferencias] = useState([])
+  const [ventaReferencia, setVentaReferencia] = useState(null)
   const addReferenciaRow = () => setReferencias(rows => [...rows, emptyReferenciaRow()])
   const updateReferenciaRow = (index, patch) => setReferencias(rows => rows.map((row, i) => i === index ? { ...row, ...patch } : row))
   const removeReferenciaRow = (index) => setReferencias(rows => rows.filter((_, i) => i !== index))
+  const agregarDocumentoVenta = (doc) => setReferencias(rows => [...rows, { tipo: String(doc.tipoDte), docLocalId: String(doc.id), folio: '', fecha: '', razon: '' }])
   // Una fila con tipo elegido pero sin documento/folio no se manda, asi que no
   // se deja confirmar a medias (antes quedaba en silencio como si no se
   // hubiera tocado nada).
@@ -109,6 +112,7 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
     return !!row.tipo && (esInterna ? !row.docLocalId : !row.folio.trim())
   })
   const { data: empresaData } = useEmpresa()
+  const documentosVentaReferencia = useDocumentos({ ordenId: ventaReferencia?.id, estado: 'emitido' }, { enabled: !!ventaReferencia?.id })
   const empresa = empresaData?.empresa
   // La DTE declara solo lo que se eligio enviar en ESTA guia (packing por
   // guiaDespachoId, existe desde que se crea la guia sin importar si ya
@@ -183,6 +187,8 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
       </div>
     )}
     {!documentInput?.referencias && <div style={{ marginTop: 16, marginBottom: 8, padding: '10px 12px', borderRadius: 8, background: 'var(--bg)' }}><div style={{ fontSize: 13, fontWeight: 700 }}>Referencias (opcional)</div><div style={{ marginTop: 2, color: 'var(--text-2)', fontSize: 12 }}>Puedes relacionar más de una guía, orden de compra u otro documento antes de emitir.</div></div>}
+    {!documentInput?.referencias && <VentaReferenceSearch selected={ventaReferencia} onSelect={setVentaReferencia} />}
+    {!documentInput?.referencias && ventaReferencia && <DocumentosVenta venta={ventaReferencia} documentos={documentosVentaReferencia.data?.documentos || []} loading={documentosVentaReferencia.isLoading} onAdd={agregarDocumentoVenta} />}
     {!documentInput?.referencias && (referencias.length === 0 ? (
       <button type="button" onClick={addReferenciaRow} style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', fontWeight: 600, fontSize: 13, padding: 0, marginBottom: 4 }}>
         + Agregar referencia (opcional — guía ya enviada, orden de compra del cliente, etc.)
@@ -200,6 +206,28 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
     {error && <div style={errorStyle}>{error}</div>}
     <div style={footerStyle}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn icon="send" onClick={confirmar} disabled={emitir.isPending || !(documentInput?.detalles?.length || payloadItems.length) || referenciasIncompletas}>{emitir.isPending ? 'Emitiendo...' : 'Confirmar y emitir'}</Btn></div>
   </Modal>
+}
+
+function VentaReferenceSearch({ selected, onSelect }) {
+  const [query, setQuery] = useState('')
+  const [debounced, setDebounced] = useState('')
+  const [open, setOpen] = useState(false)
+  const boxRef = useRef(null)
+  useEffect(() => { const timeout = setTimeout(() => setDebounced(query.trim()), 300); return () => clearTimeout(timeout) }, [query])
+  useEffect(() => { const close = event => { if (boxRef.current && !boxRef.current.contains(event.target)) setOpen(false) }; document.addEventListener('mousedown', close); return () => document.removeEventListener('mousedown', close) }, [])
+  const { data, isFetching } = useVentas({ search: debounced, limit: 8 }, { enabled: debounced.length >= 2 })
+  const ventas = debounced.length >= 2 ? data?.items || [] : []
+  return <div ref={boxRef} style={{ position: 'relative', marginBottom: 10 }}>
+    <label style={{ display: 'block', marginBottom: 6, fontSize: 12, fontWeight: 600 }}>Buscar venta para referenciar</label>
+    <input value={query} onChange={event => { setQuery(event.target.value); setOpen(true) }} onFocus={() => debounced.length >= 2 && setOpen(true)} placeholder="RUT del cliente o N° de orden interna..." style={{ ...inputStyle, background: '#fff' }} />
+    {open && debounced.length >= 2 && <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 210, maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, background: '#fff', boxShadow: 'var(--shadow-md)' }}>{isFetching && <div style={{ padding: 10, color: 'var(--text-3)', fontSize: 12 }}>Buscando...</div>}{!isFetching && !ventas.length && <div style={{ padding: 10, color: 'var(--text-3)', fontSize: 12 }}>Sin ventas encontradas.</div>}{ventas.map(venta => <button key={venta.id} type="button" onClick={() => { onSelect(venta); setQuery(''); setOpen(false) }} style={{ display: 'block', width: '100%', padding: '9px 10px', textAlign: 'left', background: 'none', border: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 13 }}><div style={{ fontWeight: 700 }}>Orden #{venta.nInterno || venta.id} · {venta.cliente?.razonSocial || venta.cliente?.nombre || 'Sin cliente'}</div><div style={{ marginTop: 2, color: 'var(--text-3)', fontSize: 11 }}>{venta.cliente?.rut || venta.rutCliente || ''} · {dateFmt(venta.createdAt)} · {fmt(venta.total)}</div></button>)}</div>}
+    {selected && <div style={{ marginTop: 7, color: 'var(--text-2)', fontSize: 12 }}>Venta seleccionada: <strong>#{selected.nInterno || selected.id}</strong> — {selected.cliente?.razonSocial || selected.cliente?.nombre || 'Sin cliente'}</div>}
+  </div>
+}
+
+function DocumentosVenta({ venta, documentos, loading, onAdd }) {
+  const compatibles = documentos.filter(doc => REFERENCIA_TIPOS_INTERNOS.includes(String(doc.tipoDte)))
+  return <div style={{ marginBottom: 12, padding: 10, border: '1px solid var(--border)', borderRadius: 8 }}><div style={{ marginBottom: 6, fontSize: 12, fontWeight: 700 }}>DTE emitidos de la orden #{venta.nInterno || venta.id}</div>{loading && <div style={{ color: 'var(--text-3)', fontSize: 12 }}>Buscando documentos...</div>}{!loading && !compatibles.length && <div style={{ color: 'var(--text-3)', fontSize: 12 }}>Esta venta no tiene Factura, Guía, Nota de Débito o Nota de Crédito emitida para agregar como referencia.</div>}{compatibles.map(doc => <button key={doc.id} type="button" onClick={() => onAdd(doc)} style={{ display: 'flex', width: '100%', justifyContent: 'space-between', gap: 10, padding: '7px 0', border: 'none', borderTop: '1px solid var(--border)', background: 'none', color: 'var(--blue)', cursor: 'pointer', textAlign: 'left', fontSize: 12 }}><span>{TIPOS_DTE[doc.tipoDte]} · folio {doc.folio}</span><span>+ Agregar referencia</span></button>)}</div>
 }
 
 function SelectField({ label, value, options, onChange }) {

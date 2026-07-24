@@ -103,6 +103,20 @@ describe('facturacion/documento', () => {
     expect(result.documentoXml).toContain('<CodRef>3</CodRef>')
   })
 
+  it('conserva más de cinco referencias sin imponer un límite', () => {
+    const referencias = Array.from({ length: 6 }, (_, index) => ({ tipoDocRef: 801, folioRef: `OC-${index + 1}`, fechaRef: '2026-07-23', razon: `Orden de compra ${index + 1}` }))
+    const result = buildDocumento({
+      empresa: PLASTIMAR_EMPRESA,
+      receptor: { rut: '11111111-1', razonSocial: 'Cliente Prueba', giro: 'Comercio', direccion: 'Av Test 1', comuna: 'Santiago' },
+      doc: { tipoDte: 33, folio: 77, items: [{ nombre: 'Servicio', cantidad: 1, precio: 1000 }], referencias },
+      caf: fakeCaf(), timestamp: new Date('2026-07-23T10:00:00')
+    })
+
+    expect((result.documentoXml.match(/<Referencia>/g) || [])).toHaveLength(6)
+    expect(result.documentoXml).toContain('<NroLinRef>6</NroLinRef>')
+    expect(result.documentoXml).toContain('<FolioRef>OC-6</FolioRef>')
+  })
+
   it('isBoleta true only for 39/41', () => {
     expect(isBoleta(39)).toBe(true)
     expect(isBoleta(33)).toBe(false)
