@@ -67,11 +67,13 @@ describe('facturacion/db (Prisma adapter)', () => {
   it('documentos.create/get/list/update round-trip JSON fields', async () => {
     const created = await db.documentos.create({
       tipoDte: 33,
+      usuarioNombre: 'QA Facturador',
       receptor: { rut: '11111111-1', razonSocial: 'Cliente Prueba' },
       items: [{ nombre: 'Tela', cantidad: 1, precio: 1000 }],
       extra: { marker }
     })
     expect(created.estado).toBe('borrador')
+    expect(created.usuarioNombre).toBe('QA Facturador')
     expect(created.receptor.rut).toBe('11111111-1')
 
     const fetched = await db.documentos.get(created.id)

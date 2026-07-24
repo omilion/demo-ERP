@@ -121,6 +121,17 @@ export const mapManualDteItems = (items = []) => items
     exento: Boolean(item.exento),
   }))
 
+// Una emisión huérfana permite servicios manuales. Antes de crear una orden
+// real, en cambio, Ventas exige cliente, producto de catálogo y cantidad
+// entera; esta regla evita enviar un POST que el backend rechazará.
+export const puedeCrearVentaDesdeEmision = ({ cliente, tipo, items = [], licitacion = '', licitacionFecha = '' }) => {
+  if (!cliente?.id || !items.length) return false
+  if (!items.every(item => Number.isInteger(Number(item.productoId)) && Number.isInteger(Number(item.cantidad)) && Number(item.cantidad) >= 1)) return false
+  if (tipo === 'Licitación') return Boolean(String(licitacion).trim() && licitacionFecha)
+  if (tipo === 'Convenio Marco') return Boolean(String(licitacion).trim())
+  return ['Venta Web', 'Venta Sala'].includes(tipo)
+}
+
 // Los items DTE llegan con precio neto (salvo los exentos, que se mantienen
 // tal cual). Este cálculo se comparte entre la vista previa y la pantalla
 // manual para que el total que se muestra antes de emitir sea el mismo.

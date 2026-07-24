@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildExportacionInput, buildIngresoMercaderiaPrefill, buildLiquidacionInput, buildReceptor, computeDteTotales, mapManualDteItems, mapVentaItems } from '../../frontend/src/utils/facturacion.js'
+import { buildExportacionInput, buildIngresoMercaderiaPrefill, buildLiquidacionInput, buildReceptor, computeDteTotales, mapManualDteItems, mapVentaItems, puedeCrearVentaDesdeEmision } from '../../frontend/src/utils/facturacion.js'
 
 describe('facturacion/frontend totals', () => {
   it('mantiene el total del formulario manual igual a la vista previa con ítems afectos y exentos', () => {
@@ -76,5 +76,20 @@ describe('facturacion/frontend totals', () => {
     const prefill = buildIngresoMercaderiaPrefill({ id: 8, tipoDte: 33, folio: 401, fechaEmision: '2026-07-23', rutEmisor: '76.123.456-7', razonSocialEmisor: 'Proveedor SpA', totales: { total: 11900 }, items: [{ nombre: 'Materia prima', cantidad: 2, unidad: 'KG', monto: 10000 }] })
     expect(prefill).toMatchObject({ documentoRecibidoId: 8, documento: 'Factura', nDoc: '401', proveedorRut: '76.123.456-7', totalReferencia: 11900 })
     expect(prefill.details).toEqual([expect.objectContaining({ codigoInterno: '', nombre: 'Materia prima', cantidad: '2', precio: '5000' })])
+  })
+
+  it('solo permite crear una venta vinculable con cliente y líneas reales de catálogo', () => {
+    const base = { tipo: 'Venta Sala', cliente: { id: 9 }, items: [{ productoId: 15, cantidad: 2, precioUnitario: 11900 }] }
+    expect(puedeCrearVentaDesdeEmision(base)).toBe(true)
+    expect(puedeCrearVentaDesdeEmision({ ...base, cliente: null })).toBe(false)
+    expect(puedeCrearVentaDesdeEmision({ ...base, items: [{ nombre: 'Servicio manual', cantidad: 1, precioUnitario: 5000 }] })).toBe(false)
+  })
+
+  it('exige los datos especiales antes de crear Licitación o Convenio Marco', () => {
+    const base = { cliente: { id: 9 }, items: [{ productoId: 15, cantidad: 1, precioUnitario: 11900 }] }
+    expect(puedeCrearVentaDesdeEmision({ ...base, tipo: 'Licitación', licitacion: 'LIC-1', licitacionFecha: '2026-07-24' })).toBe(true)
+    expect(puedeCrearVentaDesdeEmision({ ...base, tipo: 'Licitación', licitacion: 'LIC-1' })).toBe(false)
+    expect(puedeCrearVentaDesdeEmision({ ...base, tipo: 'Convenio Marco', licitacion: 'OC-1' })).toBe(true)
+    expect(puedeCrearVentaDesdeEmision({ ...base, tipo: 'Convenio Marco' })).toBe(false)
   })
 })

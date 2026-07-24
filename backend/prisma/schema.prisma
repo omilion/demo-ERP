@@ -2075,6 +2075,7 @@ model FactCaf {
 
 model FactDocumento {
   id             Int       @id @default(autoincrement())
+  usuarioNombre  String?   @map("usuario_nombre")
   clienteId      Int?      @map("cliente_id")
   ordenId        Int?      @map("orden_id")
   guiaDespachoId Int?      @map("guia_despacho_id")

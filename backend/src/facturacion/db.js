@@ -56,6 +56,7 @@ export const createFacturacionDb = (prisma) => {
     }),
     create: (input) => prisma.factDocumento.create({
       data: {
+        usuarioNombre: input.usuarioNombre ?? null,
         clienteId: input.clienteId ?? null,
         ordenId: input.ordenId ?? null,
         guiaDespachoId: input.guiaDespachoId ?? null,

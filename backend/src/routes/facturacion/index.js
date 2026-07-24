@@ -230,6 +230,8 @@ export default async function facturacionRoutes(fastify) {
   fastify.post('/documentos', writeAuth, async (request, reply) => {
     try {
       const input = validateDocumentoInput(request.body)
+      // Foto del usuario autenticado: nunca se acepta desde el payload.
+      input.usuarioNombre = request.user?.nombre || null
       input.totales = input.tipoDte === 43 ? input.totales : (input.tipoDte >= 110 && input.tipoDte <= 112 ? computeTotalesExportacion(input.items) : computeTotales(input.items, input.tipoDte))
       const created = await db.documentos.create(input)
       return reply.code(201).send(created)

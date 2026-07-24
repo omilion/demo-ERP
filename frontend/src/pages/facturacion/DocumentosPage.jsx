@@ -57,6 +57,7 @@ function DocumentoDetail({ id, onClose }) {
             <Detail label="Tipo" value={TIPOS_DTE[documento.tipoDte] || `DTE ${documento.tipoDte}`} />
             <Detail label="Estado" value={<Badge tone={ESTADO_TONE[documento.estado] || 'gray'}>{documento.estado}</Badge>} />
             <Detail label="Fecha emisión" value={dateFmt(documento.fechaEmision)} />
+            <Detail label="Emitido por" value={documento.usuarioNombre || '—'} />
             <Detail label="Receptor" value={documento.receptor?.razonSocial || '—'} />
             <Detail label="RUT" value={documento.receptor?.rut || '—'} />
             <Detail label="Total" value={fmt(documento.totales?.total)} />
