@@ -99,3 +99,16 @@ export const useDeleteCaf = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'cafs'] }),
   })
 }
+
+export const useDocumentosRecibidos = () => useQuery({
+  queryKey: ['facturacion', 'recibidos'],
+  queryFn: () => api.get('/facturacion/recibidos').then(r => r.data),
+})
+
+export const useSincronizarDocumentosRecibidos = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post('/facturacion/recibidos/sincronizar').then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'recibidos'] }),
+  })
+}

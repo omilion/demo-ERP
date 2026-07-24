@@ -61,6 +61,7 @@ import EmitirManualPage from './pages/facturacion/EmitirManualPage'
 import EmitirFacturaCompraPage from './pages/facturacion/EmitirFacturaCompraPage'
 import EmitirLiquidacionPage from './pages/facturacion/EmitirLiquidacionPage'
 import EmitirExportacionPage from './pages/facturacion/EmitirExportacionPage'
+import DocumentosRecibidosPage from './pages/facturacion/DocumentosRecibidosPage'
 import CosteoPage from './pages/costeo/CosteoPage'
 
 
@@ -126,6 +127,7 @@ export const router = createBrowserRouter([
       { path: 'despachos', element: protect(<DespachosPage />, { module: 'despacho' }) },
       { path: 'despachos/guias/:id/imprimir', element: protect(<GuiaPrintPage />, { module: 'despacho' }) },
       { path: 'facturacion/documentos', element: protect(<DocumentosPage />, { module: 'facturacion' }) },
+      { path: 'facturacion/recibidos', element: protect(<DocumentosRecibidosPage />, { module: 'facturacion' }) },
       { path: 'facturacion/emitir', element: protect(<EmitirManualPage />, { module: 'facturacion', permission: 'write' }) },
       { path: 'facturacion/factura-compra', element: protect(<EmitirFacturaCompraPage />, { module: 'facturacion', permission: 'write' }) },
       { path: 'facturacion/liquidacion', element: protect(<EmitirLiquidacionPage />, { module: 'facturacion', permission: 'write' }) },

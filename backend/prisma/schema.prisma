@@ -2103,3 +2103,35 @@ model FactDocumento {
   @@schema("facturacion")
 }
 
+model FactDocumentoRecibido {
+  id                Int       @id @default(autoincrement())
+  gmailMessageId    String    @map("gmail_message_id")
+  gmailAttachmentId String    @map("gmail_attachment_id")
+  gmailThreadId     String?   @map("gmail_thread_id")
+  archivoNombre     String?   @map("archivo_nombre")
+  recibidoEn        DateTime? @map("recibido_en")
+  remitente         String?
+  asunto            String?
+  xml               String
+  tipoDte           Int       @map("tipo_dte")
+  folio             Int?
+  fechaEmision      String?   @map("fecha_emision")
+  rutEmisor         String?   @map("rut_emisor")
+  razonSocialEmisor String?   @map("razon_social_emisor")
+  receptor          Json      @default("{}")
+  items             Json      @default("[]")
+  detalles          Json      @default("[]")
+  referencias       Json      @default("[]")
+  totales           Json      @default("{}")
+  estado            String    @default("pendiente")
+  vistoEn           DateTime? @map("visto_en")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@unique([gmailMessageId, gmailAttachmentId])
+  @@index([tipoDte, fechaEmision])
+  @@index([estado, recibidoEn])
+  @@map("documentos_recibidos")
+  @@schema("facturacion")
+}
+

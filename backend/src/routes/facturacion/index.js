@@ -4,7 +4,8 @@ import { createFacturacionEngine } from '../../facturacion/engine.js'
 import { TIPOS_DTE, computeTotales, computeTotalesExportacion, IND_TRASLADO, TIPO_DESPACHO } from '../../facturacion/documento.js'
 import { normalizeRut, isValidRut } from '../../facturacion/xmlUtil.js'
 import { parseCaf } from '../../facturacion/caf.js'
-import { renderDteHtml } from '../../facturacion/printDte.js'
+import { renderDteHtml, renderDteRecibidoHtml } from '../../facturacion/printDte.js'
+import { syncGmailReceptor } from '../../facturacion/receptorDte.js'
 
 const ESTADOS = ['borrador', 'emitido', 'enviado', 'aceptado', 'rechazado', 'error']
 
@@ -320,6 +321,46 @@ export default async function facturacionRoutes(fastify) {
       const html = await renderDteHtml({ empresa, receptor: doc.receptor, doc, totales: doc.totales, tedXml: tedMatch[0] })
       reply.header('Content-Type', 'text/html; charset=utf-8')
       return reply.send(html)
+    } catch (error) { return sendError(reply, error) }
+  })
+
+  // --- Documentos recibidos por Gmail (sólo archivo/visualización) ---
+
+  fastify.get('/recibidos', readAuth, async () => {
+    const documentos = await fastify.prisma.factDocumentoRecibido.findMany({ orderBy: [{ recibidoEn: 'desc' }, { createdAt: 'desc' }] })
+    return { documentos }
+  })
+
+  fastify.get('/recibidos/:id', readAuth, async (request, reply) => {
+    const documento = await fastify.prisma.factDocumentoRecibido.findUnique({ where: { id: Number(request.params.id) } })
+    if (!documento) return reply.code(404).send({ error: 'Documento recibido no encontrado.' })
+    if (documento.estado === 'pendiente') await fastify.prisma.factDocumentoRecibido.update({ where: { id: documento.id }, data: { estado: 'visto', vistoEn: new Date() } })
+    return documento
+  })
+
+  fastify.get('/recibidos/:id/xml', readAuth, async (request, reply) => {
+    const documento = await fastify.prisma.factDocumentoRecibido.findUnique({ where: { id: Number(request.params.id) } })
+    if (!documento) return reply.code(404).send({ error: 'Documento recibido no encontrado.' })
+    reply.header('Content-Type', 'application/xml; charset=utf-8')
+    reply.header('Content-Disposition', `attachment; filename="${documento.archivoNombre || `DTE-recibido-${documento.id}.xml`}"`)
+    return reply.send(documento.xml)
+  })
+
+  fastify.get('/recibidos/:id/html', readAuth, async (request, reply) => {
+    try {
+      const documento = await fastify.prisma.factDocumentoRecibido.findUnique({ where: { id: Number(request.params.id) } })
+      if (!documento) return reply.code(404).send({ error: 'Documento recibido no encontrado.' })
+      const html = await renderDteRecibidoHtml(documento)
+      reply.header('Content-Type', 'text/html; charset=utf-8')
+      return reply.send(html)
+    } catch (error) { return sendError(reply, error) }
+  })
+
+  // No hay cron: la sincronización se ejecuta explícitamente y Gmail tiene
+  // scope readonly. Los duplicados se descartan por mensaje+adjunto.
+  fastify.post('/recibidos/sincronizar', writeAuth, async (request, reply) => {
+    try {
+      return await syncGmailReceptor({ prisma: fastify.prisma, maxResults: request.body?.maxResults })
     } catch (error) { return sendError(reply, error) }
   })
 }

@@ -3,8 +3,10 @@
 
 import bwipjs from 'bwip-js';
 import { TIPOS_DTE } from './documento.js';
+import { parseRecibidoDte } from './receptorDte.js';
 
 const formatCLP = (value) => Number(value || 0).toLocaleString('es-CL');
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
 
 // El PDF417 se genera desde el TED en ISO-8859-1 (así lo leen los verificadores).
 export const tedToPdf417DataUri = async (tedXml) => {
@@ -21,6 +23,9 @@ export const tedToPdf417DataUri = async (tedXml) => {
 };
 
 export const renderDteHtml = async ({ empresa, receptor, doc, totales, tedXml }) => {
+  empresa = Object.fromEntries(Object.entries(empresa || {}).map(([key, value]) => [key, escapeHtml(value)]));
+  receptor = Object.fromEntries(Object.entries(receptor || {}).map(([key, value]) => [key, escapeHtml(value)]));
+  doc = { ...doc, items: (doc.items || []).map(item => Object.fromEntries(Object.entries(item).map(([key, value]) => [key, typeof value === 'string' ? escapeHtml(value) : value]))), referencias: (doc.referencias || []).map(ref => Object.fromEntries(Object.entries(ref).map(([key, value]) => [key, typeof value === 'string' ? escapeHtml(value) : value]))) };
   const timbre = await tedToPdf417DataUri(tedXml);
   const nombreTipo = (TIPOS_DTE[doc.tipoDte] || `DTE ${doc.tipoDte}`).toUpperCase();
   const filas = (doc.items || []).map((item, i) => `
@@ -112,3 +117,11 @@ export const renderDteHtml = async ({ empresa, receptor, doc, totales, tedXml })
   </div>
 </body></html>`;
 };
+
+// Un DTE recibido se imprime con el mismo layout/timbre; se vuelve a parsear
+// desde su XML inmutable para que la vista no dependa de campos editables.
+export const renderDteRecibidoHtml = async (recibido) => {
+  const parsed = parseRecibidoDte(recibido.xml)
+  if (!parsed.tedXml) throw new Error('El DTE recibido no contiene TED; no es posible mostrar un visor fiel.')
+  return renderDteHtml({ empresa: parsed.emisor, receptor: parsed.receptor, doc: parsed, totales: parsed.totales, tedXml: parsed.tedXml })
+}
