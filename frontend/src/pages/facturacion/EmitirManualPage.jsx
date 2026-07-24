@@ -120,7 +120,7 @@ export default function EmitirManualPage() {
   }
 
   const documentoVinculado = permiteVenta && ventaVinculada
-  const mostrarManual = esNota || !permiteVenta || sinVenta
+  const mostrarManual = esNota || !permiteVenta || (sinVenta && !ventaVinculada)
   const subtitle = documentoVinculado ? `${TIPOS_DTE[tipoDte]} vinculada a venta #${ventaVinculada.nInterno || ventaVinculada.id}` : `${TIPOS_DTE[tipoDte]}${sinVenta ? ' sin venta asociada' : ''}`
 
   return <main className="page page-wide">
