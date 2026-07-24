@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { assertMismoReceptorReferencia, findDocumentoVentaVigente } from '../src/facturacion/engine.js'
+import { assertMismoReceptorReferencia, estadoDesdeRespuestaSii, findDocumentoVentaVigente, requiereConsultaIndividualDte } from '../src/facturacion/engine.js'
 import { enviarLotePorTipo } from '../src/routes/facturacion/index.js'
 
 describe('facturacion/validaciones de venta', () => {
@@ -27,6 +27,32 @@ describe('facturacion/validaciones de venta', () => {
     const otroReceptor = { receptor: { rut: '22.222.222-2' } }
     expect(() => assertMismoReceptorReferencia(nota, mismoReceptor)).not.toThrow()
     expect(() => assertMismoReceptorReferencia(nota, otroReceptor)).toThrow(/mismo receptor/)
+  })
+})
+
+describe('facturacion/estado SII', () => {
+  it('solo acepta EPR cuando todos los DTE informados fueron aceptados', () => {
+    expect(estadoDesdeRespuestaSii('enviado', {
+      estado: 'EPR',
+      resumen: { informados: 1, aceptados: 1, rechazados: 0 }
+    })).toBe('aceptado')
+    expect(estadoDesdeRespuestaSii('enviado', {
+      estado: 'EPR',
+      resumen: { informados: 1, aceptados: 0, rechazados: 1 }
+    })).toBe('rechazado')
+    expect(estadoDesdeRespuestaSii('enviado', { estado: 'SOK' })).toBe('enviado')
+    expect(estadoDesdeRespuestaSii('enviado', { estado: 'DOK' })).toBe('aceptado')
+  })
+
+  it('consulta el DTE individual cuando EPR informa reparos o no decide el resultado', () => {
+    expect(requiereConsultaIndividualDte({
+      estado: 'EPR',
+      resumen: { informados: 1, aceptados: 0, rechazados: 0, reparos: 1 }
+    })).toBe(true)
+    expect(requiereConsultaIndividualDte({
+      estado: 'EPR',
+      resumen: { informados: 1, aceptados: 1, rechazados: 0, reparos: 0 }
+    })).toBe(false)
   })
 })
 

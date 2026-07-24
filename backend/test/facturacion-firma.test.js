@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import forge from 'node-forge'
-import { loadCertificate, signXml, sha1B64, rsaSha1B64 } from '../src/facturacion/firma.js'
+import { assertXmlSignatures, extractCertificateRut, loadCertificate, signXml, sha1B64, rsaSha1B64 } from '../src/facturacion/firma.js'
 
 describe('facturacion/firma', () => {
   it('loadCertificate throws a clear error when the file does not exist', () => {
@@ -33,6 +33,33 @@ describe('facturacion/firma', () => {
     expect(signature).toContain('<Signature')
     expect(signature).toContain('<SignatureValue>')
     expect(signature).toContain('<X509Certificate>')
+  })
+
+  it('extrae el RUT chileno desde otherName ASN.1 y elimina el cero de relleno', () => {
+    const cert = {
+      getExtension: () => ({
+        altNames: [{
+          type: 0,
+          value: [{ type: 6, value: 'oid' }, { type: 0, value: [{ type: 22, value: '08833435-3' }] }]
+        }]
+      })
+    }
+    expect(extractCertificateRut(cert)).toBe('8833435-3')
+  })
+
+  it('rechaza un XML si el contenido firmado fue alterado', () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 1024 })
+    const privateKeyPem = privateKey.export({ type: 'pkcs1', format: 'pem' })
+    const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' })
+    const cert = {
+      privateKeyPem,
+      modulusB64: Buffer.from('fake-modulus').toString('base64'),
+      exponentB64: Buffer.from('AQAB').toString('base64'),
+      certDerB64: Buffer.from('fake-cert-der').toString('base64')
+    }
+    const signature = signXml('<Documento ID="F1T33"><A>1</A></Documento>', '#F1T33', cert)
+    const alterado = `<Documento ID="F1T33"><A>2</A>${signature}</Documento>`
+    expect(() => assertXmlSignatures(alterado, publicKeyPem)).toThrow(/firma XML/)
   })
 
   it('round-trip: loadCertificate reads back a real forge-generated .p12', () => {

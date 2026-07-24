@@ -8,20 +8,36 @@ import { isBoleta, SII_NS } from './documento.js';
 
 export const RUT_SII = '60803000-K';
 const C14N_ALGORITHM = 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315';
+const XSI_NS = 'http://www.w3.org/2001/XMLSchema-instance';
 const stripInheritedSiiNamespaces = (xml) => xml
   .replaceAll(`<DTE xmlns="${SII_NS}" `, '<DTE ')
   .replaceAll(`<Documento xmlns="${SII_NS}" `, '<Documento ')
   .replaceAll(`<Liquidacion xmlns="${SII_NS}" `, '<Liquidacion ')
   .replaceAll(`<Exportaciones xmlns="${SII_NS}" `, '<Exportaciones ');
 
+const addLineBreaksPreservingTed = (xml) => {
+  const ted = xml.match(/<TED\b[\s\S]*?<\/TED>/)?.[0];
+  if (!ted) return xml.replaceAll('><', '>\n<');
+  const index = xml.indexOf(ted);
+  const before = xml.slice(0, index).replaceAll('><', '>\n<');
+  const after = xml.slice(index + ted.length).replaceAll('><', '>\n<');
+  return `${before}\n${ted}\n${after}`;
+};
+
 export const buildDte = (documentoXml, cert) => {
   const rootTag = documentoXml.match(/^<([A-Za-z][A-Za-z0-9]*)\s/);
   if (!rootTag) throw new Error('DTE inválido: falta el elemento raíz firmado.');
-  const canonicalDocumento = documentoXml.replace(`<${rootTag[1]} `, `<${rootTag[1]} xmlns="${SII_NS}" `);
-  const signature = signXml(canonicalDocumento, `#${documentoXml.match(/ID="([^"]+)"/)[1]}`, cert, {
+  const formattedDocumento = addLineBreaksPreservingTed(documentoXml);
+  // Documento/Liquidacion/Exportaciones hereda los namespaces desde DTE en
+  // el XML oficial. Firmamos dentro de ese mismo contexto para que C14N vea
+  // los namespaces heredados sin agregarlos al elemento tributario.
+  const signingContext = `<DTE xmlns="${SII_NS}" xmlns:xsi="${XSI_NS}" version="1.0">\n`
+    + `${formattedDocumento}\n</DTE>`;
+  const signature = signXml(signingContext, `#${documentoXml.match(/ID="([^"]+)"/)[1]}`, cert, {
     transformAlgorithm: C14N_ALGORITHM
   });
-  return `<DTE xmlns="${SII_NS}" version="1.0">${canonicalDocumento}${signature}</DTE>`;
+  return `<DTE xmlns="${SII_NS}" xmlns:xsi="${XSI_NS}" version="1.0">\n`
+    + `${formattedDocumento}\n${signature}\n</DTE>`;
 };
 
 export const buildEnvio = ({ dtes, empresa, cert, rutEnvia, timestamp = new Date() }) => {
@@ -45,24 +61,23 @@ export const buildEnvio = ({ dtes, empresa, cert, rutEnvia, timestamp = new Date
   ];
   const caratula = tag('Caratula', tags(caratulaCampos) + Array.from(subtotales.entries()).map(([tipo, cantidad]) =>
     tag('SubTotDTE', tags([['TpoDTE', tipo], ['NroDTE', cantidad]]), null, { raw: true })
-  ).join(''), { version: '1.0' }, { raw: true });
+  ).join(''), { version: '1.0' }, { raw: true }).replaceAll('><', '>\n<');
 
   const setId = 'SetDoc';
-  const setDte = `<SetDTE xmlns="${SII_NS}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ID="${setId}">${caratula}${dtes.map(d => d.dteXml).join('')}</SetDTE>`;
+  const setDte = `<SetDTE xmlns="${SII_NS}" xmlns:xsi="${XSI_NS}" ID="${setId}">\n`
+    + `${caratula}\n${dtes.map(d => d.dteXml).join('\n')}\n</SetDTE>`;
   const canonicalSetDte = stripInheritedSiiNamespaces(setDte);
   const signature = signXml(canonicalSetDte, `#${setId}`, cert, {
     transformAlgorithm: C14N_ALGORITHM,
-    namespaces: 'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+    namespaces: `xmlns:xsi="${XSI_NS}"`
   });
 
   const rootTag = boletas ? 'EnvioBOLETA' : 'EnvioDTE';
   const schema = boletas ? 'EnvioBOLETA_v11.xsd' : 'EnvioDTE_v10.xsd';
   const envio = `${XML_DECL}\n<${rootTag} xmlns="${SII_NS}" `
-    + 'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
-    + `xsi:schemaLocation="http://www.sii.cl/SiiDte ${schema}" version="1.0">`
-    + setDte
-    + signature
-    + `</${rootTag}>`;
+    + `xmlns:xsi="${XSI_NS}" `
+    + `xsi:schemaLocation="http://www.sii.cl/SiiDte ${schema}" version="1.0">\n`
+    + `${setDte}\n${signature}\n</${rootTag}>`;
 
   return { xml: envio, esBoleta: boletas };
 };

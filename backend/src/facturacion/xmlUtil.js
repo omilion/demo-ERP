@@ -56,6 +56,7 @@ export const tags = (pairs) => pairs
   .join('');
 
 export const XML_DECL = '<?xml version="1.0" encoding="ISO-8859-1"?>';
+export const SII_TIME_ZONE = 'America/Santiago';
 
 export const toLatin1Buffer = (xmlString) => Buffer.from(xmlString, 'latin1');
 
@@ -66,16 +67,33 @@ export const formatQty = (value) => {
   return Number.isInteger(num) ? String(num) : String(Number(num.toFixed(6)));
 };
 
-export const formatDate = (date = new Date()) => {
+const chileDateTimeParts = (date) => {
   const d = date instanceof Date ? date : new Date(date);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  if (Number.isNaN(d.getTime())) throw new Error(`Fecha invalida para DTE: ${date}.`);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SII_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(d);
+  return Object.fromEntries(parts.map(part => [part.type, part.value]));
+};
+
+export const formatDate = (date = new Date()) => {
+  // Una fecha tributaria sin hora ya representa un dia civil y no un instante:
+  // conservarla evita moverla al dia anterior al interpretarla como UTC.
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  const { year, month, day } = chileDateTimeParts(date);
+  return `${year}-${month}-${day}`;
 };
 
 export const formatTimestamp = (date = new Date()) => {
-  const d = date instanceof Date ? date : new Date(date);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${formatDate(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const { year, month, day, hour, minute, second } = chileDateTimeParts(date);
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
 };
 
 // RUT: normaliza a formato 'cuerpo-DV' y valida dígito verificador.

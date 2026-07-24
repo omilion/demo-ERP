@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { tag, tags, formatMonto, formatQty, formatDate, normalizeRut, isValidRut, rutDv } from '../src/facturacion/xmlUtil.js'
+import { tag, tags, formatMonto, formatQty, formatDate, formatTimestamp, normalizeRut, isValidRut, rutDv } from '../src/facturacion/xmlUtil.js'
 
 describe('facturacion/xmlUtil', () => {
   it('tag() escapes text content and supports raw content', () => {
@@ -21,6 +21,13 @@ describe('facturacion/xmlUtil', () => {
 
   it('formatDate produces YYYY-MM-DD', () => {
     expect(formatDate(new Date('2026-07-14T10:00:00'))).toBe('2026-07-14')
+  })
+
+  it('formatea fecha y hora tributaria en America/Santiago aunque el servidor opere en UTC', () => {
+    const instant = new Date('2026-07-24T18:21:44.000Z')
+    expect(formatDate(instant)).toBe('2026-07-24')
+    expect(formatTimestamp(instant)).toBe('2026-07-24T14:21:44')
+    expect(formatDate('2026-07-24')).toBe('2026-07-24')
   })
 
   it('normalizeRut and isValidRut validate Plastimar RUT', () => {

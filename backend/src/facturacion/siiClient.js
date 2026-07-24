@@ -46,15 +46,15 @@ const request = (options, body) => new Promise((resolve, reject) => {
   req.end();
 });
 
-const soapEnvelope = (method, args = '') =>
+const soapEnvelope = (method, args = '', namespace = 'https://DefaultNamespace') =>
   '<?xml version="1.0" encoding="UTF-8"?>'
   + '<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" '
   + 'xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
-  + `<SOAP-ENV:Body><m:${method} xmlns:m="https://DefaultNamespace" SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">${args}</m:${method}></SOAP-ENV:Body>`
+  + `<SOAP-ENV:Body><m:${method} xmlns:m="${namespace}" SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">${args}</m:${method}></SOAP-ENV:Body>`
   + '</SOAP-ENV:Envelope>';
 
-const soapCall = async (host, path, method, args) => {
-  const body = soapEnvelope(method, args);
+const soapCall = async (host, path, method, args, namespace) => {
+  const body = soapEnvelope(method, args, namespace);
   const res = await request({
     host,
     path,
@@ -79,6 +79,24 @@ const extractTag = (xml, tagName) => {
   const match = String(xml).match(new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)</${tagName}>`, 'i'));
   return match ? match[1].trim() : null;
 };
+
+const numberTag = (xml, tagName) => {
+  const value = extractTag(xml, tagName);
+  return value === null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
+};
+
+export const parseEstadoEnvio = (xml) => ({
+  estado: extractTag(xml, 'ESTADO'),
+  glosa: extractTag(xml, 'GLOSA'),
+  resumen: {
+    tipoDte: numberTag(xml, 'TIPO_DOCTO'),
+    informados: numberTag(xml, 'INFORMADOS'),
+    aceptados: numberTag(xml, 'ACEPTADOS'),
+    rechazados: numberTag(xml, 'RECHAZADOS'),
+    reparos: numberTag(xml, 'REPAROS')
+  },
+  respuesta: xml
+});
 
 // --- Autenticación DTE (SOAP) ---
 
@@ -166,9 +184,51 @@ export const consultarEstadoEnvio = async ({ ambiente, token, rutEmisor, trackId
     'getEstUp',
     tag('Rut', rutBody) + tag('Dv', rutDv) + tag('TrackId', trackId) + tag('Token', token)
   );
+  return parseEstadoEnvio(xml);
+};
+
+export const consultarEstadoDte = async ({
+  ambiente,
+  token,
+  rutConsultante,
+  rutEmisor,
+  rutReceptor,
+  tipoDte,
+  folio,
+  fechaEmision,
+  monto
+}) => {
+  const [consultanteBody, consultanteDv] = rutConsultante.split('-');
+  const [emisorBody, emisorDv] = rutEmisor.split('-');
+  const [receptorBody, receptorDv] = rutReceptor.split('-');
+  const fechaDdmmaaaa = String(fechaEmision).replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3$2$1');
+  const host = HOSTS[ambiente].soap;
+  const args = [
+    ['RutConsultante', consultanteBody],
+    ['DvConsultante', consultanteDv],
+    ['RutCompania', emisorBody],
+    ['DvCompania', emisorDv],
+    ['RutReceptor', receptorBody],
+    ['DvReceptor', receptorDv],
+    ['TipoDte', tipoDte],
+    ['FolioDte', folio],
+    ['FechaEmisionDte', fechaDdmmaaaa],
+    ['MontoDte', monto],
+    ['Token', token]
+  ].map(([name, value]) => tag(name, value)).join('');
+  const xml = await soapCall(
+    host,
+    '/DTEWS/QueryEstDte.jws',
+    'getEstDte',
+    args,
+    `https://${host}/DTEWS/QueryEstDte.jws`
+  );
   return {
     estado: extractTag(xml, 'ESTADO'),
-    glosa: extractTag(xml, 'GLOSA'),
+    glosa: extractTag(xml, 'GLOSA_ESTADO') || extractTag(xml, 'GLOSA'),
+    errorCodigo: extractTag(xml, 'ERR_CODE'),
+    errorGlosa: extractTag(xml, 'GLOSA_ERR'),
+    numeroAtencion: extractTag(xml, 'NUM_ATENCION'),
     respuesta: xml
   };
 };

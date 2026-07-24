@@ -9,14 +9,14 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadCertificate } from './firma.js';
+import { assertXmlSignatures, loadCertificate } from './firma.js';
 import { parseCaf } from './caf.js';
 import { assertDteLineLimits, buildDocumento, isBoleta, TIPOS_DTE } from './documento.js';
 import { buildDte, buildEnvio } from './envio.js';
 import { toLatin1Buffer, XML_DECL, normalizeRut, isValidRut, formatDate } from './xmlUtil.js';
 import * as sii from './siiClient.js';
 
-const ESTADOS_ACEPTADO = new Set(['EPR', 'DOK', 'SOK', 'EOK']);
+const ESTADOS_ACEPTADO = new Set(['DOK', 'EOK']);
 const ESTADOS_RECHAZADO = new Set(['RCH', 'RFR', 'RSC', 'RCT', 'FAU', 'FNA']);
 const ESTADOS_DOCUMENTO_VIGENTE = new Set(['emitido', 'enviado', 'aceptado']);
 const TIPOS_VENTA_TRIBUTARIA = new Set([33, 39]);
@@ -43,6 +43,30 @@ export const assertMismoReceptorReferencia = (doc, referenced) => {
   if ([56, 61].includes(Number(doc?.tipoDte)) && receptorRut && referencedRut && receptorRut !== referencedRut) {
     throw new Error(`La Nota de Credito/Debito y el documento referenciado deben pertenecer al mismo receptor (${receptorRut} != ${referencedRut}).`);
   }
+};
+
+export const estadoDesdeRespuestaSii = (estadoActual, resultado = {}) => {
+  const codigo = String(resultado.estado || '').toUpperCase();
+  const resumen = resultado.resumen || {};
+  if (codigo === 'EPR') {
+    if (Number(resumen.informados) > 0
+      && Number(resumen.aceptados) === Number(resumen.informados)
+      && Number(resumen.rechazados) === 0) return 'aceptado';
+    if (Number(resumen.rechazados) > 0 && Number(resumen.aceptados) === 0) return 'rechazado';
+    return estadoActual;
+  }
+  if (ESTADOS_ACEPTADO.has(codigo)) return 'aceptado';
+  if (ESTADOS_RECHAZADO.has(codigo)) return 'rechazado';
+  return estadoActual;
+};
+
+export const requiereConsultaIndividualDte = (resultado = {}) => {
+  const codigo = String(resultado.estado || '').toUpperCase();
+  const resumen = resultado.resumen || {};
+  return codigo === 'EPR'
+    && Number(resumen.informados) > 0
+    && (Number(resumen.reparos) > 0
+      || (Number(resumen.aceptados) === 0 && Number(resumen.rechazados) === 0));
 };
 
 export const createFacturacionEngine = ({ db, dataDir }) => {
@@ -107,7 +131,12 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
   };
 
   const rutEnvia = (empresa, cert) => {
-    const rut = normalizeRut(empresa.rutEnvia || cert.rutTitular);
+    const configurado = normalizeRut(empresa.rutEnvia);
+    const titular = normalizeRut(cert.rutTitular);
+    if (configurado && titular && configurado !== titular) {
+      throw new Error(`El RUT que envia (${configurado}) no coincide con el titular del certificado (${titular}).`);
+    }
+    const rut = configurado || titular;
     if (!rut) {
       throw new Error('No se pudo determinar el RUT del firmante (rutEnvia). Configúralo en Configuración.');
     }
@@ -206,7 +235,7 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
     const receptor = await resolveReceptor(doc, empresa);
     const referencias = await resolveReferencias({ ...doc, receptor });
 
-    const asignacion = await db.cafs.tomarFolio(doc.tipoDte, empresa.ambiente);
+    const asignacion = await db.cafs.tomarFolio(doc.tipoDte, empresa.ambiente, empresa.fchResol);
     if (!asignacion) {
       throw new Error(`No hay folios disponibles para ${TIPOS_DTE[doc.tipoDte]} en ambiente ${empresa.ambiente}. Carga un CAF.`);
     }
@@ -273,6 +302,7 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
       cert,
       rutEnvia: firmante
     });
+    assertXmlSignatures(xml, cert.certPem);
 
     const xmlLatin1 = toLatin1Buffer(xml);
     const filename = `EnvioDTE_${empresa.rut}_${Date.now()}.xml`;
@@ -321,14 +351,44 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
     } else {
       const token = await sii.getToken(ambiente, cert);
       resultado = await sii.consultarEstadoEnvio({ ambiente, token, rutEmisor: rutEmisorSii, trackId: doc.trackId });
+      if (requiereConsultaIndividualDte(resultado)
+        && doc.folio && doc.fechaEmision && doc.receptor?.rut && doc.totales?.total !== undefined) {
+        try {
+          resultado.detalleDte = await sii.consultarEstadoDte({
+            ambiente,
+            token,
+            rutConsultante: rutEnvia(empresa, cert),
+            rutEmisor: rutEmisorSii,
+            rutReceptor: normalizeRut(doc.receptor.rut),
+            tipoDte: doc.tipoDte,
+            folio: doc.folio,
+            fechaEmision: doc.fechaEmision,
+            monto: doc.totales.total
+          });
+        } catch (error) {
+          resultado.detalleDteError = error.message;
+        }
+      }
     }
 
     const codigo = String(resultado.estado || '').toUpperCase();
-    let estado = doc.estado;
-    if (ESTADOS_ACEPTADO.has(codigo)) estado = 'aceptado';
-    else if (ESTADOS_RECHAZADO.has(codigo)) estado = 'rechazado';
+    const estado = estadoDesdeRespuestaSii(
+      estadoDesdeRespuestaSii(doc.estado, resultado),
+      resultado.detalleDte
+    );
 
-    const detalle = [codigo, resultado.glosa].filter(Boolean).join(' — ');
+    const resumen = resultado.resumen;
+    const detalleResumen = resumen?.informados !== null && resumen?.informados !== undefined
+      ? `informados=${resumen.informados}, aceptados=${resumen.aceptados ?? 0}, rechazados=${resumen.rechazados ?? 0}, reparos=${resumen.reparos ?? 0}`
+      : null;
+    const detalleIndividual = resultado.detalleDte
+      ? [
+        resultado.detalleDte.estado,
+        resultado.detalleDte.glosa,
+        resultado.detalleDte.errorGlosa
+      ].filter(Boolean).join(' — ')
+      : resultado.detalleDteError;
+    const detalle = [codigo, resultado.glosa, detalleResumen, detalleIndividual].filter(Boolean).join(' — ');
     const actualizado = await db.documentos.update(docId, {
       estado,
       estadoDetalle: detalle || doc.estadoDetalle

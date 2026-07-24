@@ -27,14 +27,28 @@ export const createFacturacionDb = (prisma) => {
   };
 
   const cafs = {
-    tomarFolio: (tipoDte, ambiente) => prisma.$transaction(async (tx) => {
-      const locked = await tx.$queryRaw`
-        SELECT id FROM "facturacion"."cafs"
-        WHERE "tipo_dte" = ${tipoDte} AND "ambiente" = ${ambiente} AND "siguiente_folio" <= "folio_hasta"
-        ORDER BY "folio_desde" ASC
-        LIMIT 1
-        FOR UPDATE
-      `;
+    tomarFolio: (tipoDte, ambiente, fchResol = null) => prisma.$transaction(async (tx) => {
+      // Un CAF anterior a la resolución vigente pertenece a una autorización
+      // previa. Reutilizarlo puede entregar folios históricos que el SII ya no
+      // reconoce en el proceso actual.
+      const locked = fchResol
+        ? await tx.$queryRaw`
+          SELECT id FROM "facturacion"."cafs"
+          WHERE "tipo_dte" = ${tipoDte} AND "ambiente" = ${ambiente}
+            AND "fecha_autorizacion" >= ${fchResol}
+            AND "siguiente_folio" <= "folio_hasta"
+          ORDER BY "fecha_autorizacion" DESC, "folio_desde" ASC
+          LIMIT 1
+          FOR UPDATE
+        `
+        : await tx.$queryRaw`
+          SELECT id FROM "facturacion"."cafs"
+          WHERE "tipo_dte" = ${tipoDte} AND "ambiente" = ${ambiente}
+            AND "siguiente_folio" <= "folio_hasta"
+          ORDER BY "fecha_autorizacion" DESC NULLS LAST, "folio_desde" ASC
+          LIMIT 1
+          FOR UPDATE
+        `;
       if (!locked.length) return null;
       const caf = await tx.factCaf.findUniqueOrThrow({ where: { id: locked[0].id } });
       const folio = caf.siguienteFolio;

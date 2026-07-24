@@ -9,6 +9,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import forge from 'node-forge';
+import { DOMParser } from '@xmldom/xmldom';
 import { SignedXml } from 'xml-crypto';
 
 export const DSIG_NS = 'http://www.w3.org/2000/09/xmldsig#';
@@ -50,18 +51,8 @@ export const loadCertificate = (p12Path, password) => {
     return forge.util.encode64(forge.util.hexToBytes(hex));
   };
 
-  // RUT del titular: extensión chilena OID 1.3.6.1.4.1.8321.1 en subjectAltName
-  let rutTitular = null;
-  try {
-    const altName = cert.getExtension('subjectAltName');
-    if (altName && altName.altNames) {
-      for (const name of altName.altNames) {
-        if (name.value && /^\d{6,9}-?[\dkK]$/.test(String(name.value).trim())) {
-          rutTitular = String(name.value).trim().toUpperCase();
-        }
-      }
-    }
-  } catch { /* extensión opcional */ }
+  // El RUT chileno viene como otherName ASN.1, no como string directo.
+  const rutTitular = extractCertificateRut(cert);
 
   return {
     privateKeyPem,
@@ -84,6 +75,32 @@ export const rsaSha1B64 = (input, privateKeyPem) => crypto.createSign('RSA-SHA1'
   .toString('base64');
 
 const wrapB64 = (b64, width = 76) => b64.replace(new RegExp(`(.{${width}})`, 'g'), '$1\n').trim();
+
+const collectRutStrings = (value, found = []) => {
+  if (typeof value === 'string') {
+    found.push(...(value.match(/\d{6,9}-?[\dkK]/g) || []));
+  } else if (Array.isArray(value)) {
+    for (const item of value) collectRutStrings(item, found);
+  } else if (value && typeof value === 'object') {
+    for (const item of Object.values(value)) collectRutStrings(item, found);
+  }
+  return found;
+};
+
+export const extractCertificateRut = (cert) => {
+  try {
+    const altName = cert.getExtension('subjectAltName');
+    const candidate = collectRutStrings(altName?.altNames || [])
+      .map(value => String(value).trim().toUpperCase())
+      .find(value => /^\d{6,9}-?[\dK]$/.test(value));
+    if (!candidate) return null;
+    const match = candidate.match(/^(\d+)-?([\dK])$/);
+    const body = match[1].replace(/^0+(?=\d)/, '');
+    return `${body}-${match[2]}`;
+  } catch {
+    return null;
+  }
+};
 
 // Firma un elemento XML usando xml-crypto para asegurar canonicalización (C14N 1.0)
 // y herencia correcta de namespaces compatible con el SII.
@@ -134,4 +151,33 @@ export const signXml = (xmlString, referenceUri, cert, options = {}) => {
   });
 
   return sig.signatureXml;
+};
+
+export const assertXmlSignatures = (xmlString, publicCert) => {
+  const signatures = [];
+  const visit = (node) => {
+    if (node?.nodeType === 1 && node.localName === 'Signature') signatures.push(node);
+    for (let child = node?.firstChild; child; child = child.nextSibling) visit(child);
+  };
+  visit(new DOMParser().parseFromString(xmlString).documentElement);
+  if (!signatures.length) throw new Error('El XML no contiene firmas digitales.');
+
+  signatures.forEach((signature, index) => {
+    const verifier = new SignedXml({
+      publicCert,
+      // No confiar en una llave declarada por el mismo XML que se valida.
+      getCertFromKeyInfo: () => null
+    });
+    verifier.loadSignature(signature);
+    let valid = false;
+    try {
+      valid = verifier.checkSignature(xmlString);
+    } catch {
+      valid = false;
+    }
+    if (!valid) {
+      throw new Error(`La firma XML ${index + 1}/${signatures.length} no es valida en el sobre final.`);
+    }
+  });
+  return signatures.length;
 };

@@ -64,6 +64,29 @@ describe('facturacion/db (Prisma adapter)', () => {
     expect([r1.folio, r2.folio].sort()).toEqual([700, 701])
   })
 
+  it('no reutiliza un CAF anterior a la resolucion vigente', async () => {
+    const oldCaf = await prisma.factCaf.create({
+      data: {
+        tipoDte: 112, folioDesde: 810, folioHasta: 810, siguienteFolio: 810,
+        fechaAutorizacion: '2018-07-13', ambiente: 'qa-resolucion', xml: '<CAF/>'
+      }
+    })
+    const currentCaf = await prisma.factCaf.create({
+      data: {
+        tipoDte: 112, folioDesde: 910, folioHasta: 910, siguienteFolio: 910,
+        fechaAutorizacion: '2026-07-23', ambiente: 'qa-resolucion', xml: '<CAF/>'
+      }
+    })
+    try {
+      const asignacion = await db.cafs.tomarFolio(112, 'qa-resolucion', '2026-07-21')
+      expect(asignacion.folio).toBe(910)
+      const oldReloaded = await prisma.factCaf.findUnique({ where: { id: oldCaf.id } })
+      expect(oldReloaded.siguienteFolio).toBe(810)
+    } finally {
+      await prisma.factCaf.deleteMany({ where: { id: { in: [oldCaf.id, currentCaf.id] } } })
+    }
+  })
+
   it('documentos.create/get/list/update round-trip JSON fields', async () => {
     const created = await db.documentos.create({
       tipoDte: 33,
