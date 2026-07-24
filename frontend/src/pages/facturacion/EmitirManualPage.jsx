@@ -6,6 +6,7 @@ import { EmitirDteModal } from '../../components/facturacion/DteModals'
 import { DteItemsEditor } from '../../components/facturacion/DteItemsEditor'
 import { useClientes } from '../../api/clientes'
 import { useCreateVenta, useVenta, useVentas } from '../../api/ventas'
+import { useCotizaciones, useCrearVentaDesdeLicitacion } from '../../api/cotizaciones'
 import { computeDteTotales, mapManualDteItems, puedeCrearVentaDesdeEmision, TIPOS_DTE } from '../../utils/facturacion'
 import { toast } from '../../store/notif'
 
@@ -52,6 +53,10 @@ function VentaAutocomplete({ onSelect }) {
   return <Autocomplete label="Buscar venta existente" placeholder="RUT del cliente o N° de orden interna..." search={value => ({ search: value, limit: 8 })} useSearch={useVentas} onSelect={onSelect} renderItem={item => <><b>#{item.nInterno || item.id} · {item.cliente?.razonSocial || item.cliente?.nombre || 'Cliente'}</b><small>{item.cliente?.rut || 'Sin RUT'} · Total {money(item.total)}</small></>} />
 }
 
+function LicitacionAutocomplete({ onSelect }) {
+  return <Autocomplete label="Buscar licitación adjudicada" placeholder="ID de licitación, OC o referencia..." search={value => ({ search: value, estado: 'Adjudicada', limit: 8 })} useSearch={useCotizaciones} onSelect={onSelect} renderItem={item => <><b>{item.idLicitacion || `Licitación #${item.id}`} · {item.estado}</b><small>{item.ordenCompra || 'Sin OC'} · {item.rutCliente || 'Sin RUT'} · {item.ordenId ? `Venta #${item.ordenId}` : 'Sin venta'}</small></>} />
+}
+
 const dropdownStyle = { position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px oklch(0 0 0 / .12)', maxHeight: 240, overflowY: 'auto' }
 const resultButton = { display: 'grid', width: '100%', gap: 2, padding: '8px 10px', textAlign: 'left', background: 'none', border: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 13 }
 const Result = ({ children }) => <div style={{ padding: 10, color: 'var(--text-3)', fontSize: 12 }}>{children}</div>
@@ -67,6 +72,7 @@ function VentaBloqueada({ venta, onClear, guia }) {
   return <section style={linkedStyle}>
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><strong>Venta #{venta.nInterno || venta.id} vinculada</strong><div style={{ color: 'var(--text-2)', fontSize: 13, marginTop: 4 }}>{venta.cliente?.razonSocial || venta.cliente?.nombre} · {venta.cliente?.rut}</div></div><Btn variant="ghost" onClick={onClear}>Cambiar venta</Btn></div>
     <div style={{ marginTop: 12, color: 'var(--text-2)', fontSize: 13 }}>{venta.items?.length || 0} ítem{venta.items?.length === 1 ? '' : 's'} · Total de la venta <strong>{money(venta.total)}</strong></div>
+    {!!venta.items?.length && <div style={itemsTableStyle}><div style={itemsHeadStyle}><span>Código</span><span>Ítem</span><span style={{ textAlign: 'right' }}>Cant.</span><span style={{ textAlign: 'right' }}>P. unit. IVA inc.</span><span style={{ textAlign: 'right' }}>Subtotal</span></div>{venta.items.map(item => <div key={item.id} style={itemsRowStyle}><span style={skuStyle}>{item.codigoInterno || item.producto?.codigoInterno || '—'}</span><span>{item.nombre || item.producto?.nombre || `Producto #${item.productoId || item.id}`}</span><span style={{ textAlign: 'right' }}>{item.cantidad}</span><span style={{ textAlign: 'right' }}>{money(item.precioUnitario)}</span><span style={{ textAlign: 'right', fontWeight: 600 }}>{money(Number(item.cantidad || 0) * Number(item.precioUnitario || 0))}</span></div>)}</div>}
     <div style={{ marginTop: 10, color: 'var(--text-3)', fontSize: 12 }}>{guia ? 'La preparación y las cantidades a despachar se gestionan en Despachos.' : 'Los ítems quedan bloqueados aquí para que el documento conserve exactamente el total de la venta.'}</div>
   </section>
 }
@@ -74,14 +80,15 @@ function VentaBloqueada({ venta, onClear, guia }) {
 export default function EmitirManualPage() {
   const navigate = useNavigate()
   const createVenta = useCreateVenta()
+  const crearVentaDesdeLicitacion = useCrearVentaDesdeLicitacion()
   const [tipoDte, setTipoDte] = useState(33)
   const [ventaId, setVentaId] = useState(null)
   const [ventaCreada, setVentaCreada] = useState(null)
   const [sinVenta, setSinVenta] = useState(false)
   const [tipoVenta, setTipoVenta] = useState('')
+  const [licitacionSeleccionada, setLicitacionSeleccionada] = useState(null)
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null)
   const [licitacion, setLicitacion] = useState('')
-  const [licitacionFecha, setLicitacionFecha] = useState('')
   const [receptor, setReceptor] = useState({ rut: '', razonSocial: '', giro: '', direccion: '', comuna: '', ciudad: '' })
   const [items, setItems] = useState([])
   const [showModal, setShowModal] = useState(false)
@@ -97,18 +104,34 @@ export default function EmitirManualPage() {
   const receptorInformado = receptor.rut.trim() && receptor.razonSocial.trim()
   const ventaSintetica = { id: null, clienteId: null, cliente: receptor, items: [] }
   const necesitaCliente = isVentaTipo(tipoVenta)
-  const puedeCrearVenta = puedeCrearVentaDesdeEmision({ cliente: clienteSeleccionado, tipo: tipoVenta, items, licitacion, licitacionFecha })
-  const puedeContinuarManual = itemsDte.length > 0 && (esGuia || receptorInformado) && (!necesitaCliente || puedeCrearVenta)
+  const esLicitacion = tipoVenta === 'Licitación'
+  const puedeCrearVenta = puedeCrearVentaDesdeEmision({ cliente: clienteSeleccionado, tipo: tipoVenta, items, licitacion })
+  const puedeContinuarManual = esLicitacion ? Boolean(licitacionSeleccionada) : itemsDte.length > 0 && (esGuia || receptorInformado) && (!necesitaCliente || puedeCrearVenta)
 
   const seleccionarTipo = id => {
     setTipoDte(id); setVentaId(null); setVentaCreada(null); setSinVenta(false); setShowModal(false)
   }
   const seleccionarVenta = venta => { setVentaId(venta.id); setVentaCreada(null); setSinVenta(false) }
   const emitirManual = async () => {
+    if (esLicitacion) {
+      if (!licitacionSeleccionada) return toast.error('Selecciona una licitación adjudicada antes de continuar.')
+      try {
+        const result = await crearVentaDesdeLicitacion.mutateAsync(licitacionSeleccionada.id)
+        const creada = result?.orden
+        if (!creada?.id) throw new Error('La licitación no devolvió una venta creada.')
+        setVentaId(creada.id)
+        setVentaCreada(null)
+        if (esGuia) return navigate(despachoUrl(creada))
+        toast.success(`Venta #${creada.nInterno || creada.id} creada desde licitación.`)
+      } catch (error) {
+        toast.error(error?.response?.data?.error || error.message || 'No fue posible crear la venta desde la licitación.')
+      }
+      return
+    }
     if (!necesitaCliente) return setShowModal(true)
     if (!clienteSeleccionado) return toast.error('Para crear una venta debes seleccionar un cliente existente o crearlo en Clientes.')
     if (!puedeCrearVenta) return toast.error('La venta requiere cliente existente, productos del catálogo, cantidades enteras y sus datos obligatorios.')
-    const payload = { tipo: tipoVenta, clienteId: Number(clienteSeleccionado.id), items: items.map(item => ({ productoId: Number(item.productoId), cantidad: Number(item.cantidad), precioUnitario: Number(item.precioUnitario), nombre: item.nombre || undefined, descripcion: item.descripcion || undefined, codigoInterno: item.codigoInterno || undefined })), ...(tipoVenta === 'Licitación' ? { licitacion: licitacion.trim(), licitacionFecha } : {}), ...(tipoVenta === 'Convenio Marco' ? { licitacion: licitacion.trim() } : {}) }
+    const payload = { tipo: tipoVenta, clienteId: Number(clienteSeleccionado.id), items: items.map(item => ({ productoId: Number(item.productoId), cantidad: Number(item.cantidad), precioUnitario: Number(item.precioUnitario), nombre: item.nombre || undefined, descripcion: item.descripcion || undefined, codigoInterno: item.codigoInterno || undefined })), ...(tipoVenta === 'Convenio Marco' ? { licitacion: licitacion.trim() } : {}) }
     try {
       const creada = await createVenta.mutateAsync(payload)
       setVentaCreada(creada)
@@ -147,19 +170,18 @@ export default function EmitirManualPage() {
     </section>}
 
     {mostrarManual && <section style={cardStyle}>
-      {permiteVenta && <><div style={stepTitle}>2. Origen del documento</div><FormField label="Tipo de venta (opcional)"><select value={tipoVenta} onChange={event => setTipoVenta(event.target.value)} style={selectStyle}>{TIPOS_VENTA.map(tipo => <option key={tipo.value} value={tipo.value}>{tipo.label}</option>)}</select></FormField><div style={infoStyle}>{necesitaCliente ? 'Se creará primero una venta real y el documento quedará vinculado a ella.' : 'Este documento seguirá siendo huérfano: se emitirá sin orden de venta asociada.'}</div></>}
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: permiteVenta ? 20 : 0 }}><h3 style={{ margin: '0 0 12px', fontSize: 15 }}>{permiteVenta ? '3.' : '2.'} Receptor</h3>{esGuia && <span style={{ color: 'var(--text-3)', fontSize: 12 }}>Opcional sólo para traslado interno</span>}</div>
+      {permiteVenta && <><div style={stepTitle}>2. Origen del documento</div><FormField label="Tipo de venta (opcional)"><select value={tipoVenta} onChange={event => { setTipoVenta(event.target.value); setLicitacionSeleccionada(null) }} style={selectStyle}>{TIPOS_VENTA.map(tipo => <option key={tipo.value} value={tipo.value}>{tipo.label}</option>)}</select></FormField><div style={infoStyle}>{esLicitacion ? 'La venta se creará desde una licitación adjudicada existente; sus ítems, cliente y condiciones no se reconstruyen aquí.' : necesitaCliente ? 'Se creará primero una venta real y el documento quedará vinculado a ella.' : 'Este documento seguirá siendo huérfano: se emitirá sin orden de venta asociada.'}</div></>}
+      {esLicitacion ? <><div style={{ marginTop: 20 }}><LicitacionAutocomplete onSelect={setLicitacionSeleccionada} /></div>{licitacionSeleccionada && <div style={linkedStyle}><strong>{licitacionSeleccionada.idLicitacion || `Licitación #${licitacionSeleccionada.id}`}</strong><div style={{ marginTop: 4, color: 'var(--text-2)', fontSize: 13 }}>Estado: {licitacionSeleccionada.estado} · OC: {licitacionSeleccionada.ordenCompra || '—'} · {licitacionSeleccionada.ordenId ? `Ya vinculada a venta #${licitacionSeleccionada.ordenId}` : 'Sin venta vinculada'}</div><div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-3)' }}>El endpoint validará adjudicación, plazo, OC, cliente canónico y productos adjudicados antes de crear la venta.</div></div>}</> : <><div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: permiteVenta ? 20 : 0 }}><h3 style={{ margin: '0 0 12px', fontSize: 15 }}>{permiteVenta ? '3.' : '2.'} Receptor</h3>{esGuia && <span style={{ color: 'var(--text-3)', fontSize: 12 }}>Opcional sólo para traslado interno</span>}</div>
       <ClienteAutocomplete onSelect={selectCliente} />
       {necesitaCliente && <div style={infoStyle}>{clienteSeleccionado ? <><strong>{clienteSeleccionado.razonSocial || clienteSeleccionado.nombre}</strong> será el cliente de la nueva venta.</> : <>Selecciona un cliente existente. Si no existe, <button type="button" onClick={() => navigate('/clientes')} style={linkStyle}>créalo en Clientes</button> antes de emitir.</>}</div>}
       <div style={grid2}><FormField label="RUT"><Input value={receptor.rut} onChange={value => setField('rut', value)} placeholder={esGuia ? 'Requerido salvo traslado interno' : 'RUT del receptor'} /></FormField><FormField label="Razón social / Nombre"><Input value={receptor.razonSocial} onChange={value => setField('razonSocial', value)} /></FormField></div>
       <div style={grid2}><FormField label="Giro"><Input value={receptor.giro} onChange={value => setField('giro', value)} /></FormField><FormField label="Dirección"><Input value={receptor.direccion} onChange={value => setField('direccion', value)} /></FormField></div>
       <div style={{ ...grid2, marginBottom: 20 }}><FormField label="Comuna"><Input value={receptor.comuna} onChange={value => setField('comuna', value)} /></FormField><FormField label="Ciudad"><Input value={receptor.ciudad} onChange={value => setField('ciudad', value)} /></FormField></div>
-      {tipoVenta === 'Licitación' && <div style={grid2}><FormField label="ID de licitación"><Input value={licitacion} onChange={setLicitacion} /></FormField><FormField label="Fecha de licitación"><input type="date" value={licitacionFecha} onChange={event => setLicitacionFecha(event.target.value)} style={dateStyle} /></FormField></div>}
-      {tipoVenta === 'Convenio Marco' && <FormField label="Orden de compra / Convenio Marco"><Input value={licitacion} onChange={setLicitacion} placeholder="OC requerida" /></FormField>}
+      {tipoVenta === 'Convenio Marco' && <><FormField label="Orden de compra / Convenio Marco"><Input value={licitacion} onChange={setLicitacion} placeholder="OC requerida" /></FormField><div style={infoStyle}>Convenio Marco no tiene una ficha independiente: la OC es el identificador real, único y validado por el backend.</div></>}
       <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>{permiteVenta ? '4.' : '3.'} Ítems</h3>
       <DteItemsEditor items={items} onChange={setItems} />
-      {necesitaCliente && !puedeCrearVenta && <div style={infoStyle}>Para crear la venta debes seleccionar un cliente existente y usar productos del catálogo con cantidades enteras. Licitación requiere ID y fecha; Convenio Marco requiere OC. Los ítems manuales sólo sirven para emisión huérfana.</div>}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 22 }}><span style={{ color: 'var(--text-3)', fontSize: 12 }}>{!esGuia && !receptorInformado ? 'Falta informar RUT y razón social del receptor.' : `${itemsDte.length} ítem${itemsDte.length === 1 ? '' : 's'} listo${itemsDte.length === 1 ? '' : 's'} · Total ${money(totales.total)}`}</span><div style={{ display: 'flex', gap: 8 }}><Btn variant="ghost" onClick={() => navigate('/facturacion/documentos')}>Cancelar</Btn><Btn variant="primary" disabled={!puedeContinuarManual || createVenta.isPending} onClick={emitirManual}>{necesitaCliente ? 'Crear venta y continuar' : 'Continuar a emisión'}</Btn></div></div>
+      {necesitaCliente && !puedeCrearVenta && <div style={infoStyle}>Para crear la venta debes seleccionar un cliente existente y usar productos del catálogo con cantidades enteras. Convenio Marco requiere OC. Los ítems manuales sólo sirven para emisión huérfana.</div>}</>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 22 }}><span style={{ color: 'var(--text-3)', fontSize: 12 }}>{esLicitacion ? 'Se utilizarán los ítems adjudicados de la licitación seleccionada.' : !esGuia && !receptorInformado ? 'Falta informar RUT y razón social del receptor.' : `${itemsDte.length} ítem${itemsDte.length === 1 ? '' : 's'} listo${itemsDte.length === 1 ? '' : 's'} · Total ${money(totales.total)}`}</span><div style={{ display: 'flex', gap: 8 }}><Btn variant="ghost" onClick={() => navigate('/facturacion/documentos')}>Cancelar</Btn><Btn variant="primary" disabled={!puedeContinuarManual || createVenta.isPending || crearVentaDesdeLicitacion.isPending} onClick={emitirManual}>{esLicitacion ? 'Crear venta desde licitación' : necesitaCliente ? 'Crear venta y continuar' : 'Continuar a emisión'}</Btn></div></div>
     </section>}
 
     {showModal && <EmitirDteModal venta={documentoVinculado ? ventaVinculada : ventaSintetica} tipoDte={tipoDte} {...(!documentoVinculado ? { documentInput: { items: itemsDte }, previewItems: itemsDte, previewTotales: totales } : {})} referenceFirst={esNota} onClose={() => setShowModal(false)} onSuccess={({ emitido, documento }) => { setShowModal(false); toast.success(`DTE emitido${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`); navigate('/facturacion/documentos') }} />}
@@ -168,9 +190,12 @@ export default function EmitirManualPage() {
 
 const cardStyle = { background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: 20, maxWidth: 1120, marginBottom: 16 }
 const linkedStyle = { padding: 14, borderRadius: 8, background: 'var(--blue-50)', border: '1px solid var(--blue-200)' }
+const itemsTableStyle = { marginTop: 12, border: '1px solid var(--border)', borderRadius: 6, overflowX: 'auto', background: '#fff', minWidth: 620 }
+const itemsHeadStyle = { display: 'grid', gridTemplateColumns: '115px minmax(180px, 1fr) 65px 125px 100px', gap: 8, padding: '8px 10px', background: 'var(--bg)', color: 'var(--text-3)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }
+const itemsRowStyle = { display: 'grid', gridTemplateColumns: '115px minmax(180px, 1fr) 65px 125px 100px', gap: 8, padding: '8px 10px', borderTop: '1px solid var(--border)', fontSize: 12, alignItems: 'center' }
+const skuStyle = { color: 'var(--text-3)', fontFamily: "'DM Mono', monospace", fontSize: 11 }
 const stepTitle = { fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 10 }
 const grid2 = { display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 12, marginBottom: 12 }
 const infoStyle = { marginTop: 14, padding: '10px 12px', borderRadius: 8, background: 'var(--bg)', color: 'var(--text-2)', fontSize: 13 }
 const selectStyle = { width: '100%', border: '1px solid var(--border)', borderRadius: 6, background: '#fff', padding: '9px 10px', fontFamily: 'inherit' }
-const dateStyle = { width: '100%', border: '1px solid var(--border)', borderRadius: 6, background: '#fff', padding: '8px 10px', boxSizing: 'border-box', fontFamily: 'inherit' }
 const linkStyle = { border: 0, background: 'none', padding: 0, color: 'var(--blue)', font: 'inherit', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }

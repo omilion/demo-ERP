@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from './client'
 
-export const useCotizaciones = (params = {}) =>
+export const useCotizaciones = (params = {}, options = {}) =>
   useQuery({
     queryKey: ['cotizaciones', params],
     queryFn: () => api.get('/cotizaciones', { params }).then(r => r.data),
     staleTime: 30_000,
+    ...options,
   })
 
 export const useCotizacion = (id) =>
