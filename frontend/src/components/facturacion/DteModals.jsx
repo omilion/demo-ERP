@@ -24,11 +24,14 @@ function Modal({ title, onClose, children }) {
   )
 }
 
-function Preview({ empresa, receptor, items, tipoDte, referencias }) {
-  const { neto, exento, iva, total } = computeDteTotales(items)
+function Preview({ empresa, receptor, items, tipoDte, referencias, totales }) {
+  const calculatedTotales = computeDteTotales(items)
+  const { neto, exento, iva, total } = totales || calculatedTotales
   const referenciasCompletas = (referencias || []).filter(r => {
-    const esInterna = REFERENCIA_TIPOS_INTERNOS.includes(r.tipo)
-    return esInterna ? !!r.docLocalId : !!r.folio?.trim()
+    const tipo = r.tipo ?? String(r.tipoDocRef || '')
+    const folio = r.folio ?? r.folioRef
+    const esInterna = REFERENCIA_TIPOS_INTERNOS.includes(tipo)
+    return esInterna ? !!r.docLocalId : !!String(folio || '').trim()
   })
   return (
     <>
@@ -83,7 +86,7 @@ const td = { padding: '8px 10px' }
 const inputStyle = { width: '100%', padding: 9, border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'inherit' }
 const Total = ({ label, value, strong }) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderTop: strong ? '1px solid var(--border)' : 'none', fontWeight: strong ? 700 : 400 }}><span>{label}</span><span>{fmt(value)}</span></div>
 
-export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSuccess }) {
+export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, previewItems, previewTotales, onClose, onSuccess }) {
   const emitir = useEmitirDte()
   const [error, setError] = useState('')
   const [indTraslado, setIndTraslado] = useState('')
@@ -115,7 +118,9 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSucc
     ? Object.fromEntries((packing.data?.packedGuia || []).map(row => [row.ordenItemId, row.cantidad]))
     : null
   const receptor = buildReceptor(venta?.cliente)
-  const items = mapVentaItems(venta, cantidadPorItemId)
+  const mappedItems = mapVentaItems(venta, cantidadPorItemId)
+  const items = previewItems || mappedItems
+  const payloadItems = documentInput?.items ?? mappedItems
   const autoTipo = isValidRut(receptor.rut) ? 33 : 39
   const [tipoElegido, setTipoElegido] = useState(autoTipo)
   const puedeElegirTipo = !tipoDte
@@ -150,9 +155,10 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSucc
         guiaDespachoId,
         tipoDte: detectedTipo,
         receptor,
-        items,
+        items: payloadItems,
         ...(esGuia ? { extra: { indTraslado: Number(indTraslado), tipoDespacho: Number(tipoDespacho) } } : {}),
         ...(referenciasPayload.length ? { referencias: referenciasPayload } : {}),
+        ...(documentInput || {}),
       })
       onSuccess?.(result)
     } catch (cause) { setError(getError(cause)) }
@@ -169,14 +175,14 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSucc
         Esta guía todavía no tiene productos seleccionados para enviar. Sin cantidades no hay qué declarar en la guía.
       </div>
     )}
-    <Preview empresa={empresa} receptor={receptor} items={items} tipoDte={detectedTipo} referencias={referencias} />
+    <Preview empresa={empresa} receptor={receptor} items={items} tipoDte={detectedTipo} referencias={documentInput?.referencias || referencias} totales={previewTotales} />
     {esGuia && (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 4 }}>
         <SelectField label="Motivo del traslado" value={indTraslado} options={IND_TRASLADO} onChange={value => { setIndTraslado(value); setError('') }} />
         <SelectField label="Tipo de despacho" value={tipoDespacho} options={TIPO_DESPACHO} onChange={value => { setTipoDespacho(value); setError('') }} />
       </div>
     )}
-    {referencias.length === 0 ? (
+    {!documentInput?.referencias && (referencias.length === 0 ? (
       <button type="button" onClick={addReferenciaRow} style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', fontWeight: 600, fontSize: 13, padding: 0, marginBottom: 4 }}>
         + Agregar referencia (opcional — guía ya enviada, orden de compra del cliente, etc.)
       </button>
@@ -189,9 +195,9 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, onClose, onSucc
           + Agregar otra referencia
         </button>
       </div>
-    )}
+    ))}
     {error && <div style={errorStyle}>{error}</div>}
-    <div style={footerStyle}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn icon="send" onClick={confirmar} disabled={emitir.isPending || !items.length || referenciasIncompletas}>{emitir.isPending ? 'Emitiendo...' : 'Confirmar y emitir'}</Btn></div>
+    <div style={footerStyle}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn icon="send" onClick={confirmar} disabled={emitir.isPending || !(documentInput?.detalles?.length || payloadItems.length) || referenciasIncompletas}>{emitir.isPending ? 'Emitiendo...' : 'Confirmar y emitir'}</Btn></div>
   </Modal>
 }
 

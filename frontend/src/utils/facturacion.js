@@ -1,10 +1,14 @@
 export const TIPOS_DTE = {
   33: 'Factura Electrónica',
   39: 'Boleta Electrónica',
+  43: 'Liquidación Factura Electrónica',
   46: 'Factura de Compra Electrónica',
   52: 'Guía de Despacho Electrónica',
   56: 'Nota de Débito Electrónica',
   61: 'Nota de Crédito Electrónica',
+  110: 'Factura de Exportación Electrónica',
+  111: 'Nota de Crédito de Exportación Electrónica',
+  112: 'Nota de Débito de Exportación Electrónica',
 }
 
 // Codigos del SII para la guia de despacho (DTE 52). Deben coincidir con
@@ -74,6 +78,9 @@ export const buildReceptor = (cliente = {}) => ({
   rut: cliente.rut || '',
   razonSocial: cliente.razonSocial || cliente.nombre || '',
   giro: cliente.giro || '',
+  contacto: cliente.contacto || '',
+  email: cliente.email || '',
+  nacionalidad: cliente.nacionalidad || '',
   direccion: cliente.direccion || '',
   comuna: cliente.comuna || '',
   ciudad: cliente.ciudad || '',
@@ -114,3 +121,21 @@ export const computeDteTotales = (items = []) => {
   const iva = Math.round(neto * 0.19)
   return { neto, exento, iva, total: neto + exento + iva }
 }
+
+export const buildLiquidacionInput = ({ detalles, comisiones, totales, rutMandante }) => ({
+  items: [], detalles, comisiones, totales,
+  extra: rutMandante ? { rutMandante } : {},
+})
+
+export const buildExportacionInput = ({ tipoDte, items, fechaVencimiento, tipoDespacho, moneda, otraMoneda, transporte, referencias }) => ({
+  items: items.map(item => ({ ...item, exento: true })),
+  referencias,
+  extra: {
+    ...(fechaVencimiento ? { fechaVencimiento } : {}),
+    ...(tipoDespacho ? { tipoDespacho: Number(tipoDespacho) } : {}),
+    ...(moneda ? { moneda } : {}),
+    ...(otraMoneda ? { otraMoneda } : {}),
+    ...(transporte ? { transporte } : {}),
+  },
+  tipoDte,
+})

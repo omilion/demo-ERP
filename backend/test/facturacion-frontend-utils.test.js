@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeDteTotales, mapVentaItems } from '../../frontend/src/utils/facturacion.js'
+import { buildExportacionInput, buildLiquidacionInput, buildReceptor, computeDteTotales, mapVentaItems } from '../../frontend/src/utils/facturacion.js'
 
 describe('facturacion/frontend totals', () => {
   it('mantiene el total del formulario manual igual a la vista previa con ítems afectos y exentos', () => {
@@ -13,5 +13,43 @@ describe('facturacion/frontend totals', () => {
       expect.objectContaining({ nombre: 'Ítem exento', precio: 5000, exento: true }),
     ])
     expect(computeDteTotales(items)).toEqual({ neto: 20000, exento: 15000, iva: 3800, total: 38800 })
+  })
+
+  it('serializa Liquidación con detalles, comisiones, totales y mandante sin convertirla en ítems normales', () => {
+    const input = buildLiquidacionInput({
+      detalles: [{ tpoDocLiq: 33, folio: 82, codigo: 'A-1', nombre: 'Servicio', descripcion: 'Comisión', cantidad: 1, unidad: 'UN', precio: 10000, monto: 10000, exento: false }],
+      comisiones: [{ tipoMovim: 'C', glosa: 'Comisión', tasaComision: 10, valComNeto: 1000, valComExe: 0, valComIva: 190 }],
+      totales: { neto: 10000, exento: 0, tasaIva: 19, iva: 1900, total: 11900 },
+      rutMandante: '76.123.456-7',
+    })
+
+    expect(input).toMatchObject({
+      items: [],
+      detalles: [expect.objectContaining({ tpoDocLiq: 33, monto: 10000 })],
+      comisiones: [expect.objectContaining({ tipoMovim: 'C', valComNeto: 1000, valComIva: 190 })],
+      totales: expect.objectContaining({ iva: 1900, total: 11900 }),
+      extra: { rutMandante: '76.123.456-7' },
+    })
+  })
+
+  it('serializa Exportación como exenta y conserva referencia 110 y bloques aduaneros', () => {
+    const referencia = { tipoDocRef: 110, folioRef: '19', fechaRef: '2026-07-23', codRef: 3, razon: 'Corrige monto' }
+    const aduana = { codPaisRecep: '840', totBultos: 1, tipoBultos: [{ codTpoBultos: 1, cantBultos: 1, idContainer: 'CONT-1', sello: 'S-1', emisorSello: 'Naviera' }] }
+    const input = buildExportacionInput({
+      tipoDte: 111,
+      items: [{ nombre: 'Mercadería', cantidad: 2, precio: 5000, exento: false }],
+      moneda: 'DOLAR USA',
+      otraMoneda: { tipoMoneda: 'PESO CL', tipoCambio: 950, mntExe: 10000, mntTotal: 10000 },
+      transporte: { aduana },
+      referencias: [referencia],
+    })
+
+    expect(input.items).toEqual([expect.objectContaining({ nombre: 'Mercadería', exento: true })])
+    expect(input.referencias).toEqual([referencia])
+    expect(input.extra).toMatchObject({ moneda: 'DOLAR USA', otraMoneda: expect.objectContaining({ tipoCambio: 950 }), transporte: { aduana } })
+  })
+
+  it('preserva contacto, correo y nacionalidad del receptor especializado', () => {
+    expect(buildReceptor({ rut: '55555555-5', razonSocial: 'Importador', contacto: 'Ana', email: 'ana@example.com', nacionalidad: '840' })).toMatchObject({ contacto: 'Ana', email: 'ana@example.com', nacionalidad: '840' })
   })
 })
