@@ -108,6 +108,19 @@ export const mapVentaItems = (venta = {}, cantidadPorItemId = null) => (venta.it
     exento: Boolean(item.exento),
   }))
 
+// El editor standalone recibe precios con IVA incluido, igual que el formulario
+// de ventas. El motor DTE espera el precio neto, excepto en líneas exentas.
+export const mapManualDteItems = (items = []) => items
+  .filter(item => item.nombre?.trim() && Number(item.cantidad) > 0)
+  .map(item => ({
+    nombre: item.nombre.trim(),
+    descripcion: item.descripcion || null,
+    cantidad: Number(item.cantidad),
+    unidad: null,
+    precio: item.exento ? Number(item.precioUnitario) : Math.round(Number(item.precioUnitario) / 1.19),
+    exento: Boolean(item.exento),
+  }))
+
 // Los items DTE llegan con precio neto (salvo los exentos, que se mantienen
 // tal cual). Este cálculo se comparte entre la vista previa y la pantalla
 // manual para que el total que se muestra antes de emitir sea el mismo.

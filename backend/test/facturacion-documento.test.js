@@ -189,6 +189,25 @@ describe('facturacion/documento', () => {
     expect(result.documentoXml.indexOf('<TipoDespacho>')).toBeLessThan(result.documentoXml.indexOf('<IndTraslado>'))
   })
 
+  it.each([39, 56, 61])('emite el XML del tipo manual %s con sus ítems netos', (tipoDte) => {
+    const result = buildDocumento({
+      empresa: PLASTIMAR_EMPRESA,
+      receptor: { rut: '11111111-1', razonSocial: 'CLIENTE X', giro: 'Giro', direccion: 'Calle 1', comuna: 'Viña del Mar' },
+      doc: {
+        tipoDte,
+        folio: tipoDte,
+        items: [{ nombre: 'Ajuste manual', cantidad: 1, precio: 10000 }],
+        referencias: [56, 61].includes(tipoDte) ? [{ tipoDocRef: 33, folioRef: '45', fechaRef: '2026-07-14', codRef: 3, razon: 'Corrección de prueba' }] : [],
+      },
+      caf: fakeCaf(),
+      timestamp: new Date('2026-07-14T10:00:00'),
+    })
+    expect(result.id).toBe(`F${tipoDte}T${tipoDte}`)
+    expect(result.documentoXml).toContain(`<TipoDTE>${tipoDte}</TipoDTE>`)
+    expect(result.documentoXml).toContain('<MntTotal>11900</MntTotal>')
+    if ([56, 61].includes(tipoDte)) expect(result.documentoXml).toContain('<FolioRef>45</FolioRef>')
+  })
+
   it('sin extra, la guia sale sin TipoDespacho/IndTraslado (por eso la ruta los valida)', () => {
     const result = buildDocumento({
       empresa: PLASTIMAR_EMPRESA,

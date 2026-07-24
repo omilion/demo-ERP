@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildExportacionInput, buildIngresoMercaderiaPrefill, buildLiquidacionInput, buildReceptor, computeDteTotales, mapVentaItems } from '../../frontend/src/utils/facturacion.js'
+import { buildExportacionInput, buildIngresoMercaderiaPrefill, buildLiquidacionInput, buildReceptor, computeDteTotales, mapManualDteItems, mapVentaItems } from '../../frontend/src/utils/facturacion.js'
 
 describe('facturacion/frontend totals', () => {
   it('mantiene el total del formulario manual igual a la vista previa con ítems afectos y exentos', () => {
@@ -58,6 +58,18 @@ describe('facturacion/frontend totals', () => {
       { nombre: 'Producto afecto', cantidad: 2, precio: 10000, exento: false },
       { nombre: 'Servicio exento', cantidad: 1, precio: 5000, exento: true },
     ])).toEqual({ neto: 20000, exento: 5000, iva: 3800, total: 28800 })
+  })
+
+  it('convierte los ítems manuales a precios netos antes de emitir cualquier tipo estándar', () => {
+    const items = mapManualDteItems([
+      { nombre: 'Ítem afecto', cantidad: 2, precioUnitario: 11900, exento: false },
+      { nombre: 'Servicio exento', cantidad: 1, precioUnitario: 5000, exento: true },
+    ])
+    expect(items).toEqual([
+      expect.objectContaining({ nombre: 'Ítem afecto', cantidad: 2, precio: 10000, exento: false }),
+      expect.objectContaining({ nombre: 'Servicio exento', cantidad: 1, precio: 5000, exento: true }),
+    ])
+    expect(computeDteTotales(items)).toEqual({ neto: 20000, exento: 5000, iva: 3800, total: 28800 })
   })
 
   it('prellena ingreso de mercadería sin inventar el código interno del proveedor', () => {
