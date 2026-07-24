@@ -52,4 +52,11 @@ describe('facturacion/frontend totals', () => {
   it('preserva contacto, correo y nacionalidad del receptor especializado', () => {
     expect(buildReceptor({ rut: '55555555-5', razonSocial: 'Importador', contacto: 'Ana', email: 'ana@example.com', nacionalidad: '840' })).toMatchObject({ contacto: 'Ana', email: 'ana@example.com', nacionalidad: '840' })
   })
+
+  it('calcula el desglose de totales del editor standalone igual que el payload del DTE', () => {
+    expect(computeDteTotales([
+      { nombre: 'Producto afecto', cantidad: 2, precio: 10000, exento: false },
+      { nombre: 'Servicio exento', cantidad: 1, precio: 5000, exento: true },
+    ])).toEqual({ neto: 20000, exento: 5000, iva: 3800, total: 28800 })
+  })
 })

@@ -182,6 +182,7 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
         <SelectField label="Tipo de despacho" value={tipoDespacho} options={TIPO_DESPACHO} onChange={value => { setTipoDespacho(value); setError('') }} />
       </div>
     )}
+    {!documentInput?.referencias && <div style={{ marginTop: 16, marginBottom: 8, padding: '10px 12px', borderRadius: 8, background: 'var(--bg)' }}><div style={{ fontSize: 13, fontWeight: 700 }}>Referencias (opcional)</div><div style={{ marginTop: 2, color: 'var(--text-2)', fontSize: 12 }}>Puedes relacionar más de una guía, orden de compra u otro documento antes de emitir.</div></div>}
     {!documentInput?.referencias && (referencias.length === 0 ? (
       <button type="button" onClick={addReferenciaRow} style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', fontWeight: 600, fontSize: 13, padding: 0, marginBottom: 4 }}>
         + Agregar referencia (opcional — guía ya enviada, orden de compra del cliente, etc.)
