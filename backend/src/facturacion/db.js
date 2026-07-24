@@ -44,6 +44,10 @@ export const createFacturacionDb = (prisma) => {
   };
 
   const documentos = {
+    withOrdenLock: (ordenId, operation) => prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`facturacion-orden:${Number(ordenId)}`})::bigint)`;
+      return operation();
+    }, { maxWait: 5000, timeout: 30000 }),
     get: (docId) => prisma.factDocumento.findUnique({ where: { id: Number(docId) } }),
     list: ({ estado, tipoDte, clienteId, ordenId } = {}) => prisma.factDocumento.findMany({
       where: {

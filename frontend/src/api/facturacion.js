@@ -100,6 +100,30 @@ export const useDeleteCaf = () => {
   })
 }
 
+export const useEnviarDocumento = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.post(`/facturacion/documentos/${id}/enviar`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'documentos'] }),
+  })
+}
+
+export const useEnviarLote = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (ids) => api.post('/facturacion/enviar-lote', { ids }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'documentos'] }),
+  })
+}
+
+export const useConsultarEstado = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.get(`/facturacion/documentos/${id}/estado`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'documentos'] }),
+  })
+}
+
 export const useDocumentosRecibidos = () => useQuery({
   queryKey: ['facturacion', 'recibidos'],
   queryFn: () => api.get('/facturacion/recibidos').then(r => r.data),

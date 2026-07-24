@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { createFacturacionDb } from '../../facturacion/db.js'
 import { createFacturacionEngine } from '../../facturacion/engine.js'
-import { TIPOS_DTE, computeTotales, computeTotalesExportacion, IND_TRASLADO, TIPO_DESPACHO } from '../../facturacion/documento.js'
+import { TIPOS_DTE, computeTotales, computeTotalesExportacion, IND_TRASLADO, TIPO_DESPACHO, isBoleta } from '../../facturacion/documento.js'
 import { normalizeRut, isValidRut } from '../../facturacion/xmlUtil.js'
 import { parseCaf } from '../../facturacion/caf.js'
 import { renderDteHtml, renderDteRecibidoHtml } from '../../facturacion/printDte.js'
@@ -102,6 +102,50 @@ function validateDocumentoInput(body) {
       ? { ...extra, indTraslado: Number(extra.indTraslado), tipoDespacho: Number(extra.tipoDespacho) }
       : extra,
     totales: tipoDte === 43 && body.totales && typeof body.totales === 'object' ? body.totales : {}
+  }
+}
+
+export async function enviarLotePorTipo({ ids, db, engine }) {
+  const uniqueIds = [...new Set(ids.map(Number).filter(Number.isInteger))]
+  const documentos = await Promise.all(uniqueIds.map(id => db.documentos.get(id)))
+  const encontrados = documentos.filter(Boolean)
+  const grupos = [
+    encontrados.filter(doc => isBoleta(doc.tipoDte)),
+    encontrados.filter(doc => !isBoleta(doc.tipoDte)),
+  ].filter(grupo => grupo.length)
+  const resultados = uniqueIds
+    .filter(id => !encontrados.some(doc => doc.id === id))
+    .map(id => ({ id, ok: false, error: 'Documento no encontrado.' }))
+  const envios = []
+
+  for (const grupo of grupos) {
+    try {
+      const envio = await engine.enviar(grupo.map(doc => doc.id))
+      envios.push({ trackId: envio.trackId, ids: grupo.map(doc => doc.id) })
+      const actualizados = new Map((envio.documentos || []).map(doc => [doc.id, doc]))
+      for (const doc of grupo) {
+        resultados.push({
+          id: doc.id,
+          folio: doc.folio,
+          tipoDte: doc.tipoDte,
+          ok: true,
+          trackId: envio.trackId,
+          estado: actualizados.get(doc.id)?.estado || 'enviado',
+        })
+      }
+    } catch (error) {
+      for (const doc of grupo) {
+        resultados.push({ id: doc.id, folio: doc.folio, tipoDte: doc.tipoDte, ok: false, error: error?.message || 'Error de envio al SII.' })
+      }
+    }
+  }
+
+  const ordered = uniqueIds.map(id => resultados.find(result => result.id === id))
+  return {
+    resultados: ordered,
+    envios,
+    exitosos: ordered.filter(result => result?.ok).length,
+    fallidos: ordered.filter(result => !result?.ok).length,
   }
 }
 
@@ -292,8 +336,7 @@ export default async function facturacionRoutes(fastify) {
     try {
       const ids = Array.isArray(request.body?.ids) ? request.body.ids : []
       if (!ids.length) return reply.code(400).send({ error: 'Indica los ids de documentos a enviar.' })
-      const { trackId, documentos } = await engine.enviar(ids)
-      return { trackId, documentos }
+      return await enviarLotePorTipo({ ids, db, engine })
     } catch (error) { return sendError(reply, error) }
   })
 

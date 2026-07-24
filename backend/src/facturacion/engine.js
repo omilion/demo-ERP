@@ -18,6 +18,32 @@ import * as sii from './siiClient.js';
 
 const ESTADOS_ACEPTADO = new Set(['EPR', 'DOK', 'SOK', 'EOK']);
 const ESTADOS_RECHAZADO = new Set(['RCH', 'RFR', 'RSC', 'RCT', 'FAU', 'FNA']);
+const ESTADOS_DOCUMENTO_VIGENTE = new Set(['emitido', 'enviado', 'aceptado']);
+const TIPOS_VENTA_TRIBUTARIA = new Set([33, 39]);
+
+const referenciaDocumento = (referencias, docId) => (Array.isArray(referencias) ? referencias : [])
+  .some(ref => Number(ref?.docLocalId) === Number(docId));
+
+export const findDocumentoVentaVigente = (doc, documentosVenta = []) => {
+  if (!doc?.ordenId || !TIPOS_VENTA_TRIBUTARIA.has(Number(doc.tipoDte))) return null;
+  const notasCreditoActivas = documentosVenta.filter(item =>
+    Number(item.tipoDte) === 61 && ESTADOS_DOCUMENTO_VIGENTE.has(String(item.estado))
+  );
+  return documentosVenta.find(item => {
+    if (Number(item.id) === Number(doc.id)) return false;
+    if (!TIPOS_VENTA_TRIBUTARIA.has(Number(item.tipoDte))) return false;
+    if (!ESTADOS_DOCUMENTO_VIGENTE.has(String(item.estado))) return false;
+    return !notasCreditoActivas.some(nc => referenciaDocumento(nc.referencias, item.id));
+  }) || null;
+};
+
+export const assertMismoReceptorReferencia = (doc, referenced) => {
+  const receptorRut = normalizeRut(doc?.receptor?.rut);
+  const referencedRut = normalizeRut(referenced?.receptor?.rut);
+  if ([56, 61].includes(Number(doc?.tipoDte)) && receptorRut && referencedRut && receptorRut !== referencedRut) {
+    throw new Error(`La Nota de Credito/Debito y el documento referenciado deben pertenecer al mismo receptor (${receptorRut} != ${referencedRut}).`);
+  }
+};
 
 export const createFacturacionEngine = ({ db, dataDir }) => {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -137,6 +163,7 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
       if (!referenced || !referenced.folio) {
         throw new Error('La referencia apunta a un documento que aún no ha sido emitido (sin folio). Emite primero el documento original.');
       }
+      assertMismoReceptorReferencia(doc, referenced);
       resolved.push({
         ...ref,
         tipoDocRef: ref.tipoDocRef || String(referenced.tipoDte),
@@ -147,13 +174,22 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
     return resolved;
   };
 
-  const emitir = async (docId) => {
+  const emitirDocumento = async (docId) => {
     const doc = await db.documentos.get(docId);
     if (!doc) throw new Error('Documento no encontrado.');
     if (!['borrador', 'error'].includes(doc.estado)) {
       throw new Error(`El documento ya fue emitido (estado: ${doc.estado}).`);
     }
     if (!TIPOS_DTE[doc.tipoDte]) throw new Error(`Tipo de DTE no soportado: ${doc.tipoDte}.`);
+
+    if (doc.ordenId && TIPOS_VENTA_TRIBUTARIA.has(Number(doc.tipoDte))) {
+      const documentosVenta = await db.documentos.list({ ordenId: doc.ordenId });
+      const vigente = findDocumentoVentaVigente(doc, documentosVenta);
+      if (vigente) {
+        const etiqueta = vigente.tipoDte === 39 ? 'Boleta' : 'Factura';
+        throw new Error(`La venta #${doc.ordenId} ya tiene una ${etiqueta} vigente (folio ${vigente.folio ?? '?'}). Anulala con una Nota de Credito antes de emitir otra.`);
+      }
+    }
 
     const empresa = await requireEmpresa();
     const cert = loadCert(empresa);
@@ -165,7 +201,7 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
       throw new Error('Configura el Acteco (código de actividad económica) de la empresa antes de emitir.');
     }
     const receptor = await resolveReceptor(doc, empresa);
-    const referencias = await resolveReferencias(doc);
+    const referencias = await resolveReferencias({ ...doc, receptor });
 
     const asignacion = await db.cafs.tomarFolio(doc.tipoDte, empresa.ambiente);
     if (!asignacion) {
@@ -200,6 +236,15 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
       await db.documentos.update(docId, { estado: 'error', estadoDetalle: err.message });
       throw err;
     }
+  };
+
+  const emitir = async (docId) => {
+    const doc = await db.documentos.get(docId);
+    if (!doc) throw new Error('Documento no encontrado.');
+    if (doc.ordenId && TIPOS_VENTA_TRIBUTARIA.has(Number(doc.tipoDte)) && db.documentos.withOrdenLock) {
+      return db.documentos.withOrdenLock(doc.ordenId, () => emitirDocumento(docId));
+    }
+    return emitirDocumento(docId);
   };
 
   const enviar = async (docIds) => {
