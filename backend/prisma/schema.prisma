@@ -2123,6 +2123,7 @@ model FactDocumentoRecibido {
   detalles          Json      @default("[]")
   referencias       Json      @default("[]")
   totales           Json      @default("{}")
+  pagoProveedorId   Int?      @unique @map("pago_proveedor_id")
   estado            String    @default("pendiente")
   vistoEn           DateTime? @map("visto_en")
   createdAt         DateTime  @default(now()) @map("created_at")

@@ -1,5 +1,6 @@
 import { toast, confirmDialog, promptDialog } from '../../store/notif'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, Table } from '../../components/shared'
 import { FormField, FormPanel, Input, Select, Textarea } from '../../components/forms'
 import { downloadStockIngresosCsv, useAplicarStock, useStockIngresos } from '../../api/stockIngresos'
@@ -47,6 +48,8 @@ const emptyDetail = () => ({
 })
 
 export default function StockIngresosPage() {
+  const location = useLocation()
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const canWriteBodega = can(user, 'bodega', 'write')
   const canWriteProveedores = can(user, 'proveedores', 'write')
@@ -57,6 +60,10 @@ export default function StockIngresosPage() {
   const [showForm, setShowForm] = useState(false)
   const [header, setHeader] = useState(() => emptyHeader(canWriteBodega))
   const [details, setDetails] = useState([emptyDetail()])
+  const [documentoRecibidoId, setDocumentoRecibidoId] = useState(null)
+  const [totalXmlReferencia, setTotalXmlReferencia] = useState(0)
+  const [rutProveedorRecibido, setRutProveedorRecibido] = useState('')
+  const [nombreProveedorRecibido, setNombreProveedorRecibido] = useState('')
 
   const queryParams = useMemo(() => {
     const params = { page: String(page) }
@@ -81,6 +88,27 @@ export default function StockIngresosPage() {
   const limit = data.limit || 100
   const totalPages = Math.max(1, Math.ceil((data.total || 0) / limit))
 
+  useEffect(() => {
+    const prefill = location.state?.prefill
+    if (!prefill) return
+    setHeader({ ...emptyHeader(canWriteBodega), documento: prefill.documento, nDoc: prefill.nDoc, fechaDoc: prefill.fechaDoc || today() })
+    setDetails(prefill.details?.length ? prefill.details : [emptyDetail()])
+    setDocumentoRecibidoId(prefill.documentoRecibidoId || null)
+    setTotalXmlReferencia(Number(prefill.totalReferencia || 0))
+    setRutProveedorRecibido(prefill.proveedorRut || '')
+    setNombreProveedorRecibido(prefill.proveedorNombre || '')
+    setProveedorSearch(prefill.proveedorRut || prefill.proveedorNombre || '')
+    setShowForm(true)
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location.pathname, location.state, navigate, canWriteBodega])
+
+  useEffect(() => {
+    if (!rutProveedorRecibido || header.proveedorId) return
+    const normalizarRut = value => String(value || '').replace(/[^0-9kK]/g, '').toUpperCase()
+    const proveedor = (proveedores.items || []).find(item => normalizarRut(item.rut) === normalizarRut(rutProveedorRecibido))
+    if (proveedor) setHeader(current => ({ ...current, proveedorId: String(proveedor.id) }))
+  }, [proveedores, rutProveedorRecibido, header.proveedorId])
+
   const setFilter = (key, value) => {
     setFilters(f => ({ ...f, [key]: value }))
     setPage(1)
@@ -89,6 +117,10 @@ export default function StockIngresosPage() {
     setHeader(emptyHeader(canWriteBodega))
     setDetails([emptyDetail()])
     setProveedorSearch('')
+    setDocumentoRecibidoId(null)
+    setTotalXmlReferencia(0)
+    setRutProveedorRecibido('')
+    setNombreProveedorRecibido('')
     setShowForm(false)
   }
   const setDetail = (idx, key, value) => {
@@ -131,6 +163,7 @@ export default function StockIngresosPage() {
     if (invalidProductQty) return toast.warning(`Cantidad de inventario debe ser entera en ${invalidProductQty.codigoInterno}`)
     createMut.mutate({
       ...header,
+      documentoRecibidoId,
       proveedorId: Number(header.proveedorId),
       total: totalForm,
       nc: header.documento === 'Nota',
@@ -221,6 +254,7 @@ export default function StockIngresosPage() {
 
       {showForm && (
         <FormPanel title="Nuevo documento bodega" subtitle="Cabecera y detalle con ingreso de stock" width={900} onClose={resetForm} onSave={saveFactura} saving={createMut.isPending}>
+          {documentoRecibidoId && <div style={{ padding: '10px 12px', marginBottom: 14, borderRadius: 8, background: 'var(--bg)', color: 'var(--text-2)', fontSize: 13 }}><strong>Precargado desde DTE recibido.</strong> Emisor: {nombreProveedorRecibido || 'sin razón social'} ({rutProveedorRecibido || 'sin RUT'}). El total XML es {fmt(totalXmlReferencia)}; revisa códigos internos, destino y categoría antes de guardar.</div>}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
             <FormField label="Documento" required><Select value={header.documento} onChange={v => setHeader(h => ({ ...h, documento: v }))} options={DOCUMENTOS} /></FormField>
             <FormField label="N Doc" required><Input value={header.nDoc} onChange={v => setHeader(h => ({ ...h, nDoc: v }))} /></FormField>
@@ -253,7 +287,7 @@ export default function StockIngresosPage() {
 
           <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
             <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <strong style={{ fontSize: 13 }}>Detalle</strong>
+              <strong style={{ fontSize: 13 }}>Detalle {documentoRecibidoId ? '— código interno obligatorio para cada línea precargada' : ''}</strong>
               <Btn variant="secondary" size="xs" icon="plus" onClick={addDetail}>Linea</Btn>
             </div>
             <div style={{ overflowX: 'auto' }}>
@@ -279,7 +313,7 @@ export default function StockIngresosPage() {
               </table>
             </div>
             <div style={{ padding: 12, borderTop: '1px solid var(--border)', textAlign: 'right', fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>
-              Total {fmt(totalForm)}
+              Total detalle {fmt(totalForm)}{documentoRecibidoId ? <span style={{ marginLeft: 12, color: totalForm === totalXmlReferencia ? 'var(--green-700)' : 'var(--amber)' }}>XML {fmt(totalXmlReferencia)}</span> : ''}
             </div>
           </div>
         </FormPanel>

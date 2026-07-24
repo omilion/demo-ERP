@@ -489,6 +489,7 @@ export default async function pagosProveedoresRoutes(fastify) {
     const sucursalId = resolvePagoSucursal(request.user, b.sucursalId)
     const documento = normalizePagoDocumento(b.documento)
     const nDoc = cleanText(b.nDoc)
+    const documentoRecibidoId = parseOptionalInt(b.documentoRecibidoId)
     if (!proveedorId && !codigoProveedor) return reply.code(400).send({ error: 'proveedorId o codigoProveedor requerido' })
     if (!documento) return reply.code(400).send({ error: 'documento requerido' })
     if (!nDoc) return reply.code(400).send({ error: 'nDoc requerido' })
@@ -518,6 +519,12 @@ export default async function pagosProveedoresRoutes(fastify) {
 
     try {
       const result = await fastify.prisma.$transaction(async (tx) => {
+        if (documentoRecibidoId) {
+          await tx.$queryRaw`SELECT id FROM "facturacion"."documentos_recibidos" WHERE id = ${documentoRecibidoId} FOR UPDATE`
+          const recibido = await tx.factDocumentoRecibido.findUnique({ where: { id: documentoRecibidoId }, select: { id: true, pagoProveedorId: true } })
+          if (!recibido) return { status: 404, payload: { error: 'Documento recibido no encontrado' } }
+          if (recibido.pagoProveedorId) return { status: 409, payload: { error: 'Este documento recibido ya fue ingresado como mercadería', pagoProveedorId: recibido.pagoProveedorId } }
+        }
         const resolved = await resolveActiveProveedor(tx, { proveedorId, codigoProveedor })
         if (resolved.payload) return resolved
         const pagoProveedorId = resolved.proveedor.id
@@ -583,6 +590,7 @@ export default async function pagosProveedoresRoutes(fastify) {
         const payload = stockAplicado
           ? await tx.pagoProveedor.update({ where: { id: pago.id }, data: { stockAplicadoAt: new Date() } })
           : pago
+        if (documentoRecibidoId) await tx.factDocumentoRecibido.update({ where: { id: documentoRecibidoId }, data: { pagoProveedorId: pago.id, estado: 'ingresado' } })
         return { status: 201, payload }
       })
       return reply.code(result.status).send(result.payload)

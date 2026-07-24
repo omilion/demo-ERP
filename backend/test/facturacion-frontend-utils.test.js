@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildExportacionInput, buildLiquidacionInput, buildReceptor, computeDteTotales, mapVentaItems } from '../../frontend/src/utils/facturacion.js'
+import { buildExportacionInput, buildIngresoMercaderiaPrefill, buildLiquidacionInput, buildReceptor, computeDteTotales, mapVentaItems } from '../../frontend/src/utils/facturacion.js'
 
 describe('facturacion/frontend totals', () => {
   it('mantiene el total del formulario manual igual a la vista previa con ítems afectos y exentos', () => {
@@ -58,5 +58,11 @@ describe('facturacion/frontend totals', () => {
       { nombre: 'Producto afecto', cantidad: 2, precio: 10000, exento: false },
       { nombre: 'Servicio exento', cantidad: 1, precio: 5000, exento: true },
     ])).toEqual({ neto: 20000, exento: 5000, iva: 3800, total: 28800 })
+  })
+
+  it('prellena ingreso de mercadería sin inventar el código interno del proveedor', () => {
+    const prefill = buildIngresoMercaderiaPrefill({ id: 8, tipoDte: 33, folio: 401, fechaEmision: '2026-07-23', rutEmisor: '76.123.456-7', razonSocialEmisor: 'Proveedor SpA', totales: { total: 11900 }, items: [{ nombre: 'Materia prima', cantidad: 2, unidad: 'KG', monto: 10000 }] })
+    expect(prefill).toMatchObject({ documentoRecibidoId: 8, documento: 'Factura', nDoc: '401', proveedorRut: '76.123.456-7', totalReferencia: 11900 })
+    expect(prefill.details).toEqual([expect.objectContaining({ codigoInterno: '', nombre: 'Materia prima', cantidad: '2', precio: '5000' })])
   })
 })

@@ -139,3 +139,21 @@ export const buildExportacionInput = ({ tipoDte, items, fechaVencimiento, tipoDe
   },
   tipoDte,
 })
+
+export const buildIngresoMercaderiaPrefill = (recibido) => {
+  const documento = ({ 33: 'Factura', 39: 'Boleta', 61: 'Nota' })[Number(recibido.tipoDte)]
+  if (!documento) return null
+  const details = (recibido.items || []).map(item => {
+    const cantidad = Number(item.cantidad || 1)
+    const monto = Number(item.monto ?? cantidad * Number(item.precio || 0))
+    return {
+      codigoInterno: '', destino: 'producto', nombre: item.nombre || '', unidadMedida: item.unidad || '',
+      cantidad: String(cantidad), precio: String(cantidad ? Math.round(monto / cantidad) : monto),
+    }
+  })
+  return {
+    documentoRecibidoId: recibido.id, documento, nDoc: String(recibido.folio || ''), fechaDoc: recibido.fechaEmision || '',
+    proveedorRut: recibido.rutEmisor || '', proveedorNombre: recibido.razonSocialEmisor || '',
+    totalReferencia: Number(recibido.totales?.total || 0), details,
+  }
+}
