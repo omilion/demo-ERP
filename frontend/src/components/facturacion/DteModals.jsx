@@ -3,7 +3,7 @@ import { Badge, Btn, Icon } from '../shared'
 import { useEmitirDte, useDocumentos, useEmpresa } from '../../api/facturacion'
 import { useDespachoPacking } from '../../api/despachos'
 import { useVentas } from '../../api/ventas'
-import { buildReceptor, computeDteTotales, isValidRut, mapVentaItems, TIPOS_DTE, IND_TRASLADO, TIPO_DESPACHO, REFERENCIA_TIPOS, REFERENCIA_TIPOS_INTERNOS } from '../../utils/facturacion'
+import { buildReceptor, buildReferenciaInternaRow, computeDteTotales, isDteReferenciable, isValidRut, mapVentaItems, TIPOS_DTE, IND_TRASLADO, TIPO_DESPACHO, REFERENCIA_TIPOS, REFERENCIA_TIPOS_INTERNOS } from '../../utils/facturacion'
 
 const dateFmt = value => value ? new Date(value).toLocaleDateString('es-CL') : '—'
 
@@ -67,11 +67,14 @@ function Preview({ empresa, receptor, items, tipoDte, referencias, totales }) {
         <div style={{ background: 'var(--bg)', padding: 12, borderRadius: 8, fontSize: 12 }}>
           <div style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Referencia{referenciasCompletas.length > 1 ? 's' : ''}</div>
           {referenciasCompletas.map((r, i) => {
-            const esInterna = REFERENCIA_TIPOS_INTERNOS.includes(r.tipo)
-            const tipoLabel = esInterna ? TIPOS_DTE[Number(r.tipo)] : REFERENCIA_TIPOS[r.tipo]
+            const tipo = r.tipo ?? String(r.tipoDocRef || '')
+            const folio = r.folio ?? r.folioRef
+            const fecha = r.fecha ?? r.fechaRef
+            const esInterna = REFERENCIA_TIPOS_INTERNOS.includes(tipo)
+            const tipoLabel = esInterna ? TIPOS_DTE[Number(tipo)] : REFERENCIA_TIPOS[tipo]
             return (
               <div key={i} style={{ marginTop: i ? 8 : 0 }}>
-                <div>{tipoLabel}{esInterna ? ' — documento local seleccionado' : (r.folio ? ` N° ${r.folio}` : '')}{!esInterna && r.fecha ? ` — ${dateFmt(r.fecha)}` : ''}</div>
+                <div>{tipoLabel}{folio ? ` N° ${folio}` : ''}{fecha ? ` — ${dateFmt(fecha)}` : ''}</div>
                 {r.razon && <div style={{ color: 'var(--text-2)', marginTop: 2 }}>{r.razon}</div>}
               </div>
             )
@@ -103,7 +106,7 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
   const addReferenciaRow = () => setReferencias(rows => [...rows, emptyReferenciaRow()])
   const updateReferenciaRow = (index, patch) => setReferencias(rows => rows.map((row, i) => i === index ? { ...row, ...patch } : row))
   const removeReferenciaRow = (index) => setReferencias(rows => rows.filter((_, i) => i !== index))
-  const agregarDocumentoVenta = (doc) => setReferencias(rows => rows.some(row => String(row.docLocalId) === String(doc.id)) ? rows : [...rows, { tipo: String(doc.tipoDte), docLocalId: String(doc.id), folio: '', fecha: '', razon: '' }])
+  const agregarDocumentoVenta = (doc) => setReferencias(rows => rows.some(row => String(row.docLocalId) === String(doc.id)) ? rows : [...rows, buildReferenciaInternaRow(doc)])
   // Una fila con tipo elegido pero sin documento/folio no se manda, asi que no
   // se deja confirmar a medias (antes quedaba en silencio como si no se
   // hubiera tocado nada).
@@ -112,7 +115,7 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
     return !!row.tipo && (esInterna ? !row.docLocalId : !row.folio.trim())
   })
   const { data: empresaData } = useEmpresa()
-  const documentosVentaReferencia = useDocumentos({ ordenId: ventaReferencia?.id, estado: 'emitido' }, { enabled: !!ventaReferencia?.id })
+  const documentosVentaReferencia = useDocumentos({ ordenId: ventaReferencia?.id }, { enabled: !!ventaReferencia?.id })
   const empresa = empresaData?.empresa
   // La DTE declara solo lo que se eligio enviar en ESTA guia (packing por
   // guiaDespachoId, existe desde que se crea la guia sin importar si ya
@@ -236,7 +239,7 @@ function VentaReferenceSearch({ selected, onSelect, autoFocus = false }) {
 }
 
 function DocumentosVenta({ venta, documentos, loading, onAdd, referencedIds }) {
-  const compatibles = documentos.filter(doc => REFERENCIA_TIPOS_INTERNOS.includes(String(doc.tipoDte)))
+  const compatibles = documentos.filter(isDteReferenciable)
   return <div style={{ marginBottom: 12, padding: 10, border: '1px solid var(--border)', borderRadius: 8 }}><div style={{ marginBottom: 6, fontSize: 12, fontWeight: 700 }}>DTE emitidos de la orden #{venta.nInterno || venta.id}</div>{loading && <div style={{ color: 'var(--text-3)', fontSize: 12 }}>Buscando documentos...</div>}{!loading && !compatibles.length && <div style={{ color: 'var(--text-3)', fontSize: 12 }}>Esta venta no tiene Factura, Guía, Nota de Débito o Nota de Crédito emitida para agregar como referencia.</div>}{compatibles.map(doc => { const agregado = referencedIds.includes(String(doc.id)); return <button key={doc.id} type="button" disabled={agregado} onClick={() => onAdd(doc)} style={{ display: 'flex', width: '100%', justifyContent: 'space-between', gap: 10, padding: '7px 0', border: 'none', borderTop: '1px solid var(--border)', background: 'none', color: agregado ? 'var(--text-3)' : 'var(--blue)', cursor: agregado ? 'default' : 'pointer', textAlign: 'left', fontSize: 12 }}><span>{TIPOS_DTE[doc.tipoDte]} · folio {doc.folio}</span><span>{agregado ? 'Agregada' : '+ Agregar referencia'}</span></button> })}</div>
 }
 
@@ -258,7 +261,8 @@ function SelectField({ label, value, options, onChange }) {
 // de veces en un mismo componente).
 function ReferenciaRow({ value, onChange, onRemove }) {
   const esInterna = REFERENCIA_TIPOS_INTERNOS.includes(value.tipo)
-  const documentosRef = useDocumentos({ tipoDte: value.tipo, estado: 'emitido' }, { enabled: esInterna })
+  const documentosRef = useDocumentos({ tipoDte: value.tipo }, { enabled: esInterna })
+  const documentos = (documentosRef.data?.documentos || []).filter(isDteReferenciable)
   const incompleta = !!value.tipo && (esInterna ? !value.docLocalId : !value.folio.trim())
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 8 }}>
@@ -267,17 +271,20 @@ function ReferenciaRow({ value, onChange, onRemove }) {
         <button type="button" onClick={onRemove} style={{ background: 'none', border: 'none', color: 'var(--text-3)', cursor: 'pointer', fontSize: 12 }}>Quitar</button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: esInterna ? '1.4fr 2fr' : '1.4fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
-        <SelectField label="Tipo de documento referenciado" value={value.tipo} options={REFERENCIA_TIPOS} onChange={tipo => onChange({ tipo, docLocalId: '', folio: '' })} />
+        <SelectField label="Tipo de documento referenciado" value={value.tipo} options={REFERENCIA_TIPOS} onChange={tipo => onChange({ tipo, docLocalId: '', folio: '', fecha: '' })} />
         {esInterna ? (
           <div>
             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Documento emitido</label>
-            <select value={value.docLocalId} onChange={event => onChange({ docLocalId: event.target.value })} style={{ ...inputStyle, background: '#fff' }} disabled={documentosRef.isLoading}>
+            <select value={value.docLocalId} onChange={event => {
+              const documento = documentos.find(doc => String(doc.id) === event.target.value)
+              onChange(documento ? { ...buildReferenciaInternaRow(documento), razon: value.razon } : { docLocalId: '', folio: '', fecha: '' })
+            }} style={{ ...inputStyle, background: '#fff' }} disabled={documentosRef.isLoading}>
               <option value="">{documentosRef.isLoading ? 'Cargando...' : 'Seleccionar...'}</option>
-              {(documentosRef.data?.documentos || []).map(doc => (
+              {documentos.map(doc => (
                 <option key={doc.id} value={doc.id}>Folio {doc.folio} — {doc.receptor?.razonSocial || 'sin receptor'} — {dateFmt(doc.fechaEmision)}</option>
               ))}
             </select>
-            {!documentosRef.isLoading && !(documentosRef.data?.documentos || []).length && (
+            {!documentosRef.isLoading && !documentos.length && (
               <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>No hay {TIPOS_DTE[Number(value.tipo)]?.toLowerCase()} emitidas todavía.</div>
             )}
           </div>

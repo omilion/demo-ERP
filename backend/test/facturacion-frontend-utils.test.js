@@ -1,7 +1,32 @@
 import { describe, expect, it } from 'vitest'
-import { buildExportacionInput, buildIngresoMercaderiaPrefill, buildLiquidacionInput, buildReceptor, computeDteTotales, mapManualDteItems, mapVentaItems, puedeCrearVentaDesdeEmision } from '../../frontend/src/utils/facturacion.js'
+import { buildExportacionInput, buildIngresoMercaderiaPrefill, buildLiquidacionInput, buildReceptor, buildReferenciaInternaRow, computeDteTotales, isDteReferenciable, mapManualDteItems, mapVentaItems, puedeCrearVentaDesdeEmision } from '../../frontend/src/utils/facturacion.js'
 
 describe('facturacion/frontend totals', () => {
+  it('mantiene referenciables los DTE emitidos, enviados y aceptados con su folio real', () => {
+    for (const estado of ['emitido', 'enviado', 'aceptado']) {
+      expect(isDteReferenciable({ tipoDte: 52, estado, folio: 187 })).toBe(true)
+    }
+    for (const estado of ['borrador', 'error', 'rechazado']) {
+      expect(isDteReferenciable({ tipoDte: 52, estado, folio: 187 })).toBe(false)
+    }
+    expect(isDteReferenciable({ tipoDte: 52, estado: 'aceptado', folio: null })).toBe(false)
+  })
+
+  it('copia folio y fecha reales al seleccionar una referencia interna', () => {
+    expect(buildReferenciaInternaRow({
+      id: 41,
+      tipoDte: 52,
+      folio: 187,
+      fechaEmision: '2026-07-24T12:30:00.000Z',
+    })).toEqual({
+      tipo: '52',
+      docLocalId: '41',
+      folio: '187',
+      fecha: '2026-07-24',
+      razon: '',
+    })
+  })
+
   it('mantiene el total del formulario manual igual a la vista previa con ítems afectos y exentos', () => {
     const items = mapVentaItems({ items: [
       { id: 1, nombre: 'Ítem afecto', cantidad: 2, precioUnitario: 11900, exento: false },

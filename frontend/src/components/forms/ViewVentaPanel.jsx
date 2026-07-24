@@ -8,6 +8,7 @@ import { useProductos } from '../../api/productos'
 import { useDocumentos } from '../../api/facturacion'
 import { EmitirDteModal, NotaDteModal } from '../facturacion/DteModals'
 import { TIPOS_DTE } from '../../utils/facturacion'
+import { downloadDteXml, openDteHtml } from '../../utils/dteDocuments'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 
@@ -367,6 +368,13 @@ function TabDocumentos({ v, pagos, dtes, canWrite, canWriteFacturacion, onNota }
   const hasContent = v.licitacion || v.guias || v.facturado > 0 || v.observaciones || referenciales.length > 0
   const [ajustarPresupuesto, setAjustarPresupuesto] = useState(false)
   const saldoDespacho = Number(v.montoDespacho || 0) - Number(v.montoDespachoReal || 0)
+  const runDteAction = async (action, documento) => {
+    try {
+      await action(documento)
+    } catch (error) {
+      toast.error(error?.response?.data?.error || error?.message || 'No se pudo abrir el documento.')
+    }
+  }
 
   return (
     <div>
@@ -461,7 +469,11 @@ function TabDocumentos({ v, pagos, dtes, canWrite, canWriteFacturacion, onNota }
                 <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: "'DM Mono',monospace" }}>{fmt(doc.totales?.total)}</td>
                 <td style={{ padding: '8px 10px' }}><Badge tone={DTE_TONE[doc.estado] || 'gray'}>{doc.estado}</Badge></td>
                 <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
-                  {canWriteFacturacion && ['aceptado', 'enviado'].includes(doc.estado) && <>
+                  {doc.xml && doc.estado !== 'borrador' && <>
+                    <button onClick={() => runDteAction(openDteHtml, doc)} style={dteLink('var(--blue)')}>Ver HTML</button>
+                    <button onClick={() => runDteAction(downloadDteXml, doc)} style={dteLink('var(--text-2)')}>Descargar XML</button>
+                  </>}
+                  {canWriteFacturacion && [33, 39].includes(Number(doc.tipoDte)) && ['aceptado', 'enviado'].includes(doc.estado) && <>
                     <button onClick={() => onNota(doc, 61)} style={dteLink('var(--red)')}>Anular con NC</button>
                     <button onClick={() => onNota(doc, 56)} style={dteLink('var(--blue)')}>Corregir con ND</button>
                   </>}
@@ -822,7 +834,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const documentosCount = pagos.filter(isReferencialPago).length
   const dtes = documentosDteQuery.data?.documentos || []
   const canWriteFacturacion = can(user, 'facturacion', 'write')
-  const ventaYaEmitida = dtes.some(doc => ['emitido', 'enviado', 'aceptado'].includes(doc.estado))
+  const ventaYaEmitida = dtes.some(doc => [33, 39].includes(Number(doc.tipoDte)) && ['emitido', 'enviado', 'aceptado'].includes(doc.estado))
   const fecha = v.createdAt
     ? new Date(v.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—'

@@ -58,6 +58,26 @@ export const REFERENCIA_TIPOS = {
 // contrato, resolucion, etc.) son documentos externos sin registro local.
 export const REFERENCIA_TIPOS_INTERNOS = ['33', '52', '56', '61']
 
+// Un DTE sigue siendo una referencia valida despues de enviarlo al SII.
+// Borradores, errores y documentos rechazados no deben aparecer en el picker.
+export const ESTADOS_DTE_REFERENCIABLES = ['emitido', 'enviado', 'aceptado']
+
+export const isDteReferenciable = (documento = {}) => (
+  ESTADOS_DTE_REFERENCIABLES.includes(documento.estado)
+  && REFERENCIA_TIPOS_INTERNOS.includes(String(documento.tipoDte))
+  && documento.folio !== null
+  && documento.folio !== undefined
+  && String(documento.folio).trim() !== ''
+)
+
+export const buildReferenciaInternaRow = (documento = {}) => ({
+  tipo: String(documento.tipoDte || ''),
+  docLocalId: String(documento.id || ''),
+  folio: String(documento.folio || ''),
+  fecha: documento.fechaEmision ? String(documento.fechaEmision).slice(0, 10) : '',
+  razon: '',
+})
+
 export function isValidRut(value) {
   const rut = String(value || '').replace(/[^0-9kK]/g, '').toUpperCase()
   if (rut.length < 2) return false

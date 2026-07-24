@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { useConsultarEstado, useDocumento, useDocumentos, useEnviarDocumento, useEnviarLote } from '../../api/facturacion'
-import api from '../../api/client'
 import { can, ventaPath } from '../../utils/permissions'
 import { useAuthStore } from '../../store/auth'
 import { TIPOS_DTE } from '../../utils/facturacion'
+import { downloadDteXml, openDteHtml } from '../../utils/dteDocuments'
 import { confirmDialog, toast } from '../../store/notif'
 
 const ESTADO_TABS = [
@@ -22,27 +22,13 @@ function DocumentoDetail({ id, onClose }) {
   const { data: documento, isLoading } = useDocumento(id)
   const descargarXml = async () => {
     try {
-      const response = await api.get(`/facturacion/documentos/${id}/xml`, { responseType: 'blob' })
-      const url = URL.createObjectURL(response.data)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `DTE-${documento?.folio || id}.xml`
-      link.click()
-      URL.revokeObjectURL(url)
+      await downloadDteXml(documento)
     } catch (error) { toast.error(errorText(error)) }
   }
   const verHtml = async () => {
-    const popup = window.open('', '_blank')
-    if (!popup) { toast.warning('Habilita popups para ver el documento.'); return }
     try {
-      const response = await api.get(`/facturacion/documentos/${id}/html`, { responseType: 'text' })
-      popup.document.open()
-      popup.document.write(response.data)
-      popup.document.close()
-    } catch (error) {
-      popup.close()
-      toast.error(errorText(error))
-    }
+      await openDteHtml(documento)
+    } catch (error) { toast.error(errorText(error)) }
   }
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 600, display: 'flex', justifyContent: 'flex-end' }}>

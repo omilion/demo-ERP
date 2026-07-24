@@ -1,5 +1,5 @@
 import { toast, promptDialog } from '../../store/notif'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { useDespachoMatriz, useDespachos, useGuias, useDespachoPacking, useDespachoTracking, useCreateDespacho, useUpdateDespacho, useCreateDespachoTrackingEvento, useUpdateDespachoPacking, useDeleteDespacho, useCreateGuia, useUpdateGuia, useDeleteGuia } from '../../api/despachos'
@@ -10,6 +10,8 @@ import { useVenta } from '../../api/ventas'
 import { useRegiones, useComunas } from '../../api/locations'
 import { TRANSPORTISTAS } from '../../utils/facturacion'
 import { EmitirDteModal } from '../../components/facturacion/DteModals'
+import { useDocumentos } from '../../api/facturacion'
+import { downloadDteXml, openDteHtml } from '../../utils/dteDocuments'
 
 const TABS = [
   { id: 'matriz', label: 'Matriz despacho' },
@@ -218,6 +220,17 @@ export default function DespachosPage() {
   const matriz = useDespachoMatriz(tab === 'matriz' ? matrixParams : {})
   const despachos = useDespachos(tab === 'registros' ? registroParams : {})
   const guias = useGuias(tab === 'guias' ? guiaParams : {})
+  const documentosGuias = useDocumentos({ tipoDte: 52 }, { enabled: tab === 'guias' })
+  const dtePorGuiaId = useMemo(() => {
+    const result = new Map()
+    for (const documento of documentosGuias.data?.documentos || []) {
+      const guiaId = Number(documento.guiaDespachoId)
+      if (guiaId && documento.folio && documento.estado !== 'borrador' && !result.has(guiaId)) {
+        result.set(guiaId, documento)
+      }
+    }
+    return result
+  }, [documentosGuias.data])
   const createMut = useCreateDespacho()
   const updateMut = useUpdateDespacho()
   const updatePackingMut = useUpdateDespachoPacking()
@@ -358,6 +371,24 @@ export default function DespachosPage() {
     ) },
   ]
 
+  const renderGuiaDte = row => {
+    const documento = dtePorGuiaId.get(Number(row.id))
+    if (!documento) return null
+    const runDteAction = async (event, action) => {
+      event.stopPropagation()
+      try {
+        await action(documento)
+      } catch (error) {
+        toast.error(error?.response?.data?.error || error?.message || 'No se pudo abrir el documento.')
+      }
+    }
+    return <>
+      <Badge tone={documento.estado === 'aceptado' ? 'green' : documento.estado === 'enviado' ? 'amber' : 'blue'}>DTE folio {documento.folio}</Badge>
+      <button onClick={event => runDteAction(event, openDteHtml)} style={linkButton('var(--blue)')}>Ver DTE</button>
+      <button onClick={event => runDteAction(event, downloadDteXml)} style={linkButton('var(--text-2)')}>Descargar XML</button>
+    </>
+  }
+
   const colsGuia = [
     { key: 'fechaGuia', label: 'Fecha', render: dateFmt },
     { key: 'nGuia', label: 'N guia', render: v => <Mono strong>{v}</Mono> },
@@ -366,8 +397,10 @@ export default function DespachosPage() {
     { key: 'odtId', label: 'OT', render: renderOdtLink },
     { key: 'origen', label: 'Origen' },
     { key: '_acc', label: '', render: (_, row) => (
-      <div style={{ display: 'flex', gap: 8 }}>
-        {canWriteFacturacion && <button
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {documentosGuias.isLoading && <span style={{ color: 'var(--text-3)', fontSize: 11 }}>Cargando DTE...</span>}
+        {renderGuiaDte(row)}
+        {!documentosGuias.isLoading && !dtePorGuiaId.has(Number(row.id)) && canWriteFacturacion && <button
           disabled={!row.ordenId}
           title={row.ordenId ? 'Emitir guía de despacho electrónica' : 'Esta guía no tiene una orden asociada'}
           onClick={(e) => { e.stopPropagation(); if (row.ordenId) setDteTarget({ ordenId: row.ordenId, guiaDespachoId: row.id }) }}
