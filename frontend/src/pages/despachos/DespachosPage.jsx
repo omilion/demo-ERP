@@ -8,9 +8,9 @@ import { useAuthStore } from '../../store/auth'
 import { can, odtPath, ventaPath } from '../../utils/permissions'
 import { useVenta } from '../../api/ventas'
 import { useRegiones, useComunas } from '../../api/locations'
-import { TRANSPORTISTAS } from '../../utils/facturacion'
+import { TRANSPORTISTAS, IND_TRASLADO, TIPO_DESPACHO, buildReceptor, mapVentaItems } from '../../utils/facturacion'
 import { EmitirDteModal } from '../../components/facturacion/DteModals'
-import { useDocumentos } from '../../api/facturacion'
+import { useDocumentos, useEmitirDte } from '../../api/facturacion'
 import { downloadDteXml, openDteHtml } from '../../utils/dteDocuments'
 
 const TABS = [
@@ -605,7 +605,7 @@ export default function DespachosPage() {
           title="Nueva guia"
           initial={creatingGuia}
           onClose={() => setCreatingGuia(null)}
-          onSuccess={() => { setCreatingGuia(null); toast.success('Guía generada.') }}
+          onSuccess={(guia) => { setCreatingGuia(null); toast.success(guia?.folio ? `Guía generada: DTE folio ${guia.folio}.` : 'Guía generada.') }}
         />
       )}
       {editingGuia && (
@@ -1065,16 +1065,31 @@ function GuiaModal({ title = 'Nueva guia', initial, onClose, onSuccess }) {
     return { ...item, pendiente, envio }
   })
   const hayItemsSeleccionados = items.some(i => i.envio > 0)
+  // La guia siempre se emite como DTE-52 al crearla (no debe existir un
+  // registro de guia sin folio SII real): estos dos codigos los exige el SII
+  // y no tienen default seguro, los define quien despacha.
+  const [indTraslado, setIndTraslado] = useState('')
+  const [tipoDespacho, setTipoDespacho] = useState('')
+  const ventaParaDte = useVenta(!isEdit ? form.ordenId : undefined)
 
   const createDespachoMut = useCreateDespacho()
   const createGuiaMut = useCreateGuia()
   const updateGuiaMut = useUpdateGuia()
   const updatePackingMut = useUpdateDespachoPacking()
-  const saving = createDespachoMut.isPending || createGuiaMut.isPending || updateGuiaMut.isPending || updatePackingMut.isPending
+  const emitirMut = useEmitirDte()
+  const deleteGuiaMut = useDeleteGuia()
+  const saving = createDespachoMut.isPending || createGuiaMut.isPending || updateGuiaMut.isPending
+    || updatePackingMut.isPending || emitirMut.isPending || deleteGuiaMut.isPending
 
   const guardar = async () => {
     if (isEdit && !form.nGuia.trim()) { toast.error('Indica el N° de guia.'); return }
     if (despachoModo === 'existente' && !despachoIdExistente) { toast.error('Elige el despacho.'); return }
+    if (!isEdit) {
+      if (!form.ordenId) { toast.error('Indica el N° de Orden: la guía se emite como documento SII y necesita una venta real.'); return }
+      if (!hayItemsSeleccionados) { toast.error('Selecciona al menos un producto y una cantidad para enviar.'); return }
+      if (!indTraslado || !tipoDespacho) { toast.error('Indica el motivo del traslado y el tipo de despacho (los exige el SII).'); return }
+      if (ventaParaDte.isLoading || !ventaParaDte.data) { toast.error('Espera a que cargue la venta antes de guardar.'); return }
+    }
     try {
       let despachoId = null
       if (despachoModo === 'existente') {
@@ -1087,17 +1102,40 @@ function GuiaModal({ title = 'Nueva guia', initial, onClose, onSuccess }) {
       if (isEdit) {
         const guia = await updateGuiaMut.mutateAsync({ id: initial.id, data: { nGuia: form.nGuia, fechaGuia: form.fechaGuia, origen: form.origen, despachoId } })
         onSuccess(guia)
-      } else {
-        const guia = await createGuiaMut.mutateAsync({ ordenId: form.ordenId, odtId: form.odtId, nInterno: form.nInterno, nGuia: form.nGuia, fechaGuia: form.fechaGuia, origen: form.origen, despachoId })
-        if (hayItemsSeleccionados) {
-          await updatePackingMut.mutateAsync({
-            ordenId: form.ordenId,
-            guiaDespachoId: guia.id,
-            despachoId: despachoId || undefined,
-            items: items.filter(i => i.envio > 0).map(i => ({ itemId: i.id, nEntregados: Number(i.nEntregados || 0) + i.envio })),
-          })
-        }
-        onSuccess(guia)
+        return
+      }
+
+      const guia = await createGuiaMut.mutateAsync({ ordenId: form.ordenId, odtId: form.odtId, nInterno: form.nInterno, nGuia: form.nGuia, fechaGuia: form.fechaGuia, origen: form.origen, despachoId })
+      const itemsAEnviar = items.filter(i => i.envio > 0)
+      try {
+        await updatePackingMut.mutateAsync({
+          ordenId: form.ordenId,
+          guiaDespachoId: guia.id,
+          despachoId: despachoId || undefined,
+          items: itemsAEnviar.map(i => ({ itemId: i.id, nEntregados: Number(i.nEntregados || 0) + i.envio })),
+        })
+        const cantidadPorItemId = Object.fromEntries(itemsAEnviar.map(i => [i.id, i.envio]))
+        const dteItems = mapVentaItems(ventaParaDte.data, cantidadPorItemId, { includeCargos: false })
+        const receptor = buildReceptor(ventaParaDte.data.cliente)
+        const { emitido } = await emitirMut.mutateAsync({
+          ordenId: guia.ordenId ?? Number(form.ordenId),
+          clienteId: ventaParaDte.data.clienteId || ventaParaDte.data.cliente?.id,
+          guiaDespachoId: guia.id,
+          tipoDte: 52,
+          receptor,
+          items: dteItems,
+          extra: { indTraslado: Number(indTraslado), tipoDespacho: Number(tipoDespacho) },
+        })
+        onSuccess({ ...guia, folio: emitido?.folio })
+      } catch (dteError) {
+        // La guia no puede quedar como simple registro local sin su DTE: si la
+        // emision falla (packing o SII), se deshace la guia recien creada en
+        // vez de dejarla huerfana sin folio.
+        try {
+          const motivo = `Emisión SII fallida al crear: ${dteError?.response?.data?.error || dteError?.message || 'error desconocido'}`
+          await deleteGuiaMut.mutateAsync({ id: guia.id, motivo })
+        } catch { /* best-effort */ }
+        throw dteError
       }
     } catch (cause) {
       toast.error(cause?.response?.data?.error || cause?.message || 'No se pudo guardar la guia.')
@@ -1108,7 +1146,7 @@ function GuiaModal({ title = 'Nueva guia', initial, onClose, onSuccess }) {
     <Modal title={title} onClose={onClose}>
       {!isEdit && (
         <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 14, lineHeight: 1.5 }}>
-          1. Elige abajo qué productos y cuánto enviar de este pedido. 2. Resuelve el despacho (o déjalo pendiente). 3. Guarda: la guía queda lista para emitir su DTE desde la pestaña Guías.
+          1. Elige abajo qué productos y cuánto enviar de este pedido. 2. Indica el motivo/tipo de despacho que exige el SII. 3. Resuelve el despacho (o déjalo pendiente). 4. Guarda: se emite la guía como documento SII al mismo tiempo — si la emisión falla, no queda un registro suelto.
         </div>
       )}
       <div style={grid}>
@@ -1157,6 +1195,27 @@ function GuiaModal({ title = 'Nueva guia', initial, onClose, onSuccess }) {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {!isEdit && form.ordenId && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Documento SII (obligatorio para emitir la guía)</div>
+          <div style={grid}>
+            <Field label="Motivo del traslado">
+              <select value={indTraslado} onChange={e => setIndTraslado(e.target.value)} style={input}>
+                <option value="">Seleccionar...</option>
+                {Object.entries(IND_TRASLADO).map(([code, text]) => <option key={code} value={code}>{code} — {text}</option>)}
+              </select>
+            </Field>
+            <Field label="Tipo de despacho">
+              <select value={tipoDespacho} onChange={e => setTipoDespacho(e.target.value)} style={input}>
+                <option value="">Seleccionar...</option>
+                {Object.entries(TIPO_DESPACHO).map(([code, text]) => <option key={code} value={code}>{code} — {text}</option>)}
+              </select>
+            </Field>
+          </div>
+          {ventaParaDte.isLoading && <div style={{ color: 'var(--text-3)', fontSize: 12, marginTop: 4 }}>Cargando datos del receptor...</div>}
         </div>
       )}
 

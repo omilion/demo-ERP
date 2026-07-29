@@ -110,27 +110,87 @@ export const buildReceptor = (cliente = {}) => ({
   ciudad: cliente.ciudad || '',
 })
 
+// Reparte un monto entero (pesos) proporcional a weights sin perder ni sobrar
+// un peso por redondeo (metodo del resto mayor: cada indice recibe el piso de
+// su parte proporcional, y los pesos que sobran por el redondeo se asignan a
+// los indices con mayor parte fraccionaria, uno por uno).
+function allocateProportional(totalAmount, weights) {
+  const total = Math.round(Number(totalAmount) || 0)
+  const sumWeights = weights.reduce((a, b) => a + b, 0)
+  if (total <= 0 || sumWeights <= 0) return weights.map(() => 0)
+  const capped = Math.min(total, sumWeights)
+  const raw = weights.map(w => (capped * w) / sumWeights)
+  const floors = raw.map(Math.floor)
+  const remainder = capped - floors.reduce((a, b) => a + b, 0)
+  const order = raw
+    .map((value, index) => ({ index, frac: value - floors[index] }))
+    .sort((a, b) => b.frac - a.frac)
+  const result = [...floors]
+  for (let k = 0; k < remainder; k++) result[order[k].index] += 1
+  return result
+}
+
 // cantidadPorItemId (opcional): { [ordenItemId]: cantidad } para declarar en
 // el DTE solo lo que va en ESTE envio (packing de una guia especifica) en vez
 // de la cantidad total del item en la venta. Items sin cantidad > 0 se omiten.
-export const mapVentaItems = (venta = {}, cantidadPorItemId = null) => (venta.items || [])
-  .map(item => ({
-    item,
-    cantidad: cantidadPorItemId ? Number(cantidadPorItemId[item.id] || 0) : Number(item.cantidad || 0),
-  }))
-  .filter(({ cantidad }) => cantidad > 0)
-  .map(({ item, cantidad }) => ({
-    nombre: item.nombre || item.producto?.nombre || `Producto #${item.productoId || item.id}`,
-    descripcion: item.descripcion || null,
-    cantidad,
+//
+// El descuento de la Orden (descuentoPct o descuentoMonto congelado, ver
+// computeTotal en backend/routes/ventas/helpers.js) NO viene prorrateado por
+// item: se reparte aca proporcional al valor de cada linea (y de los cargos,
+// si includeCargos), para que el monto declarado en el DTE calce con el total
+// real de la venta. En una guia parcial, ademas se prorratea por la fraccion
+// de unidades que va en ESTE envio (misma tasa de descuento por unidad que el
+// resto de la venta — no se recalcula un descuento nuevo por volumen enviado).
+export const mapVentaItems = (venta = {}, cantidadPorItemId = null, { includeCargos = false } = {}) => {
+  const ventaItems = venta.items || []
+  const cargos = includeCargos ? (venta.cargos || []) : []
+
+  const pesosItems = ventaItems.map(item => Number(item.cantidad || 0) * Number(item.precioUnitario || 0))
+  const pesosCargos = cargos.map(cargo => Number(cargo.valor || 0))
+  const base = pesosItems.reduce((a, b) => a + b, 0) + pesosCargos.reduce((a, b) => a + b, 0)
+
+  const descuentoMontoFijo = Number(venta.descuentoMonto || 0)
+  const descuentoTotal = descuentoMontoFijo > 0
+    ? descuentoMontoFijo
+    : Math.round(base * Number(venta.descuentoPct || 0) / 100)
+
+  const descuentos = allocateProportional(descuentoTotal, [...pesosItems, ...pesosCargos])
+  const descuentoPorItem = descuentos.slice(0, ventaItems.length)
+  const descuentoPorCargo = descuentos.slice(ventaItems.length)
+
+  const itemRows = ventaItems.map((item, index) => {
+    const cantidadTotal = Number(item.cantidad || 0)
+    const cantidad = cantidadPorItemId ? Number(cantidadPorItemId[item.id] || 0) : cantidadTotal
+    if (cantidad <= 0) return null
+    const fraccion = cantidadTotal > 0 ? cantidad / cantidadTotal : 0
+    const descuentoLineaBruto = Math.round((descuentoPorItem[index] || 0) * fraccion)
+    return {
+      nombre: item.nombre || item.producto?.nombre || `Producto #${item.productoId || item.id}`,
+      descripcion: item.descripcion || null,
+      cantidad,
+      unidad: null,
+      // precioUnitario en la venta es el precio de venta CON IVA incluido (precio
+      // sala/marco, ver defaultPrecioUnitario en VentasFormPage). El motor DTE
+      // espera precio neto y le suma el 19% el solo: dividir aca evita el doble IVA.
+      // Items exentos (venta manual sin OrdenItem detras) no llevan IVA: se pasan tal cual.
+      precio: item.exento ? Number(item.precioUnitario || 0) : Math.round(Number(item.precioUnitario || 0) / 1.19),
+      descuentoMonto: item.exento ? descuentoLineaBruto : Math.round(descuentoLineaBruto / 1.19),
+      exento: Boolean(item.exento),
+    }
+  }).filter(Boolean)
+
+  const cargoRows = cargos.map((cargo, index) => ({
+    nombre: cargo.nombre || 'Cargo adicional',
+    descripcion: null,
+    cantidad: 1,
     unidad: null,
-    // precioUnitario en la venta es el precio de venta CON IVA incluido (precio
-    // sala/marco, ver defaultPrecioUnitario en VentasFormPage). El motor DTE
-    // espera precio neto y le suma el 19% el solo: dividir aca evita el doble IVA.
-    // Items exentos (venta manual sin OrdenItem detras) no llevan IVA: se pasan tal cual.
-    precio: item.exento ? Number(item.precioUnitario || 0) : Math.round(Number(item.precioUnitario || 0) / 1.19),
-    exento: Boolean(item.exento),
+    precio: Math.round(Number(cargo.valor || 0) / 1.19),
+    descuentoMonto: Math.round((descuentoPorCargo[index] || 0) / 1.19),
+    exento: false,
   }))
+
+  return [...itemRows, ...cargoRows]
+}
 
 // El editor standalone recibe precios con IVA incluido, igual que el formulario
 // de ventas. El motor DTE espera el precio neto, excepto en líneas exentas.
@@ -161,7 +221,9 @@ export const puedeCrearVentaDesdeEmision = ({ cliente, tipo, items = [], licitac
 // manual para que el total que se muestra antes de emitir sea el mismo.
 export const computeDteTotales = (items = []) => {
   const { neto, exento } = items.reduce((acc, item) => {
-    const monto = Number(item.cantidad || 0) * Number(item.precio ?? item.precioUnitario ?? 0)
+    const bruto = Math.round(Number(item.cantidad || 0) * Number(item.precio ?? item.precioUnitario ?? 0))
+    const descuento = Math.round(Number(item.descuentoMonto || 0))
+    const monto = bruto - descuento
     if (item.exento) acc.exento += monto
     else acc.neto += monto
     return acc

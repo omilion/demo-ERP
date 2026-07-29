@@ -40,6 +40,63 @@ describe('facturacion/frontend totals', () => {
     expect(computeDteTotales(items)).toEqual({ neto: 20000, exento: 15000, iva: 3800, total: 38800 })
   })
 
+  it('prorratea el descuento de la Orden entre los ítems y el total del DTE calza con el total real de la venta', () => {
+    const venta = {
+      descuentoPct: 10,
+      items: [
+        { id: 1, nombre: 'Item A', cantidad: 10, precioUnitario: 11900, exento: false },
+        { id: 2, nombre: 'Item B', cantidad: 5, precioUnitario: 5950, exento: false },
+      ],
+    }
+    const items = mapVentaItems(venta)
+    expect(items).toEqual([
+      expect.objectContaining({ nombre: 'Item A', cantidad: 10, precio: 10000, descuentoMonto: 10000 }),
+      expect.objectContaining({ nombre: 'Item B', cantidad: 5, precio: 5000, descuentoMonto: 2500 }),
+    ])
+    // total real de la venta: subtotal 148750 - 10% = 133875 (computeTotal en backend/routes/ventas/helpers.js)
+    expect(computeDteTotales(items).total).toBe(133875)
+  })
+
+  it('prorratea ademas por la cantidad enviada en una guía parcial (misma tasa de descuento por unidad)', () => {
+    const venta = {
+      descuentoPct: 10,
+      items: [
+        { id: 1, nombre: 'Item A', cantidad: 10, precioUnitario: 11900, exento: false },
+        { id: 2, nombre: 'Item B', cantidad: 5, precioUnitario: 5950, exento: false },
+      ],
+    }
+    const items = mapVentaItems(venta, { 1: 4 })
+    expect(items).toEqual([
+      expect.objectContaining({ nombre: 'Item A', cantidad: 4, precio: 10000, descuentoMonto: 4000 }),
+    ])
+  })
+
+  it('descuento fijo (descuentoMonto congelado) tiene prioridad sobre el porcentaje', () => {
+    const venta = {
+      descuentoPct: 50,
+      descuentoMonto: 1190,
+      items: [{ id: 1, nombre: 'Item A', cantidad: 1, precioUnitario: 11900, exento: false }],
+    }
+    const items = mapVentaItems(venta)
+    expect(items).toEqual([expect.objectContaining({ descuentoMonto: 1000 })])
+  })
+
+  it('incluye cargos como línea propia solo si includeCargos, y comparten el pool de descuento', () => {
+    const venta = {
+      descuentoPct: 10,
+      items: [{ id: 1, nombre: 'Item A', cantidad: 1, precioUnitario: 11900, exento: false }],
+      cargos: [{ nombre: 'Flete', valor: 11900 }],
+    }
+    const sinCargos = mapVentaItems(venta, null, { includeCargos: false })
+    expect(sinCargos).toEqual([expect.objectContaining({ nombre: 'Item A', descuentoMonto: 1000 })])
+
+    const conCargos = mapVentaItems(venta, null, { includeCargos: true })
+    expect(conCargos).toEqual([
+      expect.objectContaining({ nombre: 'Item A', descuentoMonto: 1000 }),
+      expect.objectContaining({ nombre: 'Flete', cantidad: 1, precio: 10000, descuentoMonto: 1000 }),
+    ])
+  })
+
   it('serializa Liquidación con detalles, comisiones, totales y mandante sin convertirla en ítems normales', () => {
     const input = buildLiquidacionInput({
       detalles: [{ tpoDocLiq: 33, folio: 82, codigo: 'A-1', nombre: 'Servicio', descripcion: 'Comisión', cantidad: 1, unidad: 'UN', precio: 10000, monto: 10000, exento: false }],

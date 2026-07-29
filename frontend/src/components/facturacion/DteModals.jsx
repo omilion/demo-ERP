@@ -54,7 +54,15 @@ function Preview({ empresa, receptor, items, tipoDte, referencias, totales }) {
       <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead><tr style={{ background: 'var(--bg)' }}><th style={th}>Ítem</th><th style={{ ...th, textAlign: 'right' }}>Cant.</th><th style={{ ...th, textAlign: 'right' }}>Precio neto</th><th style={{ ...th, textAlign: 'right' }}>Subtotal</th></tr></thead>
-          <tbody>{items.map((item, index) => <tr key={index} style={{ borderTop: '1px solid var(--border)' }}><td style={td}>{item.nombre}</td><td style={{ ...td, textAlign: 'right' }}>{item.cantidad}</td><td style={{ ...td, textAlign: 'right' }}>{fmt(item.precio)}</td><td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{fmt(Number(item.cantidad) * Number(item.precio))}</td></tr>)}</tbody>
+          <tbody>{items.map((item, index) => {
+            const subtotal = Math.round(Number(item.cantidad) * Number(item.precio)) - Math.round(Number(item.descuentoMonto) || 0)
+            return <tr key={index} style={{ borderTop: '1px solid var(--border)' }}>
+              <td style={td}>{item.nombre}{item.descuentoMonto > 0 && <span style={{ display: 'block', color: 'var(--text-3)', fontSize: 11 }}>Descuento: -{fmt(item.descuentoMonto)}</span>}</td>
+              <td style={{ ...td, textAlign: 'right' }}>{item.cantidad}</td>
+              <td style={{ ...td, textAlign: 'right' }}>{fmt(item.precio)}</td>
+              <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{fmt(subtotal)}</td>
+            </tr>
+          })}</tbody>
         </table>
       </div>
       <div style={{ marginLeft: 'auto', width: 240, fontSize: 13, marginBottom: referenciasCompletas.length ? 14 : 0 }}>
@@ -125,14 +133,17 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
     ? Object.fromEntries((packing.data?.packedGuia || []).map(row => [row.ordenItemId, row.cantidad]))
     : null
   const receptor = buildReceptor(venta?.cliente)
-  const mappedItems = mapVentaItems(venta, cantidadPorItemId)
-  const items = previewItems || mappedItems
-  const payloadItems = documentInput?.items ?? mappedItems
   const autoTipo = isValidRut(receptor.rut) ? 33 : 39
   const [tipoElegido, setTipoElegido] = useState(autoTipo)
   const puedeElegirTipo = !tipoDte
   const detectedTipo = tipoDte || tipoElegido
   const esGuia = detectedTipo === 52
+  // Los cargos (flete, etc.) son un monto fijo por venta, no por unidad
+  // transportada: se declaran en la Factura/Boleta (documento completo de la
+  // venta), no en cada Guia parcial que se despache de a poco.
+  const mappedItems = mapVentaItems(venta, cantidadPorItemId, { includeCargos: !esGuia })
+  const items = previewItems || mappedItems
+  const payloadItems = documentInput?.items ?? mappedItems
   const esNota = [56, 61].includes(detectedTipo)
   const referenciaPrioritaria = referenceFirst || esNota
 
