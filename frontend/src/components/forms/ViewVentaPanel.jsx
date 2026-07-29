@@ -793,12 +793,29 @@ function DocumentosPagosList({ pagos, dtes }) {
           <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: 700, color: 'var(--green-700)' }}>{fmt(totalPagado)}</span>
         </div>
       )}
-      {(dtes || []).map(doc => (
-        <div key={doc.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
-          <span>{TIPOS_DTE[doc.tipoDte] || `DTE ${doc.tipoDte}`} {doc.folio ? `#${doc.folio}` : ''}</span>
-          <Badge tone={DTE_TONE[doc.estado] || 'gray'}>{doc.estado}</Badge>
-        </div>
-      ))}
+      {(dtes || []).map(doc => {
+        const runDteAction = async (action) => {
+          try {
+            await action(doc)
+          } catch (error) {
+            toast.error(error?.response?.data?.error || error?.message || 'No se pudo abrir el documento.')
+          }
+        }
+        return (
+          <div key={doc.id} style={{ padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{TIPOS_DTE[doc.tipoDte] || `DTE ${doc.tipoDte}`} {doc.folio ? `#${doc.folio}` : ''}</span>
+              <Badge tone={DTE_TONE[doc.estado] || 'gray'}>{doc.estado}</Badge>
+            </div>
+            {doc.xml && doc.estado !== 'borrador' && (
+              <div style={{ marginTop: 2 }}>
+                <button onClick={() => runDteAction(openDteHtml)} style={dteLink('var(--blue)')}>Ver HTML</button>
+                <button onClick={() => runDteAction(downloadDteXml)} style={dteLink('var(--text-2)')}>Descargar XML</button>
+              </div>
+            )}
+          </div>
+        )
+      })}
       {pagosReales.map(p => (
         <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
           <span>{p.medioPago}</span>
