@@ -1,5 +1,22 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app.js'
+import { resolveOdtItemEstadoTaller } from '../src/routes/ventas/get.js'
+
+describe('resolveOdtItemEstadoTaller', () => {
+  it('pendiente si no tiene ninguna estacion de taller asignada', () => {
+    expect(resolveOdtItemEstadoTaller([])).toBe('pendiente')
+  })
+  it('pendiente si todas las estaciones relevantes estan canceladas (nada quedo hecho de verdad)', () => {
+    expect(resolveOdtItemEstadoTaller([{ estado: 'cancelado' }])).toBe('pendiente')
+  })
+  it('pendiente si alguna estacion no cancelada sigue sin terminar', () => {
+    expect(resolveOdtItemEstadoTaller([{ estado: 'listo' }, { estado: 'en_proceso' }])).toBe('pendiente')
+  })
+  it('listo solo cuando todas las estaciones no canceladas estan listas', () => {
+    expect(resolveOdtItemEstadoTaller([{ estado: 'listo' }, { estado: 'listo' }])).toBe('listo')
+    expect(resolveOdtItemEstadoTaller([{ estado: 'listo' }, { estado: 'cancelado' }])).toBe('listo')
+  })
+})
 
 process.env.JWT_ACCESS_SECRET ||= 'test-access-secret'
 process.env.JWT_REFRESH_SECRET ||= 'test-refresh-secret'
@@ -150,6 +167,65 @@ describe('GET /api/ventas/:id', () => {
   it('returns 404 for unknown id', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/ventas/999999', headers: { authorization: `Bearer ${token}` } })
     expect(res.statusCode).toBe(404)
+  })
+
+  // OdtItem.estado nunca se actualiza despues de crear el ODT (queda
+  // "pendiente" para siempre) - el avance real por estacion de taller vive en
+  // OdtItemTaller. Sin el fix, este item aparecia "pendiente" en la venta
+  // aunque el taller ya lo hubiera terminado en todas sus estaciones.
+  it('el estado de taller por producto refleja OdtItemTaller, no el campo OdtItem.estado (siempre pendiente)', async () => {
+    const cliente = await app.prisma.cliente.findFirst({ select: { id: true } })
+    const user = await app.prisma.user.findFirst({ select: { id: true } })
+    const producto = await app.prisma.producto.findFirst({ select: { id: true } })
+    const orden = await app.prisma.orden.create({
+      data: {
+        tipo: 'Test', estado: 'Activa', estadoPago: 'No pagada', estadoEntrega: 'Pendiente entrega',
+        clienteId: cliente.id, userId: user.id, nInterno: 971000000 + Math.floor(Math.random() * 100000),
+      },
+    })
+    const marker = Date.now()
+    const tallerA = await app.prisma.taller.create({ data: { nombre: `TEST-VENTA-A-${marker}` } })
+    const tallerB = await app.prisma.taller.create({ data: { nombre: `TEST-VENTA-B-${marker}` } })
+    const odt = await app.prisma.odt.create({ data: { ordenId: orden.id, tipo: 'Test', estado: 'En proceso', eliminado: false } })
+
+    // Item 1: dos estaciones, ambas listas -> debe verse "listo" pese a que
+    // OdtItem.estado se crea (y queda) en "pendiente".
+    const item1 = await app.prisma.odtItem.create({
+      data: { odtId: odt.id, productoId: producto.id, cantidad: 1, estado: 'pendiente', eliminado: false },
+    })
+    await app.prisma.odtItemTaller.create({ data: { odtItemId: item1.id, tallerId: tallerA.id, estado: 'listo' } })
+    await app.prisma.odtItemTaller.create({ data: { odtItemId: item1.id, tallerId: tallerB.id, estado: 'listo' } })
+
+    // Item 2: una estacion en proceso -> debe seguir "pendiente".
+    const item2 = await app.prisma.odtItem.create({
+      data: { odtId: odt.id, productoId: producto.id, cantidad: 1, estado: 'pendiente', eliminado: false },
+    })
+    await app.prisma.odtItemTaller.create({ data: { odtItemId: item2.id, tallerId: tallerA.id, estado: 'en_proceso' } })
+
+    // Item 3: una estacion lista y otra cancelada -> la cancelada no cuenta,
+    // debe verse "listo".
+    const item3 = await app.prisma.odtItem.create({
+      data: { odtId: odt.id, productoId: producto.id, cantidad: 1, estado: 'pendiente', eliminado: false },
+    })
+    await app.prisma.odtItemTaller.create({ data: { odtItemId: item3.id, tallerId: tallerA.id, estado: 'listo' } })
+    await app.prisma.odtItemTaller.create({ data: { odtItemId: item3.id, tallerId: tallerB.id, estado: 'cancelado' } })
+
+    try {
+      const res = await app.inject({ method: 'GET', url: `/api/ventas/${orden.id}`, headers: { authorization: `Bearer ${token}` } })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      const byId = Object.fromEntries(body.odts[0].items.map(i => [i.id, i]))
+      expect(byId[item1.id].talleres).toBeUndefined()
+      expect(byId[item1.id].estado).toBe('listo')
+      expect(byId[item2.id].estado).toBe('pendiente')
+      expect(byId[item3.id].estado).toBe('listo')
+    } finally {
+      await app.prisma.odtItemTaller.deleteMany({ where: { odtItemId: { in: [item1.id, item2.id, item3.id] } } })
+      await app.prisma.odtItem.deleteMany({ where: { id: { in: [item1.id, item2.id, item3.id] } } })
+      await app.prisma.odt.delete({ where: { id: odt.id } })
+      await app.prisma.taller.deleteMany({ where: { id: { in: [tallerA.id, tallerB.id] } } })
+      await app.prisma.orden.delete({ where: { id: orden.id } })
+    }
   })
 })
 

@@ -6,6 +6,22 @@ function ignoreMissingLegacyColumn(error) {
   return error.code === 'P2022' ? [] : Promise.reject(error)
 }
 
+// OdtItem.estado nunca se actualiza tras la creacion (queda "pendiente" para
+// siempre); el avance real por estacion de taller vive en OdtItemTaller. Sin
+// esto, la venta le muestra a Ventas un item "pendiente" aunque el taller ya
+// lo haya terminado en todas sus estaciones.
+export function resolveOdtItemEstadoTaller(talleres = []) {
+  const relevantes = talleres.filter(t => t.estado !== 'cancelado')
+  return relevantes.length > 0 && relevantes.every(t => t.estado === 'listo') ? 'listo' : 'pendiente'
+}
+
+function attachEstadoTallerReal(odts) {
+  return odts.map(odt => ({
+    ...odt,
+    items: odt.items.map(({ talleres, ...item }) => ({ ...item, estado: resolveOdtItemEstadoTaller(talleres) })),
+  }))
+}
+
 export default async function getVenta(fastify) {
   fastify.get('/:id', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
@@ -24,7 +40,12 @@ export default async function getVenta(fastify) {
       fastify.prisma.odt.findMany({
         where: { ordenId: id },
         orderBy: { createdAt: 'desc' },
-        include: { items: { where: { eliminado: false }, select: { productoId: true, estado: true, fechaListo: true } } },
+        include: {
+          items: {
+            where: { eliminado: false },
+            select: { id: true, productoId: true, estado: true, fechaListo: true, talleres: { select: { estado: true } } },
+          },
+        },
       }),
       fastify.prisma.movimientoCaja.findMany({ where: { ordenId: id, eliminado: false }, orderBy: { createdAt: 'desc' } }),
       fastify.prisma.multa.findMany({ where: { ordenId: id }, orderBy: { fecha: 'desc' } }),
@@ -42,6 +63,6 @@ export default async function getVenta(fastify) {
     const items = await attachProductos(fastify, o.items)
     const financialState = computeVentaFinancialState(o, { movimientos: pagos, multas })
     const montoDespachoReal = despachos.reduce((sum, d) => sum + Number(d.montoEnvio || 0), 0)
-    return { ...withCliente, ...financialState, items, odts, pagos, multas, despachos, guias, cobranza, cotizaciones, montoDespachoReal }
+    return { ...withCliente, ...financialState, items, odts: attachEstadoTallerReal(odts), pagos, multas, despachos, guias, cobranza, cotizaciones, montoDespachoReal }
   })
 }

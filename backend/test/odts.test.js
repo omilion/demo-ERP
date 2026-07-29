@@ -78,6 +78,74 @@ describe('GET /api/odts', () => {
   })
 })
 
+describe('GET /api/odts/taller-items', () => {
+  let app, token
+
+  beforeAll(async () => { app = buildApp({ logger: false }); await app.ready(); token = await loginAs(app, 'taller') })
+  afterAll(() => app.close())
+
+  // getUserSucursalId se usaba sin importar - reventaba con ReferenceError en
+  // cada carga del panel del operario (TallerOperarioPage). Nunca se detecto
+  // porque no habia ningun test cubriendo este endpoint.
+  it('no revienta con ReferenceError - responde 200 con la cola del taller', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/odts/taller-items?tallerKind=Espuma',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(Array.isArray(body.items)).toBe(true)
+  })
+
+  it('exige tallerKind', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/odts/taller-items',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('trae la venta y el cliente de origen (Odt.ordenId no tiene relacion Prisma, se resuelve a mano)', async () => {
+    const orden = await createTestOrden(app)
+    const cliente = await app.prisma.cliente.findUnique({ where: { id: orden.clienteId } })
+    const producto = await app.prisma.producto.findFirst({ select: { id: true } })
+    const kind = `TEST-TALLER-${Date.now()}`
+    const taller = await app.prisma.taller.create({ data: { nombre: kind } })
+    const odt = await app.prisma.odt.create({
+      data: { ordenId: orden.id, tipo: 'Test', estado: 'Pendiente', eliminado: false },
+    })
+    const odtItem = await app.prisma.odtItem.create({
+      data: { odtId: odt.id, productoId: producto.id, cantidad: 1, estado: 'pendiente', eliminado: false },
+    })
+    await app.prisma.odtItemTaller.create({
+      data: { odtItemId: odtItem.id, tallerId: taller.id, estado: 'pendiente' },
+    })
+
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/odts/taller-items?tallerKind=${kind}`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.items).toHaveLength(1)
+      expect(body.items[0].odtItem.odt.orden).toMatchObject({
+        nInterno: orden.nInterno,
+        cliente: { rut: cliente.rut },
+      })
+    } finally {
+      await app.prisma.odtItemTaller.deleteMany({ where: { odtItemId: odtItem.id } })
+      await app.prisma.odtItem.delete({ where: { id: odtItem.id } })
+      await app.prisma.odt.delete({ where: { id: odt.id } })
+      await app.prisma.taller.delete({ where: { id: taller.id } })
+      await app.prisma.orden.delete({ where: { id: orden.id } })
+    }
+  })
+})
+
 describe('POST /api/odts', () => {
   let app, token
 

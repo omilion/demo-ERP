@@ -7,6 +7,7 @@ import bitacoraRoute from './bitacora.js'
 import itemWorkflowRoute from './item-workflow.js'
 import consumosRoute from './consumos.js'
 import { parseDate, parsePositiveInt } from '../operational-utils.js'
+import { getUserSucursalId } from '../caja/scope.js'
 import { attachOdtCosteos, buildProductividadOperarios } from './costeo.js'
 import { ODT_ESTADOS, ODT_ESTADOS_ABIERTOS, attachOdtMetrics, attachOperarios, buildOperarioCargaItems, isPrismaMissingTable, tipoTallerFilter } from './operations.js'
 
@@ -50,28 +51,10 @@ export default async function odtsRoutes(fastify) {
           }
         }
       },
+      // Odt.ordenId es una FK simple, sin relacion Prisma hacia Orden (por eso
+      // no existe un include "orden" en Odt) - se resuelve aparte mas abajo.
       include: {
-        odtItem: {
-          include: {
-            odt: {
-              include: {
-                orden: {
-                  select: {
-                    nInterno: true,
-                    observaciones: true,
-                    cliente: {
-                      select: {
-                        nombre: true,
-                        razonSocial: true,
-                        rut: true
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
+        odtItem: { include: { odt: true } },
         taller: true,
         operarioResponsable: {
           select: {
@@ -89,7 +72,39 @@ export default async function odtsRoutes(fastify) {
       }
     })
 
-    return { items }
+    const ordenIds = [...new Set(items.map(item => item.odtItem.odt.ordenId).filter(Boolean))]
+    const ordenes = ordenIds.length
+      ? await fastify.prisma.orden.findMany({
+        where: { id: { in: ordenIds } },
+        select: { id: true, nInterno: true, observaciones: true, clienteId: true },
+      })
+      : []
+    const clienteIds = [...new Set(ordenes.map(o => o.clienteId).filter(Boolean))]
+    const clientes = clienteIds.length
+      ? await fastify.prisma.cliente.findMany({
+        where: { id: { in: clienteIds } },
+        select: { id: true, nombre: true, razonSocial: true, rut: true },
+      })
+      : []
+    const clienteById = new Map(clientes.map(c => [c.id, c]))
+    const ordenById = new Map(ordenes.map(o => [o.id, {
+      nInterno: o.nInterno,
+      observaciones: o.observaciones,
+      cliente: o.clienteId ? clienteById.get(o.clienteId) || null : null,
+    }]))
+
+    const itemsConOrden = items.map(item => ({
+      ...item,
+      odtItem: {
+        ...item.odtItem,
+        odt: {
+          ...item.odtItem.odt,
+          orden: item.odtItem.odt.ordenId ? ordenById.get(item.odtItem.odt.ordenId) || null : null,
+        },
+      },
+    }))
+
+    return { items: itemsConOrden }
   })
   fastify.get('/meta/operarios', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
