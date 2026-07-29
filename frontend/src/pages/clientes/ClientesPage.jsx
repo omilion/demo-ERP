@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast, confirmDialog } from '../../store/notif'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Pager } from '../../components/shared'
 import { ViewClientePanel } from '../../components/forms/FormCliente'
@@ -14,8 +14,10 @@ export default function ClientesPage() {
   const canReadVentas = can(user, 'ventas')
   const canWriteClientes = can(user, 'clientes', 'write')
   const canDeleteClientes = can(user, 'clientes', 'delete')
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [searchParams] = useSearchParams()
+  const initialSearch = searchParams.get('search') || ''
+  const [search, setSearch] = useState(initialSearch)
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch)
   const [pageState, setPageState] = useState({ key: '', page: 1 })
   const [tipoFilter, setTipoFilter] = useState('all')
   const [region, setRegion] = useState('')

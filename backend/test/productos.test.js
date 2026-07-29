@@ -202,6 +202,69 @@ describe('GET /api/productos', () => {
   })
 })
 
+describe('GET /api/productos?calidad= (mismo criterio que las tarjetas de calidad del dashboard)', () => {
+  let app, token
+  const ids = []
+
+  beforeAll(async () => {
+    app = buildApp({ logger: false })
+    await app.ready()
+    token = await loginAs(app)
+  })
+
+  afterAll(async () => {
+    await app.prisma.producto.deleteMany({ where: { id: { in: ids } } })
+    await app.close()
+  })
+
+  it('filtra por codigo de barra, categoria y proveedor faltantes', async () => {
+    const codigoCompleto = testCode('CAL-COMPLETO')
+    const codigoSinBarra = testCode('CAL-SINBARRA')
+    const codigoSinCategoria = testCode('CAL-SINCAT')
+    const codigoSinProveedor = testCode('CAL-SINPROV')
+
+    const completo = await app.prisma.producto.create({
+      data: { codigoInterno: codigoCompleto, nombre: 'Producto completo', bodega: 'Inventario', stock: 1, stockCritico: 1, precioLista: 1000, codigoBarra: '7801234567890' },
+    })
+    const sinBarra = await app.prisma.producto.create({
+      data: { codigoInterno: codigoSinBarra, nombre: 'Producto sin barra', bodega: 'Inventario', stock: 1, stockCritico: 1, precioLista: 1000, codigoBarra: null },
+    })
+    const sinCategoria = await app.prisma.producto.create({
+      data: { codigoInterno: codigoSinCategoria, nombre: 'Producto sin categoria', bodega: 'Inventario', stock: 1, stockCritico: 1, precioLista: 1000, categoriaId: null },
+    })
+    const sinProveedor = await app.prisma.producto.create({
+      data: { codigoInterno: codigoSinProveedor, nombre: 'Producto sin proveedor', bodega: 'Inventario', stock: 1, stockCritico: 1, precioLista: 1000, proveedorId: null },
+    })
+    ids.push(completo.id, sinBarra.id, sinCategoria.id, sinProveedor.id)
+
+    // search acota a un producto puntual: con 34k+ productos reales el LIMIT
+    // de la lista podria dejar afuera el fixture si se ordena solo por stock.
+    const fetchIds = async (calidad, search) => {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/productos?calidad=${calidad}&search=${encodeURIComponent(search)}`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(res.statusCode).toBe(200)
+      return JSON.parse(res.body).items.map(p => p.id)
+    }
+
+    expect(await fetchIds('sin-codigo-barra', codigoSinBarra)).toEqual([sinBarra.id])
+    expect(await fetchIds('sin-codigo-barra', codigoCompleto)).toEqual([])
+    expect(await fetchIds('sin-categoria', codigoSinCategoria)).toEqual([sinCategoria.id])
+    expect(await fetchIds('sin-proveedor', codigoSinProveedor)).toEqual([sinProveedor.id])
+  })
+
+  it('rechaza un valor de calidad invalido', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/productos?calidad=inventado',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+})
+
 describe('POST /api/productos', () => {
   let app, token
 

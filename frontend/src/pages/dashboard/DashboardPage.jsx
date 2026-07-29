@@ -729,7 +729,7 @@ export function DashboardOperativoPage() {
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
             {canWriteVentas && <ActionRow icon="plusCircle" label="Nueva Venta Sala" onClick={() => navigate('/ventas/nueva')} />}
             <ActionRow icon="clipboard" label="Cotizar Licitación" onClick={() => navigate('/licitaciones')} />
-            <ActionRow icon="briefcase" label="Convenio Marco" onClick={() => navigate('/licitaciones?tipo=convenio')} />
+            <ActionRow icon="briefcase" label="Convenio Marco" onClick={() => navigate('/ventas?filtro=licitacion')} />
             <ActionRow icon="fileText" label="Reportes Licitaciones" onClick={() => navigate('/reportes/licitaciones')} />
             {canReadCatalogo && <ActionRow icon="tag" label="Consulta Precios" onClick={() => navigate('/consulta-precios')} />}
           </SectionCard>

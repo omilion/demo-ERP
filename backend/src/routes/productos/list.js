@@ -37,6 +37,7 @@ export default async function listProductos(fastify) {
       ubicacionId,
       estadoInventario,
       estado,
+      calidad,
       sort,
       page = '1',
     } = request.query
@@ -147,6 +148,17 @@ export default async function listProductos(fastify) {
         { subcategoria: { is: { nombre: { contains: search, mode: 'insensitive' } } } },
       ],
     })
+    // Mismos criterios que las tarjetas de "calidad de catalogo" del dashboard
+    // (backend/src/routes/dashboard/stats.js) - deben coincidir para que el
+    // click en el KPI muestre exactamente los productos que cuenta el numero.
+    const CALIDAD_FILTROS = ['sin-codigo-barra', 'sin-codigo-interno', 'sin-categoria', 'sin-proveedor']
+    if (calidad && !CALIDAD_FILTROS.includes(calidad)) {
+      return reply.code(400).send({ error: `calidad debe ser una de: ${CALIDAD_FILTROS.join(', ')}` })
+    }
+    if (calidad === 'sin-codigo-barra') andFilters.push({ OR: [{ codigoBarra: null }, { codigoBarra: '' }] })
+    else if (calidad === 'sin-codigo-interno') andFilters.push({ OR: [{ codigoInterno: null }, { codigoInterno: '' }] })
+    else if (calidad === 'sin-categoria') where.categoriaId = null
+    else if (calidad === 'sin-proveedor') where.proveedorId = null
     if (andFilters.length) where.AND = andFilters
     const statsWhere = JSON.parse(JSON.stringify(where))
     // estado computado: 'sin-stock' | 'critico' | 'normal'

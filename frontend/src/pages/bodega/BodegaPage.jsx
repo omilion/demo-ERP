@@ -48,7 +48,8 @@ export default function BodegaPage() {
   const [importing, setImporting] = useState(false)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [filter, setFilter] = useState(searchParams.get('filtro') === 'critico' ? 'critico' : searchParams.get('filtro') === 'sin-stock' ? 'sin-stock' : 'all')
+  const FILTRO_VALUES = ['critico', 'sin-stock', 'sin_codigo_barra', 'sin_codigo_interno', 'sin_categoria', 'sin_proveedor']
+  const [filter, setFilter] = useState(FILTRO_VALUES.includes(searchParams.get('filtro')) ? searchParams.get('filtro') : 'all')
   const [proveedorId, setProveedorId] = useState('')
   const [categoriaId, setCategoriaId] = useState('')
   const [subcategoriaId, setSubcategoriaId] = useState('')
@@ -75,6 +76,10 @@ export default function BodegaPage() {
   if (ubicacionId) queryParams.ubicacionId = ubicacionId
   if (filter === 'critico') queryParams.estado = 'critico'
   else if (filter === 'sin-stock') queryParams.estado = 'sin-stock'
+  else if (filter === 'sin_codigo_barra') queryParams.calidad = 'sin-codigo-barra'
+  else if (filter === 'sin_codigo_interno') queryParams.calidad = 'sin-codigo-interno'
+  else if (filter === 'sin_categoria') queryParams.calidad = 'sin-categoria'
+  else if (filter === 'sin_proveedor') queryParams.calidad = 'sin-proveedor'
 
   const { data: result = { items: [], total: 0, limit: 500 }, isLoading } = useProductos(queryParams)
 
@@ -146,6 +151,10 @@ export default function BodegaPage() {
           <option value="all">Todos los estados</option>
           <option value="critico">Solo críticos</option>
           <option value="sin-stock">Sin stock</option>
+          <option value="sin_codigo_barra">Sin código de barra</option>
+          <option value="sin_codigo_interno">Sin código interno</option>
+          <option value="sin_categoria">Sin categoría</option>
+          <option value="sin_proveedor">Sin proveedor</option>
         </select>
         <select value={visibleWeb} onChange={e => setVisibleWeb(e.target.value)} style={selectStyle}>
           <option value="all">Web: todos</option>
