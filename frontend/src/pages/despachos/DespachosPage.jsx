@@ -2,7 +2,7 @@ import { toast, promptDialog } from '../../store/notif'
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
-import { useDespachoMatriz, useDespachos, useGuias, useDespachoTracking, useCreateDespachoTrackingEvento, useDeleteDespacho, useDeleteGuia } from '../../api/despachos'
+import { useDespachoMatriz, useDespachos, useGuias, useDeleteDespacho, useDeleteGuia } from '../../api/despachos'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can, odtPath, ventaPath } from '../../utils/permissions'
@@ -10,8 +10,8 @@ import { useVenta } from '../../api/ventas'
 import { EmitirDteModal } from '../../components/facturacion/DteModals'
 import { useDocumentos } from '../../api/facturacion'
 import { downloadDteXml, openDteHtml } from '../../utils/dteDocuments'
-import { TRACKING_ESTADOS, INCIDENT_TYPES, trackingTone, formatDays, showError, linkButton, btnSm, input, checkLabel } from './shared'
-import { Mono, Field, Footer, PackingProgress } from './shared-ui'
+import { trackingTone, formatDays, showError, linkButton, btnSm, checkLabel } from './shared'
+import { Mono, PackingProgress } from './shared-ui'
 
 const TABS = [
   { id: 'matriz', label: 'Matriz despacho' },
@@ -69,7 +69,6 @@ export default function DespachosPage() {
   const [includeEliminados, setIncludeEliminados] = useState(false)
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
-  const [tracking, setTracking] = useState(null)
   // { ordenId, guiaDespachoId? } - guiaDespachoId solo cuando se abre desde
   // una guia puntual; desde una fila de despacho se emite a nivel de venta.
   const [dteTarget, setDteTarget] = useState(null)
@@ -153,7 +152,6 @@ export default function DespachosPage() {
     }
     return result
   }, [documentosGuias.data])
-  const createTrackingMut = useCreateDespachoTrackingEvento()
   const delMut = useDeleteDespacho()
   const delGuiaMut = useDeleteGuia()
 
@@ -271,7 +269,7 @@ export default function DespachosPage() {
     ) },
     { key: '_acc', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={(e) => { e.stopPropagation(); setTracking(row) }} style={linkButton('var(--blue)')}>Track</button>
+        <button onClick={(e) => { e.stopPropagation(); navigate(`/despachos/${row.id}/tracking`) }} style={linkButton('var(--blue)')}>Track</button>
         {canWriteFacturacion && <button
           disabled={!row.ordenId}
           title={row.ordenId ? 'Emitir factura electrónica' : 'Este despacho no tiene una venta asociada'}
@@ -472,18 +470,6 @@ export default function DespachosPage() {
         }
       </div>
 
-      {tracking && (
-        <DespachoTrackingModal
-          row={tracking}
-          canWrite={canWriteDespacho}
-          saving={createTrackingMut.isPending}
-          onClose={() => setTracking(null)}
-          onSave={(payload) => createTrackingMut.mutate(
-            { despachoId: tracking.id, ...payload },
-            { onError: showError }
-          )}
-        />
-      )}
       {dteTarget && ventaGuiaDte.data && (
         <EmitirDteModal
           venta={ventaGuiaDte.data}
@@ -498,150 +484,6 @@ export default function DespachosPage() {
       )}
       {dteTarget && ventaGuiaDte.isPending && <LoadingOverlay label="Cargando venta..." />}
     </main>
-  )
-}
-
-function DespachoTrackingModal({ row, canWrite, saving, onClose, onSave }) {
-  const { data: trace = { latest: null, eventos: [] }, isLoading } = useDespachoTracking(row.id)
-  const latest = trace.latest || row.tracking
-  const [form, setForm] = useState({
-    estado: latest?.estado || 'Preparado',
-    transporte: latest?.transporte || row.transporte || '',
-    ubicacion: latest?.ubicacion || '',
-    fechaEvento: '',
-    observacion: '',
-    tipoIncidente: '',
-    accionTomada: '',
-    responsable: '',
-    fechaCompromiso: '',
-  })
-  const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
-  const save = () => {
-    const esIncidencia = form.estado === 'Incidencia'
-    const payload = {
-      estado: form.estado,
-      transporte: form.transporte.trim() || undefined,
-      ubicacion: form.ubicacion.trim() || undefined,
-      fechaEvento: form.fechaEvento || undefined,
-      observacion: form.observacion.trim() || undefined,
-    }
-    if (esIncidencia) {
-      payload.tipoIncidente = form.tipoIncidente.trim() || undefined
-      payload.accionTomada = form.accionTomada.trim() || undefined
-      payload.responsable = form.responsable.trim() || undefined
-      payload.fechaCompromiso = form.fechaCompromiso || undefined
-    }
-    onSave(payload)
-    setForm(prev => ({ ...prev, observacion: '', fechaEvento: '', tipoIncidente: '', accionTomada: '', responsable: '', fechaCompromiso: '' }))
-  }
-
-  return (
-    <Modal title={`Tracking despacho #${row.id}`} onClose={onClose}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700 }}>{row.interno ? `Interno ${row.interno}` : `Orden #${row.ordenId || '-'}`}</div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{row.tipoDespacho || 'Despacho'} {row.transporte ? `- ${row.transporte}` : ''}</div>
-        </div>
-        <Badge tone={trackingTone(latest?.estado)}>{latest?.estado || 'Sin tracking'}</Badge>
-      </div>
-
-      {canWrite && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 10 }}>
-          <Field label="Estado">
-            <select value={form.estado} onChange={event => set('estado', event.target.value)} style={input}>
-              {TRACKING_ESTADOS.map(estado => <option key={estado} value={estado}>{estado}</option>)}
-            </select>
-          </Field>
-          <Field label="Transporte">
-            <input value={form.transporte} onChange={event => set('transporte', event.target.value)} style={input} />
-          </Field>
-          <Field label="Fecha evento">
-            <input type="datetime-local" value={form.fechaEvento} onChange={event => set('fechaEvento', event.target.value)} style={input} />
-          </Field>
-          <Field label="Ubicacion">
-            <input value={form.ubicacion} onChange={event => set('ubicacion', event.target.value)} style={input} />
-          </Field>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <Field label="Observacion">
-              <input value={form.observacion} onChange={event => set('observacion', event.target.value)} placeholder="Detalle operativo" style={input} />
-            </Field>
-          </div>
-          {form.estado === 'Incidencia' && (
-            <>
-              <Field label="Tipo incidente">
-                <select value={form.tipoIncidente} onChange={event => set('tipoIncidente', event.target.value)} style={input}>
-                  <option value="">Seleccionar</option>
-                  {INCIDENT_TYPES.map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}
-                </select>
-              </Field>
-              <Field label="Responsable">
-                <input value={form.responsable} onChange={event => set('responsable', event.target.value)} style={input} />
-              </Field>
-              <Field label="Fecha compromiso">
-                <input type="datetime-local" value={form.fechaCompromiso} onChange={event => set('fechaCompromiso', event.target.value)} style={input} />
-              </Field>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <Field label="Accion tomada">
-                  <input value={form.accionTomada} onChange={event => set('accionTomada', event.target.value)} style={input} />
-                </Field>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', justifyContent: canWrite ? 'space-between' : 'flex-end', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-        {isLoading && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Cargando...</span>}
-        {canWrite && <Footer saving={saving} onClose={onClose} onSave={save} />}
-      </div>
-
-      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-        {(trace.eventos || []).length === 0 ? (
-          <div style={{ color: 'var(--text-3)', fontSize: 12 }}>Sin eventos logisticos registrados.</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, maxHeight: 280, overflowY: 'auto' }}>
-            {(trace.eventos || []).map(evento => (
-              <div key={evento.id} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 10, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--bg)' }}>
-                <Badge tone={trackingTone(evento.estado)}>{evento.estado}</Badge>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700 }}>{evento.ubicacion || evento.transporte || 'Evento logistico'}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
-                    {evento.usuario || 'Sistema'} - {new Date(evento.fechaEvento).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                    {evento.transporte ? ` - ${evento.transporte}` : ''}
-                  </div>
-                  {evento.observacion && <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 2 }}>{evento.observacion}</div>}
-                  {evento.estado === 'Incidencia' && (evento.tipoIncidente || evento.accionTomada || evento.responsable || evento.fechaCompromiso) && (
-                    <div style={{ marginTop: 5, display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11, color: 'var(--text-2)' }}>
-                      {evento.tipoIncidente && <Badge tone="red">{evento.tipoIncidente}</Badge>}
-                      {evento.responsable && <span>Resp. {evento.responsable}</span>}
-                      {evento.fechaCompromiso && <span>Compromiso {new Date(evento.fechaCompromiso).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>}
-                      {evento.accionTomada && <span>Accion: {evento.accionTomada}</span>}
-                    </div>
-                  )}
-                </div>
-                <Mono muted>#{evento.id}</Mono>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </Modal>
-  )
-}
-
-function Modal({ title, onClose, children }) {
-  return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 8, width: 760, maxWidth: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 48px oklch(0 0 0 / 0.20)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 20px 16px', flexShrink: 0 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700 }}>{title}</h2>
-          <button onClick={onClose} style={linkButton('var(--text-3)')}>Cerrar</button>
-        </div>
-        <div style={{ padding: '0 20px 20px', overflowY: 'auto' }}>
-          {children}
-        </div>
-      </div>
-    </div>
   )
 }
 
