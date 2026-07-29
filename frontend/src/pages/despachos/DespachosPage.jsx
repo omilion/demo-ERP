@@ -9,7 +9,7 @@ import { can, odtPath, ventaPath } from '../../utils/permissions'
 import { useVenta } from '../../api/ventas'
 import { EmitirDteModal } from '../../components/facturacion/DteModals'
 import { useDocumentos } from '../../api/facturacion'
-import { downloadDteXml, openDteHtml } from '../../utils/dteDocuments'
+import { downloadDteXml, openDtePdf } from '../../utils/dteDocuments'
 import { trackingTone, formatDays, showError, linkButton, btnSm, checkLabel } from './shared'
 import { Mono, PackingProgress } from './shared-ui'
 
@@ -295,7 +295,7 @@ export default function DespachosPage() {
     }
     return <>
       <Badge tone={documento.estado === 'aceptado' ? 'green' : documento.estado === 'enviado' ? 'amber' : 'blue'}>DTE folio {documento.folio}</Badge>
-      <button onClick={event => runDteAction(event, openDteHtml)} style={linkButton('var(--blue)')}>Ver DTE</button>
+      <button onClick={event => runDteAction(event, openDtePdf)} style={linkButton('var(--blue)')}>Ver PDF</button>
       <button onClick={event => runDteAction(event, downloadDteXml)} style={linkButton('var(--text-2)')}>Descargar XML</button>
     </>
   }

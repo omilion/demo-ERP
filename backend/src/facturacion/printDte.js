@@ -9,9 +9,9 @@ const formatCLP = (value) => Number(value || 0).toLocaleString('es-CL');
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
 
 // El PDF417 se genera desde el TED en ISO-8859-1 (así lo leen los verificadores).
-export const tedToPdf417DataUri = async (tedXml) => {
+export const tedToPdf417Png = async (tedXml) => {
   const latin1Ted = Buffer.from(tedXml, 'latin1').toString('binary');
-  const png = await bwipjs.toBuffer({
+  return bwipjs.toBuffer({
     bcid: 'pdf417',
     text: latin1Ted,
     columns: 14,
@@ -19,6 +19,10 @@ export const tedToPdf417DataUri = async (tedXml) => {
     scale: 2,
     binarytext: true
   });
+};
+
+export const tedToPdf417DataUri = async (tedXml) => {
+  const png = await tedToPdf417Png(tedXml);
   return `data:image/png;base64,${png.toString('base64')}`;
 };
 

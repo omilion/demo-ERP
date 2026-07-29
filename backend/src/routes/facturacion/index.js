@@ -5,6 +5,7 @@ import { assertDteLineLimits, TIPOS_DTE, computeTotales, computeTotalesExportaci
 import { normalizeRut, isValidRut } from '../../facturacion/xmlUtil.js'
 import { parseCaf } from '../../facturacion/caf.js'
 import { renderDteHtml, renderDteRecibidoHtml } from '../../facturacion/printDte.js'
+import { renderDtePdf, renderDteRecibidoPdf } from '../../facturacion/printDtePdf.js'
 import { syncGmailReceptor } from '../../facturacion/receptorDte.js'
 
 const ESTADOS = ['borrador', 'emitido', 'enviado', 'aceptado', 'rechazado', 'error']
@@ -371,6 +372,21 @@ export default async function facturacionRoutes(fastify) {
     } catch (error) { return sendError(reply, error) }
   })
 
+  fastify.get('/documentos/:id/pdf', readAuth, async (request, reply) => {
+    try {
+      const doc = await db.documentos.get(request.params.id)
+      if (!doc) return reply.code(404).send({ error: 'Documento no encontrado.' })
+      if (!doc.xml) return reply.code(409).send({ error: 'El documento no está emitido: no tiene timbre aún.' })
+      const tedMatch = doc.xml.match(/<TED version="1.0">[\s\S]*?<\/TED>/)
+      if (!tedMatch) return reply.code(500).send({ error: 'No se encontró el TED en el XML.' })
+      const empresa = await engine.getEmpresa()
+      const pdf = await renderDtePdf({ empresa, receptor: doc.receptor, doc, totales: doc.totales, tedXml: tedMatch[0] })
+      reply.header('Content-Type', 'application/pdf')
+      reply.header('Content-Disposition', `inline; filename="DTE_T${doc.tipoDte}_F${doc.folio}.pdf"`)
+      return reply.send(pdf)
+    } catch (error) { return sendError(reply, error) }
+  })
+
   // --- Documentos recibidos por Gmail (sólo archivo/visualización) ---
 
   fastify.get('/recibidos', readAuth, async () => {
@@ -400,6 +416,17 @@ export default async function facturacionRoutes(fastify) {
       const html = await renderDteRecibidoHtml(documento)
       reply.header('Content-Type', 'text/html; charset=utf-8')
       return reply.send(html)
+    } catch (error) { return sendError(reply, error) }
+  })
+
+  fastify.get('/recibidos/:id/pdf', readAuth, async (request, reply) => {
+    try {
+      const documento = await fastify.prisma.factDocumentoRecibido.findUnique({ where: { id: Number(request.params.id) } })
+      if (!documento) return reply.code(404).send({ error: 'Documento recibido no encontrado.' })
+      const pdf = await renderDteRecibidoPdf(documento)
+      reply.header('Content-Type', 'application/pdf')
+      reply.header('Content-Disposition', `inline; filename="${(documento.archivoNombre || `DTE-recibido-${documento.id}`).replace(/\.xml$/i, '')}.pdf"`)
+      return reply.send(pdf)
     } catch (error) { return sendError(reply, error) }
   })
 

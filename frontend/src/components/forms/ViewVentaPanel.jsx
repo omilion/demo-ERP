@@ -8,7 +8,7 @@ import { useProductos } from '../../api/productos'
 import { useDocumentos } from '../../api/facturacion'
 import { EmitirDteModal, NotaDteModal } from '../facturacion/DteModals'
 import { TIPOS_DTE } from '../../utils/facturacion'
-import { downloadDteXml, openDteHtml } from '../../utils/dteDocuments'
+import { downloadDteXml, openDtePdf } from '../../utils/dteDocuments'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 
@@ -469,7 +469,7 @@ function TabDocumentos({ v, pagos, dtes, canWrite, canWriteFacturacion, onNota }
                 <td style={{ padding: '8px 10px' }}><Badge tone={DTE_TONE[doc.estado] || 'gray'}>{doc.estado}</Badge></td>
                 <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
                   {doc.xml && doc.estado !== 'borrador' && <>
-                    <button onClick={() => runDteAction(openDteHtml, doc)} style={dteLink('var(--blue)')}>Ver HTML</button>
+                    <button onClick={() => runDteAction(openDtePdf, doc)} style={dteLink('var(--blue)')}>Ver PDF</button>
                     <button onClick={() => runDteAction(downloadDteXml, doc)} style={dteLink('var(--text-2)')}>Descargar XML</button>
                   </>}
                   {canWriteFacturacion && [33, 39].includes(Number(doc.tipoDte)) && ['aceptado', 'enviado'].includes(doc.estado) && <>
@@ -808,7 +808,7 @@ function DocumentosPagosList({ pagos, dtes }) {
             </div>
             {doc.xml && doc.estado !== 'borrador' && (
               <div style={{ marginTop: 2 }}>
-                <button onClick={() => runDteAction(openDteHtml)} style={dteLink('var(--blue)')}>Ver HTML</button>
+                <button onClick={() => runDteAction(openDtePdf)} style={dteLink('var(--blue)')}>Ver PDF</button>
                 <button onClick={() => runDteAction(downloadDteXml)} style={dteLink('var(--text-2)')}>Descargar XML</button>
               </div>
             )}

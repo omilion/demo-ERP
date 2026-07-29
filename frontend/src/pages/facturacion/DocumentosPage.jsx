@@ -5,7 +5,7 @@ import { useConsultarEstado, useDocumento, useDocumentos, useEnviarDocumento, us
 import { can, ventaPath } from '../../utils/permissions'
 import { useAuthStore } from '../../store/auth'
 import { TIPOS_DTE } from '../../utils/facturacion'
-import { downloadDteXml, openDteHtml } from '../../utils/dteDocuments'
+import { downloadDteXml, openDtePdf } from '../../utils/dteDocuments'
 import { confirmDialog, toast } from '../../store/notif'
 
 const ESTADO_TABS = [
@@ -25,9 +25,9 @@ function DocumentoDetail({ id, onClose }) {
       await downloadDteXml(documento)
     } catch (error) { toast.error(errorText(error)) }
   }
-  const verHtml = async () => {
+  const verPdf = async () => {
     try {
-      await openDteHtml(documento)
+      await openDtePdf(documento)
     } catch (error) { toast.error(errorText(error)) }
   }
   return (
@@ -52,7 +52,7 @@ function DocumentoDetail({ id, onClose }) {
         </div>
         <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Btn variant="secondary" icon="download" onClick={descargarXml} disabled={!documento?.xml}>Descargar XML</Btn>
-          <Btn variant="primary" icon="eye" onClick={verHtml} disabled={!documento?.xml}>Ver HTML</Btn>
+          <Btn variant="primary" icon="eye" onClick={verPdf} disabled={!documento?.xml}>Ver PDF</Btn>
         </div>
       </aside>
     </div>
