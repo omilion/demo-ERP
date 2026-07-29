@@ -10,7 +10,7 @@ import { useVenta } from '../../api/ventas'
 import { useRegiones, useComunas } from '../../api/locations'
 import { TRANSPORTISTAS, IND_TRASLADO, TIPO_DESPACHO, buildReceptor, mapVentaItems } from '../../utils/facturacion'
 import { EmitirDteModal } from '../../components/facturacion/DteModals'
-import { useDocumentos, useEmitirDte } from '../../api/facturacion'
+import { useDocumentos, useEmitirDte, useEnviarDocumento } from '../../api/facturacion'
 import { downloadDteXml, openDteHtml } from '../../utils/dteDocuments'
 
 const TABS = [
@@ -605,7 +605,12 @@ export default function DespachosPage() {
           title="Nueva guia"
           initial={creatingGuia}
           onClose={() => setCreatingGuia(null)}
-          onSuccess={(guia) => { setCreatingGuia(null); toast.success(guia?.folio ? `Guía generada: DTE folio ${guia.folio}.` : 'Guía generada.') }}
+          onSuccess={(guia) => {
+            setCreatingGuia(null)
+            if (!guia?.folio) toast.success('Guía generada.')
+            else if (guia.enviado) toast.success(`Guía enviada al SII: folio ${guia.folio}.`)
+            // si enviado===false ya se mostro el toast de error especifico con el folio
+          }}
         />
       )}
       {editingGuia && (
@@ -1077,9 +1082,10 @@ function GuiaModal({ title = 'Nueva guia', initial, onClose, onSuccess }) {
   const updateGuiaMut = useUpdateGuia()
   const updatePackingMut = useUpdateDespachoPacking()
   const emitirMut = useEmitirDte()
+  const enviarMut = useEnviarDocumento()
   const deleteGuiaMut = useDeleteGuia()
   const saving = createDespachoMut.isPending || createGuiaMut.isPending || updateGuiaMut.isPending
-    || updatePackingMut.isPending || emitirMut.isPending || deleteGuiaMut.isPending
+    || updatePackingMut.isPending || emitirMut.isPending || enviarMut.isPending || deleteGuiaMut.isPending
 
   const guardar = async () => {
     if (isEdit && !form.nGuia.trim()) { toast.error('Indica el N° de guia.'); return }
@@ -1126,7 +1132,17 @@ function GuiaModal({ title = 'Nueva guia', initial, onClose, onSuccess }) {
           items: dteItems,
           extra: { indTraslado: Number(indTraslado), tipoDespacho: Number(tipoDespacho) },
         })
-        onSuccess({ ...guia, folio: emitido?.folio })
+        // El folio ya quedo consumido y el XML firmado: si el envio al SII
+        // falla aca (SII caido, red, etc.) NO se deshace la guia — queda
+        // 'emitido' y se puede reintentar el envio desde Documentos, igual
+        // que cualquier otro DTE emitido manualmente.
+        try {
+          await enviarMut.mutateAsync(emitido.id)
+          onSuccess({ ...guia, folio: emitido?.folio, enviado: true })
+        } catch (enviarError) {
+          toast.error(`Guía emitida (folio ${emitido?.folio}) pero no se pudo enviar al SII automáticamente: ${enviarError?.response?.data?.error || enviarError?.message || 'error desconocido'}. Reintenta desde Documentos.`)
+          onSuccess({ ...guia, folio: emitido?.folio, enviado: false })
+        }
       } catch (dteError) {
         // La guia no puede quedar como simple registro local sin su DTE: si la
         // emision falla (packing o SII), se deshace la guia recien creada en
@@ -1146,7 +1162,7 @@ function GuiaModal({ title = 'Nueva guia', initial, onClose, onSuccess }) {
     <Modal title={title} onClose={onClose}>
       {!isEdit && (
         <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 14, lineHeight: 1.5 }}>
-          1. Elige abajo qué productos y cuánto enviar de este pedido. 2. Indica el motivo/tipo de despacho que exige el SII. 3. Resuelve el despacho (o déjalo pendiente). 4. Guarda: se emite la guía como documento SII al mismo tiempo — si la emisión falla, no queda un registro suelto.
+          1. Elige abajo qué productos y cuánto enviar de este pedido. 2. Indica el motivo/tipo de despacho que exige el SII. 3. Resuelve el despacho (o déjalo pendiente). 4. Guarda: se emite y se envía al SII en el mismo paso — si la emisión falla, no queda un registro suelto (si solo falla el envío, queda emitida y se reintenta desde Documentos).
         </div>
       )}
       <div style={grid}>

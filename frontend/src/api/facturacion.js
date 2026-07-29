@@ -37,6 +37,18 @@ export const useEmitirDocumento = () => {
   })
 }
 
+export const useEnviarDocumento = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.post(`/facturacion/documentos/${id}/enviar`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['facturacion', 'documentos'] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['guias'] })
+    },
+  })
+}
+
 // Keeps the create + issue sequence atomic from the UI's perspective. A failed issue
 // intentionally leaves the server-side document available as an error/borrador to retry.
 export const useEmitirDte = () => {
@@ -97,14 +109,6 @@ export const useDeleteCaf = () => {
   return useMutation({
     mutationFn: (id) => api.delete(`/facturacion/cafs/${id}`).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'cafs'] }),
-  })
-}
-
-export const useEnviarDocumento = () => {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id) => api.post(`/facturacion/documentos/${id}/enviar`).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'documentos'] }),
   })
 }
 
