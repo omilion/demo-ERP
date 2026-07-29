@@ -399,7 +399,6 @@ function TabDocumentos({ v, pagos, dtes, canWrite, canWriteFacturacion, onNota }
       <FormDivider label="Referencias y documentos" />
       <div style={{ marginBottom: 14 }}>
         <DocumentoRow label="ID Licitación / OC" value={v.licitacion} mono />
-        <DocumentoRow label="N° Guía de despacho" value={v.guias ? `#${v.guias}` : null} mono />
         <DocumentoRow label="Monto facturado" value={v.facturado > 0 ? fmt(v.facturado) : null} mono />
         <DocumentoRow label="Presupuesto de despacho" value={v.montoDespacho > 0 ? fmt(v.montoDespacho) : null} mono />
         {v.montoDespacho > 0 && (
