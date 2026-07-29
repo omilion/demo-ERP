@@ -3,7 +3,7 @@ import { Badge, Btn, Icon } from '../shared'
 import { useEmitirDte, useDocumentos, useEmpresa } from '../../api/facturacion'
 import { useDespachoPacking } from '../../api/despachos'
 import { useVentas } from '../../api/ventas'
-import { buildReceptor, buildReferenciaInternaRow, computeDteTotales, isDteReferenciable, isValidRut, mapVentaItems, TIPOS_DTE, IND_TRASLADO, TIPO_DESPACHO, REFERENCIA_TIPOS, REFERENCIA_TIPOS_INTERNOS } from '../../utils/facturacion'
+import { buildReceptor, buildReferenciaInternaRow, computeDteTotales, isDteReferenciable, isReferenciaRowEmpty, isValidRut, mapVentaItems, TIPOS_DTE, IND_TRASLADO, TIPO_DESPACHO, REFERENCIA_TIPOS, REFERENCIA_TIPOS_INTERNOS } from '../../utils/facturacion'
 
 const dateFmt = value => value ? new Date(value).toLocaleDateString('es-CL') : '—'
 
@@ -103,24 +103,26 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
   const [error, setError] = useState('')
   const [indTraslado, setIndTraslado] = useState('')
   const [tipoDespacho, setTipoDespacho] = useState('')
-  // "Otro" por defecto: al agregar una referencia se ve directo N°/Folio +
-  // Razon para escribir sin elegir nada antes. Solo si es una Guia/Factura/
-  // NC/ND real del sistema hace falta cambiar el tipo arriba. Se admite mas
-  // de una referencia (en la practica llegan a verse hasta 3 en un mismo
-  // documento: guia ya enviada + OC del cliente + resolucion, por ejemplo).
-  const emptyReferenciaRow = () => ({ tipo: '806', docLocalId: '', folio: '', fecha: new Date().toISOString().slice(0, 10), razon: '' })
+  // Sin tipo por defecto: al agregar una referencia se ve directo N°/Folio +
+  // Razon para escribir sin elegir nada antes (el SII permite una Referencia
+  // sin TpoDocRef, solo con RazonRef en texto libre). Solo si es una Guia/
+  // Factura/NC/ND real del sistema hace falta cambiar el tipo arriba. Se
+  // admite mas de una referencia (en la practica llegan a verse hasta 3 en un
+  // mismo documento: guia ya enviada + OC del cliente + resolucion).
+  const emptyReferenciaRow = () => ({ tipo: '', docLocalId: '', folio: '', fecha: new Date().toISOString().slice(0, 10), razon: '' })
   const [referencias, setReferencias] = useState([])
   const [ventaReferencia, setVentaReferencia] = useState(null)
   const addReferenciaRow = () => setReferencias(rows => [...rows, emptyReferenciaRow()])
   const updateReferenciaRow = (index, patch) => setReferencias(rows => rows.map((row, i) => i === index ? { ...row, ...patch } : row))
   const removeReferenciaRow = (index) => setReferencias(rows => rows.filter((_, i) => i !== index))
   const agregarDocumentoVenta = (doc) => setReferencias(rows => rows.some(row => String(row.docLocalId) === String(doc.id)) ? rows : [...rows, buildReferenciaInternaRow(doc)])
-  // Una fila con tipo elegido pero sin documento/folio no se manda, asi que no
-  // se deja confirmar a medias (antes quedaba en silencio como si no se
-  // hubiera tocado nada).
+  // Una fila recien agregada (o vaciada del todo) se ignora sin bloquear; una
+  // fila con datos a medias (ej. folio sin completar, o tipo elegido sin
+  // documento) si bloquea, para no confirmar con una referencia coja.
   const referenciasIncompletas = referencias.some(row => {
+    if (isReferenciaRowEmpty(row)) return false
     const esInterna = REFERENCIA_TIPOS_INTERNOS.includes(row.tipo)
-    return !!row.tipo && (esInterna ? !row.docLocalId : !row.folio.trim())
+    return esInterna ? !row.docLocalId : !row.folio.trim()
   })
   const { data: empresaData } = useEmpresa()
   const documentosVentaReferencia = useDocumentos({ ordenId: ventaReferencia?.id }, { enabled: !!ventaReferencia?.id })
@@ -166,11 +168,12 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
     setError('')
     try {
       const referenciasPayload = referencias.reduce((acc, row) => {
+        if (isReferenciaRowEmpty(row)) return acc
         const esInterna = REFERENCIA_TIPOS_INTERNOS.includes(row.tipo)
         if (esInterna) {
           if (row.docLocalId) acc.push({ docLocalId: Number(row.docLocalId), razon: row.razon.trim() || undefined })
-        } else if (row.tipo && row.folio.trim()) {
-          acc.push({ tipoDocRef: row.tipo, folioRef: row.folio.trim(), fechaRef: row.fecha, razon: row.razon.trim() || undefined })
+        } else if (row.folio.trim()) {
+          acc.push({ tipoDocRef: row.tipo || undefined, folioRef: row.folio.trim(), fechaRef: row.fecha, razon: row.razon.trim() || undefined })
         }
         return acc
       }, [])
@@ -274,7 +277,7 @@ function ReferenciaRow({ value, onChange, onRemove }) {
   const esInterna = REFERENCIA_TIPOS_INTERNOS.includes(value.tipo)
   const documentosRef = useDocumentos({ tipoDte: value.tipo }, { enabled: esInterna })
   const documentos = (documentosRef.data?.documentos || []).filter(isDteReferenciable)
-  const incompleta = !!value.tipo && (esInterna ? !value.docLocalId : !value.folio.trim())
+  const incompleta = !isReferenciaRowEmpty(value) && (esInterna ? !value.docLocalId : !value.folio.trim())
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>

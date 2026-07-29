@@ -39,24 +39,40 @@ export const TIPO_DESPACHO = {
   3: 'Despacho por cuenta del emisor a otras instalaciones',
 }
 
-// Catalogo TpoDocRef del SII para el bloque <Referencia>: tipos de DTE mas
-// los codigos no-DTE mas usados (orden de compra del cliente, etc.).
+// Catalogo TpoDocRef del SII para el bloque <Referencia>: los tipos de DTE
+// que Plastimar emite (mismos codigos que TIPOS_DTE) mas los codigos no-DTE
+// mas usados (orden de compra del cliente, etc.). Numeracion 801-806
+// verificada 2026-07 contra el manual "Formato Documentos Tributarios
+// Electronicos" del SII (cruzada con 4 fuentes independientes tras detectar
+// que la version anterior tenia 801/802/803/805/806 mal asignados).
 export const REFERENCIA_TIPOS = {
   33: 'Factura Electrónica',
+  39: 'Boleta Electrónica',
+  43: 'Liquidación Factura Electrónica',
+  46: 'Factura de Compra Electrónica',
   52: 'Guía de Despacho Electrónica',
   56: 'Nota de Débito Electrónica',
   61: 'Nota de Crédito Electrónica',
-  801: 'Nota de Pedido',
-  802: 'Contrato',
-  803: 'Resolución',
-  805: 'Orden de Compra',
-  806: 'Otro',
+  110: 'Factura de Exportación Electrónica',
+  111: 'Nota de Débito de Exportación Electrónica',
+  112: 'Nota de Crédito de Exportación Electrónica',
+  801: 'Orden de Compra',
+  802: 'Nota de Pedido',
+  803: 'Contrato',
+  804: 'Resolución',
+  805: 'Proceso ChileCompra',
+  806: 'Ficha ChileCompra',
 }
 
 // Tipos que corresponden a un DTE propio ya emitido en el sistema: se eligen
 // de una lista (folio/fecha reales), no se tipean a mano. El resto (OC,
 // contrato, resolucion, etc.) son documentos externos sin registro local.
-export const REFERENCIA_TIPOS_INTERNOS = ['33', '52', '56', '61']
+export const REFERENCIA_TIPOS_INTERNOS = ['33', '39', '43', '46', '52', '56', '61', '110', '111', '112']
+
+// Una fila de referencia recien agregada (o vaciada a mano) no debe bloquear
+// ni "perderse" en el envio: se ignora hasta que el usuario escriba algo.
+export const isReferenciaRowEmpty = (row = {}) =>
+  !row.tipo && !row.docLocalId && !String(row.folio || '').trim() && !String(row.razon || '').trim()
 export const MAX_DTE_DETAIL_LINES = 60
 export const MAX_DTE_COMMISSION_LINES = 20
 export const dteDetailLimitMessage = count => `Máximo ${MAX_DTE_DETAIL_LINES} ítems por documento (límite del SII); tienes ${count}. Divide en más de un documento.`

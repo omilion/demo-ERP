@@ -1,7 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import { buildExportacionInput, buildIngresoMercaderiaPrefill, buildLiquidacionInput, buildReceptor, buildReferenciaInternaRow, computeDteTotales, isDteReferenciable, mapManualDteItems, mapVentaItems, puedeCrearVentaDesdeEmision } from '../../frontend/src/utils/facturacion.js'
+import { buildExportacionInput, buildIngresoMercaderiaPrefill, buildLiquidacionInput, buildReceptor, buildReferenciaInternaRow, computeDteTotales, isDteReferenciable, isReferenciaRowEmpty, mapManualDteItems, mapVentaItems, puedeCrearVentaDesdeEmision, REFERENCIA_TIPOS, REFERENCIA_TIPOS_INTERNOS } from '../../frontend/src/utils/facturacion.js'
 
 describe('facturacion/frontend totals', () => {
+  it('cataloga los 10 tipos de DTE propios (33-112) mas los codigos no tributarios 801-806 del SII', () => {
+    expect(REFERENCIA_TIPOS).toMatchObject({
+      33: 'Factura Electrónica', 39: 'Boleta Electrónica', 43: 'Liquidación Factura Electrónica',
+      46: 'Factura de Compra Electrónica', 52: 'Guía de Despacho Electrónica', 56: 'Nota de Débito Electrónica',
+      61: 'Nota de Crédito Electrónica', 110: 'Factura de Exportación Electrónica',
+      111: 'Nota de Débito de Exportación Electrónica', 112: 'Nota de Crédito de Exportación Electrónica',
+      801: 'Orden de Compra', 802: 'Nota de Pedido', 803: 'Contrato', 804: 'Resolución',
+      805: 'Proceso ChileCompra', 806: 'Ficha ChileCompra',
+    })
+    for (const tipo of ['33', '39', '43', '46', '52', '56', '61', '110', '111', '112']) {
+      expect(REFERENCIA_TIPOS_INTERNOS).toContain(tipo)
+    }
+  })
+
+  it('una fila de referencia vacia no bloquea ni se manda; con folio sin tipo si es valida (TpoDocRef es opcional en el SII)', () => {
+    expect(isReferenciaRowEmpty({ tipo: '', docLocalId: '', folio: '', razon: '' })).toBe(true)
+    expect(isReferenciaRowEmpty({ tipo: '', docLocalId: '', folio: '1234', razon: '' })).toBe(false)
+    expect(isReferenciaRowEmpty({ tipo: '', docLocalId: '', folio: '', razon: 'Orden de compra' })).toBe(false)
+    expect(isReferenciaRowEmpty({ tipo: '801', docLocalId: '', folio: '', razon: '' })).toBe(false)
+  })
+
   it('mantiene referenciables los DTE emitidos, enviados y aceptados con su folio real', () => {
     for (const estado of ['emitido', 'enviado', 'aceptado']) {
       expect(isDteReferenciable({ tipoDte: 52, estado, folio: 187 })).toBe(true)
