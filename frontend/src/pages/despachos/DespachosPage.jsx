@@ -89,7 +89,11 @@ export default function DespachosPage() {
   const canWriteDespacho = can(user, 'despacho', 'write')
   const canDeleteDespacho = can(user, 'despacho', 'delete')
   const canWriteFacturacion = can(user, 'facturacion', 'write')
-  const [tab, setTab] = useState('matriz')
+  // Permite llegar directo a una pestana (ej. desde "Guias Despachos" en la
+  // venta con ?tab=guias) en vez de aterrizar siempre en Matriz y obligar a
+  // buscarla de nuevo a mano.
+  const tabParam = searchParams.get('tab')
+  const [tab, setTab] = useState(TABS.some(t => t.id === tabParam) ? tabParam : 'matriz')
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [odtId, setOdtId] = useState(odtIdParam)

@@ -744,7 +744,7 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmit
       <button onClick={() => navigate(`/taller?search=${v.nInterno || v.id}`)} style={opBtnStyle('var(--blue)')}>
         <Icon name="tool" size={14} /> Órdenes de Trabajo ({odtsCount})
       </button>
-      <button onClick={() => navigate(`/despachos?ordenId=${v.id}`)} style={opBtnStyle('var(--green-600)')}>
+      <button onClick={() => navigate(`/despachos?tab=guias&ordenId=${v.id}`)} style={opBtnStyle('var(--green-600)')}>
         <Icon name="truck" size={14} /> Guías Despachos ({guiasCount})
       </button>
       <button onClick={handleCreateDespacho} style={opBtnStyle('var(--blue)')}>
