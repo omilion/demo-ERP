@@ -2,16 +2,16 @@ import { toast, promptDialog } from '../../store/notif'
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
-import { useDespachoMatriz, useDespachos, useGuias, useDespachoPacking, useDespachoTracking, useCreateDespacho, useUpdateDespacho, useCreateDespachoTrackingEvento, useUpdateDespachoPacking, useDeleteDespacho, useCreateGuia, useUpdateGuia, useDeleteGuia } from '../../api/despachos'
+import { useDespachoMatriz, useDespachos, useGuias, useDespachoPacking, useDespachoTracking, useCreateDespacho, useUpdateDespacho, useCreateDespachoTrackingEvento, useUpdateDespachoPacking, useDeleteDespacho, useDeleteGuia } from '../../api/despachos'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can, odtPath, ventaPath } from '../../utils/permissions'
 import { useVenta } from '../../api/ventas'
-import { useRegiones, useComunas } from '../../api/locations'
-import { TRANSPORTISTAS, IND_TRASLADO, TIPO_DESPACHO, buildReceptor, mapVentaItems } from '../../utils/facturacion'
 import { EmitirDteModal } from '../../components/facturacion/DteModals'
-import { useDocumentos, useEmitirDte, useEnviarDocumento } from '../../api/facturacion'
+import { useDocumentos } from '../../api/facturacion'
 import { downloadDteXml, openDteHtml } from '../../utils/dteDocuments'
+import { emptyDespacho, TRACKING_ESTADOS, INCIDENT_TYPES, trackingTone, packingResumen, formatDays, showError, linkButton, btnSm, input, grid, checkLabel } from './shared'
+import { Mono, Field, Footer, PackingProgress, DespachoCamposFields } from './shared-ui'
 
 const TABS = [
   { id: 'matriz', label: 'Matriz despacho' },
@@ -19,8 +19,6 @@ const TABS = [
   { id: 'guias', label: 'Guias' },
 ]
 
-const TRACKING_ESTADOS = ['Preparado', 'En ruta', 'Entregado', 'Incidencia', 'Reprogramado', 'Retenido', 'Devuelto']
-const INCIDENT_TYPES = ['Retraso', 'Cliente ausente', 'Direccion incorrecta', 'Producto faltante', 'Producto danado', 'Transporte', 'Documentacion', 'Otro']
 const ESTADO_PAGO_OPTS = ['', 'No pagada', 'Pagada', 'Parcial']
 const ESTADO_ENTREGA_OPTS = ['', 'Pendiente entrega', 'En despacho', 'Entregada', 'Parcial']
 const TIPO_VENTA_OPTS = [
@@ -31,54 +29,8 @@ const TIPO_VENTA_OPTS = [
   ['licitacion', 'Licitacion'],
 ]
 
-const emptyDespacho = {
-  ordenId: '',
-  odtId: '',
-  interno: '',
-  plazoEntrega: '',
-  fechaInterno: '',
-  fechaEntrega: '',
-  tipoDespacho: '',
-  transporte: '',
-  numeroSeguimiento: '',
-  montoEnvio: '',
-  direccion: '',
-  contacto: '',
-  region: '',
-  comuna: '',
-  parcial: false,
-  tieneMulta: false,
-}
-
 const fmt = n => '$' + Math.round(Number(n || 0)).toLocaleString('es-CL')
 const dateFmt = value => value ? new Date(value).toLocaleDateString('es-CL') : '-'
-const numberFmt = value => Number(value || 0).toLocaleString('es-CL')
-
-function packingResumen(row) {
-  if (row?.packing) return row.packing
-  const items = row?.itemsDetalle || []
-  const total = items.reduce((sum, item) => sum + Number(item.cantidad || 0), 0)
-  const entregados = items.reduce((sum, item) => sum + Number(item.entregados || 0), 0)
-  const pendientes = Math.max(0, total - entregados)
-  const pct = total > 0 ? Math.round((entregados / total) * 100) : 0
-  const estado = total === 0 || entregados === 0
-    ? 'Pendiente'
-    : entregados >= total ? 'Completo' : 'Parcial'
-  return { total, entregados, pendientes, pct, estado }
-}
-
-function formatDays(value) {
-  if (value == null) return '-'
-  return `${Number(value).toLocaleString('es-CL', { maximumFractionDigits: 1 })} d`
-}
-
-function trackingTone(estado) {
-  if (estado === 'Entregado') return 'green'
-  if (estado === 'Incidencia' || estado === 'Devuelto') return 'red'
-  if (estado === 'En ruta' || estado === 'Preparado') return 'blue'
-  if (estado === 'Reprogramado' || estado === 'Retenido') return 'amber'
-  return 'gray'
-}
 
 export default function DespachosPage() {
   const navigate = useNavigate()
@@ -121,8 +73,6 @@ export default function DespachosPage() {
   const [editing, setEditing] = useState(null)
   const [packing, setPacking] = useState(null)
   const [tracking, setTracking] = useState(null)
-  const [creatingGuia, setCreatingGuia] = useState(null)
-  const [editingGuia, setEditingGuia] = useState(null)
   // { ordenId, guiaDespachoId? } - guiaDespachoId solo cuando se abre desde
   // una guia puntual; desde una fila de despacho se emite a nivel de venta.
   const [dteTarget, setDteTarget] = useState(null)
@@ -325,7 +275,7 @@ export default function DespachosPage() {
           <button
             onClick={e => {
               e.stopPropagation()
-              setCreatingGuia({ ordenId: row.ordenId || '', odtId: '', nInterno: row.nInterno || '', nGuia: '', fechaGuia: '', origen: '' })
+              navigate(`/despachos/guias/nueva?ordenId=${row.ordenId || ''}&nInterno=${row.nInterno || ''}`)
             }}
             style={btnSm('var(--blue)')}
           >Guia</button>
@@ -411,7 +361,7 @@ export default function DespachosPage() {
           style={{ ...linkButton('var(--blue)'), opacity: row.ordenId ? 1 : 0.45, cursor: row.ordenId ? 'pointer' : 'not-allowed' }}
         >Emitir DTE</button>}
         <button onClick={(e) => { e.stopPropagation(); window.open(`${window.location.origin}/despachos/guias/${row.id}/imprimir`, '_blank') }} style={linkButton('var(--text-2)')}>Imprimir</button>
-        {canWriteDespacho && <button onClick={(e) => { e.stopPropagation(); setEditingGuia(row) }} style={linkButton('var(--green-700)')}>Editar</button>}
+        {canWriteDespacho && <button onClick={(e) => { e.stopPropagation(); navigate(`/despachos/guias/${row.id}/editar`) }} style={linkButton('var(--green-700)')}>Editar</button>}
         {canDeleteDespacho && <button onClick={(e) => { e.stopPropagation(); solicitarEliminacion('guia', row.id, delGuiaMut) }} style={linkButton('var(--red)')}>Borrar</button>}
       </div>
     ) },
@@ -531,7 +481,7 @@ export default function DespachosPage() {
             <Btn variant="secondary" size="sm" onClick={() => window.print()}>Imprimir</Btn>
             <Btn variant="secondary" size="sm" onClick={exportar}>Exportar CSV</Btn>
             {canWriteDespacho && (tab === 'guias'
-              ? <Btn variant="primary" size="sm" onClick={() => setCreatingGuia({ ordenId: ordenIdParam, odtId: odtIdParam, nInterno: '', nGuia: '', fechaGuia: '', origen: '' })}>Nueva guia</Btn>
+              ? <Btn variant="primary" size="sm" onClick={() => navigate(`/despachos/guias/nueva?ordenId=${ordenIdParam}&odtId=${odtIdParam}`)}>Nueva guia</Btn>
               : <Btn variant="primary" size="sm" onClick={() => setCreating(emptyDespacho)}>Nuevo despacho</Btn>)}
           </div>
         }
@@ -604,27 +554,6 @@ export default function DespachosPage() {
           )}
         />
       )}
-      {creatingGuia && (
-        <GuiaModal
-          title="Nueva guia"
-          initial={creatingGuia}
-          onClose={() => setCreatingGuia(null)}
-          onSuccess={(guia) => {
-            setCreatingGuia(null)
-            if (!guia?.folio) toast.success('Guía generada.')
-            else if (guia.enviado) toast.success(`Guía enviada al SII: folio ${guia.folio}.`)
-            // si enviado===false ya se mostro el toast de error especifico con el folio
-          }}
-        />
-      )}
-      {editingGuia && (
-        <GuiaModal
-          title={`Editar guia #${editingGuia.id}`}
-          initial={editingGuia}
-          onClose={() => setEditingGuia(null)}
-          onSuccess={() => { setEditingGuia(null); toast.success('Guía actualizada.') }}
-        />
-      )}
       {dteTarget && ventaGuiaDte.data && (
         <EmitirDteModal
           venta={ventaGuiaDte.data}
@@ -639,25 +568,6 @@ export default function DespachosPage() {
       )}
       {dteTarget && ventaGuiaDte.isPending && <LoadingOverlay label="Cargando venta..." />}
     </main>
-  )
-}
-
-function PackingProgress({ row }) {
-  const resumen = packingResumen(row)
-  const tone = resumen.estado === 'Completo' ? 'green' : resumen.estado === 'Parcial' ? 'amber' : 'gray'
-  return (
-    <div style={{ minWidth: 120 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-        <Badge tone={tone}>{resumen.estado}</Badge>
-        <Mono strong>{resumen.pct}%</Mono>
-      </div>
-      <div style={{ height: 5, borderRadius: 999, background: 'oklch(0.92 0.003 220)', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${Math.min(100, resumen.pct)}%`, background: resumen.estado === 'Completo' ? 'var(--green-600)' : 'var(--amber)' }} />
-      </div>
-      <div style={{ marginTop: 4, fontSize: 10.5, color: 'var(--text-3)' }}>
-        {numberFmt(resumen.entregados)}/{numberFmt(resumen.total)} entregados
-      </div>
-    </div>
   )
 }
 
@@ -957,51 +867,6 @@ function DespachoTrackingModal({ row, canWrite, saving, onClose, onSave }) {
   )
 }
 
-// Campos de logistica del despacho, reutilizados tal cual en DespachoModal
-// (standalone) y dentro de GuiaModal (crear despacho sin salir del flujo).
-function DespachoCamposFields({ form, set }) {
-  const { data: regiones = [] } = useRegiones()
-  const regionSel = regiones.find(r => r.nombre === form.region)
-  const { data: comunas = [] } = useComunas(regionSel?.codigo)
-  const transporteEsOtro = !!form.transporte && !TRANSPORTISTAS.includes(form.transporte)
-
-  return (
-    <>
-      <div style={grid}>
-        <Field label="Fecha límite de entrega (plazo)"><input type="date" value={form.plazoEntrega || ''} onChange={e => set('plazoEntrega', e.target.value)} style={input} /></Field>
-        <Field label="Fecha entrega"><input type="date" value={form.fechaEntrega || ''} onChange={e => set('fechaEntrega', e.target.value)} style={input} /></Field>
-        <Field label="Tipo"><input value={form.tipoDespacho || ''} onChange={e => set('tipoDespacho', e.target.value)} style={input} /></Field>
-        <Field label="Transporte">
-          <select value={(!!form.transporte && !TRANSPORTISTAS.includes(form.transporte)) ? 'Otro' : (form.transporte || '')} onChange={e => set('transporte', e.target.value === 'Otro' ? '' : e.target.value)} style={input}>
-            <option value="">Seleccionar...</option>
-            {TRANSPORTISTAS.map(t => <option key={t} value={t}>{t}</option>)}
-            <option value="Otro">Otro: indicar</option>
-          </select>
-          {(transporteEsOtro || form.transporte === '') && (
-            <input value={transporteEsOtro ? form.transporte : ''} onChange={e => set('transporte', e.target.value)} placeholder="Nombre del transportista" style={{ ...input, marginTop: 6 }} />
-          )}
-        </Field>
-        <Field label="N° de seguimiento"><input value={form.numeroSeguimiento || ''} onChange={e => set('numeroSeguimiento', e.target.value)} style={input} /></Field>
-        <Field label="Monto envío"><input value={form.montoEnvio || ''} onChange={e => set('montoEnvio', e.target.value)} style={input} /></Field>
-        <Field label="Contacto"><input value={form.contacto || ''} onChange={e => set('contacto', e.target.value)} style={input} /></Field>
-        <Field label="Región">
-          <select value={form.region || ''} onChange={e => { set('region', e.target.value); set('comuna', '') }} style={input}>
-            <option value="">Seleccionar región...</option>
-            {regiones.map(r => <option key={r.codigo} value={r.nombre}>{r.nombre}</option>)}
-          </select>
-        </Field>
-        <Field label="Comuna">
-          <select value={form.comuna || ''} onChange={e => set('comuna', e.target.value)} style={input} disabled={!form.region}>
-            <option value="">{form.region ? 'Seleccionar comuna...' : 'Elige región primero'}</option>
-            {comunas.map(c => <option key={c.nombre} value={c.nombre}>{c.nombre}</option>)}
-          </select>
-        </Field>
-      </div>
-      <Field label="Direccion"><textarea value={form.direccion || ''} onChange={e => set('direccion', e.target.value)} rows={2} style={{ ...input, resize: 'vertical' }} /></Field>
-    </>
-  )
-}
-
 function DespachoModal({ title, initial, saving, onClose, onSave }) {
   const [form, setForm] = useState(() => ({
     ...emptyDespacho,
@@ -1037,229 +902,6 @@ function DespachoModal({ title, initial, saving, onClose, onSave }) {
   )
 }
 
-const DESPACHO_MODO_OPTS = [
-  ['ninguno', 'Sin despacho todavía (queda pendiente)'],
-  ['existente', 'Usar despacho existente'],
-  ['nuevo', 'Crear despacho nuevo'],
-]
-
-// Guia de despacho: elegir que enviar del pedido, generar el documento, y
-// resolver el despacho (orden de transporte) sin salir del flujo - antes
-// habia que ir a la venta o a Despachos por separado y se perdia el hilo.
-function GuiaModal({ title = 'Nueva guia', initial, onClose, onSuccess }) {
-  const isEdit = !!initial.id
-  const [form, setForm] = useState(() => ({
-    ordenId: '',
-    odtId: '',
-    nInterno: '',
-    nGuia: '',
-    origen: '',
-    ...initial,
-    fechaGuia: initial.fechaGuia ? String(initial.fechaGuia).slice(0, 10) : '',
-  }))
-  const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
-
-  const [despachoModo, setDespachoModo] = useState(initial.despachoId ? 'existente' : 'ninguno')
-  const [despachoIdExistente, setDespachoIdExistente] = useState(initial.despachoId ? String(initial.despachoId) : '')
-  const [despachoNuevo, setDespachoNuevo] = useState(() => ({ ...emptyDespacho, ordenId: initial.ordenId || '' }))
-  const setDespachoNuevoField = (key, value) => setDespachoNuevo(prev => ({ ...prev, [key]: value }))
-  const despachosOrden = useDespachos(form.ordenId ? { ordenId: form.ordenId } : {})
-  const despachos = form.ordenId ? (despachosOrden.data?.items || []) : []
-
-  const packing = useDespachoPacking(form.ordenId || undefined, undefined, !isEdit && !!form.ordenId)
-  const [envios, setEnvios] = useState({})
-  const items = (packing.data?.items || []).map(item => {
-    const pendiente = Math.max(0, Number(item.cantidad || 0) - Number(item.nEntregados || 0))
-    const envio = Math.min(pendiente, Math.max(0, Number.parseInt(envios[item.id] || '0', 10) || 0))
-    return { ...item, pendiente, envio }
-  })
-  const hayItemsSeleccionados = items.some(i => i.envio > 0)
-  // La guia siempre se emite como DTE-52 al crearla (no debe existir un
-  // registro de guia sin folio SII real): estos dos codigos los exige el SII
-  // y no tienen default seguro, los define quien despacha.
-  const [indTraslado, setIndTraslado] = useState('')
-  const [tipoDespacho, setTipoDespacho] = useState('')
-  const ventaParaDte = useVenta(!isEdit ? form.ordenId : undefined)
-
-  const createDespachoMut = useCreateDespacho()
-  const createGuiaMut = useCreateGuia()
-  const updateGuiaMut = useUpdateGuia()
-  const updatePackingMut = useUpdateDespachoPacking()
-  const emitirMut = useEmitirDte()
-  const enviarMut = useEnviarDocumento()
-  const deleteGuiaMut = useDeleteGuia()
-  const saving = createDespachoMut.isPending || createGuiaMut.isPending || updateGuiaMut.isPending
-    || updatePackingMut.isPending || emitirMut.isPending || enviarMut.isPending || deleteGuiaMut.isPending
-
-  const guardar = async () => {
-    if (isEdit && !form.nGuia.trim()) { toast.error('Indica el N° de guia.'); return }
-    if (despachoModo === 'existente' && !despachoIdExistente) { toast.error('Elige el despacho.'); return }
-    if (!isEdit) {
-      if (!form.ordenId) { toast.error('Indica el N° de Orden: la guía se emite como documento SII y necesita una venta real.'); return }
-      if (!hayItemsSeleccionados) { toast.error('Selecciona al menos un producto y una cantidad para enviar.'); return }
-      if (!indTraslado || !tipoDespacho) { toast.error('Indica el motivo del traslado y el tipo de despacho (los exige el SII).'); return }
-      if (ventaParaDte.isLoading || !ventaParaDte.data) { toast.error('Espera a que cargue la venta antes de guardar.'); return }
-    }
-    try {
-      let despachoId = null
-      if (despachoModo === 'existente') {
-        despachoId = Number(despachoIdExistente)
-      } else if (despachoModo === 'nuevo') {
-        const nuevo = await createDespachoMut.mutateAsync({ ...despachoNuevo, ordenId: form.ordenId })
-        despachoId = nuevo.id
-      }
-
-      if (isEdit) {
-        const guia = await updateGuiaMut.mutateAsync({ id: initial.id, data: { nGuia: form.nGuia, fechaGuia: form.fechaGuia, origen: form.origen, despachoId } })
-        onSuccess(guia)
-        return
-      }
-
-      const guia = await createGuiaMut.mutateAsync({ ordenId: form.ordenId, odtId: form.odtId, nInterno: form.nInterno, nGuia: form.nGuia, fechaGuia: form.fechaGuia, origen: form.origen, despachoId })
-      const itemsAEnviar = items.filter(i => i.envio > 0)
-      try {
-        await updatePackingMut.mutateAsync({
-          ordenId: form.ordenId,
-          guiaDespachoId: guia.id,
-          despachoId: despachoId || undefined,
-          items: itemsAEnviar.map(i => ({ itemId: i.id, nEntregados: Number(i.nEntregados || 0) + i.envio })),
-        })
-        const cantidadPorItemId = Object.fromEntries(itemsAEnviar.map(i => [i.id, i.envio]))
-        const dteItems = mapVentaItems(ventaParaDte.data, cantidadPorItemId, { includeCargos: false })
-        const receptor = buildReceptor(ventaParaDte.data.cliente)
-        const { emitido } = await emitirMut.mutateAsync({
-          ordenId: guia.ordenId ?? Number(form.ordenId),
-          clienteId: ventaParaDte.data.clienteId || ventaParaDte.data.cliente?.id,
-          guiaDespachoId: guia.id,
-          tipoDte: 52,
-          receptor,
-          items: dteItems,
-          extra: { indTraslado: Number(indTraslado), tipoDespacho: Number(tipoDespacho) },
-        })
-        // El folio ya quedo consumido y el XML firmado: si el envio al SII
-        // falla aca (SII caido, red, etc.) NO se deshace la guia — queda
-        // 'emitido' y se puede reintentar el envio desde Documentos, igual
-        // que cualquier otro DTE emitido manualmente.
-        try {
-          await enviarMut.mutateAsync(emitido.id)
-          onSuccess({ ...guia, folio: emitido?.folio, enviado: true })
-        } catch (enviarError) {
-          toast.error(`Guía emitida (folio ${emitido?.folio}) pero no se pudo enviar al SII automáticamente: ${enviarError?.response?.data?.error || enviarError?.message || 'error desconocido'}. Reintenta desde Documentos.`)
-          onSuccess({ ...guia, folio: emitido?.folio, enviado: false })
-        }
-      } catch (dteError) {
-        // La guia no puede quedar como simple registro local sin su DTE: si la
-        // emision falla (packing o SII), se deshace la guia recien creada en
-        // vez de dejarla huerfana sin folio.
-        try {
-          const motivo = `Emisión SII fallida al crear: ${dteError?.response?.data?.error || dteError?.message || 'error desconocido'}`
-          await deleteGuiaMut.mutateAsync({ id: guia.id, motivo })
-        } catch { /* best-effort */ }
-        throw dteError
-      }
-    } catch (cause) {
-      toast.error(cause?.response?.data?.error || cause?.message || 'No se pudo guardar la guia.')
-    }
-  }
-
-  return (
-    <Modal title={title} onClose={onClose}>
-      {!isEdit && (
-        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 14, lineHeight: 1.5 }}>
-          1. Elige abajo qué productos y cuánto enviar de este pedido. 2. Indica el motivo/tipo de despacho que exige el SII. 3. Resuelve el despacho (o déjalo pendiente). 4. Guarda: se emite y se envía al SII en el mismo paso — si la emisión falla, no queda un registro suelto (si solo falla el envío, queda emitida y se reintenta desde Documentos).
-        </div>
-      )}
-      <div style={grid}>
-        <Field label="N guia">
-          <input value={form.nGuia} onChange={e => set('nGuia', e.target.value)} style={input} placeholder={isEdit ? '' : 'Automático si lo dejas vacío'} />
-        </Field>
-        <Field label="Orden ID"><input value={form.ordenId} onChange={e => set('ordenId', e.target.value)} style={input} disabled={isEdit} /></Field>
-        <Field label="OT ID"><input value={form.odtId} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
-        <Field label="N interno"><input value={form.nInterno} disabled style={{ ...input, background: 'var(--bg)', color: 'var(--text-3)' }} title="Es el numero interno de la venta, no se edita aca" /></Field>
-        <Field label="Fecha"><input type="date" value={form.fechaGuia} onChange={e => set('fechaGuia', e.target.value)} style={input} /></Field>
-      </div>
-      <Field label="Origen"><input value={form.origen} onChange={e => set('origen', e.target.value)} style={input} /></Field>
-
-      {!isEdit && form.ordenId && (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Qué enviar en esta guía</div>
-          {packing.isLoading ? (
-            <div style={{ color: 'var(--text-3)', fontSize: 12 }}>Cargando ítems...</div>
-          ) : !items.length ? (
-            <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}>Sin ítems de venta.</div>
-          ) : (
-            <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg)' }}>
-                    {['Producto', 'Pendiente', 'Enviar ahora'].map((h, i) => (
-                      <th key={h} style={{ padding: '6px 10px', textAlign: i ? 'right' : 'left', fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map(item => (
-                    <tr key={item.id} style={{ borderTop: '1px solid var(--border)' }}>
-                      <td style={{ padding: '6px 10px' }}>{item.nombre}</td>
-                      <td style={{ padding: '6px 10px', textAlign: 'right' }}><Mono>{item.pendiente}</Mono></td>
-                      <td style={{ padding: '4px 10px', textAlign: 'right' }}>
-                        <input
-                          type="number" min="0" max={item.pendiente} value={envios[item.id] ?? ''} placeholder="0"
-                          onChange={event => setEnvios(prev => ({ ...prev, [item.id]: event.target.value }))}
-                          style={{ width: 70, padding: '4px 6px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, textAlign: 'right' }}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {!isEdit && form.ordenId && (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Documento SII (obligatorio para emitir la guía)</div>
-          <div style={grid}>
-            <Field label="Motivo del traslado">
-              <select value={indTraslado} onChange={e => setIndTraslado(e.target.value)} style={input}>
-                <option value="">Seleccionar...</option>
-                {Object.entries(IND_TRASLADO).map(([code, text]) => <option key={code} value={code}>{code} — {text}</option>)}
-              </select>
-            </Field>
-            <Field label="Tipo de despacho">
-              <select value={tipoDespacho} onChange={e => setTipoDespacho(e.target.value)} style={input}>
-                <option value="">Seleccionar...</option>
-                {Object.entries(TIPO_DESPACHO).map(([code, text]) => <option key={code} value={code}>{code} — {text}</option>)}
-              </select>
-            </Field>
-          </div>
-          {ventaParaDte.isLoading && <div style={{ color: 'var(--text-3)', fontSize: 12, marginTop: 4 }}>Cargando datos del receptor...</div>}
-        </div>
-      )}
-
-      <div style={{ marginTop: 16 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Despacho (orden de transporte)</div>
-        <select value={despachoModo} onChange={e => setDespachoModo(e.target.value)} style={{ ...input, marginBottom: 10 }}>
-          {DESPACHO_MODO_OPTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-        {despachoModo === 'existente' && (
-          <select value={despachoIdExistente} onChange={e => setDespachoIdExistente(e.target.value)} style={input}>
-            <option value="">Seleccionar despacho...</option>
-            {despachos.map(d => (
-              <option key={d.id} value={String(d.id)}>#{d.id} {d.transporte || ''} {d.numeroSeguimiento ? `· ${d.numeroSeguimiento}` : ''}</option>
-            ))}
-          </select>
-        )}
-        {despachoModo === 'nuevo' && <DespachoCamposFields form={despachoNuevo} set={setDespachoNuevoField} />}
-      </div>
-
-      <Footer saving={saving} onClose={onClose} onSave={guardar} />
-    </Modal>
-  )
-}
-
 function Modal({ title, onClose, children }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1278,23 +920,6 @@ function Modal({ title, onClose, children }) {
 
 function FilterField({ label, children }) {
   return <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)' }}><span style={{ display: 'block', marginBottom: 4 }}>{label}</span>{children}</label>
-}
-
-function Field({ label, children }) {
-  return <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}><span style={{ display: 'block', marginBottom: 5 }}>{label}</span>{children}</label>
-}
-
-function Footer({ saving, onClose, onSave }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
-      <Btn variant="ghost" onClick={onClose} disabled={saving}>Cancelar</Btn>
-      <Btn variant="primary" icon="check" onClick={onSave} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</Btn>
-    </div>
-  )
-}
-
-function Mono({ children, strong = false, muted = false }) {
-  return <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, fontWeight: strong ? 700 : 500, color: muted ? 'var(--text-3)' : undefined }}>{children}</span>
 }
 
 function InlineList({ items }) {
@@ -1317,14 +942,6 @@ function toneEntrega(value) {
   return 'gray'
 }
 
-function showError(error) {
-  toast.error(error.response?.data?.error || 'Error')
-}
-
-function linkButton(color, fontWeight = 500) {
-  return { background: 'transparent', border: 'none', color, cursor: 'pointer', fontSize: 12, fontWeight }
-}
-
 function LoadingOverlay({ label }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'oklch(0 0 0 / .45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1333,11 +950,7 @@ function LoadingOverlay({ label }) {
   )
 }
 
-const btnSm = (color) => ({ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color, fontWeight: 500 })
 const filterGrid = { padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, alignItems: 'end' }
 const inputFilter = { width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff' }
 const smallButton = { padding: '7px 10px', fontSize: 12, borderRadius: 7, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }
 const quickFilterBtn = active => ({ padding: '7px 12px', fontSize: 12, borderRadius: 6, border: `1px solid ${active ? 'var(--green-600)' : 'var(--border)'}`, background: active ? 'var(--green-50)' : '#fff', cursor: 'pointer', color: active ? 'var(--green-800)' : 'var(--text-2)', fontWeight: active ? 700 : 500 })
-const input = { width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit' }
-const grid = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }
-const checkLabel = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-2)' }
