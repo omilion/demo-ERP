@@ -183,6 +183,34 @@ describe('despachos legacy matrix parity', () => {
     }
   })
 
+  it('filters the matrix by ordenId, excluding other ordenes and rejecting invalid ids', async () => {
+    const fixture = await createFixture(app)
+    const otherFixture = await createFixture(app)
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/despachos/matriz?ordenId=${fixture.orden.id}`,
+        headers: { authorization: `Bearer ${adminToken}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.total).toBe(1)
+      expect(body.items[0].ordenId).toBe(fixture.orden.id)
+      expect(body.items.map(item => item.ordenId)).not.toContain(otherFixture.orden.id)
+
+      const invalidRes = await app.inject({
+        method: 'GET',
+        url: '/api/despachos/matriz?ordenId=no-es-un-numero',
+        headers: { authorization: `Bearer ${adminToken}` },
+      })
+      expect(invalidRes.statusCode).toBe(400)
+      expect(JSON.parse(invalidRes.body).error).toBe('ordenId invalido')
+    } finally {
+      await cleanupFixture(app, fixture)
+      await cleanupFixture(app, otherFixture)
+    }
+  })
+
   it('soft deletes despachos and recalculates stale delivery state', async () => {
     const fixture = await createFixture(app)
     try {

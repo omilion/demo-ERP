@@ -245,6 +245,7 @@ export async function buildDespachoMatrizWhere(prisma, query = {}, user = {}) {
     hasta,
     rut,
     cliente,
+    ordenId,
     nInterno,
     oc,
     idLicitacion,
@@ -277,6 +278,11 @@ export async function buildDespachoMatrizWhere(prisma, query = {}, user = {}) {
   }
   if (rut) addAnd(where, { rutCliente: contains(String(rut).trim()) })
   applyClienteFilter(where, cliente)
+  if (ordenId) {
+    const parsedOrdenId = parsePositiveInt(ordenId)
+    if (!parsedOrdenId) return { error: 'ordenId invalido' }
+    where.id = parsedOrdenId
+  }
   if (nInterno) {
     const parsedNInterno = parsePositiveInt(nInterno)
     if (!parsedNInterno) return { error: 'nInterno invalido' }
