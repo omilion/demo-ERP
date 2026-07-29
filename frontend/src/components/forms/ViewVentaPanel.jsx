@@ -708,14 +708,13 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmit
 
   const handleCreateDespacho = () => {
     const params = new URLSearchParams({
-      action: 'new',
       ordenId: String(v.id),
       nInterno: String(v.nInterno || ''),
       direccion: v.direccionDespacho || '',
       region: v.regionDespacho || '',
       comuna: v.comunaDespacho || ''
     })
-    navigate(`/despachos?${params.toString()}`)
+    navigate(`/despachos/nuevo?${params.toString()}`)
   }
 
   const abrirNotaVenta = () => {
@@ -868,14 +867,13 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
 
   const handleCreateDespacho = () => {
     const params = new URLSearchParams({
-      action: 'new',
       ordenId: String(v.id),
       nInterno: String(v.nInterno || ''),
       direccion: v.direccionDespacho || '',
       region: v.regionDespacho || '',
       comuna: v.comunaDespacho || ''
     })
-    navigate(`/despachos?${params.toString()}`)
+    navigate(`/despachos/nuevo?${params.toString()}`)
   }
 
   function handleDelete() {

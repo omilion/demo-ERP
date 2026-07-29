@@ -2,7 +2,7 @@ import { toast, promptDialog } from '../../store/notif'
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
-import { useDespachoMatriz, useDespachos, useGuias, useDespachoPacking, useDespachoTracking, useCreateDespacho, useUpdateDespacho, useCreateDespachoTrackingEvento, useUpdateDespachoPacking, useDeleteDespacho, useDeleteGuia } from '../../api/despachos'
+import { useDespachoMatriz, useDespachos, useGuias, useDespachoPacking, useDespachoTracking, useCreateDespachoTrackingEvento, useUpdateDespachoPacking, useDeleteDespacho, useDeleteGuia } from '../../api/despachos'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can, odtPath, ventaPath } from '../../utils/permissions'
@@ -10,8 +10,8 @@ import { useVenta } from '../../api/ventas'
 import { EmitirDteModal } from '../../components/facturacion/DteModals'
 import { useDocumentos } from '../../api/facturacion'
 import { downloadDteXml, openDteHtml } from '../../utils/dteDocuments'
-import { emptyDespacho, TRACKING_ESTADOS, INCIDENT_TYPES, trackingTone, packingResumen, formatDays, showError, linkButton, btnSm, input, grid, checkLabel } from './shared'
-import { Mono, Field, Footer, PackingProgress, DespachoCamposFields } from './shared-ui'
+import { TRACKING_ESTADOS, INCIDENT_TYPES, trackingTone, packingResumen, formatDays, showError, linkButton, btnSm, input, checkLabel } from './shared'
+import { Mono, Field, Footer, PackingProgress } from './shared-ui'
 
 const TABS = [
   { id: 'matriz', label: 'Matriz despacho' },
@@ -69,8 +69,6 @@ export default function DespachosPage() {
   const [includeEliminados, setIncludeEliminados] = useState(false)
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
-  const [creating, setCreating] = useState(null)
-  const [editing, setEditing] = useState(null)
   const [packing, setPacking] = useState(null)
   const [tracking, setTracking] = useState(null)
   // { ordenId, guiaDespachoId? } - guiaDespachoId solo cuando se abre desde
@@ -85,35 +83,6 @@ export default function DespachosPage() {
       setDteTarget(null)
     }
   }, [dteTarget, ventaGuiaDte.isError])
-
-  useEffect(() => {
-    const action = searchParams.get('action')
-    if (action === 'new') {
-      const ordenIdVal = searchParams.get('ordenId') || ''
-      const nInternoVal = searchParams.get('nInterno') || ''
-      const direccionVal = searchParams.get('direccion') || ''
-      const regionVal = searchParams.get('region') || ''
-      const comunaVal = searchParams.get('comuna') || ''
-      setCreating({
-        ...emptyDespacho,
-        ordenId: ordenIdVal,
-        interno: nInternoVal,
-        direccion: direccionVal,
-        region: regionVal,
-        comuna: comunaVal,
-      })
-      // Clear URL params to avoid re-triggering
-      setSearchParams(prev => {
-        const next = new URLSearchParams(prev)
-        next.delete('action')
-        next.delete('nInterno')
-        next.delete('direccion')
-        next.delete('region')
-        next.delete('comuna')
-        return next
-      }, { replace: true })
-    }
-  }, [searchParams, setSearchParams])
 
   const setFilter = setter => value => {
     setter(value)
@@ -185,8 +154,6 @@ export default function DespachosPage() {
     }
     return result
   }, [documentosGuias.data])
-  const createMut = useCreateDespacho()
-  const updateMut = useUpdateDespacho()
   const updatePackingMut = useUpdateDespachoPacking()
   const createTrackingMut = useCreateDespachoTrackingEvento()
   const delMut = useDeleteDespacho()
@@ -259,14 +226,8 @@ export default function DespachosPage() {
           <button
             onClick={e => {
               e.stopPropagation()
-              setCreating({
-                ...emptyDespacho,
-                ordenId: row.ordenId || '',
-                interno: row.nInterno || '',
-                direccion: row.direccion || '',
-                region: row.region || '',
-                comuna: row.comuna || '',
-              })
+              const params = new URLSearchParams({ ordenId: row.ordenId || '', nInterno: row.nInterno || '', direccion: row.direccion || '', region: row.region || '', comuna: row.comuna || '' })
+              navigate(`/despachos/nuevo?${params.toString()}`)
             }}
             style={btnSm('var(--blue)')}
           >Desp.</button>
@@ -319,7 +280,7 @@ export default function DespachosPage() {
           onClick={(e) => { e.stopPropagation(); if (row.ordenId) setDteTarget({ ordenId: row.ordenId }) }}
           style={{ ...linkButton('var(--blue)'), opacity: row.ordenId ? 1 : 0.45, cursor: row.ordenId ? 'pointer' : 'not-allowed' }}
         >Emitir factura</button>}
-        {canWriteDespacho && <button onClick={(e) => { e.stopPropagation(); setEditing(row) }} style={linkButton('var(--green-700)')}>Editar</button>}
+        {canWriteDespacho && <button onClick={(e) => { e.stopPropagation(); navigate(`/despachos/${row.id}/editar`) }} style={linkButton('var(--green-700)')}>Editar</button>}
         {canDeleteDespacho && <button onClick={(e) => { e.stopPropagation(); solicitarEliminacion('despacho', row.id, delMut) }} style={linkButton('var(--red)')}>Borrar</button>}
       </div>
     ) },
@@ -482,7 +443,7 @@ export default function DespachosPage() {
             <Btn variant="secondary" size="sm" onClick={exportar}>Exportar CSV</Btn>
             {canWriteDespacho && (tab === 'guias'
               ? <Btn variant="primary" size="sm" onClick={() => navigate(`/despachos/guias/nueva?ordenId=${ordenIdParam}&odtId=${odtIdParam}`)}>Nueva guia</Btn>
-              : <Btn variant="primary" size="sm" onClick={() => setCreating(emptyDespacho)}>Nuevo despacho</Btn>)}
+              : <Btn variant="primary" size="sm" onClick={() => navigate('/despachos/nuevo')}>Nuevo despacho</Btn>)}
           </div>
         }
       />
@@ -513,24 +474,6 @@ export default function DespachosPage() {
         }
       </div>
 
-      {creating && (
-        <DespachoModal
-          title="Nuevo despacho"
-          initial={creating}
-          saving={createMut.isPending}
-          onClose={() => setCreating(null)}
-          onSave={(data) => createMut.mutate(data, { onSuccess: () => setCreating(null), onError: showError })}
-        />
-      )}
-      {editing && (
-        <DespachoModal
-          title={`Editar despacho #${editing.id}`}
-          initial={editing}
-          saving={updateMut.isPending}
-          onClose={() => setEditing(null)}
-          onSave={(data) => updateMut.mutate({ id: editing.id, data }, { onSuccess: () => setEditing(null), onError: showError })}
-        />
-      )}
       {packing && (
         <PackingModal
           row={packing}
@@ -863,41 +806,6 @@ function DespachoTrackingModal({ row, canWrite, saving, onClose, onSave }) {
           </div>
         )}
       </div>
-    </Modal>
-  )
-}
-
-function DespachoModal({ title, initial, saving, onClose, onSave }) {
-  const [form, setForm] = useState(() => ({
-    ...emptyDespacho,
-    ...initial,
-    fechaInterno: initial.fechaInterno ? String(initial.fechaInterno).slice(0, 10) : '',
-    fechaEntrega: initial.fechaEntrega ? String(initial.fechaEntrega).slice(0, 10) : '',
-    plazoEntrega: initial.plazoEntrega && /^\d{4}-\d{2}-\d{2}/.test(initial.plazoEntrega) ? initial.plazoEntrega.slice(0, 10) : '',
-  }))
-  const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
-  const { data: venta } = useVenta(form.ordenId || undefined)
-
-  return (
-    <Modal title={title} onClose={onClose}>
-      {(form.parcial || form.tieneMulta) && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-          {form.parcial && <Badge tone="amber">Envío parcial</Badge>}
-          {form.tieneMulta && <Badge tone="red">Tiene multa</Badge>}
-        </div>
-      )}
-      <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
-        <label style={checkLabel}><input type="checkbox" checked={!!form.parcial} onChange={e => set('parcial', e.target.checked)} /> Parcial</label>
-        <label style={checkLabel}><input type="checkbox" checked={!!form.tieneMulta} onChange={e => set('tieneMulta', e.target.checked)} /> Tiene multa</label>
-      </div>
-      <div style={grid}>
-        <Field label="Orden ID"><input value={form.ordenId || ''} onChange={e => set('ordenId', e.target.value)} style={input} /></Field>
-        <Field label="OT ID"><input value={form.odtId || ''} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
-        <Field label="Interno"><input value={form.interno || ''} disabled style={{ ...input, background: 'var(--bg)', color: 'var(--text-3)' }} title="Es el numero interno de la venta, no se edita aca" /></Field>
-        <Field label="Tipo de venta"><input value={venta?.tipo || '—'} disabled style={{ ...input, background: 'var(--bg)', color: 'var(--text-3)' }} /></Field>
-      </div>
-      <DespachoCamposFields form={form} set={set} />
-      <Footer saving={saving} onClose={onClose} onSave={() => onSave(form)} />
     </Modal>
   )
 }

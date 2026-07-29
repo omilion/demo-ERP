@@ -40,6 +40,7 @@ import MatrizVentasPage from './pages/matriz-ventas/MatrizVentasPage'
 import DespachosPage from './pages/despachos/DespachosPage'
 import GuiaPrintPage from './pages/despachos/GuiaPrintPage'
 import GuiaFormPage from './pages/despachos/GuiaFormPage'
+import DespachoFormPage from './pages/despachos/DespachoFormPage'
 import BitacoraTallerPage from './pages/bitacora-taller/BitacoraTallerPage'
 import HistorialMaterialesPage from './pages/historial-materiales/HistorialMaterialesPage'
 import StockIngresosPage from './pages/stock-ingresos/StockIngresosPage'
@@ -126,6 +127,8 @@ export const router = createBrowserRouter([
       { path: 'config',        element: <ProtectedRoute allowedRoles={['admin']}><ConfigPage /></ProtectedRoute> },
       { path: 'matriz-ventas', element: protect(<MatrizVentasPage />, { module: 'ventas' }) },
       { path: 'despachos', element: protect(<DespachosPage />, { module: 'despacho' }) },
+      { path: 'despachos/nuevo', element: protect(<DespachoFormPage />, { module: 'despacho', permission: 'write' }) },
+      { path: 'despachos/:id/editar', element: protect(<DespachoFormPage />, { module: 'despacho', permission: 'write' }) },
       { path: 'despachos/guias/nueva', element: protect(<GuiaFormPage />, { module: 'despacho', permission: 'write' }) },
       { path: 'despachos/guias/:id/editar', element: protect(<GuiaFormPage />, { module: 'despacho', permission: 'write' }) },
       { path: 'despachos/guias/:id/imprimir', element: protect(<GuiaPrintPage />, { module: 'despacho' }) },
