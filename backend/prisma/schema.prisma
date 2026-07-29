@@ -26,6 +26,7 @@ model User {
   accesos           AccesoLog[]
   comisionReglas    ComisionRegla[]
   odtResponsabilidades OdtItemTaller[] @relation("OdtResponsable")
+  trabajador        Trabajador? @relation("TrabajadorUsuario")
 
   @@index([codigoVendedor])
   @@map("users")
@@ -1624,6 +1625,8 @@ model Trabajador {
   foto               String?
   sueldoBase         Int?          @map("sueldo_base")
   valorHoraExtra     Int?          @map("valor_hora_extra")
+  usuarioId          Int?          @unique @map("usuario_id")
+  usuario            User?         @relation("TrabajadorUsuario", fields: [usuarioId], references: [id], onDelete: SetNull)
   createdAt          DateTime?     @default(now()) @map("created_at")
   updatedAt          DateTime?     @updatedAt @map("updated_at")
   contratos          Contrato[]

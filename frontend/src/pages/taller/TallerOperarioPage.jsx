@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Badge, Btn, Icon, PageHeader } from '../../components/shared'
 import { useOdtTallerItems, useOdtItemTallerEstado, useOdtOperarios } from '../../api/odts'
+import { useAuthStore } from '../../store/auth'
 
 const WORKSHOPS = [
   { id: 'Espumas', label: 'Espuma', icon: 'package', color: 'var(--amber)' },
@@ -17,11 +18,15 @@ const STATE_COLORS = {
 }
 
 export default function TallerOperarioPage() {
+  const { user } = useAuthStore()
   const [activeWorkshop, setActiveWorkshop] = useState('Espumas')
   const [editingObsId, setEditingObsId] = useState(null)
   const [tempObs, setTempObs] = useState('')
+  // Por defecto cada uno ve solo lo suyo (cola personal); "Todas" sirve para
+  // repartir/supervisar el taller completo, no para el trabajo del dia a dia.
+  const [soloMias, setSoloMias] = useState(true)
 
-  const { data: itemsData, isLoading: loadingItems, refetch } = useOdtTallerItems(activeWorkshop)
+  const { data: itemsData, isLoading: loadingItems, refetch } = useOdtTallerItems(activeWorkshop, { mine: soloMias })
   const { data: operariosData } = useOdtOperarios()
   const updateEstadoMut = useOdtItemTallerEstado()
 
@@ -105,6 +110,32 @@ export default function TallerOperarioPage() {
         })}
       </div>
 
+      {/* Mis tareas vs cola completa del taller */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        {[[true, 'Mis tareas'], [false, 'Todas']].map(([value, label]) => (
+          <button
+            key={label}
+            onClick={() => setSoloMias(value)}
+            style={{
+              flex: 1,
+              padding: '8px 10px',
+              borderRadius: 8,
+              border: `1px solid ${soloMias === value ? 'var(--green-700)' : 'var(--border)'}`,
+              background: soloMias === value ? 'var(--green-50)' : '#fff',
+              color: soloMias === value ? 'var(--green-800)' : 'var(--text-2)',
+              fontWeight: soloMias === value ? 700 : 500,
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {soloMias && !user?.id && (
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12 }}>No se pudo identificar tu usuario.</div>
+      )}
+
       {/* Listado de items */}
       {loadingItems ? (
         <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando tareas...</div>
@@ -112,7 +143,10 @@ export default function TallerOperarioPage() {
         <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-3)', background: '#fff', borderRadius: 12, border: '1px solid var(--border)' }}>
           <Icon name="checkCircle" size={36} color="var(--green-600)" />
           <h3 style={{ marginTop: 12, fontSize: 15, fontWeight: 700, color: 'var(--text-1)' }}>¡Todo listo!</h3>
-          <p style={{ marginTop: 6, fontSize: 13 }}>No hay tareas activas en este taller actualmente.</p>
+          <p style={{ marginTop: 6, fontSize: 13 }}>
+            {soloMias ? 'No tienes tareas asignadas en este taller. ' : 'No hay tareas activas en este taller actualmente.'}
+            {soloMias && <button onClick={() => setSoloMias(false)} style={{ background: 'none', border: 'none', color: 'var(--green-700)', fontWeight: 600, cursor: 'pointer', padding: 0, fontSize: 13 }}>Ver todas →</button>}
+          </p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -267,8 +301,11 @@ export default function TallerOperarioPage() {
                   >
                     <option value="">Sin asignar</option>
                     {operarios.map(op => (
-                      <option key={op.id} value={op.id}>
-                        {op.nombres} {op.apellidoPaterno}
+                      // La asignacion se guarda por cuenta de login (usuarioId), no
+                      // por el id de la ficha RRHH - sin cuenta vinculada no puede
+                      // "ser el mismo" que alguien logueado viendo su cola personal.
+                      <option key={op.id} value={op.usuarioId || ''} disabled={!op.usuarioId}>
+                        {op.nombres} {op.apellidoPaterno}{!op.usuarioId ? ' (sin cuenta vinculada)' : ''}
                       </option>
                     ))}
                   </select>

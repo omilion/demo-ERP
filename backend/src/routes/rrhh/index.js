@@ -20,6 +20,24 @@ export default async function rrhhRoutes(fastify) {
       return { items, total, limit: LIMIT }
     })
 
+    // Cuentas de login para vincular a una ficha de trabajador ("quien soy yo"
+    // al asignar tareas de taller). No reusa GET /usuarios (admin-only) - RRHH
+    // solo necesita nombre/email/rol, no gestion de permisos.
+    f.get('/trabajadores/cuentas-disponibles', {
+      preHandler: [f.authenticate, f.rbac('rrhh', 'read')],
+    }, async () => {
+      const [usuarios, vinculados] = await Promise.all([
+        f.prisma.user.findMany({
+          where: { activo: true },
+          select: { id: true, nombre: true, email: true, role: true },
+          orderBy: { nombre: 'asc' },
+        }),
+        f.prisma.trabajador.findMany({ where: { usuarioId: { not: null } }, select: { usuarioId: true } }),
+      ])
+      const linkedIds = new Set(vinculados.map(t => t.usuarioId))
+      return { items: usuarios.map(u => ({ ...u, linked: linkedIds.has(u.id) })) }
+    })
+
     f.get('/cargos', {
       preHandler: [f.authenticate, f.rbac('rrhh', 'read')],
     }, async (request) => {
@@ -136,8 +154,15 @@ export default async function rrhhRoutes(fastify) {
         return reply.code(400).send({ error: 'empresa, nombres, apellidoPaterno, rut requeridos' })
       }
       const data = pickTrabajador(b)
-      const created = await f.prisma.trabajador.create({ data })
-      return reply.code(201).send(created)
+      try {
+        const created = await f.prisma.trabajador.create({ data })
+        return reply.code(201).send(created)
+      } catch (e) {
+        if (e.code === 'P2002') {
+          return reply.code(409).send({ error: 'Esa cuenta de login ya esta vinculada a otro trabajador.' })
+        }
+        throw e
+      }
     })
 
     f.put('/trabajadores/:id', {
@@ -150,6 +175,9 @@ export default async function rrhhRoutes(fastify) {
         return await f.prisma.trabajador.update({ where: { id }, data })
       } catch (e) {
         if (e.code === 'P2025') return reply.code(404).send({ error: 'No encontrado' })
+        if (e.code === 'P2002') {
+          return reply.code(409).send({ error: 'Esa cuenta de login ya esta vinculada a otro trabajador.' })
+        }
         throw e
       }
     })
@@ -612,6 +640,9 @@ export function pickTrabajador(b, partial = false) {
   else if (!partial) d.sueldoBase = null
   if (b.valorHoraExtra !== undefined) d.valorHoraExtra = toInt(b.valorHoraExtra)
   else if (!partial) d.valorHoraExtra = null
+  // Cuenta de login vinculada (para saber "quien soy yo" al asignar tareas de
+  // taller). Distinto del campo "user" (texto libre historico, sin relacion).
+  if (b.usuarioId !== undefined) d.usuarioId = b.usuarioId === null || b.usuarioId === '' ? null : toInt(b.usuarioId)
   return d
 }
 

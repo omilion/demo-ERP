@@ -186,9 +186,9 @@ export const useDeleteBitacora = () => {
   })
 }
 
-export const useOdtTallerItems = (tallerKind) =>
+export const useOdtTallerItems = (tallerKind, { mine = false } = {}) =>
   useQuery({
-    queryKey: ['odts', 'taller-items', tallerKind],
-    queryFn: () => api.get('/odts/taller-items', { params: { tallerKind } }).then(r => r.data),
+    queryKey: ['odts', 'taller-items', tallerKind, mine],
+    queryFn: () => api.get('/odts/taller-items', { params: { tallerKind, mine: mine ? 'true' : undefined } }).then(r => r.data),
     enabled: !!tallerKind,
   })

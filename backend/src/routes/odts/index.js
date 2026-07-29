@@ -31,10 +31,14 @@ export default async function odtsRoutes(fastify) {
   fastify.get('/taller-items', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
   }, async (request, reply) => {
-    const { tallerKind } = request.query || {}
+    const { tallerKind, mine } = request.query || {}
     if (!tallerKind) return reply.code(400).send({ error: 'tallerKind requerido' })
 
     const sucursalId = getUserSucursalId(request.user)
+    // "Mias" = solo lo que tengo asignado a mi (cola personal). Sin este
+    // filtro cualquiera con acceso a taller ve TODO lo pendiente de la
+    // disciplina completa, sin poder distinguir que le toca a cada uno.
+    const soloMias = mine === 'true' || mine === '1'
 
     const items = await fastify.prisma.odtItemTaller.findMany({
       where: {
@@ -42,6 +46,7 @@ export default async function odtsRoutes(fastify) {
           nombre: { contains: tallerKind, mode: 'insensitive' }
         },
         estado: { notIn: ['cancelado', 'listo'] },
+        ...(soloMias ? { operarioResponsableId: request.user.id } : {}),
         odtItem: {
           eliminado: false,
           odt: {
@@ -128,7 +133,7 @@ export default async function odtsRoutes(fastify) {
         where,
         orderBy: [{ apellidoPaterno: 'asc' }, { nombres: 'asc' }],
         take: 200,
-        select: { id: true, nombres: true, apellidoPaterno: true, apellidoMaterno: true, cargo: true, empresa: true },
+        select: { id: true, nombres: true, apellidoPaterno: true, apellidoMaterno: true, cargo: true, empresa: true, usuarioId: true },
       })
     } catch (error) {
       if (!isPrismaMissingTable(error)) throw error

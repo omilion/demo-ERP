@@ -10,6 +10,14 @@ export const useTrabajadores = (params = {}) =>
     staleTime: 60_000,
   })
 
+export const useCuentasDisponibles = () =>
+  useQuery({
+    queryKey: ['rrhh', 'trabajadores', 'cuentas-disponibles'],
+    queryFn: () => api.get('/rrhh/trabajadores/cuentas-disponibles').then(r => r.data),
+    placeholderData: { items: [] },
+    staleTime: 5 * 60_000,
+  })
+
 export const useRrhhCargos = (params = {}) =>
   useQuery({
     queryKey: ['rrhh', 'cargos', params],

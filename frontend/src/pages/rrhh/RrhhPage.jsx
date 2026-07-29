@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
 import {
   useTrabajadores, useTrabajador, useCreateTrabajador, useUpdateTrabajador, useDeleteTrabajador,
-  useRrhhCargos, useRrhhOperativo, useResumenRRHH,
+  useRrhhCargos, useRrhhOperativo, useResumenRRHH, useCuentasDisponibles,
   contratos, liquidaciones, anticipos, licencias, vacaciones, epps, useUploadRrhhDocumento,
   subcontratos, certificadosAntecedentes, vacunas,
 } from '../../api/rrhh'
@@ -508,9 +508,12 @@ function TrabajadorFormModal({ trabajador, onClose }) {
     tipoContrato: trabajador?.tipoContrato || '',
     sueldoLiquido: trabajador?.sueldoLiquido || '',
     observacion: trabajador?.observacion || '',
+    usuarioId: trabajador?.usuarioId ? String(trabajador.usuarioId) : '',
   })
   const create = useCreateTrabajador()
   const update = useUpdateTrabajador()
+  const { data: cuentasData } = useCuentasDisponibles()
+  const cuentas = cuentasData?.items || []
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const handleSave = () => {
     if (!form.nombres.trim() || !form.apellidoPaterno.trim() || !form.rut.trim()) {
@@ -554,6 +557,17 @@ function TrabajadorFormModal({ trabajador, onClose }) {
               <input type={key === 'fechaTermino' ? 'date' : 'text'} value={form[key]} onChange={e => set(key, e.target.value)} style={inp} />
             </div>
           ))}
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>Cuenta de sistema (login)</div>
+            <select value={form.usuarioId} onChange={e => set('usuarioId', e.target.value)} style={inp}>
+              <option value="">Sin vincular</option>
+              {cuentas.map(u => (
+                <option key={u.id} value={u.id} disabled={u.id !== trabajador?.usuarioId && u.linked}>
+                  {u.nombre} ({u.email})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>Observación</div>
