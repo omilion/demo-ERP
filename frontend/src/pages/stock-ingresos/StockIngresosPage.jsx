@@ -8,6 +8,7 @@ import { useCreatePagoProveedor, useAnularPagoProveedor } from '../../api/pagosP
 import { useProveedores } from '../../api/proveedores'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import CodigoProveedorField from '../../components/bodega/CodigoProveedorField'
 
 const BODEGAS = ['Inventario', 'Materias', 'ActivoFijo', 'GMantencion', 'GTransporte', 'GOperacionales', 'GAdministrativos', 'Importacion', 'Equipos']
 const STOCK_BODEGAS = new Set(['Inventario', 'Materias', 'Taller'])
@@ -203,7 +204,7 @@ export default function StockIngresosPage() {
     { key: 'stockAplicadoAt', label: 'Stock', render: (v, r) => v ? <Badge tone={r.stockReversadoAt ? 'gray' : 'green'}>{r.stockReversadoAt ? 'Reversado' : 'Aplicado'}</Badge> : <Badge tone="amber">Pendiente</Badge> },
     { key: '_acc', label: '', render: (_, r) => (
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-        {canWriteBodega && isStockBodega(r.bodega) && !r.stockAplicadoAt && <Btn variant="secondary" size="xs" icon="check" onClick={() => applyStock(r)} disabled={aplicarMut.isPending}>Aplicar</Btn>}
+        {canWriteBodega && isStockBodega(r.bodega) && !r.stockAplicadoAt && (r.detallesFactura?.length > 0) && <Btn variant="secondary" size="xs" icon="check" onClick={() => applyStock(r)} disabled={aplicarMut.isPending}>Aplicar</Btn>}
         {canReverse && <Btn variant="ghost" size="xs" icon="trash" onClick={() => anular(r)} disabled={anularMut.isPending}>Anular</Btn>}
       </div>
     ) },
@@ -300,7 +301,17 @@ export default function StockIngresosPage() {
                 <tbody>
                   {details.map((d, idx) => (
                     <tr key={idx}>
-                      <td style={{ padding: 8, minWidth: 130 }}><Input value={d.codigoInterno} onChange={v => setDetail(idx, 'codigoInterno', v)} /></td>
+                      <td style={{ padding: 8, minWidth: 150 }}>
+                        <CodigoProveedorField
+                          value={d.codigoInterno}
+                          onChange={v => setDetail(idx, 'codigoInterno', v)}
+                          proveedorId={header.proveedorId ? Number(header.proveedorId) : null}
+                          nombre={d.nombre}
+                          onResolved={({ codigoInterno, nombre, unidadMedida, precio }) => setDetails(rows => rows.map((row, i) => i === idx
+                            ? { ...row, codigoInterno, destino: 'producto', nombre: row.nombre || nombre, unidadMedida: row.unidadMedida || unidadMedida || '', precio: row.precio || String(precio || '') }
+                            : row))}
+                        />
+                      </td>
                       <td style={{ padding: 8, minWidth: 140 }}><Select value={d.destino} onChange={v => setDetail(idx, 'destino', v)} options={DESTINOS} /></td>
                       <td style={{ padding: 8, minWidth: 180 }}><Input value={d.nombre} onChange={v => setDetail(idx, 'nombre', v)} /></td>
                       <td style={{ padding: 8, minWidth: 100 }}><Input value={d.unidadMedida} onChange={v => setDetail(idx, 'unidadMedida', v)} /></td>

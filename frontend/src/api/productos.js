@@ -86,14 +86,29 @@ export const useProductoProveedores = (productoId) =>
 export const useUpsertProductoProveedor = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ productoId, proveedorId, costo, cantidad }) =>
-      api.post(`/productos/${productoId}/proveedores`, { proveedorId, costo, cantidad }).then(r => r.data),
+    mutationFn: ({ productoId, proveedorId, costo, cantidad, codigoProveedor }) =>
+      api.post(`/productos/${productoId}/proveedores`, { proveedorId, costo, cantidad, codigoProveedor }).then(r => r.data),
     onSuccess: (_, { productoId }) => {
       qc.invalidateQueries({ queryKey: ['producto-proveedores', productoId] })
       qc.invalidateQueries({ queryKey: ['productos'] })
     },
   })
 }
+
+// Cruce de codigos: dado el codigo que trae la factura del proveedor,
+// resuelve el producto real ya sea por mapeo guardado o por coincidencia
+// directa de codigoInterno. Se dispara a demanda (blur del campo), no en
+// cada tecla — mutation en vez de useQuery por diseño.
+export const useResolverCodigoProveedor = () =>
+  useMutation({
+    mutationFn: ({ proveedorId, codigo }) =>
+      api.get('/productos/mapeo-proveedor', { params: { proveedorId, codigo } }).then(r => r.data),
+  })
+
+export const useAutocompleteProductos = () =>
+  useMutation({
+    mutationFn: (q) => api.get('/productos/autocomplete', { params: { q } }).then(r => r.data),
+  })
 
 export const useUpdateProductoProveedor = () => {
   const qc = useQueryClient()

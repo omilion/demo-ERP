@@ -25,6 +25,7 @@ const NAV_GROUPS = [
     { label: 'Bodega Taller', route: '/bodega-taller', module: 'taller' },
     { label: 'Despachos', route: '/despachos', module: 'despacho' },
     { label: 'Proveedores', route: '/proveedores', module: 'proveedores' },
+    { label: 'Movimientos Anormales', route: '/reportes/movimientos-anormales', module: 'bodega' },
   ] },
   { label: 'Caja', items: [
     { label: 'Movimientos', route: '/caja', module: 'caja' },

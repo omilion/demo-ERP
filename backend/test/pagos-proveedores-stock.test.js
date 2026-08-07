@@ -252,4 +252,54 @@ describe('POST /api/pagos-proveedores stock mixto', () => {
     expect(reply.body).toMatchObject({ error: 'La bodega seleccionada no permite aplicar stock' })
     expect(prisma.$transaction).not.toHaveBeenCalled()
   })
+
+  it('registra un gasto (Centro de Costo) sin detalles ni stock — solo la cabecera contable', async () => {
+    const tx = {
+      $executeRaw: vi.fn(),
+      pagoProveedor: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: 900, documento: 'Boleta', nDoc: 'GASTO-77', bodega: 'GAdministrativos', total: 45000 }),
+        update: vi.fn(),
+      },
+      proveedor: {
+        findFirst: vi.fn().mockResolvedValue({ id: 12, codigoProveedor: 12 }),
+        findMany: vi.fn(),
+      },
+      detalleFacturaProveedor: { create: vi.fn() },
+      producto: { findMany: vi.fn(), update: vi.fn() },
+      bodegaTaller: { findMany: vi.fn(), update: vi.fn() },
+      tela: { findMany: vi.fn(), update: vi.fn() },
+      movimientoBodega: { create: vi.fn() },
+      bodegaTallerMovimiento: { create: vi.fn() },
+      telaMovimiento: { create: vi.fn() },
+    }
+    const prisma = { $transaction: vi.fn(async (callback) => callback(tx)) }
+    const handler = await buildPostHandler(prisma)
+    const reply = replyStub()
+
+    await handler({
+      user: { id: 7, role: 'admin', nombre: 'QA' },
+      body: {
+        proveedorId: 12,
+        documento: 'Boleta',
+        nDoc: 'GASTO-77',
+        bodega: 'GAdministrativos',
+        estado: 'Pendiente',
+        total: 45000,
+        ingresaStock: false,
+        detalles: [],
+      },
+    }, reply)
+
+    expect(reply.statusCode).toBe(201)
+    expect(reply.body).toMatchObject({ id: 900, bodega: 'GAdministrativos', total: 45000 })
+    expect(tx.pagoProveedor.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ bodega: 'GAdministrativos', total: 45000, estado: 'Pendiente' }),
+    }))
+    // Sin detalles: no se crea ninguna linea ni se toca stock de ningun tipo.
+    expect(tx.detalleFacturaProveedor.create).not.toHaveBeenCalled()
+    expect(tx.producto.findMany).not.toHaveBeenCalled()
+    expect(tx.movimientoBodega.create).not.toHaveBeenCalled()
+    expect(tx.pagoProveedor.update).not.toHaveBeenCalled()
+  })
 })

@@ -7,6 +7,7 @@ import { parseCaf } from '../../facturacion/caf.js'
 import { renderDteHtml, renderDteRecibidoHtml } from '../../facturacion/printDte.js'
 import { renderDtePdf, renderDteRecibidoPdf } from '../../facturacion/printDtePdf.js'
 import { syncGmailReceptor } from '../../facturacion/receptorDte.js'
+import { sendDteEmail, buildReenvioHtml } from '../../facturacion/mailer.js'
 
 const ESTADOS = ['borrador', 'emitido', 'enviado', 'aceptado', 'rechazado', 'error']
 
@@ -324,7 +325,20 @@ export default async function facturacionRoutes(fastify) {
 
   fastify.post('/documentos/:id/emitir', writeAuth, async (request, reply) => {
     try {
-      return await engine.emitir(request.params.id)
+      const emitido = await engine.emitir(request.params.id)
+      // Envio automatico al SII apenas se emite: el usuario ya no tiene que
+      // acordarse de apretar "Enviar al SII" aparte. Si el envio falla (SII
+      // caido, rechazo de schema, etc.) NO se revierte la emision — el folio
+      // ya se consumio y es irrecuperable — el documento simplemente queda
+      // en 'emitido' y sigue disponible para reintentar por el boton manual
+      // o el proximo intento automatico (ver POST /enviar-lote).
+      try {
+        const enviado = await engine.enviar([emitido.id])
+        return enviado.documentos[0]
+      } catch (envioError) {
+        fastify.log.warn({ err: envioError, docId: emitido.id }, 'Auto-envio al SII fallo tras emitir; el documento queda emitido para reintentar')
+        return emitido
+      }
     } catch (error) { return sendError(reply, error) }
   })
 
@@ -384,6 +398,36 @@ export default async function facturacionRoutes(fastify) {
       reply.header('Content-Type', 'application/pdf')
       reply.header('Content-Disposition', `inline; filename="DTE_T${doc.tipoDte}_F${doc.folio}.pdf"`)
       return reply.send(pdf)
+    } catch (error) { return sendError(reply, error) }
+  })
+
+  fastify.post('/documentos/:id/reenviar', writeAuth, async (request, reply) => {
+    try {
+      const doc = await db.documentos.get(request.params.id)
+      if (!doc) return reply.code(404).send({ error: 'Documento no encontrado.' })
+      if (!doc.xml) return reply.code(409).send({ error: 'El documento no está emitido: no tiene timbre aún.' })
+      const to = request.body?.to ? String(request.body.to).trim() : doc.receptor?.email
+      if (!to) return reply.code(422).send({ error: 'El documento no tiene un correo de destinatario. Indica uno en "to".' })
+      const tedMatch = doc.xml.match(/<TED version="1.0">[\s\S]*?<\/TED>/)
+      if (!tedMatch) return reply.code(500).send({ error: 'No se encontró el TED en el XML.' })
+      const empresa = await engine.getEmpresa()
+      const tipoNombre = TIPOS_DTE[doc.tipoDte] || `DTE ${doc.tipoDte}`
+      const [pdf, xml] = await Promise.all([
+        renderDtePdf({ empresa, receptor: doc.receptor, doc, totales: doc.totales, tedXml: tedMatch[0] }),
+        engine.descargarXml(request.params.id),
+      ])
+      const baseName = `DTE_T${doc.tipoDte}_F${doc.folio}`
+      const result = await sendDteEmail({
+        to,
+        subject: `${tipoNombre} N° ${doc.folio} — ${empresa?.razonSocial || 'Plastimar'}`,
+        html: buildReenvioHtml({ empresa, doc, tipoNombre }),
+        attachments: [
+          { filename: `${baseName}.pdf`, content: pdf, contentType: 'application/pdf' },
+          { filename: `${baseName}.xml`, content: xml.buffer, contentType: 'application/xml' },
+        ],
+      })
+      if (!result.sent) return reply.code(503).send({ error: `No se pudo reenviar: ${result.reason}.` })
+      return { sent: true, to: result.recipients }
     } catch (error) { return sendError(reply, error) }
   })
 

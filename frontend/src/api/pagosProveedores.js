@@ -40,6 +40,10 @@ export const useCreatePagoProveedor = () => {
       qc.invalidateQueries({ queryKey: ['pagos-proveedores'] })
       qc.invalidateQueries({ queryKey: ['stock-ingresos'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
+      // Cuando viene con documentoRecibidoId (registro desde Documentos
+      // recibidos) el pagoProveedorId queda seteado ahi mismo — sin esto la
+      // fila del recibido no se refresca y sigue mostrando el botón de accion.
+      qc.invalidateQueries({ queryKey: ['facturacion', 'recibidos'] })
     },
   })
 }

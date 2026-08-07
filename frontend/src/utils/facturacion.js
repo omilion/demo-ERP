@@ -39,6 +39,15 @@ export const TIPO_DESPACHO = {
   3: 'Despacho por cuenta del emisor a otras instalaciones',
 }
 
+// CodRef del SII para Nota de Credito/Debito (mismo catalogo para 56 y 61):
+// que corrige el documento de referencia. 2 y 3 requieren declarar el monto
+// real de la correccion, no repetir el total del documento original.
+export const CODREF_MOTIVOS = {
+  1: 'Anula el documento de referencia',
+  2: 'Corrige el monto',
+  3: 'Corrige el texto (sin efecto en el monto)',
+}
+
 // Catalogo TpoDocRef del SII para el bloque <Referencia>: los tipos de DTE
 // que Plastimar emite (mismos codigos que TIPOS_DTE) mas los codigos no-DTE
 // mas usados (orden de compra del cliente, etc.). Numeracion 801-806
@@ -230,6 +239,21 @@ export const puedeCrearVentaDesdeEmision = ({ cliente, tipo, items = [], licitac
   if (tipo === 'Licitación') return Boolean(String(licitacion).trim() && licitacionFecha)
   if (tipo === 'Convenio Marco') return Boolean(String(licitacion).trim())
   return ['Venta Web', 'Venta Sala'].includes(tipo)
+}
+
+// Para el item global (glosa libre + monto total) el usuario tipea el TOTAL
+// con IVA incluido, no el neto. computeDteTotales redondea neto e IVA por
+// separado, asi que dividir el total por 1.19 puede quedar $1 corto/largo
+// por doble redondeo; se ajusta el neto hasta que neto+IVA calce exacto con
+// el total pedido (converge en 1-2 pasos, montos son pesos enteros).
+export const solveNetoForTotal = (totalConIva) => {
+  const total = Math.round(Number(totalConIva) || 0)
+  if (total <= 0) return 0
+  let neto = Math.round(total / 1.19)
+  for (let i = 0; i < 5 && neto + Math.round(neto * 0.19) !== total; i++) {
+    neto += neto + Math.round(neto * 0.19) < total ? 1 : -1
+  }
+  return neto
 }
 
 // Los items DTE llegan con precio neto (salvo los exentos, que se mantienen

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildExportacionInput, buildIngresoMercaderiaPrefill, buildLiquidacionInput, buildReceptor, buildReferenciaInternaRow, computeDteTotales, isDteReferenciable, isReferenciaRowEmpty, mapManualDteItems, mapVentaItems, puedeCrearVentaDesdeEmision, REFERENCIA_TIPOS, REFERENCIA_TIPOS_INTERNOS } from '../../frontend/src/utils/facturacion.js'
+import { buildExportacionInput, buildIngresoMercaderiaPrefill, buildLiquidacionInput, buildReceptor, buildReferenciaInternaRow, computeDteTotales, isDteReferenciable, isReferenciaRowEmpty, mapManualDteItems, mapVentaItems, puedeCrearVentaDesdeEmision, solveNetoForTotal, REFERENCIA_TIPOS, REFERENCIA_TIPOS_INTERNOS } from '../../frontend/src/utils/facturacion.js'
 
 describe('facturacion/frontend totals', () => {
   it('cataloga los 10 tipos de DTE propios (33-112) mas los codigos no tributarios 801-806 del SII', () => {
@@ -186,6 +186,16 @@ describe('facturacion/frontend totals', () => {
     expect(puedeCrearVentaDesdeEmision(base)).toBe(true)
     expect(puedeCrearVentaDesdeEmision({ ...base, cliente: null })).toBe(false)
     expect(puedeCrearVentaDesdeEmision({ ...base, items: [{ nombre: 'Servicio manual', cantidad: 1, precioUnitario: 5000 }] })).toBe(false)
+  })
+
+  it('solveNetoForTotal encuentra el neto cuyo neto+IVA(19%) calza exacto con el total pedido (item global)', () => {
+    for (const total of [1000, 11900, 38800, 133875, 99999, 100000, 1]) {
+      const neto = solveNetoForTotal(total)
+      expect(neto + Math.round(neto * 0.19)).toBe(total)
+    }
+    expect(solveNetoForTotal(0)).toBe(0)
+    expect(solveNetoForTotal(-500)).toBe(0)
+    expect(solveNetoForTotal('50000')).toBe(42017)
   })
 
   it('exige los datos especiales antes de crear Licitación o Convenio Marco', () => {

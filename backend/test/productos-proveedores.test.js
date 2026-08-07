@@ -101,4 +101,98 @@ describe('endpoints proveedores por producto', () => {
     })
     expect(res.statusCode).toBe(403)
   })
+
+  it('guarda y devuelve el codigoProveedor (cruce de codigos)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/api/productos/${producto.id}/proveedores`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { proveedorId: provA.id, costo: 100, cantidad: 10, codigoProveedor: 'ABC-999' },
+    })
+    expect(res.statusCode).toBe(201)
+    const fila = JSON.parse(res.body).items.find(i => i.proveedorId === provA.id)
+    expect(fila.codigoProveedor).toBe('ABC-999')
+  })
+
+  it('rechaza mapear el mismo codigoProveedor a otro producto del mismo proveedor', async () => {
+    const tag = uniq()
+    const otroProducto = await app.prisma.producto.create({
+      data: { codigoInterno: `PP-${tag}`, nombre: `Otro producto ${tag}`, bodega: 'Inventario', precioLista: 0, stock: 0 },
+    })
+    try {
+      const res = await app.inject({
+        method: 'POST', url: `/api/productos/${otroProducto.id}/proveedores`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { proveedorId: provA.id, costo: 50, cantidad: 1, codigoProveedor: 'ABC-999' },
+      })
+      expect(res.statusCode).toBe(409)
+      expect(JSON.parse(res.body).error).toContain('ya está mapeado')
+    } finally {
+      await app.prisma.productoProveedor.deleteMany({ where: { productoId: otroProducto.id } })
+      await app.prisma.producto.delete({ where: { id: otroProducto.id } })
+    }
+  })
+})
+
+describe('GET /productos/mapeo-proveedor', () => {
+  let app, token, producto, proveedor
+
+  beforeAll(async () => {
+    app = buildApp({ logger: false })
+    await app.ready()
+    token = await loginAs(app)
+    const tag = uniq()
+    producto = await app.prisma.producto.create({
+      data: { codigoInterno: `SKU-${tag}`, nombre: `Producto mapeo ${tag}`, bodega: 'Inventario', precioLista: 0, stock: 0 },
+    })
+    proveedor = await app.prisma.proveedor.create({ data: { nombre: `Prov mapeo ${tag}`, rut: `M-${tag}` } })
+    await app.prisma.productoProveedor.create({
+      data: { productoId: producto.id, proveedorId: proveedor.id, costo: 10, cantidad: 0, codigoProveedor: 'PROV-XYZ' },
+    })
+  })
+
+  afterAll(async () => {
+    await app.prisma.productoProveedor.deleteMany({ where: { productoId: producto.id } })
+    await app.prisma.producto.delete({ where: { id: producto.id } }).catch(() => {})
+    await app.prisma.proveedor.delete({ where: { id: proveedor.id } }).catch(() => {})
+    await app.close()
+  })
+
+  it('resuelve por mapeo guardado (codigoProveedor), sin importar mayus/minus', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/productos/mapeo-proveedor?proveedorId=${proveedor.id}&codigo=prov-xyz`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.matchType).toBe('mapeo')
+    expect(body.match.id).toBe(producto.id)
+  })
+
+  it('cae a coincidencia directa por codigoInterno si no hay mapeo', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/productos/mapeo-proveedor?proveedorId=${proveedor.id}&codigo=${producto.codigoInterno}`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.matchType).toBe('sku')
+    expect(body.match.id).toBe(producto.id)
+  })
+
+  it('sin match devuelve null', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/productos/mapeo-proveedor?proveedorId=${proveedor.id}&codigo=NO-EXISTE-XYZ`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body)).toEqual({ match: null, matchType: null })
+  })
+
+  it('exige proveedorId y codigo', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/productos/mapeo-proveedor?codigo=X',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(400)
+  })
 })

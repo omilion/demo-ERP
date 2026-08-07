@@ -295,19 +295,24 @@ model Producto {
 }
 
 model ProductoProveedor {
-  id           Int       @id @default(autoincrement())
-  productoId   Int       @map("producto_id")
-  proveedorId  Int       @map("proveedor_id")
-  costo        Float     @default(0)
-  cantidad     Int       @default(0)
-  ultimaCompra DateTime? @map("ultima_compra")
-  activo       Boolean   @default(true)
-  producto     Producto  @relation(fields: [productoId], references: [id], onDelete: Cascade)
-  proveedor    Proveedor @relation(fields: [proveedorId], references: [id])
+  id              Int       @id @default(autoincrement())
+  productoId      Int       @map("producto_id")
+  proveedorId     Int       @map("proveedor_id")
+  // Codigo con el que ESE proveedor identifica este producto en su propia
+  // guia/factura (casi nunca coincide con nuestro codigoInterno). Se guarda
+  // para resolver automaticamente futuras compras del mismo proveedor.
+  codigoProveedor String?   @map("codigo_proveedor")
+  costo           Float     @default(0)
+  cantidad        Int       @default(0)
+  ultimaCompra    DateTime? @map("ultima_compra")
+  activo          Boolean   @default(true)
+  producto        Producto  @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  proveedor       Proveedor @relation(fields: [proveedorId], references: [id])
 
   @@unique([productoId, proveedorId])
   @@index([productoId])
   @@index([proveedorId])
+  @@index([proveedorId, codigoProveedor])
   @@map("producto_proveedores")
   @@schema("catalogo")
 }
@@ -315,6 +320,14 @@ model ProductoProveedor {
 model Ubicacion {
   id        Int        @id @default(autoincrement())
   nombre    String     @unique
+  // Nomenclatura estructurada (5 campos ordinales, ej. For-Bodega3-05-C-02):
+  // opcional para no romper ubicaciones legacy en texto libre. Cuando estan
+  // presentes, `nombre` se compone a partir de ellos en vez de tipearse a mano.
+  sucursal  String?
+  area      String?
+  estante   String?
+  cuerpo    String?
+  nivel     String?
   activo    Boolean    @default(true)
   productos Producto[]
 

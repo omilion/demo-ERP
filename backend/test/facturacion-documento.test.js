@@ -187,6 +187,70 @@ describe('facturacion/documento', () => {
     expect(isBoleta(33)).toBe(false)
   })
 
+  it('boleta (39) sin RUT/razon social usa el generico Consumidor Final en Receptor y TED', () => {
+    const result = buildDocumento({
+      empresa: PLASTIMAR_EMPRESA,
+      receptor: { rut: '', razonSocial: '', direccion: '', comuna: '' },
+      doc: { tipoDte: 39, folio: 77, items: [{ nombre: 'Venta sala', cantidad: 1, precio: 1000 }] },
+      caf: fakeCaf(),
+      timestamp: new Date('2026-08-06T10:00:00')
+    })
+
+    expect(result.documentoXml).toContain('<RUTRecep>66666666-6</RUTRecep>')
+    expect(result.documentoXml).toContain('<RznSocRecep>Consumidor Final</RznSocRecep>')
+    expect(result.documentoXml).toContain('<RR>66666666-6</RR>')
+    expect(result.documentoXml).toContain('<RSR>Consumidor Final</RSR>')
+  })
+
+  it('boleta (39) con razon social pero sin RUT conserva el nombre y solo rellena el RUT generico', () => {
+    const result = buildDocumento({
+      empresa: PLASTIMAR_EMPRESA,
+      receptor: { rut: '', razonSocial: 'Juan Pérez' },
+      doc: { tipoDte: 39, folio: 78, items: [{ nombre: 'Venta sala', cantidad: 1, precio: 1000 }] },
+      caf: fakeCaf(),
+      timestamp: new Date('2026-08-06T10:00:00')
+    })
+
+    expect(result.documentoXml).toContain('<RUTRecep>66666666-6</RUTRecep>')
+    expect(result.documentoXml).toContain('<RznSocRecep>Juan Pérez</RznSocRecep>')
+  })
+
+  // Bug real confirmado contra SII certificacion 2026-08-06: boletas 6/7/8/16/17
+  // fueron rechazadas el 2026-07-23/29 con "LSX-00213: only 0 occurrences of
+  // particle MntTotal, minimum is 1" pese a que MntTotal SI estaba presente.
+  // Causa real: EnvioBOLETA_v11.xsd (schema real de boleta) no tiene TasaIVA
+  // en su Totales — solo DTE_v10.xsd (factura/guia/NC/ND) lo tiene. Mandarlo
+  // en una boleta hace que el validador del SII pierda la secuencia completa
+  // de Totales y reporte MntTotal faltante (mensaje enganoso). Confirmado
+  // reproduciendo el rechazo real con folio 18 y verificando que folio 19
+  // (sin TasaIVA) ya no rebota instantaneo.
+  it('boleta (39) NO incluye TasaIVA en Totales (EnvioBOLETA_v11.xsd no tiene ese campo — el SII rechazaba todas las boletas por esto)', () => {
+    const result = buildDocumento({
+      empresa: PLASTIMAR_EMPRESA,
+      receptor: { rut: '11111111-1', razonSocial: 'Cliente Prueba' },
+      doc: { tipoDte: 39, folio: 19, items: [{ nombre: 'Venta sala', cantidad: 1, precio: 1000 }] },
+      caf: fakeCaf(),
+      timestamp: new Date('2026-08-06T23:33:00')
+    })
+
+    expect(result.documentoXml).not.toContain('TasaIVA')
+    expect(result.documentoXml).toContain('<MntNeto>1000</MntNeto>')
+    expect(result.documentoXml).toContain('<IVA>190</IVA>')
+    expect(result.documentoXml).toContain('<MntTotal>1190</MntTotal>')
+  })
+
+  it('factura (33) SI incluye TasaIVA en Totales (DTE_v10.xsd lo exige para facturas)', () => {
+    const result = buildDocumento({
+      empresa: PLASTIMAR_EMPRESA,
+      receptor: { rut: '11111111-1', razonSocial: 'Cliente Prueba', direccion: 'Av Test 1', comuna: 'Santiago' },
+      doc: { tipoDte: 33, folio: 100, items: [{ nombre: 'Venta', cantidad: 1, precio: 1000 }] },
+      caf: fakeCaf(),
+      timestamp: new Date('2026-08-06T23:33:00')
+    })
+
+    expect(result.documentoXml).toContain('<TasaIVA>19</TasaIVA>')
+  })
+
   it('computeTotales applies 19% IVA on an affected factura (33)', () => {
     const totales = computeTotales([{ cantidad: 2, precio: 5000 }], 33)
     expect(totales.neto).toBe(10000)

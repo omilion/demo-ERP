@@ -160,10 +160,16 @@ const buildReceptor = (receptor, boleta) => tag('Receptor', tags([
   ['CiudadRecep', receptor.ciudad]
 ]), null, { raw: true });
 
-const buildTotales = (totales) => tag('Totales', tags([
+// El Totales de Boleta (EnvioBOLETA_v11.xsd) NO tiene TasaIVA en su
+// secuencia — solo Factura/Guia/NC/ND (DTE_v10.xsd) lo tienen. Mandarlo en
+// una boleta rompe la validacion de TODO el bloque Totales: el validador
+// del SII encuentra un tag que no reconoce ahi, pierde la secuencia y
+// reporta "falta MntTotal" (aunque MntTotal si esta, mas abajo) — asi
+// rechazo el SII boletas 6/7/8/16/17 el 2026-07-23/29 (LSX-00213).
+const buildTotales = (totales, boleta) => tag('Totales', tags([
   ['MntNeto', totales.neto !== null ? formatMonto(totales.neto) : null],
   ['MntExe', totales.exento !== null ? formatMonto(totales.exento) : null],
-  ['TasaIVA', totales.tasaIva],
+  ...(boleta ? [] : [['TasaIVA', totales.tasaIva]]),
   ['IVA', totales.iva !== null ? formatMonto(totales.iva) : null],
   ['MntTotal', formatMonto(totales.total)]
 ]), null, { raw: true });
@@ -343,6 +349,14 @@ export const buildDocumento = ({ empresa, receptor, doc, caf, timestamp = new Da
   if (doc.tipoDte === 43) return buildLiquidacion({ empresa, receptor, doc, caf, timestamp });
   if (isExportacion(doc.tipoDte)) return buildExportacion({ empresa, receptor, doc, caf, timestamp });
   const boleta = isBoleta(doc.tipoDte);
+  // Boleta a consumidor final: el formulario permite emitir sin RUT/razon
+  // social (el SII no lo exige y pedirlo de mas choca con la Ley de
+  // Proteccion de Datos), pero el TED exige RR/RSR igual para todos los DTE.
+  // Se usa el generico nacional 66666666-6 (mismo RUT que ya trae la data
+  // legacy migrada para ventas de sala sin cliente identificado).
+  if (boleta && !receptor?.rut) {
+    receptor = { ...receptor, rut: '66666666-6', razonSocial: receptor?.razonSocial?.trim() || 'Consumidor Final' };
+  }
   const items = doc.items || [];
   if (!items.length) throw new Error('El documento no tiene ítems.');
   assertDteLineLimits(doc);
@@ -366,7 +380,7 @@ export const buildDocumento = ({ empresa, receptor, doc, caf, timestamp = new Da
       buildIdDoc({ ...doc, fechaEmision }, boleta),
       buildEmisor(empresa, boleta),
       buildReceptor(receptor, boleta),
-      buildTotales(totales)
+      buildTotales(totales, boleta)
     ].join(''), null, { raw: true }),
     buildDetalle(items, doc.tipoDte),
     buildReferencias(doc.referencias, boleta),

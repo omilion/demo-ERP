@@ -3,7 +3,7 @@ import { Badge, Btn, Icon } from '../shared'
 import { useEmitirDte, useDocumentos, useEmpresa } from '../../api/facturacion'
 import { useDespachoPacking } from '../../api/despachos'
 import { useVentas } from '../../api/ventas'
-import { buildReceptor, buildReferenciaInternaRow, computeDteTotales, isDteReferenciable, isReferenciaRowEmpty, isValidRut, mapVentaItems, TIPOS_DTE, IND_TRASLADO, TIPO_DESPACHO, REFERENCIA_TIPOS, REFERENCIA_TIPOS_INTERNOS } from '../../utils/facturacion'
+import { buildReceptor, buildReferenciaInternaRow, computeDteTotales, isDteReferenciable, isReferenciaRowEmpty, isValidRut, mapVentaItems, solveNetoForTotal, TIPOS_DTE, IND_TRASLADO, TIPO_DESPACHO, REFERENCIA_TIPOS, REFERENCIA_TIPOS_INTERNOS, CODREF_MOTIVOS } from '../../utils/facturacion'
 
 const dateFmt = value => value ? new Date(value).toLocaleDateString('es-CL') : '—'
 
@@ -57,7 +57,7 @@ function Preview({ empresa, receptor, items, tipoDte, referencias, totales }) {
           <tbody>{items.map((item, index) => {
             const subtotal = Math.round(Number(item.cantidad) * Number(item.precio)) - Math.round(Number(item.descuentoMonto) || 0)
             return <tr key={index} style={{ borderTop: '1px solid var(--border)' }}>
-              <td style={td}>{item.nombre}{item.descuentoMonto > 0 && <span style={{ display: 'block', color: 'var(--text-3)', fontSize: 11 }}>Descuento: -{fmt(item.descuentoMonto)}</span>}</td>
+              <td style={td}>{item.nombre}{item.descripcion && <span style={{ display: 'block', color: 'var(--text-3)', fontSize: 11, whiteSpace: 'pre-wrap' }}>{item.descripcion}</span>}{item.descuentoMonto > 0 && <span style={{ display: 'block', color: 'var(--text-3)', fontSize: 11 }}>Descuento: -{fmt(item.descuentoMonto)}</span>}</td>
               <td style={{ ...td, textAlign: 'right' }}>{item.cantidad}</td>
               <td style={{ ...td, textAlign: 'right' }}>{fmt(item.precio)}</td>
               <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{fmt(subtotal)}</td>
@@ -140,12 +140,39 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
   const puedeElegirTipo = !tipoDte
   const detectedTipo = tipoDte || tipoElegido
   const esGuia = detectedTipo === 52
+  const esBoleta = detectedTipo === 39 || detectedTipo === 41
   // Los cargos (flete, etc.) son un monto fijo por venta, no por unidad
   // transportada: se declaran en la Factura/Boleta (documento completo de la
   // venta), no en cada Guia parcial que se despache de a poco.
   const mappedItems = mapVentaItems(venta, cantidadPorItemId, { includeCargos: !esGuia })
-  const items = previewItems || mappedItems
-  const payloadItems = documentInput?.items ?? mappedItems
+  // Item global: licitaciones publicas, colegios y fundaciones exigen
+  // facturar bajo una sola glosa libre (ej. "Material Didactico") en vez del
+  // desglose de productos. Solo aplica a Factura (33) ligada a una venta real
+  // sin items ya forzados a mano (documentInput) — el desglose real de la
+  // venta no se toca, esto solo cambia lo que se DECLARA en el DTE.
+  const puedeItemGlobal = detectedTipo === 33 && !!venta?.id && !documentInput
+  const [itemGlobal, setItemGlobal] = useState(false)
+  const [glosaGlobal, setGlosaGlobal] = useState('')
+  const [montoGlobalStr, setMontoGlobalStr] = useState('')
+  const activarItemGlobal = activo => {
+    setItemGlobal(activo)
+    if (activo && !montoGlobalStr) setMontoGlobalStr(String(computeDteTotales(mappedItems).total))
+    setError('')
+  }
+  // Descripcion extendida (DscItem, hasta 1000 caracteres — soportado por el
+  // esquema SII): entidades publicas (FNDR, Mineduc, Serviu) piden pegar el
+  // nombre del proyecto/concurso completo en la factura. Con item global va
+  // directo en esa linea; en un documento itemizado normal se agrega al
+  // primer item (el documento no tiene un campo de texto libre aparte de
+  // DscItem por linea).
+  const puedeDescripcionExtendida = detectedTipo === 33
+  const [descripcionExtendida, setDescripcionExtendida] = useState('')
+  const itemsGlobal = itemGlobal ? [{ nombre: glosaGlobal.trim() || 'Item global', cantidad: 1, precio: solveNetoForTotal(montoGlobalStr), exento: false, descripcion: descripcionExtendida.trim() || null }] : null
+  const conDescripcionExtendida = list => (!itemGlobal && descripcionExtendida.trim() && list.length)
+    ? list.map((item, i) => i === 0 ? { ...item, descripcion: descripcionExtendida.trim() } : item)
+    : list
+  const items = itemsGlobal || conDescripcionExtendida(previewItems || mappedItems)
+  const payloadItems = itemsGlobal || conDescripcionExtendida(documentInput?.items ?? mappedItems)
   const esNota = [56, 61].includes(detectedTipo)
   const referenciaPrioritaria = referenceFirst || esNota
 
@@ -157,12 +184,23 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
       return
     }
     const trasladoInterno = esGuia && Number(indTraslado) === 5
-    if (!trasladoInterno && (!isValidRut(receptor.rut) || !receptor.razonSocial?.trim())) {
+    // La boleta a consumidor final no exige RUT/razon social (el SII no lo
+    // pide y la Ley de Proteccion de Datos desaconseja pedirlo de mas); solo
+    // Factura/Guia/Nota siguen requiriendo receptor identificado.
+    if (!trasladoInterno && !esBoleta && (!isValidRut(receptor.rut) || !receptor.razonSocial?.trim())) {
       setError('Completa un RUT válido y la razón social del receptor antes de emitir.')
       return
     }
     if (referenciasIncompletas) {
       setError('Completa o quita las referencias que quedaron a medias.')
+      return
+    }
+    if (itemGlobal && !glosaGlobal.trim()) {
+      setError('Indica la glosa del ítem global.')
+      return
+    }
+    if (itemGlobal && !(Number(montoGlobalStr) > 0)) {
+      setError('Indica un monto total válido para el ítem global.')
       return
     }
     setError('')
@@ -220,6 +258,42 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
       </div>
     )}
     {referenciaPrioritaria && referenciasUi}
+    {puedeItemGlobal && (
+      <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 8, background: 'var(--bg)' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          <input type="checkbox" checked={itemGlobal} onChange={event => activarItemGlobal(event.target.checked)} />
+          Facturar como ítem global (licitaciones, colegios, fundaciones)
+        </label>
+        {itemGlobal && <>
+          <div style={{ marginTop: 2, marginBottom: 10, color: 'var(--text-2)', fontSize: 12 }}>Reemplaza el detalle de productos por una sola glosa libre. El desglose real de la venta queda intacto para inventario.</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Glosa <span style={{ color: 'var(--red)' }}>*</span></label>
+              <input value={glosaGlobal} onChange={event => setGlosaGlobal(event.target.value)} placeholder="Ej: Material Didáctico" style={inputStyle} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Monto total <span style={{ color: 'var(--red)' }}>*</span></label>
+              <input type="number" min="0" value={montoGlobalStr} onChange={event => setMontoGlobalStr(event.target.value)} style={inputStyle} />
+            </div>
+          </div>
+        </>}
+      </div>
+    )}
+    {puedeDescripcionExtendida && (
+      <div style={{ marginBottom: 14 }}>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+          Descripción extendida <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(opcional — nombre del proyecto o concurso público)</span>
+        </label>
+        <textarea
+          value={descripcionExtendida}
+          onChange={event => setDescripcionExtendida(event.target.value.slice(0, 1000))}
+          rows={3}
+          placeholder="Ej: Adquisición para el proyecto FNDR N° 40012345, concurso público ID 1234-5-LE24..."
+          style={{ width: '100%', padding: 10, border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'inherit', resize: 'vertical' }}
+        />
+        <div style={{ marginTop: 4, textAlign: 'right', fontSize: 11, color: 'var(--text-3)' }}>{descripcionExtendida.length}/1000</div>
+      </div>
+    )}
     <Preview empresa={empresa} receptor={receptor} items={items} tipoDte={detectedTipo} referencias={documentInput?.referencias || referencias} totales={previewTotales} />
     {esGuia && (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 4 }}>
@@ -326,13 +400,31 @@ function ReferenciaRow({ value, onChange, onRemove }) {
   )
 }
 
+const GLOSA_POR_MOTIVO = { 1: 'Anulación', 2: 'Corrección de monto', 3: 'Corrección de texto' }
+
 export function NotaDteModal({ documento, tipoDte, onClose, onSuccess }) {
   const emitir = useEmitirDte()
   const [razon, setRazon] = useState('')
   const [error, setError] = useState('')
   const total = Number(documento?.totales?.total || 0)
+  // codRef determina que declara la nota ante el SII: 1 anula el documento
+  // completo (monto fijo = total original), 2 corrige un monto puntual (el
+  // usuario indica cuanto, no necesariamente el total), 3 corrige solo texto
+  // y no tiene efecto en el monto (se declara en 0).
+  const [codRef, setCodRef] = useState('1')
+  const [montoCorreccion, setMontoCorreccion] = useState(String(total))
+  const montoEditable = codRef === '2'
+  const montoFinal = codRef === '3' ? 0 : Number(montoCorreccion) || 0
+
+  const cambiarMotivo = value => {
+    setCodRef(value)
+    setMontoCorreccion(String(value === '1' ? total : value === '3' ? 0 : total))
+    setError('')
+  }
+
   const confirmar = async () => {
     if (!razon.trim()) { setError('Indica una razón para la nota.'); return }
+    if (codRef === '2' && montoFinal <= 0) { setError('Indica el monto a corregir.'); return }
     setError('')
     try {
       const result = await emitir.mutateAsync({
@@ -340,14 +432,24 @@ export function NotaDteModal({ documento, tipoDte, onClose, onSuccess }) {
         clienteId: documento.clienteId,
         tipoDte,
         receptor: documento.receptor || {},
-        items: [{ nombre: `${tipoDte === 61 ? 'Anulación' : 'Corrección'} documento #${documento.folio || documento.id}`, cantidad: 1, precio: total / 1.19 }],
-        referencias: [{ tipoDocRef: String(documento.tipoDte), folioRef: String(documento.folio), fechaRef: documento.fechaEmision, codRef: '1', razon: razon.trim() }],
+        items: [{ nombre: `${GLOSA_POR_MOTIVO[codRef]} documento #${documento.folio || documento.id}`, cantidad: 1, precio: montoFinal / 1.19 }],
+        referencias: [{ tipoDocRef: String(documento.tipoDte), folioRef: String(documento.folio), fechaRef: documento.fechaEmision, codRef, razon: razon.trim() }],
       })
       onSuccess?.(result)
     } catch (cause) { setError(getError(cause)) }
   }
-  return <Modal title={tipoDte === 61 ? 'Anular con nota de crédito' : 'Corregir con nota de débito'} onClose={onClose}>
+  return <Modal title={tipoDte === 61 ? 'Nota de crédito' : 'Nota de débito'} onClose={onClose}>
     <p style={{ fontSize: 13, color: 'var(--text-2)', margin: '0 0 12px' }}>Documento de referencia: {TIPOS_DTE[documento.tipoDte] || `DTE ${documento.tipoDte}`} #{documento.folio || 'sin folio'} ({fmt(total)}).</p>
+    <div style={{ marginBottom: 14 }}>
+      <SelectField label="Motivo" value={codRef} options={CODREF_MOTIVOS} onChange={cambiarMotivo} />
+    </div>
+    {codRef !== '1' && (
+      <div style={{ marginBottom: 14, maxWidth: 220 }}>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Monto a declarar {montoEditable && <span style={{ color: 'var(--red)' }}>*</span>}</label>
+        <input type="number" min="0" value={montoCorreccion} disabled={!montoEditable} onChange={event => setMontoCorreccion(event.target.value)} style={{ ...inputStyle, background: montoEditable ? '#fff' : 'var(--bg)' }} />
+        {codRef === '3' && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Corrección de texto: no altera el monto, se declara en $0.</div>}
+      </div>
+    )}
     <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Razón <span style={{ color: 'var(--red)' }}>*</span></label>
     <textarea value={razon} onChange={event => { setRazon(event.target.value); setError('') }} rows={4} style={{ width: '100%', padding: 10, border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'inherit', resize: 'vertical' }} />
     {error && <div style={errorStyle}>{error}</div>}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
-import { useConsultarEstado, useDocumento, useDocumentos, useEnviarDocumento, useEnviarLote } from '../../api/facturacion'
+import { useConsultarEstado, useDocumento, useDocumentos, useEnviarDocumento, useEnviarLote, useReenviarDocumento } from '../../api/facturacion'
 import { can, ventaPath } from '../../utils/permissions'
 import { useAuthStore } from '../../store/auth'
 import { TIPOS_DTE } from '../../utils/facturacion'
@@ -20,6 +20,16 @@ const errorText = error => error?.response?.data?.error || error?.message || 'No
 
 function DocumentoDetail({ id, onClose }) {
   const { data: documento, isLoading } = useDocumento(id)
+  const reenviar = useReenviarDocumento()
+  const [correoReenvio, setCorreoReenvio] = useState('')
+  const [correoSyncId, setCorreoSyncId] = useState(null)
+  // Ajuste de estado durante el render (no en un efecto): cuando llega un
+  // documento nuevo se precarga su correo una sola vez, sin pisar lo que el
+  // usuario ya haya escrito a mano en el campo.
+  if (documento && documento.id !== correoSyncId) {
+    setCorreoSyncId(documento.id)
+    setCorreoReenvio(documento.receptor?.email || '')
+  }
   const descargarXml = async () => {
     try {
       await downloadDteXml(documento)
@@ -28,6 +38,12 @@ function DocumentoDetail({ id, onClose }) {
   const verPdf = async () => {
     try {
       await openDtePdf(documento)
+    } catch (error) { toast.error(errorText(error)) }
+  }
+  const reenviarCorreo = async () => {
+    try {
+      const result = await reenviar.mutateAsync({ id: documento.id, to: correoReenvio.trim() })
+      toast.success(`Documento reenviado a ${result.to?.join(', ') || correoReenvio}.`)
     } catch (error) { toast.error(errorText(error)) }
   }
   return (
@@ -50,9 +66,15 @@ function DocumentoDetail({ id, onClose }) {
             {documento.estadoDetalle && <div style={{ marginTop: 14, padding: 12, background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, fontSize: 12 }}>{documento.estadoDetalle}</div>}
           </>}
         </div>
-        <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Btn variant="secondary" icon="download" onClick={descargarXml} disabled={!documento?.xml}>Descargar XML</Btn>
-          <Btn variant="primary" icon="eye" onClick={verPdf} disabled={!documento?.xml}>Ver PDF</Btn>
+        <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Btn variant="secondary" icon="download" onClick={descargarXml} disabled={!documento?.xml}>Descargar XML</Btn>
+            <Btn variant="primary" icon="eye" onClick={verPdf} disabled={!documento?.xml}>Ver PDF</Btn>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input type="email" value={correoReenvio} onChange={event => setCorreoReenvio(event.target.value)} placeholder="Correo del cliente" style={{ flex: 1, padding: 9, border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'inherit' }} />
+            <Btn variant="secondary" icon="send" onClick={reenviarCorreo} disabled={!documento?.xml || !correoReenvio.trim() || reenviar.isPending}>{reenviar.isPending ? 'Enviando...' : 'Reenviar'}</Btn>
+          </div>
         </div>
       </aside>
     </div>
@@ -92,6 +114,23 @@ export default function DocumentosPage() {
   const activePage = Math.min(page, pages)
   const visible = documents.slice((activePage - 1) * limit, activePage * limit)
   const pendientes = documents.filter(doc => doc.estado === 'emitido')
+  const enSeguimientoIds = visible.filter(doc => doc.estado === 'enviado').map(doc => doc.id).join(',')
+  // mutate (no la mutation completa) es estable entre renders — se guarda en
+  // un ref (actualizado en un efecto, no durante el render) para que el
+  // intervalo no se recree cada vez que cambia isPending.
+  const consultarMutateRef = useRef(consultarEstado.mutate)
+  useEffect(() => { consultarMutateRef.current = consultarEstado.mutate }, [consultarEstado.mutate])
+  // Seguimiento automatico: mientras haya documentos "enviado" visibles, se
+  // reconsulta su estado cada 20s sin que el usuario tenga que acordarse de
+  // apretar "Consultar estado" uno por uno.
+  useEffect(() => {
+    if (!enSeguimientoIds) return
+    const ids = enSeguimientoIds.split(',')
+    const interval = setInterval(() => {
+      ids.forEach(id => consultarMutateRef.current(id))
+    }, 20000)
+    return () => clearInterval(interval)
+  }, [enSeguimientoIds])
   const enviarUno = async (event, doc) => {
     event.stopPropagation()
     if (!await confirmDialog({ title: 'Enviar al SII', detail: `Enviar ${TIPOS_DTE[doc.tipoDte] || 'DTE'} folio ${doc.folio} al SII?` })) return
@@ -126,7 +165,17 @@ export default function DocumentosPage() {
     { key: 'fechaEmision', label: 'Fecha emisión', render: dateFmt },
     { key: 'receptor', label: 'Receptor', render: value => <div><div style={{ fontWeight: 600 }}>{value?.razonSocial || '—'}</div><div style={{ fontSize: 11, color: 'var(--text-3)' }}>{value?.rut || ''}</div></div> },
     { key: 'totales', label: 'Total', align: 'right', render: value => fmt(value?.total) },
-    { key: 'estado', label: 'Estado', render: value => <Badge tone={ESTADO_TONE[value] || 'gray'}>{value}</Badge> },
+    {
+      key: 'estado', label: 'Estado', render: (value, row) => (
+        <div>
+          <Badge tone={ESTADO_TONE[value] || 'gray'}>{value}</Badge>
+          {row.trackId && value === 'enviado' && <div style={{ marginTop: 3, fontSize: 10, color: 'var(--text-3)' }}>Track {row.trackId}</div>}
+          {row.estadoDetalle && (value === 'rechazado' || value === 'error') && (
+            <div style={{ marginTop: 3, fontSize: 10, color: 'var(--red)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.estadoDetalle}>{row.estadoDetalle}</div>
+          )}
+        </div>
+      ),
+    },
     { key: 'ordenId', label: 'Venta', render: value => value ? <button onClick={event => { event.stopPropagation(); navigate(ventaPath(value, user)) }} style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', fontWeight: 600 }}>#{value}</button> : '—' },
     { key: '_actions', label: 'Accion', required: true, width: 180, render: (_, row) => <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{canWrite && row.estado === 'emitido' && <button type="button" onClick={event => enviarUno(event, row)} disabled={enviarDocumento.isPending} style={actionButtonStyle}>Enviar al SII</button>}{row.estado === 'enviado' && <button type="button" onClick={event => consultarUno(event, row)} disabled={consultarEstado.isPending} style={actionButtonStyle}>Consultar estado</button>}</div> },
   ]

@@ -37,6 +37,10 @@ export const useEmitirDocumento = () => {
   })
 }
 
+export const useReenviarDocumento = () => useMutation({
+  mutationFn: ({ id, to }) => api.post(`/facturacion/documentos/${id}/reenviar`, to ? { to } : {}).then(r => r.data),
+})
+
 export const useEnviarDocumento = () => {
   const qc = useQueryClient()
   return useMutation({

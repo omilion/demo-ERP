@@ -5,7 +5,7 @@ import { Badge, Btn, Icon } from '../shared'
 import { ViewPanel, FormDivider } from './index'
 import { useVenta, useDeleteVenta, useForzarTaller, useUpdateVenta, useAnularVenta, useActivarVenta, useUpdateItemEntregados, useVentaDespachoHistorial } from '../../api/ventas'
 import { useProductos } from '../../api/productos'
-import { useDocumentos } from '../../api/facturacion'
+import { useDocumentos, useReenviarDocumento } from '../../api/facturacion'
 import { EmitirDteModal, NotaDteModal } from '../facturacion/DteModals'
 import { TIPOS_DTE } from '../../utils/facturacion'
 import { downloadDteXml, openDtePdf } from '../../utils/dteDocuments'
@@ -368,11 +368,22 @@ function TabDocumentos({ v, pagos, dtes, canWrite, canWriteFacturacion, onNota }
   const hasContent = v.licitacion || v.guias || v.facturado > 0 || v.observaciones || referenciales.length > 0
   const [ajustarPresupuesto, setAjustarPresupuesto] = useState(false)
   const saldoDespacho = Number(v.montoDespacho || 0) - Number(v.montoDespachoReal || 0)
+  const reenviar = useReenviarDocumento()
   const runDteAction = async (action, documento) => {
     try {
       await action(documento)
     } catch (error) {
       toast.error(error?.response?.data?.error || error?.message || 'No se pudo abrir el documento.')
+    }
+  }
+  const reenviarDoc = async documento => {
+    const to = window.prompt('Reenviar documento a este correo:', documento.receptor?.email || '')
+    if (!to || !to.trim()) return
+    try {
+      const result = await reenviar.mutateAsync({ id: documento.id, to: to.trim() })
+      toast.success(`Documento reenviado a ${result.to?.join(', ') || to.trim()}.`)
+    } catch (error) {
+      toast.error(error?.response?.data?.error || error?.message || 'No se pudo reenviar el documento.')
     }
   }
 
@@ -471,6 +482,7 @@ function TabDocumentos({ v, pagos, dtes, canWrite, canWriteFacturacion, onNota }
                   {doc.xml && doc.estado !== 'borrador' && <>
                     <button onClick={() => runDteAction(openDtePdf, doc)} style={dteLink('var(--blue)')}>Ver PDF</button>
                     <button onClick={() => runDteAction(downloadDteXml, doc)} style={dteLink('var(--text-2)')}>Descargar XML</button>
+                    {canWriteFacturacion && <button onClick={() => reenviarDoc(doc)} disabled={reenviar.isPending} style={dteLink('var(--text-2)')}>Reenviar</button>}
                   </>}
                   {canWriteFacturacion && [33, 39].includes(Number(doc.tipoDte)) && ['aceptado', 'enviado'].includes(doc.estado) && <>
                     <button onClick={() => onNota(doc, 61)} style={dteLink('var(--red)')}>Anular con NC</button>

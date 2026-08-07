@@ -21,11 +21,17 @@ function parseCantidad(value) {
   return Number.isInteger(n) && n >= 0 ? n : undefined
 }
 
+function cleanText(value) {
+  if (value === undefined || value === null) return undefined
+  const text = String(value).trim()
+  return text || null
+}
+
 async function listProveedores(prisma, productoId) {
   const rows = await prisma.productoProveedor.findMany({
     where: { productoId, activo: true },
     select: {
-      id: true, proveedorId: true, costo: true, cantidad: true, ultimaCompra: true,
+      id: true, proveedorId: true, costo: true, cantidad: true, ultimaCompra: true, codigoProveedor: true,
       proveedor: { select: { nombre: true, rut: true } },
     },
     orderBy: [{ cantidad: 'desc' }, { id: 'asc' }],
@@ -37,6 +43,7 @@ async function listProveedores(prisma, productoId) {
       proveedorId: r.proveedorId,
       proveedorNombre: r.proveedor?.nombre || null,
       proveedorRut: r.proveedor?.rut || null,
+      codigoProveedor: r.codigoProveedor || null,
       costo: r.costo,
       cantidad: r.cantidad,
       ultimaCompra: r.ultimaCompra,
@@ -66,17 +73,26 @@ export default async function proveedoresProductoRoutes(fastify) {
     const cantidad = parseCantidad(request.body?.cantidad)
     if (costo === undefined) return reply.code(400).send({ error: 'costo invalido' })
     if (cantidad === undefined) return reply.code(400).send({ error: 'cantidad invalida' })
+    const codigoProveedor = cleanText(request.body?.codigoProveedor)
 
     const producto = await fastify.prisma.producto.findUnique({ where: { id: productoId }, select: { id: true } })
     if (!producto) return reply.code(404).send({ error: 'Producto no encontrado' })
     const proveedor = await fastify.prisma.proveedor.findUnique({ where: { id: proveedorId }, select: { id: true } })
     if (!proveedor) return reply.code(404).send({ error: 'Proveedor no encontrado' })
 
+    if (codigoProveedor) {
+      const otro = await fastify.prisma.productoProveedor.findFirst({
+        where: { proveedorId, codigoProveedor: { equals: codigoProveedor, mode: 'insensitive' }, activo: true, productoId: { not: productoId } },
+        select: { productoId: true, producto: { select: { nombre: true } } },
+      })
+      if (otro) return reply.code(409).send({ error: `Ese código ya está mapeado a "${otro.producto?.nombre || 'otro producto'}" para este proveedor`, productoId: otro.productoId })
+    }
+
     const result = await fastify.prisma.$transaction(async (tx) => {
       await tx.productoProveedor.upsert({
         where: { productoId_proveedorId: { productoId, proveedorId } },
-        update: { costo: costo ?? 0, cantidad: cantidad ?? 0, activo: true },
-        create: { productoId, proveedorId, costo: costo ?? 0, cantidad: cantidad ?? 0, activo: true },
+        update: { costo: costo ?? 0, cantidad: cantidad ?? 0, activo: true, ...(codigoProveedor !== undefined ? { codigoProveedor } : {}) },
+        create: { productoId, proveedorId, costo: costo ?? 0, cantidad: cantidad ?? 0, activo: true, codigoProveedor: codigoProveedor || null },
       })
       await recomputeProductoCosteo(tx, productoId)
       return listProveedores(tx, productoId)
@@ -94,6 +110,7 @@ export default async function proveedoresProductoRoutes(fastify) {
     const cantidad = parseCantidad(request.body?.cantidad)
     if (costo === undefined) return reply.code(400).send({ error: 'costo invalido' })
     if (cantidad === undefined) return reply.code(400).send({ error: 'cantidad invalida' })
+    const codigoProveedor = cleanText(request.body?.codigoProveedor)
 
     const existing = await fastify.prisma.productoProveedor.findUnique({
       where: { productoId_proveedorId: { productoId, proveedorId } },
@@ -101,9 +118,18 @@ export default async function proveedoresProductoRoutes(fastify) {
     })
     if (!existing) return reply.code(404).send({ error: 'Fila de proveedor no encontrada' })
 
+    if (codigoProveedor) {
+      const otro = await fastify.prisma.productoProveedor.findFirst({
+        where: { proveedorId, codigoProveedor: { equals: codigoProveedor, mode: 'insensitive' }, activo: true, productoId: { not: productoId } },
+        select: { productoId: true, producto: { select: { nombre: true } } },
+      })
+      if (otro) return reply.code(409).send({ error: `Ese código ya está mapeado a "${otro.producto?.nombre || 'otro producto'}" para este proveedor`, productoId: otro.productoId })
+    }
+
     const data = {}
     if (costo !== null) data.costo = costo
     if (cantidad !== null) data.cantidad = cantidad
+    if (codigoProveedor !== undefined) data.codigoProveedor = codigoProveedor
     const result = await fastify.prisma.$transaction(async (tx) => {
       if (Object.keys(data).length) {
         await tx.productoProveedor.update({ where: { id: existing.id }, data })

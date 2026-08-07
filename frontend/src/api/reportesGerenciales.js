@@ -117,3 +117,12 @@ export function useReporteComisiones(params = {}, enabled = true) {
     staleTime: 60_000,
   })
 }
+
+export function useReporteMovimientosAnormales(params = {}, enabled = true) {
+  return useQuery({
+    queryKey: ['reportes-gerenciales', 'movimientos-anormales', params],
+    queryFn: () => api.get('/reportes/movimientos-anormales', { params }).then(r => r.data),
+    enabled,
+    staleTime: 60_000,
+  })
+}

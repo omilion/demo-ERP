@@ -9,6 +9,7 @@ import autocompleteRoute from './autocomplete.js'
 import importarRoute from './importar.js'
 import movimientosRoute from './movimientos.js'
 import proveedoresRoute from './proveedores.js'
+import mapeoRoute from './mapeo.js'
 import uploadProductoRoute from './upload.js'
 
 export default async function productosRoutes(fastify) {
@@ -23,5 +24,6 @@ export default async function productosRoutes(fastify) {
   fastify.register(importarRoute)
   fastify.register(movimientosRoute)
   fastify.register(proveedoresRoute)
+  fastify.register(mapeoRoute)
   fastify.register(uploadProductoRoute)
 }

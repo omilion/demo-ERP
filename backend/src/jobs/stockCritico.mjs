@@ -293,6 +293,43 @@ function dotStuff(body) {
   return String(body).replace(/^\./gm, '..')
 }
 
+// Base64 no produce '\r'/'\n' propios: se corta cada 76 caracteres solo por
+// convencion MIME (RFC 2045), no hace falta re-aplicar dotStuff sobre esto.
+function wrapBase64(base64) {
+  return base64.replace(/.{76}/g, line => `${line}\r\n`)
+}
+
+// attachments: [{ filename, content: Buffer, contentType }]. Sin adjuntos se
+// arma el mismo mensaje text/html de siempre (stock critico); con adjuntos
+// se envuelve todo en multipart/mixed (reenvio de DTE con PDF/XML).
+function buildEmailBody({ html, attachments = [] }) {
+  if (!attachments.length) {
+    return { contentTypeHeader: 'Content-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit', body: html }
+  }
+  const boundary = `----plastimar-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+  const lines = [
+    `--${boundary}`,
+    'Content-Type: text/html; charset=UTF-8',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    html,
+  ]
+  for (const attachment of attachments) {
+    const filename = encodeHeader(attachment.filename || 'adjunto')
+    lines.push(
+      '',
+      `--${boundary}`,
+      `Content-Type: ${attachment.contentType || 'application/octet-stream'}; name="${filename}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${filename}"`,
+      '',
+      wrapBase64(Buffer.from(attachment.content).toString('base64')),
+    )
+  }
+  lines.push('', `--${boundary}--`)
+  return { contentTypeHeader: `Content-Type: multipart/mixed; boundary="${boundary}"`, body: lines.join('\r\n') }
+}
+
 export async function sendSmtpMail({
   host = 'localhost',
   port = 25,
@@ -304,6 +341,7 @@ export async function sendSmtpMail({
   to = [],
   subject,
   html,
+  attachments = [],
   timeoutMs = 15000,
   starttls = false,
   allowInsecureAuth = false,
@@ -341,15 +379,15 @@ export async function sendSmtpMail({
       await smtpCommand(socket, readResponse, `RCPT TO:<${recipient}>`, [250, 251])
     }
     await smtpCommand(socket, readResponse, 'DATA', 354)
+    const { contentTypeHeader, body } = buildEmailBody({ html, attachments })
     const message = [
       `From: ${encodeHeader(fromName)} <${from}>`,
       `To: ${recipients.join(', ')}`,
       `Subject: ${encodeHeader(subject)}`,
       'MIME-Version: 1.0',
-      'Content-Type: text/html; charset=UTF-8',
-      'Content-Transfer-Encoding: 8bit',
+      contentTypeHeader,
       '',
-      dotStuff(html),
+      dotStuff(body),
       '.',
       '',
     ].join('\r\n')

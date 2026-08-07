@@ -51,6 +51,7 @@ import ConsultaPreciosPage from './pages/consulta-precios/ConsultaPreciosPage'
 import ReportesLicitacionesPage from './pages/reportes-licitaciones/ReportesLicitacionesPage'
 import ReportesGerencialesPage from './pages/reportes-gerenciales/ReportesGerencialesPage'
 import ReportesComisionesPage from './pages/reportes-comisiones/ReportesComisionesPage'
+import ReportesMovimientosAnormalesPage from './pages/reportes-movimientos-anormales/ReportesMovimientosAnormalesPage'
 import UsuariosPage from './pages/usuarios/UsuariosPage'
 import RrhhPage, { TrabajadorDetallePage } from './pages/rrhh/RrhhPage'
 import IntegridadPage from './pages/admin/IntegridadPage'
@@ -150,6 +151,7 @@ export const router = createBrowserRouter([
       { path: 'consulta-precios', element: protect(<ConsultaPreciosPage />, { module: 'catalogo' }) },
       { path: 'reportes/gerenciales', element: protect(<ReportesGerencialesPage />, { module: 'reportes' }) },
       { path: 'reportes/comisiones', element: <ProtectedRoute allowedRoles={['admin']}><ReportesComisionesPage /></ProtectedRoute> },
+      { path: 'reportes/movimientos-anormales', element: protect(<ReportesMovimientosAnormalesPage />, { module: 'bodega' }) },
       { path: 'reportes/licitaciones', element: protect(<ReportesLicitacionesPage />, { module: 'licitaciones' }) },
       { path: 'rrhh', element: protect(<RrhhPage />, { module: 'rrhh' }) },
       { path: 'rrhh/:id', element: protect(<TrabajadorDetallePage />, { module: 'rrhh' }) },

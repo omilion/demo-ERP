@@ -1,4 +1,4 @@
-import { toast, confirmDialog, promptDialog } from '../../store/notif'
+import { toast, confirmDialog } from '../../store/notif'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
@@ -7,6 +7,7 @@ import { useProducto, useUpdateProducto, useCreateProducto, useHistorialPrecios,
 import { useCategorias } from '../../api/categorias'
 import { useProveedores } from '../../api/proveedores'
 import { useCreateUbicacion, useUbicaciones } from '../../api/ubicaciones'
+import UbicacionEstructuradaModal from '../../components/bodega/UbicacionEstructuradaModal'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 
@@ -132,6 +133,7 @@ export default function BodegaFormPage() {
   const { data: categoriasApi = [] } = useCategorias()
   const { data: ubicacionesResult = { items: [] } } = useUbicaciones()
   const createUbicacion = useCreateUbicacion()
+  const [nuevaUbicacion, setNuevaUbicacion] = useState(false)
   const { user } = useAuthStore()
   const createProducto = useCreateProducto()
   const updateProducto = useUpdateProducto()
@@ -217,16 +219,12 @@ export default function BodegaFormPage() {
     set('ubicacion', ubicacion?.nombre || '')
   }
 
-  const createUbicacionFromForm = async () => {
-    const nombre = await promptDialog({ title: 'Nueva ubicacion fisica' })
-    if (!nombre?.trim()) return
-    try {
-      const created = await createUbicacion.mutateAsync({ nombre: nombre.trim() })
-      set('ubicacionId', String(created.id))
-      set('ubicacion', created.nombre)
-    } catch (error) {
-      toast.error(error?.response?.data?.error || 'No se pudo crear la ubicacion')
-    }
+  const crearUbicacionEstructurada = async (campos) => {
+    const created = await createUbicacion.mutateAsync(campos)
+    set('ubicacionId', String(created.id))
+    set('ubicacion', created.nombre)
+    setNuevaUbicacion(false)
+    toast.success(`Ubicación "${created.nombre}" creada.`)
   }
 
   const setUploadedImage = (field, url, append = false) => {
@@ -379,7 +377,7 @@ export default function BodegaFormPage() {
           <div style={{ display: 'grid', gridTemplateColumns: canCreateUbicacion ? '1fr auto' : '1fr', gap: 8 }}>
             <Select value={data.ubicacionId} onChange={setUbicacionCatalogo} options={ubicacionOptions} />
             {canCreateUbicacion && (
-              <button type="button" onClick={createUbicacionFromForm} disabled={createUbicacion.isPending} style={smallSecondaryButton}>
+              <button type="button" onClick={() => setNuevaUbicacion(true)} disabled={createUbicacion.isPending} style={smallSecondaryButton}>
                 Nueva
               </button>
             )}
@@ -502,6 +500,15 @@ export default function BodegaFormPage() {
       {isEdit && found && <div id="movimientos"><MovimientosSection productoId={found.id} stockActual={found.stock} /></div>}
 
       <PrecioHistorial historial={historial} />
+
+      {nuevaUbicacion && (
+        <UbicacionEstructuradaModal
+          ubicacionesExistentes={ubicaciones}
+          creating={createUbicacion.isPending}
+          onClose={() => setNuevaUbicacion(false)}
+          onCreate={crearUbicacionEstructurada}
+        />
+      )}
     </FormPage>
   )
 }
