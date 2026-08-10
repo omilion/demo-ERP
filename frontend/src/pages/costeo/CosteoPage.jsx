@@ -100,7 +100,7 @@ function RecetasTab() {
     try {
       const res = await recalcularMasivo.mutateAsync({ aplicar: false });
       toast.success(`Recálculo masivo procesado en ${res.totalProcesados} productos`);
-    } catch (e) {
+    } catch {
       toast.error('Error al realizar recálculo masivo');
     }
   };
@@ -228,7 +228,7 @@ function MateriasPrimasTab() {
       });
       toast.success('Precio actualizado correctamente');
       setEditingItem(null);
-    } catch (e) {
+    } catch {
       toast.error('Error al actualizar precio');
     }
   };
@@ -468,7 +468,7 @@ function TarifasTab() {
       toast.success('Nueva tarifa agregada exitosamente');
       setShowCreate(false);
       setValorHora('');
-    } catch (e) {
+    } catch {
       toast.error('Error al agregar tarifa');
     }
   };
@@ -479,7 +479,7 @@ function TarifasTab() {
     try {
       await deleteTarifa.mutateAsync(id);
       toast.success('Tarifa desactivada');
-    } catch (e) {
+    } catch {
       toast.error('Error al desactivar tarifa');
     }
   };

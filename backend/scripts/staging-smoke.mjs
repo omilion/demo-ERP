@@ -221,6 +221,16 @@ async function smoke(options) {
     { name: 'cobranza ejecutivas', path: '/api/cobranza-historico/ejecutivas' },
     { name: 'despachos list', path: '/api/despachos' },
     { name: 'guias list', path: '/api/despachos/guias/list' },
+    { name: 'crm pipeline', path: '/api/crm' },
+    { name: 'crm metricas', path: '/api/crm/metricas' },
+    { name: 'descuentos comerciales', path: '/api/descuentos' },
+    { name: 'taller corte config', path: '/api/taller-corte/config' },
+    { name: 'taller corte cola completa', path: '/api/taller-corte/items?mine=false' },
+    { name: 'facturacion empresa', path: '/api/facturacion/empresa' },
+    { name: 'facturacion cafs', path: '/api/facturacion/cafs' },
+    { name: 'facturacion documentos', path: '/api/facturacion/documentos' },
+    { name: 'documentos elegibles nota credito', path: '/api/facturacion/documentos-referenciables?tipoNota=61' },
+    { name: 'documentos elegibles nota debito', path: '/api/facturacion/documentos-referenciables?tipoNota=56' },
     { name: 'matriz ventas', path: '/api/matriz-ventas' },
     { name: 'matriz totales', path: '/api/matriz-ventas/totales' },
     { name: 'stock critico', path: '/api/reportes/stock-critico' },
@@ -241,6 +251,9 @@ async function smoke(options) {
     responses[check.name] = res.data
     record(check.name, { count: countItems(res.data) })
   }
+
+  await api('/api/notas-internas?ordenId=0', { token, expect: [400] })
+  record('notas credito internas valida orden requerida')
 
   const productos = responses['productos list']
   const clientes = responses['clientes list']

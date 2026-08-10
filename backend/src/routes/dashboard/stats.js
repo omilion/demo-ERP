@@ -25,6 +25,10 @@ export default async function dashboardStats(fastify) {
     const corte = await getPrimerRegistroInterno(p)
     const ordenOperacionalWhere = buildOrdenScopeWhere('operacional', corte)
     const sucursalId = getUserSucursalId(request.user)
+    // El KPI y la pantalla de Taller deben usar el mismo alcance. Antes el
+    // dashboard contaba OTs globales, pero /api/odts filtraba por sucursal:
+    // al hacer clic el usuario pasaba de miles de pendientes a una lista vacía.
+    const odtScope = sucursalId ? { AND: [{ OR: [{ sucursalId }, { sucursalId: null }] }] } : {}
     const pagoProveedorScope = { eliminado: false, ...(sucursalId ? { sucursalId } : {}) }
     const cobranzaScopeWhere = await buildCobranzaHistoricoScopeWhere(p, request.user)
 
@@ -56,17 +60,17 @@ export default async function dashboardStats(fastify) {
     ] = await Promise.all([
       p.orden.count({ where: mergeWhere({ estadoPago: 'No pagada', eliminada: false }, ordenOperacionalWhere) }),
       p.orden.count({ where: mergeWhere({ estadoEntrega: 'Pendiente entrega', eliminada: false }, ordenOperacionalWhere) }),
-      p.odt.count({ where: { estado: 'Pendiente' } }),
-      p.odt.count({ where: { estado: 'En proceso' } }),
-      p.odt.count({ where: { OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] } }),
-      p.odt.count({ where: tallerWhere('espuma', { estado: { in: ['Pendiente', 'En proceso'] } }) }),
-      p.odt.count({ where: tallerWhere('confe', { estado: { in: ['Pendiente', 'En proceso'] } }) }),
-      p.odt.count({ where: tallerWhere('madera', { estado: { in: ['Pendiente', 'En proceso'] } }) }),
-      p.odt.count({ where: tallerWhere('externo', { estado: { in: ['Pendiente', 'En proceso'] } }) }),
-      p.odt.count({ where: tallerWhere('espuma', { estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] }) }),
-      p.odt.count({ where: tallerWhere('confe', { estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] }) }),
-      p.odt.count({ where: tallerWhere('madera', { estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] }) }),
-      p.odt.count({ where: tallerWhere('externo', { estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] }) }),
+      p.odt.count({ where: { ...odtScope, estado: 'Pendiente' } }),
+      p.odt.count({ where: { ...odtScope, estado: 'En proceso' } }),
+      p.odt.count({ where: { ...odtScope, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] } }),
+      p.odt.count({ where: tallerWhere('espuma', { ...odtScope, estado: { in: ['Pendiente', 'En proceso'] } }) }),
+      p.odt.count({ where: tallerWhere('confe', { ...odtScope, estado: { in: ['Pendiente', 'En proceso'] } }) }),
+      p.odt.count({ where: tallerWhere('madera', { ...odtScope, estado: { in: ['Pendiente', 'En proceso'] } }) }),
+      p.odt.count({ where: tallerWhere('externo', { ...odtScope, estado: { in: ['Pendiente', 'En proceso'] } }) }),
+      p.odt.count({ where: tallerWhere('espuma', { ...odtScope, estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] }) }),
+      p.odt.count({ where: tallerWhere('confe', { ...odtScope, estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] }) }),
+      p.odt.count({ where: tallerWhere('madera', { ...odtScope, estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] }) }),
+      p.odt.count({ where: tallerWhere('externo', { ...odtScope, estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: 'urgente' }, { estado: 'Prioritaria' }] }) }),
       p.$queryRaw`
         SELECT
           bodega,

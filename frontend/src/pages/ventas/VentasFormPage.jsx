@@ -1270,8 +1270,11 @@ export default function VentasFormPage() {
     ...sucursalesCliente.map(s => ({ value: String(s.id), label: `${s.nombre}${s.comuna ? ` - ${s.comuna}` : ''}` })),
   ]
   const selectedSucursal = sucursalesCliente.find(s => String(s.id) === data.clienteSucursalId)
-  const normalDiscountValues = (descuentosCatalogo?.normales || []).map(d => String(d.valor))
-  const marcoDiscountValues = (descuentosCatalogo?.marco || []).map(d => String(d.valor))
+  // Los catálogos históricos pueden contener porcentajes repetidos por
+  // importaciones antiguas. Un select no debe renderizar opciones duplicadas:
+  // además del warning de React, el usuario no podría distinguirlas.
+  const normalDiscountValues = [...new Set((descuentosCatalogo?.normales || []).map(d => String(d.valor)))]
+  const marcoDiscountValues = [...new Set((descuentosCatalogo?.marco || []).map(d => String(d.valor)))]
   const normalDiscountOptions = [
     { value: '', label: 'Sin descuento' },
     ...normalDiscountValues.map(v => ({ value: v, label: `${v}%` })),

@@ -7,7 +7,7 @@ import { toast } from '../../store/notif'
 
 const inputStyle = { width: '100%', padding: '6px 7px', borderRadius: 5, border: '1px solid var(--border)', fontFamily: 'inherit', fontSize: 12, boxSizing: 'border-box' }
 const fmt = value => '$' + Math.round(Number(value) || 0).toLocaleString('es-CL')
-export const emptyDteItem = () => ({ nombre: '', descripcion: '', cantidad: 1, precioUnitario: 0, exento: false, manual: true })
+const emptyDteItem = () => ({ nombre: '', descripcion: '', cantidad: 1, precioUnitario: 0, exento: false, manual: true })
 
 function ProductoSearch({ onAdd }) {
   const [query, setQuery] = useState('')

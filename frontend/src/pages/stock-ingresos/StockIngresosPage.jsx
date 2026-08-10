@@ -92,6 +92,8 @@ export default function StockIngresosPage() {
   useEffect(() => {
     const prefill = location.state?.prefill
     if (!prefill) return
+    // Navigation state intentionally hydrates this multi-field form once.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHeader({ ...emptyHeader(canWriteBodega), documento: prefill.documento, nDoc: prefill.nDoc, fechaDoc: prefill.fechaDoc || today() })
     setDetails(prefill.details?.length ? prefill.details : [emptyDetail()])
     setDocumentoRecibidoId(prefill.documentoRecibidoId || null)
@@ -107,6 +109,8 @@ export default function StockIngresosPage() {
     if (!rutProveedorRecibido || header.proveedorId) return
     const normalizarRut = value => String(value || '').replace(/[^0-9kK]/g, '').toUpperCase()
     const proveedor = (proveedores.items || []).find(item => normalizarRut(item.rut) === normalizarRut(rutProveedorRecibido))
+    // Complete the prefilled supplier after the asynchronous lookup resolves.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (proveedor) setHeader(current => ({ ...current, proveedorId: String(proveedor.id) }))
   }, [proveedores, rutProveedorRecibido, header.proveedorId])
 

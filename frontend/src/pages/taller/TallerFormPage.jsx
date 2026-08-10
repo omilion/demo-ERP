@@ -239,6 +239,7 @@ export default function TallerFormPage() {
 
   useEffect(() => {
     // If the id changes or URL mode changes, update edit mode
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsEditMode(!id || isUrlEdit)
     initializedRef.current = false
   }, [id, isUrlEdit])
@@ -355,7 +356,6 @@ export default function TallerFormPage() {
     { from: ['Entregada'], to: 'Terminada', label: 'Reabrir entrega', tone: 'amber' },
   ]
   const available = found ? estadoActions.filter(a => a.from.includes(found.estado)) : []
-  const canReopenOdt = found ? ['Terminada', 'Entregada'].includes(found.estado) : false
   const canAnularOdt = found ? !['Anulada'].includes(found.estado) : false
   const lifecyclePending = cambiarEstado.isPending || cerrarOdt.isPending || anularOdt.isPending
 

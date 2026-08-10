@@ -1,12 +1,12 @@
-import { toast, confirmDialog, promptDialog } from '../../store/notif'
+import { toast, confirmDialog } from '../../store/notif'
 import { useState, useEffect, useRef } from 'react'
 import { DndContext, DragOverlay, PointerSensor, pointerWithin, rectIntersection, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon, Badge, KpiCard, PageHeader, Btn, SearchBar, Tabs, Pager, Table } from '../../components/shared'
-import { useOdts, useOdtKanban, useOdt, useOdtEstado, useAddBitacora, useDeleteBitacora, useAnularOdt, useCerrarOdt, useOdtOperarios, useOdtCargaOperarios, useOdtProductividad } from '../../api/odts'
+import { useOdts, useOdtKanban, useOdtEstado, useAddBitacora, useDeleteBitacora, useOdtOperarios, useOdtCargaOperarios, useOdtProductividad } from '../../api/odts'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
-import { can, ventaPath } from '../../utils/permissions'
+import { can } from '../../utils/permissions'
 
 const ESTADO_TONE = {
   Prioritaria: 'red',
@@ -204,6 +204,8 @@ const OdtCard = ({ odt, onSelect }) => {
   )
 }
 
+// Retained for the detail view migration that is still in progress.
+// eslint-disable-next-line no-unused-vars
 function BitacoraSection({ odtId, entries = [], canWrite, canDelete }) {
   const [texto, setTexto] = useState('')
   const addBitacora = useAddBitacora()
@@ -501,6 +503,8 @@ function KanbanBoard({ odts, canWrite, pending, onSelect, onEstadoChange, onEsta
   )
 }
 
+// Retained for the detail view migration that is still in progress.
+// eslint-disable-next-line no-unused-vars
 function OdtCosteoPanel({ costeo }) {
   if (!costeo) return null
   const alertas = []
@@ -603,7 +607,6 @@ export default function TallerPage() {
   const initialFechaHasta = searchParams.get('fechaHasta') || ''
   const { user } = useAuthStore()
   const canWriteTaller = can(user, 'taller', 'write')
-  const canDeleteTaller = can(user, 'taller', 'delete')
   const [tab, setTab]               = useState(initialTipo && TALLER_TABS.some(t => t.id === initialTipo) ? initialTipo : 'all')
   const [search, setSearch]         = useState(initialSearch)
   const [debouncedSearch, setDeb]   = useState(initialSearch)
@@ -616,8 +619,6 @@ export default function TallerPage() {
   const [viewMode, setViewMode]     = useState('tabla')
   const debRef = useRef(null)
   const cambiarEstado = useOdtEstado()
-  const cerrarOdt = useCerrarOdt()
-  const anularOdt = useAnularOdt()
   const { data: operariosMeta = { items: [] } } = useOdtOperarios()
   const { data: cargaOperarios = { items: [] } } = useOdtCargaOperarios()
   const productividadParams = {}

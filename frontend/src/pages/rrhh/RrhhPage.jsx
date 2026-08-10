@@ -1,4 +1,4 @@
-import { toast, confirmDialog, promptDialog } from '../../store/notif'
+import { toast, confirmDialog } from '../../store/notif'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'

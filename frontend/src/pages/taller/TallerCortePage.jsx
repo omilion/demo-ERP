@@ -58,7 +58,7 @@ export default function TallerCortePage() {
   const registrarAvance = useRegistrarTallerCorteAvance()
   const subirEvidencia = useSubirTallerCorteEvidencia()
 
-  const items = data.items || []
+  const items = useMemo(() => data.items || [], [data.items])
   const operarios = operariosData?.items || []
   const stats = useMemo(() => ({
     total: items.length,

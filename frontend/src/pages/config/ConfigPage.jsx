@@ -1,4 +1,4 @@
-import { toast, confirmDialog, promptDialog } from '../../store/notif'
+import { toast, confirmDialog } from '../../store/notif'
 import { useState } from 'react'
 import { PageHeader, Btn, Tabs, Table, Badge } from '../../components/shared'
 import { FormField, Input, Textarea, Select } from '../../components/forms'

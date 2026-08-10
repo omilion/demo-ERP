@@ -22,9 +22,7 @@ const PROCESOS_SUGERIDOS = [
 ];
 
 export function EditorRecetaModal({ producto, isOpen, onClose }) {
-  if (!isOpen || !producto) return null;
-
-  const { data: recetaData, isLoading: loadingReceta } = useReceta(producto.id);
+  const { data: recetaData } = useReceta(producto?.id);
   const { data: materialesBodega = [] } = useBodegaTaller();
   const { data: telas = [] } = useTelas();
   const { data: tarifasVigentes = [] } = useTarifas();
@@ -32,7 +30,7 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
   const updateReceta = useUpdateReceta();
   const aplicarCosteo = useAplicarCosteo();
 
-  const [tallerId, setTallerId] = useState(producto.tallerId || 1);
+  const [tallerId, setTallerId] = useState(producto?.tallerId || 1);
   const [margenTransferencia, setMargenTransferencia] = useState(35);
   const [ajusteGlobalPct, setAjusteGlobalPct] = useState(3);
   const [accesoriosMonto, setAccesoriosMonto] = useState(0);
@@ -45,7 +43,9 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
   useEffect(() => {
     if (recetaData?.receta) {
       const r = recetaData.receta;
-      setTallerId(r.tallerId || producto.tallerId || 1);
+      // The editor form is intentionally hydrated when the remote recipe changes.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTallerId(r.tallerId || producto?.tallerId || 1);
       setMargenTransferencia(r.margenTransferencia ?? 35);
       setAjusteGlobalPct(r.ajusteGlobalPct ?? 3);
       setAccesoriosMonto(r.accesoriosMonto ?? 0);
@@ -143,8 +143,8 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
     });
   }, [materialesForEngine, procesosForEngine, accesoriosMonto, ajusteGlobalPct, margenTransferencia]);
 
-  const diferencia = liveCalculation.costoTransferencia - (producto.precioLista || 0);
-  const pctDiferencia = producto.precioLista
+  const diferencia = liveCalculation.costoTransferencia - (producto?.precioLista || 0);
+  const pctDiferencia = producto?.precioLista
     ? ((diferencia / producto.precioLista) * 100).toFixed(1)
     : 0;
 
@@ -254,6 +254,8 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
 
   const itemsBodega = Array.isArray(materialesBodega) ? materialesBodega : (materialesBodega?.data || []);
   const itemsTelas = Array.isArray(telas) ? telas : (telas?.data || []);
+
+  if (!isOpen || !producto) return null;
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>

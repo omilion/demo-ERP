@@ -99,6 +99,8 @@ export function DialogHost() {
 
   useEffect(() => {
     if (dialog) {
+      // A newly opened prompt owns a fresh input value from the notification store.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setInputValue(dialog.defaultValue || '')
       // Capture/trap focus
       setTimeout(() => {

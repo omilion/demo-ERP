@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Badge, Btn, Icon, PageHeader } from '../../components/shared'
+import { Btn, Icon, PageHeader } from '../../components/shared'
 import { useOdtTallerItems, useOdtItemTallerEstado, useOdtOperarios } from '../../api/odts'
 import { useAuthStore } from '../../store/auth'
 

@@ -66,7 +66,7 @@ export function AiChat() {
     const q = (text || input).trim()
     if (!q || loading) return
     setInput('')
-    const history = [...messages].filter(m => m !== WELCOME)
+    const history = messages.filter(m => m.content !== welcomeMessage.content)
 
     // Asegurar conversación persistida: crear si es la primera vez.
     let convId = activeId

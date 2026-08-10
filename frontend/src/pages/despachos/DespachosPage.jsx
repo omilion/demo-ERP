@@ -78,6 +78,8 @@ export default function DespachosPage() {
   useEffect(() => {
     if (dteTarget && ventaGuiaDte.isError) {
       toast.error('No se pudo cargar la venta asociada.')
+      // Close a target whose asynchronous lookup failed.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDteTarget(null)
     }
   }, [dteTarget, ventaGuiaDte.isError])

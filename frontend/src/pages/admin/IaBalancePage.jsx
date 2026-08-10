@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react'
-import { PageHeader, Badge, KpiCard, SectionCard, Btn, SearchBar, Table, Pager, Icon } from '../../components/shared'
+import { useState, useMemo } from 'react'
+import { PageHeader, Badge, KpiCard, SectionCard, Btn, SearchBar, Table, Icon } from '../../components/shared'
 import { useAiBalance } from '../../api/admin'
 
 export default function IaBalancePage() {
@@ -13,13 +13,13 @@ export default function IaBalancePage() {
   
   const limit = 50
 
-  // Recalculate dates when preset changes
-  useEffect(() => {
-    if (preset && preset !== 'custom') {
-      setDates(getDatesForPreset(preset))
+  const selectPreset = (nextPreset) => {
+    setPreset(nextPreset)
+    if (nextPreset !== 'custom') {
+      setDates(getDatesForPreset(nextPreset))
       setPage(0)
     }
-  }, [preset])
+  }
 
   // Fetch data
   const params = useMemo(() => ({
@@ -141,14 +141,14 @@ export default function IaBalancePage() {
           ].map(([id, label]) => (
             <button
               key={id}
-              onClick={() => setPreset(id)}
+              onClick={() => selectPreset(id)}
               style={presetTabStyle(preset === id)}
             >
               {label}
             </button>
           ))}
           <button
-            onClick={() => setPreset('custom')}
+            onClick={() => selectPreset('custom')}
             style={presetTabStyle(preset === 'custom')}
           >
             Personalizado

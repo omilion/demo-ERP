@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Icon } from '../../components/shared'
 import { Markdown } from '../../components/Markdown'
 import { useAuthStore } from '../../store/auth'
+import { confirmDialog } from '../../store/notif'
 import {
   streamChat, useConversaciones, useConversacion,
   useCrearConversacion, useGuardarMensajes, useEliminarConversacion,
@@ -56,6 +57,8 @@ export default function AsistentePage() {
   // Al abrir una conversación existente, cargar sus mensajes.
   useEffect(() => {
     if (convActiva?.mensajes) {
+      // Remote conversation selection intentionally replaces the local transcript.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMessages(convActiva.mensajes.length
         ? convActiva.mensajes.map(m => ({ role: m.role, content: m.content, documents: m.documents || [] }))
         : [getWelcomeMessage(user)])
@@ -66,6 +69,8 @@ export default function AsistentePage() {
   useEffect(() => {
     const conv = searchParams.get('conv')
     if (conv) {
+      // URL state is consumed once to select the requested conversation.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveId(parseInt(conv, 10))
       setSearchParams({}, { replace: true })
     } else if (searchParams.get('nueva')) {

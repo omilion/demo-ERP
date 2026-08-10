@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast, confirmDialog } from '../../store/notif'
-import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Pager } from '../../components/shared'
+import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../components/shared'
 import { ViewClientePanel } from '../../components/forms/FormCliente'
 import { useClienteActivo, useClientes } from '../../api/clientes'
 import { downloadFromBackend } from '../../utils/csv'

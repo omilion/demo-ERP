@@ -97,7 +97,7 @@ const inputBase = (error, extra = {}) => ({
 export const Input = ({ value, onChange, placeholder, type = 'text', error, disabled, prefix, ...props }) => (
   <div style={{ position: 'relative' }}>
     {prefix && <span style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', fontSize: 13, pointerEvents: 'none' }}>{prefix}</span>}
-    <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} disabled={disabled} {...props}
+    <input type={type} value={value ?? ''} onChange={e => onChange(e.target.value)} placeholder={placeholder} disabled={disabled} {...props}
       style={{ ...inputBase(error, prefix ? { paddingLeft: 26 } : {}), opacity: disabled ? 0.6 : 1 }}
       onFocus={e => !error && (e.target.style.borderColor = 'var(--green-600)')}
       onBlur={e => !error && (e.target.style.borderColor = 'var(--border)')}
@@ -106,7 +106,7 @@ export const Input = ({ value, onChange, placeholder, type = 'text', error, disa
 )
 
 export const Select = ({ value, onChange, options, error, disabled, style, ...props }) => (
-  <select value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
+  <select value={value ?? ''} onChange={e => onChange(e.target.value)} disabled={disabled}
     style={{ ...inputBase(error), cursor: 'pointer', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'calc(100% - 12px) center', paddingRight: 32, ...style }}
     onFocus={e => !error && (e.target.style.borderColor = 'var(--green-600)')}
     onBlur={e => !error && (e.target.style.borderColor = 'var(--border)')}
@@ -117,7 +117,7 @@ export const Select = ({ value, onChange, options, error, disabled, style, ...pr
 )
 
 export const Textarea = ({ value, onChange, placeholder, rows = 3, error }) => (
-  <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={rows}
+  <textarea value={value ?? ''} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={rows}
     style={{ ...inputBase(error), resize: 'vertical', lineHeight: 1.5 }}
     onFocus={e => !error && (e.target.style.borderColor = 'var(--green-600)')}
     onBlur={e => !error && (e.target.style.borderColor = 'var(--border)')}
