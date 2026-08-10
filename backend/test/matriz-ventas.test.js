@@ -437,7 +437,7 @@ describe('matriz ventas - fecha autonoma, estado inicial y paginacion', () => {
     try {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/matriz-ventas?desde=2018-01-01&hasta=2018-12-31',
+        url: `/api/matriz-ventas?desde=2018-01-01&hasta=2018-12-31&search=${encodeURIComponent(marker)}`,
         headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
       })
       expect(res.statusCode).toBe(200)

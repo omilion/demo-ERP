@@ -7,6 +7,7 @@ import { canApplyDescuento, requiresDescuentoPermission } from './descuentos-per
 import { validateVentaDescuentoCatalogForWrite } from './descuentos-catalog.js'
 import { assertDiscountAuthorizationForDraft } from '../descuentos/rules-engine.js'
 import { autoNotifyTaller } from '../pasar-taller/service.js'
+import { calculateDeliveryDate, normalizeMarketplace, sanitizeCommercialIdentifier } from './operational-rules.js'
 
 
 const ItemSchema = z.object({
@@ -20,7 +21,7 @@ const ItemSchema = z.object({
 })
 
 const Schema = z.object({
-  tipo: z.enum(['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala']).default('Normal'),
+  tipo: z.enum(['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala', 'Marketplace']).default('Normal'),
   clienteId: z.number().int(),
   clienteSucursalId: z.number().int().optional().nullable(),
   descuentoPct: z.number().min(0).max(100).default(0),
@@ -48,6 +49,12 @@ const Schema = z.object({
   ciudadDespacho: z.string().optional().nullable(),
   direccionDespachoExtra: z.string().optional().nullable(),
   telefonoContactoDespacho: z.string().optional().nullable(),
+  emailContactoDespacho: z.string().email().optional().nullable(),
+  plazoEntregaDias: z.number().int().min(0).max(3650).optional().nullable(),
+  plazoEntregaTipo: z.enum(['habiles', 'corridos']).optional().nullable(),
+  marketplaceCanal: z.string().max(80).optional().nullable(),
+  marketplaceComisionPct: z.number().min(0).max(100).optional().nullable(),
+  marketplaceComisionMonto: z.number().min(0).optional().nullable(),
   // Vendedor asignado: solo lo respeta un admin; un vendedor siempre se autoasigna.
   vendedorId: z.number().int().positive().optional().nullable(),
 })
@@ -76,6 +83,12 @@ export default async function createVenta(fastify) {
       direccionDespachoExtra,
       contactoDespacho,
       telefonoContactoDespacho,
+      emailContactoDespacho,
+      plazoEntregaDias,
+      plazoEntregaTipo,
+      marketplaceCanal,
+      marketplaceComisionPct,
+      marketplaceComisionMonto,
       regionDespacho,
       comunaDespacho,
       ciudadDespacho,
@@ -127,6 +140,18 @@ export default async function createVenta(fastify) {
       descripcion: item.descripcion && item.descripcion.trim() ? item.descripcion.trim() : undefined,
       codigoInterno: (item.codigoInterno && item.codigoInterno.trim()) || productosById[item.productoId]?.codigoInterno,
     }))
+    const marketplace = normalizeMarketplace({
+      tipo: rest.tipo,
+      canal: marketplaceCanal,
+      comisionPct: marketplaceComisionPct,
+      comisionMonto: marketplaceComisionMonto,
+      total: computeTotal(itemsData, rest.descuentoPct),
+    })
+    if (marketplace.error) return reply.code(400).send({ error: marketplace.error })
+    const plazoCalculado = plazoEntregaDias !== null && plazoEntregaDias !== undefined
+      ? calculateDeliveryDate({ startDate: licitacionFecha || new Date(), days: plazoEntregaDias, type: plazoEntregaTipo || 'corridos' })
+      : null
+    const ocLicitacion = licitacionOC ? sanitizeCommercialIdentifier(licitacionOC) : null
 
     let cotizacionId = null
     const orden = await fastify.prisma.$transaction(async (tx) => {
@@ -182,10 +207,15 @@ export default async function createVenta(fastify) {
           enviosParciales: enviosParciales || false,
           montoDespacho: montoDespacho || 0,
           fechaPlazo: fechaPlazo ? new Date(fechaPlazo) : null,
+          ...(plazoCalculado ? { fechaPlazo: plazoCalculado } : {}),
+          plazoEntregaDias: plazoEntregaDias ?? null,
+          plazoEntregaTipo: plazoEntregaTipo || null,
           direccionDespacho: direccionDespacho || null,
           direccionDespachoExtra: direccionDespachoExtra || null,
           contactoDespacho: contactoDespacho || null,
           telefonoContactoDespacho: telefonoContactoDespacho || null,
+          emailContactoDespacho: emailContactoDespacho || null,
+          ...marketplace,
           regionDespacho: regionDespacho || null,
           comunaDespacho: comunaDespacho || null,
           ciudadDespacho: ciudadDespacho || null,
@@ -218,8 +248,10 @@ export default async function createVenta(fastify) {
               fecha: licitacionFecha ? new Date(licitacionFecha) : undefined,
               plazo: licitacionPlazo || undefined,
               referencia: licitacionReferencia || undefined,
-              ordenCompra: licitacionOC || undefined,
-              fechaPlazo: fechaPlazo ? new Date(fechaPlazo) : undefined,
+              ordenCompra: ocLicitacion || undefined,
+              fechaPlazo: plazoCalculado || (fechaPlazo ? new Date(fechaPlazo) : undefined),
+              plazoEntregaDias: plazoEntregaDias ?? undefined,
+              plazoEntregaTipo: plazoEntregaTipo || undefined,
               enviosParciales: enviosParciales || undefined,
               montoDespacho: montoDespacho || undefined,
               items: {
@@ -245,11 +277,13 @@ export default async function createVenta(fastify) {
               estado: 'Pendiente',
               plazo: licitacionPlazo || '',
               referencia: licitacionReferencia || '',
-              ordenCompra: licitacionOC || '',
+              ordenCompra: ocLicitacion || '',
               ordenId: created.id,
               sucursalId: created.sucursalId,
               usuario: request.user.nombre || 'Sistema',
-              fechaPlazo: fechaPlazo ? new Date(fechaPlazo) : null,
+              fechaPlazo: plazoCalculado || (fechaPlazo ? new Date(fechaPlazo) : null),
+              plazoEntregaDias: plazoEntregaDias ?? null,
+              plazoEntregaTipo: plazoEntregaTipo || null,
               enviosParciales: enviosParciales || false,
               montoDespacho: montoDespacho || 0,
               items: {

@@ -227,8 +227,10 @@ describeDb('reportes gerenciales backend', () => {
     const baseCobranza = await app.prisma.cobranzaHistorico.findMany({ where: { fechaFactura: { gte: new Date(2026, 3, 1), lte: new Date(2026, 3, 30, 23, 59, 59, 999) } } })
     const baseCaja = await app.prisma.movimientoCaja.findMany({ where: { eliminado: false, fecha: { gte: new Date(2026, 3, 1), lte: new Date(2026, 3, 30, 23, 59, 59, 999) }, NOT: { medioPago: { equals: 'Referencial', mode: 'insensitive' } } } })
     const expectedPorCobrar = baseCobranza.filter(c => c.estado === 'PENDIENTE').reduce((s, c) => s + (c.valorFactura || 0), 0)
-    const expectedIngresos = baseCaja.filter(m => m.tipo === 'Ingreso').reduce((s, m) => s + (m.monto || 0), 0)
-    const expectedEgresos = baseCaja.filter(m => m.tipo === 'Egreso').reduce((s, m) => s + Math.abs(m.monto || 0), 0)
+    // La base historica contiene ambas capitalizaciones (Ingreso/ingreso).
+    // El reporte las normaliza para no perder movimientos importados.
+    const expectedIngresos = baseCaja.filter(m => String(m.tipo).toLowerCase() === 'ingreso').reduce((s, m) => s + (m.monto || 0), 0)
+    const expectedEgresos = baseCaja.filter(m => String(m.tipo).toLowerCase() === 'egreso').reduce((s, m) => s + Math.abs(m.monto || 0), 0)
     expect(body.cuentasPorCobrar.porCobrar).toBe(expectedPorCobrar)
     expect(body.caja.ingresos).toBe(expectedIngresos)
     expect(body.caja.egresos).toBe(expectedEgresos)
@@ -291,8 +293,14 @@ describeDb('reportes gerenciales backend', () => {
       where: { fecha: { gte: new Date(2026, 3, 1), lte: new Date(2026, 3, 30, 23, 59, 59, 999) } },
       include: { items: true },
     })
-    const expectedGanadas = base.filter(l => String(l.estado || '').toLowerCase().includes('adjudic') || l.items.some(i => i.cantAdjudicados > 0)).length
-    const expectedPerdidas = base.filter(l => String(l.estado || '').toLowerCase().includes('perd')).length
+    const resultado = l => {
+      const estado = String(l.estado || '').toLowerCase()
+      if (estado.includes('perd') || estado.includes('rechaz') || estado.includes('no adjudic')) return 'perdida'
+      if (estado.includes('gan') || estado.includes('adjudic') || l.ordenId || l.items.some(i => i.cantAdjudicados > 0)) return 'ganada'
+      return 'pendiente'
+    }
+    const expectedGanadas = base.filter(l => resultado(l) === 'ganada').length
+    const expectedPerdidas = base.filter(l => resultado(l) === 'perdida').length
     expect(body.byResultado.ganada.count).toBe(expectedGanadas)
     expect(body.byResultado.perdida.count).toBe(expectedPerdidas)
   })

@@ -73,8 +73,8 @@ describe('facturacion/printDtePdf', () => {
       },
     })
     const texto = extractPdfText(pdf)
-    expect(texto).toContain('Tipo de Traslado: Traslados internos')
-    expect(texto).toContain('Tipo de Despacho: Despacho por cuenta del receptor')
+    expect(texto).toContain('TIPO DE TRASLADO: Traslados internos')
+    expect(texto).toContain('TIPO DE DESPACHO: Despacho por cuenta del receptor')
   })
 
   it('guia de despacho: motivo desconocido/no informado no revienta el render', async () => {
@@ -83,8 +83,8 @@ describe('facturacion/printDtePdf', () => {
       doc: { tipoDte: 52, folio: 10, items: [{ nombre: 'Producto', cantidad: 1, precio: 1000 }], extra: {} },
     })
     const texto = extractPdfText(pdf)
-    expect(texto).toContain('Tipo de Traslado: No informado')
-    expect(texto).toContain('Tipo de Despacho: No informado')
+    expect(texto).toContain('TIPO DE TRASLADO: No informado')
+    expect(texto).toContain('TIPO DE DESPACHO: No informado')
   })
 
   it('una factura normal (no guia) no imprime la fila de Tipo de Traslado', async () => {
@@ -93,7 +93,7 @@ describe('facturacion/printDtePdf', () => {
       doc: { tipoDte: 33, folio: 11, items: [{ nombre: 'Producto', cantidad: 1, precio: 1000 }] },
     })
     const texto = extractPdfText(pdf)
-    expect(texto).not.toContain('Tipo de Traslado')
+    expect(texto).not.toContain('TIPO DE TRASLADO')
   })
 
   it('imprime la descripcion extendida de un item (DscItem) con wrap real bajo el nombre, sin reventar', async () => {
@@ -167,7 +167,7 @@ describe('facturacion/printDte', () => {
       totales: { neto: 1000, iva: 190, tasaIva: 19, total: 1190, exento: null },
       tedXml: '<TED version="1.0"><DD><RE>76354051-0</RE></DD></TED>'
     })
-    expect(html).toContain('<strong>Tipo de Traslado:</strong> Traslados internos')
-    expect(html).toContain('<strong>Tipo de Despacho:</strong> Despacho por cuenta del receptor')
+    expect(html).toContain('<strong>TIPO DE TRASLADO:</strong> Traslados internos')
+    expect(html).toContain('<strong>TIPO DE DESPACHO:</strong> Despacho por cuenta del receptor')
   })
 })

@@ -6,6 +6,7 @@ import { applyDateRange, parseDate, parseOptionalInt, parsePage, parsePositiveIn
 import { resolveOdtForWrite, resolveOrdenForWrite } from '../relation-guards.js'
 import { registerDespachoMatrizRoutes } from './matriz.js'
 import { attachCliente } from '../ventas/helpers.js'
+import { isValidContactEmail } from '../ventas/operational-rules.js'
 
 const LIST_LIMIT = 100
 
@@ -24,6 +25,7 @@ const DespachoCreate = z.object({
   montoEnvio: z.union([z.number(), z.string()]).optional().nullable(),
   direccion: z.string().optional().nullable(),
   contacto: z.string().optional().nullable(),
+  emailContacto: z.string().trim().email('Correo de contacto invalido').optional().nullable(),
   region: z.string().optional().nullable(),
   comuna: z.string().optional().nullable(),
   parcial: z.boolean().optional(),
@@ -1064,6 +1066,17 @@ export default async function despachosRoutes(fastify) {
     if (b.fechaInterno && !fechaInterno) return reply.code(400).send({ error: 'fechaInterno invalida' })
     if (b.fechaEntrega && !fechaEntrega) return reply.code(400).send({ error: 'fechaEntrega invalida' })
     if (b.montoEnvio && (montoEnvio == null || montoEnvio < 0)) return reply.code(400).send({ error: 'montoEnvio invalido' })
+    const ordenContacto = await fastify.prisma.orden.findUnique({
+      where: { id: resolved.orden.id },
+      select: { emailContactoDespacho: true, clienteId: true },
+    })
+    const clienteContacto = !b.emailContacto && !ordenContacto?.emailContactoDespacho && ordenContacto?.clienteId
+      ? await fastify.prisma.cliente.findUnique({ where: { id: ordenContacto.clienteId }, select: { email: true } })
+      : null
+    const emailContacto = String(b.emailContacto || ordenContacto?.emailContactoDespacho || clienteContacto?.email || '').trim().toLowerCase()
+    if (!isValidContactEmail(emailContacto)) {
+      return reply.code(400).send({ error: 'Correo de contacto de despacho requerido y valido' })
+    }
     const data = {
       ordenId: resolved.orden.id,
       odtId: resolved.odt?.id ?? null,
@@ -1077,6 +1090,7 @@ export default async function despachosRoutes(fastify) {
       montoEnvio,
       direccion: b.direccion || null,
       contacto: b.contacto || null,
+      emailContacto,
       region: b.region || null,
       comuna: b.comuna || null,
       parcial: !!b.parcial,
@@ -1131,8 +1145,11 @@ export default async function despachosRoutes(fastify) {
       data.origenId = resolved.origenId
     }
 
-    for (const f of ['plazoEntrega', 'tipoDespacho', 'transporte', 'numeroSeguimiento', 'direccion', 'contacto', 'region', 'comuna', 'usuario']) {
+    for (const f of ['plazoEntrega', 'tipoDespacho', 'transporte', 'numeroSeguimiento', 'direccion', 'contacto', 'emailContacto', 'region', 'comuna', 'usuario']) {
       if (b[f] !== undefined) data[f] = b[f]
+    }
+    if (b.emailContacto !== undefined && !isValidContactEmail(b.emailContacto)) {
+      return reply.code(400).send({ error: 'Correo de contacto de despacho requerido y valido' })
     }
     if (b.fechaInterno !== undefined) {
       const fechaInterno = b.fechaInterno ? parseDate(b.fechaInterno) : null

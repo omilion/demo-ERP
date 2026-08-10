@@ -14,6 +14,7 @@ import BodegaFormPage from './pages/bodega/BodegaFormPage'
 import TallerPage from './pages/taller/TallerPage'
 import TallerFormPage from './pages/taller/TallerFormPage'
 import TallerOperarioPage from './pages/taller/TallerOperarioPage'
+import TallerCortePage from './pages/taller/TallerCortePage'
 import CajaPage from './pages/caja/CajaPage'
 import CajaFormPage from './pages/caja/CajaFormPage'
 import ClientesPage from './pages/clientes/ClientesPage'
@@ -101,6 +102,7 @@ export const router = createBrowserRouter([
       { path: 'taller/:id', element: protect(<TallerFormPage />, { module: 'taller' }) },
       { path: 'taller/:id/editar', element: protect(<TallerFormPage />, { module: 'taller', permission: 'write' }) },
       { path: 'taller-operario', element: protect(<TallerOperarioPage />, { module: 'taller' }) },
+      { path: 'taller-corte', element: protect(<TallerCortePage />, { module: 'taller' }) },
       { path: 'odt', element: protect(<OdtLegacyRedirect />, { module: 'taller' }) },
       { path: 'odts/:id', element: protect(<OdtLegacyRedirect />, { module: 'taller' }) },
       { path: 'caja', element: protect(<CajaPage />, { module: 'caja' }) },

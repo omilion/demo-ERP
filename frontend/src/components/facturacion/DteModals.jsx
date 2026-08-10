@@ -134,7 +134,7 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
   const cantidadPorItemId = guiaDespachoId
     ? Object.fromEntries((packing.data?.packedGuia || []).map(row => [row.ordenItemId, row.cantidad]))
     : null
-  const receptor = buildReceptor(venta?.cliente)
+  const receptor = buildReceptor(venta?.cliente, venta?.clienteSucursal)
   const autoTipo = isValidRut(receptor.rut) ? 33 : 39
   const [tipoElegido, setTipoElegido] = useState(autoTipo)
   const puedeElegirTipo = !tipoDte
@@ -400,31 +400,57 @@ function ReferenciaRow({ value, onChange, onRemove }) {
   )
 }
 
-const GLOSA_POR_MOTIVO = { 1: 'Anulación', 2: 'Corrección de monto', 3: 'Corrección de texto' }
+const GLOSA_POR_MOTIVO = { 1: 'Anulación', 2: 'Corrección de texto', 3: 'Corrección de monto' }
 
 export function NotaDteModal({ documento, tipoDte, onClose, onSuccess }) {
   const emitir = useEmitirDte()
   const [razon, setRazon] = useState('')
+  const [textoCorregido, setTextoCorregido] = useState('')
   const [error, setError] = useState('')
   const total = Number(documento?.totales?.total || 0)
-  // codRef determina que declara la nota ante el SII: 1 anula el documento
-  // completo (monto fijo = total original), 2 corrige un monto puntual (el
-  // usuario indica cuanto, no necesariamente el total), 3 corrige solo texto
-  // y no tiene efecto en el monto (se declara en 0).
-  const [codRef, setCodRef] = useState('1')
+  const fallbackMotivos = tipoDte === 56
+    ? (Number(documento?.tipoDte) === 61 ? [{ codigo: 1, label: CODREF_MOTIVOS[1] }, { codigo: 3, label: CODREF_MOTIVOS[3] }] : [{ codigo: 3, label: CODREF_MOTIVOS[3] }])
+    : [{ codigo: 1, label: CODREF_MOTIVOS[1] }, ...(Number(documento?.tipoDte) === 33 ? [{ codigo: 2, label: CODREF_MOTIVOS[2] }] : []), { codigo: 3, label: CODREF_MOTIVOS[3] }]
+  const motivos = documento?.motivosPermitidos?.length ? documento.motivosPermitidos : fallbackMotivos
+  const motivoOptions = Object.fromEntries(motivos.map(motivo => [motivo.codigo, motivo.label]))
+  // CodRef SII: 1 anula, 2 corrige texto sin monto y 3 corrige montos.
+  const [codRef, setCodRef] = useState(String(motivos[0]?.codigo || 3))
   const [montoCorreccion, setMontoCorreccion] = useState(String(total))
-  const montoEditable = codRef === '2'
-  const montoFinal = codRef === '3' ? 0 : Number(montoCorreccion) || 0
+  const montoEditable = codRef === '3'
+  const montoFinal = codRef === '2' ? 0 : codRef === '1' ? total : Number(montoCorreccion) || 0
+  const saldoDisponible = Number(documento?.saldoDisponible ?? total)
+  const esExento = Number(documento?.totales?.iva || 0) === 0 && Number(documento?.totales?.exento || 0) > 0
+  const itemsOriginales = Array.isArray(documento?.items) ? documento.items : []
+  const itemsNota = codRef === '1' && itemsOriginales.length
+    ? itemsOriginales.map(item => ({
+      nombre: item.nombre,
+      descripcion: item.descripcion || null,
+      cantidad: Number(item.cantidad) || 1,
+      unidad: item.unidad || null,
+      precio: Number(item.precio) || 0,
+      descuentoMonto: Number(item.descuentoMonto) || 0,
+      exento: Boolean(item.exento),
+    }))
+    : [{
+      nombre: codRef === '2' && textoCorregido.trim() ? textoCorregido.trim() : `${GLOSA_POR_MOTIVO[codRef]} DTE ${documento.tipoDte} folio ${documento.folio}`,
+      cantidad: 1,
+      precio: codRef === '2' ? 0 : (esExento ? montoFinal : solveNetoForTotal(montoFinal)),
+      exento: esExento || codRef === '2',
+    }]
+  const totalesNota = computeDteTotales(itemsNota)
 
   const cambiarMotivo = value => {
     setCodRef(value)
-    setMontoCorreccion(String(value === '1' ? total : value === '3' ? 0 : total))
+    setMontoCorreccion(String(value === '1' ? total : value === '2' ? 0 : (tipoDte === 61 ? saldoDisponible : total)))
     setError('')
   }
 
   const confirmar = async () => {
     if (!razon.trim()) { setError('Indica una razón para la nota.'); return }
-    if (codRef === '2' && montoFinal <= 0) { setError('Indica el monto a corregir.'); return }
+    if (razon.trim().length > 90) { setError('La razón admite un máximo de 90 caracteres para el SII.'); return }
+    if (codRef === '2' && !textoCorregido.trim()) { setError('Indica el texto corregido que quedará declarado en la nota.'); return }
+    if (codRef === '3' && montoFinal <= 0) { setError('Indica el monto a corregir.'); return }
+    if (tipoDte === 61 && codRef === '3' && montoFinal > saldoDisponible) { setError(`El monto supera el saldo acreditable de ${fmt(saldoDisponible)}.`); return }
     setError('')
     try {
       const result = await emitir.mutateAsync({
@@ -432,30 +458,52 @@ export function NotaDteModal({ documento, tipoDte, onClose, onSuccess }) {
         clienteId: documento.clienteId,
         tipoDte,
         receptor: documento.receptor || {},
-        items: [{ nombre: `${GLOSA_POR_MOTIVO[codRef]} documento #${documento.folio || documento.id}`, cantidad: 1, precio: montoFinal / 1.19 }],
-        referencias: [{ tipoDocRef: String(documento.tipoDte), folioRef: String(documento.folio), fechaRef: documento.fechaEmision, codRef, razon: razon.trim() }],
+        items: itemsNota,
+        referencias: [{ docLocalId: Number(documento.id), codRef: Number(codRef), razon: razon.trim() }],
       })
       onSuccess?.(result)
     } catch (cause) { setError(getError(cause)) }
   }
-  return <Modal title={tipoDte === 61 ? 'Nota de crédito' : 'Nota de débito'} onClose={onClose}>
-    <p style={{ fontSize: 13, color: 'var(--text-2)', margin: '0 0 12px' }}>Documento de referencia: {TIPOS_DTE[documento.tipoDte] || `DTE ${documento.tipoDte}`} #{documento.folio || 'sin folio'} ({fmt(total)}).</p>
-    <div style={{ marginBottom: 14 }}>
-      <SelectField label="Motivo" value={codRef} options={CODREF_MOTIVOS} onChange={cambiarMotivo} />
+  const nombreNota = tipoDte === 61 ? 'Nota de Crédito' : 'Nota de Débito'
+  const impacto = codRef === '2' ? 'Sin cambio financiero' : `${tipoDte === 61 ? '−' : '+'}${fmt(totalesNota.total)}`
+  return <Modal title={`Previsualizar ${nombreNota}`} onClose={onClose}>
+    <div style={{ padding: 12, borderRadius: 8, background: '#fff8cc', border: '1px solid #ead56a', marginBottom: 14 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#755f00' }}>Documento original seleccionado</div>
+      <div style={{ marginTop: 4, fontWeight: 700 }}>{TIPOS_DTE[documento.tipoDte] || `DTE ${documento.tipoDte}`} · folio {documento.folio}</div>
+      <div style={{ marginTop: 3, color: 'var(--text-2)', fontSize: 12 }}>{documento.receptor?.razonSocial || '—'} · {documento.receptor?.rut || '—'} · {dateFmt(documento.fechaEmision)}</div>
     </div>
-    {codRef !== '1' && (
+    <div style={{ marginBottom: 14 }}>
+      <SelectField label="Operación tributaria" value={codRef} options={motivoOptions} onChange={cambiarMotivo} />
+    </div>
+    {codRef === '3' && (
       <div style={{ marginBottom: 14, maxWidth: 220 }}>
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Monto a declarar {montoEditable && <span style={{ color: 'var(--red)' }}>*</span>}</label>
-        <input type="number" min="0" value={montoCorreccion} disabled={!montoEditable} onChange={event => setMontoCorreccion(event.target.value)} style={{ ...inputStyle, background: montoEditable ? '#fff' : 'var(--bg)' }} />
-        {codRef === '3' && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Corrección de texto: no altera el monto, se declara en $0.</div>}
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Monto total a corregir <span style={{ color: 'var(--red)' }}>*</span></label>
+        <input type="number" min="1" max={tipoDte === 61 ? saldoDisponible : undefined} value={montoCorreccion} disabled={!montoEditable} onChange={event => setMontoCorreccion(event.target.value)} style={inputStyle} />
+        {tipoDte === 61 && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Saldo máximo acreditable: {fmt(saldoDisponible)}.</div>}
       </div>
     )}
+    {codRef === '2' && <div style={{ marginBottom: 14 }}>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Texto corregido <span style={{ color: 'var(--red)' }}>*</span></label>
+      <input value={textoCorregido} maxLength={80} onChange={event => { setTextoCorregido(event.target.value); setError('') }} placeholder="Texto que reemplaza o corrige al original" style={inputStyle} />
+      <div style={{ marginTop: 4, color: 'var(--text-3)', fontSize: 11 }}>Esta operación no altera el monto del documento.</div>
+    </div>}
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 34px 1fr', alignItems: 'stretch', gap: 8, marginBottom: 14 }}>
+      <div style={notaSummaryStyle}><span style={notaSummaryLabel}>Antes</span><strong>{TIPOS_DTE[documento.tipoDte]}</strong><span>Folio {documento.folio}</span><b>{fmt(total)}</b></div>
+      <div style={{ display: 'grid', placeItems: 'center', color: 'var(--text-3)', fontSize: 20 }}>→</div>
+      <div style={{ ...notaSummaryStyle, borderColor: tipoDte === 61 ? 'var(--red)' : 'var(--blue)' }}><span style={notaSummaryLabel}>Se emitirá</span><strong>{nombreNota}</strong><span>{motivoOptions[codRef]}</span><b style={{ color: tipoDte === 61 ? 'var(--red)' : 'var(--blue)' }}>{impacto}</b></div>
+    </div>
+    <div style={{ padding: 10, borderRadius: 8, background: 'var(--bg)', marginBottom: 14, fontSize: 12, color: 'var(--text-2)' }}>
+      La nota quedará referenciada al DTE {documento.tipoDte}, folio {documento.folio}, y se intentará enviar automáticamente al SII después de asignar el folio.
+    </div>
     <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Razón <span style={{ color: 'var(--red)' }}>*</span></label>
-    <textarea value={razon} onChange={event => { setRazon(event.target.value); setError('') }} rows={4} style={{ width: '100%', padding: 10, border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'inherit', resize: 'vertical' }} />
+    <textarea value={razon} maxLength={90} onChange={event => { setRazon(event.target.value); setError('') }} rows={3} placeholder="Explica claramente el motivo que se informará al SII" style={{ width: '100%', padding: 10, border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'inherit', resize: 'vertical' }} />
+    <div style={{ textAlign: 'right', color: 'var(--text-3)', fontSize: 11 }}>{razon.length}/90</div>
     {error && <div style={errorStyle}>{error}</div>}
-    <div style={footerStyle}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn icon="send" onClick={confirmar} disabled={emitir.isPending}>{emitir.isPending ? 'Emitiendo...' : 'Confirmar y emitir'}</Btn></div>
+    <div style={footerStyle}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn icon="send" onClick={confirmar} disabled={emitir.isPending || !razon.trim()}>{emitir.isPending ? 'Emitiendo y enviando...' : `Emitir ${tipoDte === 61 ? 'Nota de Crédito' : 'Nota de Débito'}`}</Btn></div>
   </Modal>
 }
 
 const errorStyle = { marginTop: 14, padding: '10px 12px', borderRadius: 8, background: 'var(--red-bg)', color: 'var(--red)', fontSize: 13 }
 const footerStyle = { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }
+const notaSummaryStyle = { display: 'grid', gap: 5, padding: 12, border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, background: '#fff' }
+const notaSummaryLabel = { color: 'var(--text-3)', fontSize: 10, fontWeight: 800, textTransform: 'uppercase' }

@@ -431,7 +431,7 @@ export default function TallerFormPage() {
           <Input type="number" value={data.ordenId} onChange={v => set('ordenId', v)} placeholder="ID de venta/orden" error={errors.ordenId} disabled={!isEditMode} />
         </FormField>
         <FormField label="Tipo de Trabajo">
-          <Select value={data.tipo} onChange={v => set('tipo', v)} options={['Espumas', 'Confecciones', 'Madera', 'Externo']} disabled={!isEditMode} />
+              <Select value={data.tipo} onChange={v => set('tipo', v)} options={['Corte', 'Espumas', 'Confecciones', 'Madera', 'Externo']} disabled={!isEditMode} />
         </FormField>
         <FormField label="Estado">
           <Select value={data.estado} onChange={v => set('estado', v)} options={ESTADOS_ODT} disabled={!isEditMode} />

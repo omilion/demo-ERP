@@ -15,6 +15,57 @@ function applyScopeByRole(where, user) {
   return where
 }
 
+function startAndEndOfToday() {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(start)
+  end.setDate(end.getDate() + 1)
+  return { start, end }
+}
+
+async function selectRoundRobinSeller(tx) {
+  const vendedores = await tx.user.findMany({
+    where: { activo: true, role: 'vendedor' },
+    select: { id: true, nombre: true, email: true },
+    orderBy: { id: 'asc' },
+  })
+  if (!vendedores.length) return null
+  const { start, end } = startAndEndOfToday()
+  const [counts, recent] = await Promise.all([
+    tx.crmAsignacionHistorial.groupBy({
+      by: ['vendedorId'],
+      where: { vendedorId: { in: vendedores.map(vendedor => vendedor.id) }, createdAt: { gte: start, lt: end } },
+      _count: { _all: true },
+    }),
+    tx.crmAsignacionHistorial.findMany({
+      where: { vendedorId: { in: vendedores.map(vendedor => vendedor.id) } },
+      select: { vendedorId: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ])
+  const countMap = new Map(counts.map(row => [row.vendedorId, row._count._all]))
+  const recentMap = new Map()
+  for (const row of recent) if (!recentMap.has(row.vendedorId)) recentMap.set(row.vendedorId, row.createdAt)
+  return vendedores
+    .map(vendedor => ({ ...vendedor, asignacionesHoy: countMap.get(vendedor.id) || 0, ultimaAsignacion: recentMap.get(vendedor.id)?.getTime() || 0 }))
+    .filter(vendedor => vendedor.asignacionesHoy < 10)
+    .sort((a, b) => a.asignacionesHoy - b.asignacionesHoy || a.ultimaAsignacion - b.ultimaAsignacion || a.id - b.id)[0] || null
+}
+
+async function assignLead(tx, crmId, { origen, asignadoPorId = null, motivo = null, vendedorAnteriorId = null } = {}) {
+  const vendedor = await selectRoundRobinSeller(tx)
+  if (!vendedor) return null
+  const now = new Date()
+  const lead = await tx.crmRegistro.update({
+    where: { id: crmId },
+    data: { vendedorId: vendedor.id, ejecutiva: vendedor.nombre, asignadoAt: now, asignacionOrigen: origen },
+  })
+  await tx.crmAsignacionHistorial.create({
+    data: { crmId, vendedorId: vendedor.id, vendedorAnteriorId, origen, motivo, asignadoPorId },
+  })
+  return { lead, vendedor }
+}
+
 export default async function crmRoutes(fastify) {
   fastify.register(async function (f) {
     // GET /api/crm?ejecutiva=...&estado=...&prioridad=...&search=...&page=1
@@ -57,6 +108,67 @@ export default async function crmRoutes(fastify) {
       ])
 
       return { items, total, limit: LIMIT }
+    })
+
+    f.post('/', {
+      preHandler: [f.authenticate, f.rbac('ventas', 'write')],
+    }, async (request, reply) => {
+      const b = request.body || {}
+      const nombre = String(b.nombre || '').trim()
+      const rsocial = String(b.rsocial || '').trim()
+      const email = String(b.email || '').trim()
+      const telefono = String(b.telefono || '').trim()
+      if (!nombre && !rsocial) return reply.code(400).send({ error: 'Indica nombre o razon social' })
+      if (!email && !telefono) return reply.code(400).send({ error: 'Indica correo o telefono de contacto' })
+      if (email && !/^\S+@\S+\.\S+$/.test(email)) return reply.code(400).send({ error: 'Correo invalido' })
+
+      const result = await f.prisma.$transaction(async tx => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('crm-round-robin')::bigint)`
+        const vendedor = await selectRoundRobinSeller(tx)
+        if (!vendedor) return { status: 409, error: 'No hay vendedores disponibles: todos alcanzaron el maximo de 10 leads diarios o no existen vendedores activos' }
+        const now = new Date()
+        const lead = await tx.crmRegistro.create({
+          data: {
+            nombre: nombre || null,
+            rsocial: rsocial || null,
+            rut: String(b.rut || '').trim() || null,
+            email: email || null,
+            telefono: telefono || null,
+            accion: String(b.accion || '').trim() || 'Nuevo contacto',
+            comentarios: String(b.comentarios || '').trim() || null,
+            prioridad: String(b.prioridad || '').trim() || 'Media',
+            estado: '0',
+            fecha: new Date(),
+            usuario: request.user?.nombre || request.user?.email || null,
+            vendedorId: vendedor.id,
+            ejecutiva: vendedor.nombre,
+            asignadoAt: now,
+            asignacionOrigen: String(b.origen || 'ingreso_manual').trim(),
+          },
+        })
+        await tx.crmAsignacionHistorial.create({
+          data: { crmId: lead.id, vendedorId: vendedor.id, origen: String(b.origen || 'ingreso_manual').trim(), asignadoPorId: Number(request.user?.id) || null },
+        })
+        return { lead, vendedor }
+      })
+      if (result?.error) return reply.code(result.status || 400).send({ error: result.error })
+      return reply.code(201).send(result)
+    })
+
+    f.post('/asignar-pendientes', {
+      preHandler: [f.authenticate, f.rbac('admin', 'write', { allowExtra: false })],
+    }, async (request) => {
+      return f.prisma.$transaction(async tx => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('crm-round-robin')::bigint)`
+        const pendientes = await tx.crmRegistro.findMany({ where: { vendedorId: null, estado: { not: '3' } }, select: { id: true }, orderBy: { createdAt: 'asc' }, take: 500 })
+        const asignados = []
+        for (const pendiente of pendientes) {
+          const assigned = await assignLead(tx, pendiente.id, { origen: 'regularizacion_automatica', asignadoPorId: Number(request.user?.id) || null })
+          if (!assigned) break
+          asignados.push({ crmId: pendiente.id, vendedorId: assigned.vendedor.id, ejecutiva: assigned.vendedor.nombre })
+        }
+        return { asignados, total: asignados.length, pendientesSinAsignar: pendientes.length - asignados.length }
+      })
     })
 
     // GET /api/crm/pendientes-hoy — vendedor pending tasks
@@ -199,9 +311,21 @@ export default async function crmRoutes(fastify) {
       }
 
       const data = {}
+      let existing = null
       // Asignación de vendedor: solo el admin puede asignar/reasignar el dueño.
       if (isAdmin && b.vendedorId !== undefined) {
+        existing = await f.prisma.crmRegistro.findUnique({ where: { id: parseInt(id) } })
+        if (!existing) return reply.status(404).send({ error: 'Registro CRM no encontrado' })
         data.vendedorId = b.vendedorId === null || b.vendedorId === '' ? null : parseInt(b.vendedorId, 10)
+        data.asignadoAt = new Date()
+        data.asignacionOrigen = 'reasignacion_manual'
+        if (data.vendedorId) {
+          const vendedor = await f.prisma.user.findFirst({ where: { id: data.vendedorId, activo: true, role: 'vendedor' }, select: { id: true, nombre: true } })
+          if (!vendedor) return reply.status(400).send({ error: 'Vendedor no valido o inactivo' })
+          data.ejecutiva = vendedor.nombre
+        } else {
+          data.ejecutiva = null
+        }
       }
       if (b.estado !== undefined) {
         const normalizedEstado = normalizeEstado(b.estado)
@@ -211,7 +335,7 @@ export default async function crmRoutes(fastify) {
       if (b.prioridad !== undefined) data.prioridad = b.prioridad || null
       if (b.comentarios !== undefined) data.comentarios = b.comentarios || null
       if (b.fechaProximo !== undefined) data.fechaProximo = b.fechaProximo ? new Date(b.fechaProximo) : null
-      if (b.ejecutiva !== undefined) data.ejecutiva = b.ejecutiva || null
+      if (b.ejecutiva !== undefined && !(isAdmin && b.vendedorId !== undefined)) data.ejecutiva = b.ejecutiva || null
       if (b.nombre !== undefined) data.nombre = b.nombre || null
       if (b.rsocial !== undefined) data.rsocial = b.rsocial || null
       if (b.email !== undefined) data.email = b.email || null
@@ -222,7 +346,16 @@ export default async function crmRoutes(fastify) {
       if (b.fechaCotizacion !== undefined) data.fechaCotizacion = b.fechaCotizacion ? new Date(b.fechaCotizacion) : null
 
       if (Object.keys(data).length === 0) return reply.status(400).send({ error: 'Nothing to update' })
-      const updated = await f.prisma.crmRegistro.update({ where: { id: parseInt(id) }, data })
+      const reassigned = isAdmin && b.vendedorId !== undefined && existing.vendedorId !== data.vendedorId
+      if (reassigned && String(b.motivoReasignacion || '').trim().length < 5) {
+        return reply.status(400).send({ error: 'Indica el motivo de la reasignacion' })
+      }
+      if (!reassigned) return f.prisma.crmRegistro.update({ where: { id: parseInt(id) }, data })
+      const updated = await f.prisma.$transaction(async tx => {
+        const saved = await tx.crmRegistro.update({ where: { id: parseInt(id) }, data })
+        await tx.crmAsignacionHistorial.create({ data: { crmId: saved.id, vendedorId: data.vendedorId, vendedorAnteriorId: existing.vendedorId, origen: 'reasignacion_manual', motivo: String(b.motivoReasignacion || '').trim(), asignadoPorId: Number(request.user?.id) || null } })
+        return saved
+      })
       return updated
     })
 
@@ -300,9 +433,7 @@ export default async function crmRoutes(fastify) {
           activo: true,
           role: { in: ['admin', 'vendedor'] }
         },
-        select: {
-          nombre: true
-        }
+        select: { id: true, nombre: true }
       })
 
       const namesSet = new Set()
@@ -312,7 +443,7 @@ export default async function crmRoutes(fastify) {
         if (u.nombre && u.nombre.trim()) {
           const name = u.nombre.trim()
           namesSet.add(name.toLowerCase())
-          result.push({ ejecutiva: name, source: 'user' })
+          result.push({ ejecutiva: name, vendedorId: u.id, source: 'user' })
         }
       }
 

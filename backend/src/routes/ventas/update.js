@@ -7,6 +7,7 @@ import { canApplyDescuento } from './descuentos-permissions.js'
 import { getVentaDescuentoCatalogKind, validateVentaDescuentoCatalogForWrite } from './descuentos-catalog.js'
 import { assertDiscountAuthorizationForDraft } from '../descuentos/rules-engine.js'
 import { autoNotifyTaller } from '../pasar-taller/service.js'
+import { calculateDeliveryDate, normalizeMarketplace, sanitizeCommercialIdentifier } from './operational-rules.js'
 
 export const ESTADO_PAGO_VALUES = ['No pagada', 'Pagada', 'Parcial']
 export const ESTADO_ENTREGA_VALUES = ['Pendiente entrega', 'En despacho', 'Entregada', 'Parcial']
@@ -22,7 +23,7 @@ const ItemSchema = z.object({
 })
 
 const Schema = z.object({
-  tipo: z.enum(['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala']).optional(),
+  tipo: z.enum(['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala', 'Marketplace']).optional(),
   estado: z.string().optional(),
   estadoPago: z.enum(ESTADO_PAGO_VALUES).optional(),
   estadoEntrega: z.enum(ESTADO_ENTREGA_VALUES).optional(),
@@ -49,6 +50,12 @@ const Schema = z.object({
   direccionDespachoExtra: z.string().optional().nullable(),
   contactoDespacho: z.string().optional().nullable(),
   telefonoContactoDespacho: z.string().optional().nullable(),
+  emailContactoDespacho: z.string().email().optional().nullable(),
+  plazoEntregaDias: z.number().int().min(0).max(3650).optional().nullable(),
+  plazoEntregaTipo: z.enum(['habiles', 'corridos']).optional().nullable(),
+  marketplaceCanal: z.string().max(80).optional().nullable(),
+  marketplaceComisionPct: z.number().min(0).max(100).optional().nullable(),
+  marketplaceComisionMonto: z.number().min(0).optional().nullable(),
   regionDespacho: z.string().optional().nullable(),
   comunaDespacho: z.string().optional().nullable(),
   ciudadDespacho: z.string().optional().nullable(),
@@ -99,6 +106,12 @@ export default async function updateVenta(fastify) {
         direccionDespachoExtra,
         contactoDespacho,
         telefonoContactoDespacho,
+        emailContactoDespacho,
+        plazoEntregaDias,
+        plazoEntregaTipo,
+        marketplaceCanal,
+        marketplaceComisionPct,
+        marketplaceComisionMonto,
         regionDespacho,
         comunaDespacho,
         ciudadDespacho,
@@ -171,13 +184,32 @@ export default async function updateVenta(fastify) {
       if (enviosParciales !== undefined) ordenData.enviosParciales = enviosParciales
       if (montoDespacho !== undefined) ordenData.montoDespacho = montoDespacho
       if (fechaPlazo !== undefined) ordenData.fechaPlazo = fechaPlazo ? new Date(fechaPlazo) : null
+      if (plazoEntregaDias !== undefined) {
+        ordenData.plazoEntregaDias = plazoEntregaDias
+        ordenData.plazoEntregaTipo = plazoEntregaTipo || 'corridos'
+        ordenData.fechaPlazo = plazoEntregaDias === null ? null : calculateDeliveryDate({ days: plazoEntregaDias, type: plazoEntregaTipo || 'corridos' })
+      } else if (plazoEntregaTipo !== undefined) {
+        ordenData.plazoEntregaTipo = plazoEntregaTipo
+      }
       if (direccionDespacho !== undefined) ordenData.direccionDespacho = direccionDespacho
       if (direccionDespachoExtra !== undefined) ordenData.direccionDespachoExtra = direccionDespachoExtra
       if (contactoDespacho !== undefined) ordenData.contactoDespacho = contactoDespacho
       if (telefonoContactoDespacho !== undefined) ordenData.telefonoContactoDespacho = telefonoContactoDespacho
+      if (emailContactoDespacho !== undefined) ordenData.emailContactoDespacho = emailContactoDespacho
       if (regionDespacho !== undefined) ordenData.regionDespacho = regionDespacho
       if (comunaDespacho !== undefined) ordenData.comunaDespacho = comunaDespacho
       if (ciudadDespacho !== undefined) ordenData.ciudadDespacho = ciudadDespacho
+      if (marketplaceCanal !== undefined || marketplaceComisionPct !== undefined || marketplaceComisionMonto !== undefined || ordenData.tipo !== undefined) {
+        const marketplace = normalizeMarketplace({
+          tipo: ordenData.tipo ?? current.tipo,
+          canal: marketplaceCanal,
+          comisionPct: marketplaceComisionPct,
+          comisionMonto: marketplaceComisionMonto,
+          total: computeTotal(items || current.items, ordenData.descuentoPct ?? current.descuentoPct),
+        })
+        if (marketplace.error) return reply.code(400).send({ error: marketplace.error })
+        Object.assign(ordenData, marketplace)
+      }
 
       if (ordenData.clienteSucursalId) {
         const sucursal = await fastify.prisma.clienteSucursal.findFirst({
@@ -411,7 +443,7 @@ export default async function updateVenta(fastify) {
             if (licitacionFecha !== undefined) dataToUpdate.fecha = licitacionFecha ? new Date(licitacionFecha) : null
             if (licitacionPlazo !== undefined) dataToUpdate.plazo = licitacionPlazo
             if (licitacionReferencia !== undefined) dataToUpdate.referencia = licitacionReferencia
-            if (licitacionOC !== undefined) dataToUpdate.ordenCompra = licitacionOC
+            if (licitacionOC !== undefined) dataToUpdate.ordenCompra = sanitizeCommercialIdentifier(licitacionOC)
             if (fechaPlazo !== undefined) dataToUpdate.fechaPlazo = fechaPlazo ? new Date(fechaPlazo) : null
             if (enviosParciales !== undefined) dataToUpdate.enviosParciales = enviosParciales
             if (montoDespacho !== undefined) dataToUpdate.montoDespacho = montoDespacho
@@ -449,7 +481,7 @@ export default async function updateVenta(fastify) {
                 estado: 'Pendiente',
                 plazo: licitacionPlazo || '',
                 referencia: licitacionReferencia || '',
-                ordenCompra: licitacionOC || '',
+                ordenCompra: sanitizeCommercialIdentifier(licitacionOC) || '',
                 ordenId: id,
                 sucursalId: lockedCurrent.sucursalId,
                 usuario: request.user.nombre || 'Sistema',

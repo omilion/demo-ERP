@@ -11,6 +11,18 @@ function cleanString(value) {
   return value == null ? '' : String(value).trim()
 }
 
+async function isCorteEntry(prisma, id) {
+  const entry = await prisma.bitacoraTaller.findUnique({
+    where: { id },
+    select: {
+      odt: {
+        select: { items: { select: { talleres: { select: { taller: { select: { nombre: true } } } } } } },
+      },
+    },
+  })
+  return Boolean(entry?.odt?.items?.some(item => item.talleres?.some(rel => /corte/i.test(rel.taller?.nombre || ''))))
+}
+
 function auditUsuario(user) {
   return cleanString(user?.nombre) || cleanString(user?.email) || cleanString(user?.username) || 'Sistema'
 }
@@ -283,11 +295,12 @@ export default async function bitacoraTallerRoutes(fastify) {
       sucursalId = resolved.odt.sucursalId ?? sucursalId
     }
 
-    const entry = await fastify.prisma.bitacoraTaller.create({
+      const entry = await fastify.prisma.bitacoraTaller.create({
       data: {
         odtId: resolvedOdtId,
         usuario: usuarioTrim,
         usuarioReporta: auditUsuario(request.user),
+        ipEquipo: request.ip,
         sucursalId,
         fecha: fechaParsed,
         texto: textoTrim,
@@ -301,6 +314,9 @@ export default async function bitacoraTallerRoutes(fastify) {
   }, async (request, reply) => {
     const id = parsePositiveInt(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID invalido' })
+    if (await isCorteEntry(fastify.prisma, id)) {
+      return reply.code(409).send({ error: 'La bitacora de Taller de Corte es append-only y no se puede editar' })
+    }
 
     const current = await fastify.prisma.bitacoraTaller.findFirst({
       where: combineWhere([sucursalScope(request.user), { id }]),
@@ -333,6 +349,9 @@ export default async function bitacoraTallerRoutes(fastify) {
   }, async (request, reply) => {
     const id = parsePositiveInt(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID invalido' })
+    if (await isCorteEntry(fastify.prisma, id)) {
+      return reply.code(409).send({ error: 'La bitacora de Taller de Corte es append-only y no se puede borrar' })
+    }
     const current = await fastify.prisma.bitacoraTaller.findFirst({
       where: combineWhere([sucursalScope(request.user), { id }]),
       select: { id: true },

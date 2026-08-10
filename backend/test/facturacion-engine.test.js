@@ -1,4 +1,5 @@
 // D:\plastimar-erp-v2\backend\test\facturacion-engine.test.js
+import 'dotenv/config'
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -45,16 +46,19 @@ function writeThrowawayTestCert(dataDir, password) {
 }
 
 describe('facturacion/engine', () => {
-  let prisma, db, dataDir
+  let prisma, db, dataDir, empresaOriginal
+  const ambienteQa = `qa-engine-${process.pid}-${Date.now()}`
 
   beforeAll(async () => {
     const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
     prisma = new PrismaClient({ adapter })
     db = createFacturacionDb(prisma)
+    empresaOriginal = await db.getEmpresa()
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'facturacion-engine-test-'))
   })
 
   afterAll(async () => {
+    await db.saveEmpresa(empresaOriginal)
     fs.rmSync(dataDir, { recursive: true, force: true })
     await prisma.$disconnect()
   })
@@ -79,7 +83,7 @@ describe('facturacion/engine', () => {
     beforeEach(async () => {
       writeThrowawayTestCert(dataDir, 'clave123')
       const empresa = await db.getEmpresa()
-      await db.saveEmpresa({ ...empresa, certPass: 'clave123', fchResol: empresa.fchResol || '2026-07-01', acteco: empresa.acteco || '999999' })
+      await db.saveEmpresa({ ...empresa, ambiente: ambienteQa, certPass: 'clave123', fchResol: '2099-07-01', acteco: empresa.acteco || '999999' })
       engine = createFacturacionEngine({ db, dataDir })
       // El CAF trae su propia llave RSA (RSASK) con la que buildTed() firma el
       // TED — debe ser una PEM real (generada aqui) o crypto.createSign()
@@ -89,8 +93,8 @@ describe('facturacion/engine', () => {
       cafRecord = await prisma.factCaf.create({
         data: {
           tipoDte: 33, folioDesde: 900, folioHasta: 999, siguienteFolio: 900,
-          fechaAutorizacion: '2026-07-01', ambiente: 'certificacion',
-          xml: `<AUTORIZACION><CAF version="1.0"><DA><RE>76354051-0</RE><RS>PLASTIMAR LIMITADA</RS><TD>33</TD><RNG><D>900</D><H>999</H></RNG><FA>2026-07-01</FA><IDK>100</IDK></DA></CAF><RSASK>${cafPrivateKeyPem}</RSASK></AUTORIZACION>`
+          fechaAutorizacion: '2099-07-01', ambiente: ambienteQa,
+          xml: `<AUTORIZACION><CAF version="1.0"><DA><RE>76354051-0</RE><RS>PLASTIMAR LIMITADA</RS><TD>33</TD><RNG><D>900</D><H>999</H></RNG><FA>2099-07-01</FA><IDK>100</IDK></DA></CAF><RSASK>${cafPrivateKeyPem}</RSASK></AUTORIZACION>`
         }
       })
     })
@@ -126,7 +130,7 @@ describe('facturacion/engine', () => {
 
     it('emitir() throws when there are no folios left for the tipoDte/ambiente', async () => {
       const doc = await db.documentos.create({
-        tipoDte: 56, // Nota de debito: sin CAF cargado en este test
+        tipoDte: 34, // Factura exenta: sin CAF cargado en este ambiente QA aislado
         receptor: { rut: '11111111-1', razonSocial: 'Cliente Prueba' },
         items: [{ nombre: 'Ajuste', cantidad: 1, precio: 1000 }]
       })

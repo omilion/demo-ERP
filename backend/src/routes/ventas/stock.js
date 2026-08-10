@@ -8,7 +8,7 @@ function normalize(value) {
 
 export function isVentaDirectaStockTipo(tipo) {
   const text = normalize(tipo)
-  return text === 'normal' || text === 'venta sala' || text === 'venta directa' || text === 'venta web' || text === 'convenio marco' || text === 'licitacion'
+  return text === 'normal' || text === 'venta sala' || text === 'venta directa' || text === 'venta web' || text === 'convenio marco' || text === 'licitacion' || text === 'marketplace'
 }
 
 function addDelta(map, productId, delta) {

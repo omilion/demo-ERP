@@ -5,7 +5,7 @@ import { can } from '../../middleware/rbac.js'
 import { ODT_ESTADOS, applyOdtStateSideEffects, buildOdtUpdateBitacoraEntries, getAuditUsuario, validateOperario } from './operations.js'
 
 const Schema = z.object({
-  tipo: z.enum(['Espumas', 'Confecciones', 'Madera', 'Externo']).optional(),
+  tipo: z.enum(['Corte', 'Espumas', 'Confecciones', 'Madera', 'Externo']).optional(),
   clienteNombre: z.string().optional(),
   descripcion: z.string().optional(),
   obsGeneral: z.string().optional().nullable(),

@@ -24,6 +24,22 @@ export const useCrmPatch = () => {
   })
 }
 
+export const useCrmCreate = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: data => api.post('/crm', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm'] }),
+  })
+}
+
+export const useCrmAsignarPendientes = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post('/crm/asignar-pendientes').then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm'] }),
+  })
+}
+
 export const useCrmOrdenLink = (id, enabled) =>
   useQuery({
     queryKey: ['crm', 'orden-link', id],

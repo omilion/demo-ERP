@@ -21,6 +21,7 @@ export function tipoTallerFilter(tipo) {
   const names = []
   if (text.includes('espuma')) names.push('espuma')
   else if (text.includes('confe')) names.push('confe')
+  else if (text.includes('corte')) names.push('corte')
   else if (text.includes('madera')) names.push('madera', 'externo')
   else if (text.includes('externo')) names.push('externo', 'madera')
   if (!names.length) return { tipo }

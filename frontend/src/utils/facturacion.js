@@ -40,12 +40,12 @@ export const TIPO_DESPACHO = {
 }
 
 // CodRef del SII para Nota de Credito/Debito (mismo catalogo para 56 y 61):
-// que corrige el documento de referencia. 2 y 3 requieren declarar el monto
-// real de la correccion, no repetir el total del documento original.
+// que corrige el documento de referencia. El codigo 2 solo corrige texto y no
+// mueve montos; el codigo 3 declara el monto real de la correccion.
 export const CODREF_MOTIVOS = {
   1: 'Anula el documento de referencia',
-  2: 'Corrige el monto',
-  3: 'Corrige el texto (sin efecto en el monto)',
+  2: 'Corrige el texto (sin efecto en el monto)',
+  3: 'Corrige montos',
 }
 
 // Catalogo TpoDocRef del SII para el bloque <Referencia>: los tipos de DTE
@@ -123,16 +123,16 @@ export function isValidRut(value) {
   return String(expected === 11 ? '0' : expected === 10 ? 'K' : expected) === verifier
 }
 
-export const buildReceptor = (cliente = {}) => ({
+export const buildReceptor = (cliente = {}, sucursal = null) => ({
   rut: cliente.rut || '',
   razonSocial: cliente.razonSocial || cliente.nombre || '',
   giro: cliente.giro || '',
-  contacto: cliente.contacto || '',
-  email: cliente.email || '',
+  contacto: sucursal?.contacto || cliente.contacto || '',
+  email: sucursal?.email || cliente.email || '',
   nacionalidad: cliente.nacionalidad || '',
-  direccion: cliente.direccion || '',
-  comuna: cliente.comuna || '',
-  ciudad: cliente.ciudad || '',
+  direccion: sucursal?.direccion || cliente.direccion || '',
+  comuna: sucursal?.comuna || cliente.comuna || '',
+  ciudad: sucursal?.ciudad || cliente.ciudad || '',
 })
 
 // Reparte un monto entero (pesos) proporcional a weights sin perder ni sobrar

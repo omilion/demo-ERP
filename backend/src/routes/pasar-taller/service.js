@@ -55,6 +55,7 @@ export function isProductoTransitorio(producto) {
 
 export function tallerKind(nombre) {
   const normalized = normalizeText(nombre);
+  if (normalized.includes('corte')) return 'corte';
   if (normalized.includes('confe')) return 'confecciones';
   if (normalized.includes('espuma')) return 'espumas';
   if (normalized.includes('madera') || normalized.includes('externo')) return 'externo';
@@ -63,6 +64,7 @@ export function tallerKind(nombre) {
 
 export function tallerLabel(taller) {
   const kind = tallerKind(taller?.nombre);
+  if (kind === 'corte') return 'Taller de Corte';
   if (kind === 'externo') return 'Madera';
   if (kind === 'confecciones') return 'Confecciones';
   if (kind === 'espumas') return 'Espumas';
@@ -71,6 +73,7 @@ export function tallerLabel(taller) {
 
 export function selectPrimaryTipo(talleres = []) {
   const kinds = talleres.map(t => tallerKind(t.nombre));
+  if (kinds.includes('corte')) return 'Corte';
   if (kinds.includes('espumas')) return 'Espumas';
   if (kinds.includes('confecciones')) return 'Confecciones';
   if (kinds.includes('externo')) return 'Madera';

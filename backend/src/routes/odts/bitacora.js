@@ -5,6 +5,14 @@ function auditUsuario(user) {
   return String(user?.nombre || user?.email || '').trim() || 'Sistema'
 }
 
+async function isCorteOdt(prisma, odtId) {
+  const odt = await prisma.odt.findUnique({
+    where: { id: odtId },
+    select: { items: { select: { talleres: { select: { taller: { select: { nombre: true } } } } } } },
+  })
+  return Boolean(odt?.items?.some(item => item.talleres?.some(rel => /corte/i.test(rel.taller?.nombre || ''))))
+}
+
 export default async function bitacoraRoutes(fastify) {
   // GET /odts/:id/bitacora
   fastify.get('/:id/bitacora', {
@@ -41,6 +49,7 @@ export default async function bitacoraRoutes(fastify) {
         odtId,
         usuario,
         usuarioReporta: usuario,
+        ipEquipo: request.ip,
         sucursalId: resolved.odt.sucursalId ?? getUserSucursalId(request.user),
         fecha: new Date(),
         texto: texto.trim(),
@@ -57,6 +66,9 @@ export default async function bitacoraRoutes(fastify) {
     if (isNaN(entryId)) return reply.code(400).send({ error: 'ID invalido' })
     const odtId = parseInt(request.params.id, 10)
     if (isNaN(odtId)) return reply.code(400).send({ error: 'ID invalido' })
+    if (await isCorteOdt(fastify.prisma, odtId)) {
+      return reply.code(409).send({ error: 'La bitacora de Taller de Corte es append-only y no se puede borrar' })
+    }
     const sucursalId = getUserSucursalId(request.user)
     try {
       if (sucursalId) {

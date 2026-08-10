@@ -1,4 +1,5 @@
 // D:\plastimar-erp-v2\backend\test\facturacion-db.test.js
+import 'dotenv/config'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'

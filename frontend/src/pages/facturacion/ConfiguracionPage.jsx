@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { PageHeader, Btn, Badge, Table } from '../../components/shared'
 import { FormField, Input, Select } from '../../components/forms'
-import { useEmpresa, useUpdateEmpresa, useUploadCertificado, useCafs, useUploadCaf, useDeleteCaf } from '../../api/facturacion'
+import { useEmpresa, useUpdateEmpresa, useUploadCertificado, useCafs, useUploadCaf, useDeleteCaf, useAjustarFolioCaf } from '../../api/facturacion'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 import { toast, confirmDialog } from '../../store/notif'
@@ -11,6 +11,7 @@ const errorText = error => error?.response?.data?.error || 'No se pudo completar
 
 const EMPRESA_EMPTY = {
   rut: '', razonSocial: '', giro: '', acteco: '', direccion: '', comuna: '', ciudad: '',
+  telefono: '', email: '',
   rutEnvia: '', fchResol: '', nroResol: '', ambiente: 'certificacion',
 }
 
@@ -46,6 +47,8 @@ function EmpresaSection({ canWrite }) {
         <FormField label="Dirección"><Input value={form.direccion} disabled={!canWrite} onChange={v => set('direccion', v)} /></FormField>
         <FormField label="Comuna"><Input value={form.comuna} disabled={!canWrite} onChange={v => set('comuna', v)} /></FormField>
         <FormField label="Ciudad"><Input value={form.ciudad} disabled={!canWrite} onChange={v => set('ciudad', v)} /></FormField>
+        <FormField label="Teléfono"><Input value={form.telefono} disabled={!canWrite} onChange={v => set('telefono', v)} /></FormField>
+        <FormField label="Email"><Input value={form.email} disabled={!canWrite} onChange={v => set('email', v)} /></FormField>
         <FormField label="RUT firmante (titular del certificado)"><Input value={form.rutEnvia} disabled={!canWrite} onChange={v => set('rutEnvia', v)} placeholder="16608585-3" /></FormField>
         <FormField label="Fecha resolución SII (FchResol)"><Input type="date" value={form.fchResol || ''} disabled={!canWrite} onChange={v => set('fchResol', v)} /></FormField>
         <FormField label="N° resolución (0 en certificación)"><Input type="number" value={form.nroResol} disabled={!canWrite} onChange={v => set('nroResol', v)} /></FormField>
@@ -114,11 +117,12 @@ function CertificadoSection({ canWrite }) {
   )
 }
 
-function CafsSection({ canWrite }) {
+function CafsSection({ canWrite, canAdjustFolios }) {
   const { data: empresaData } = useEmpresa()
   const { data, isLoading } = useCafs()
   const uploadMut = useUploadCaf()
   const deleteMut = useDeleteCaf()
+  const ajustarMut = useAjustarFolioCaf()
   const fileRef = useRef(null)
   const ambiente = empresaData?.empresa?.ambiente || 'certificacion'
 
@@ -144,13 +148,27 @@ function CafsSection({ canWrite }) {
     })
   }
 
+  const handleAdjust = row => {
+    const value = window.prompt(`Nuevo siguiente folio para ${row.tipoNombre}. Rango CAF ${row.folioDesde}-${row.folioHasta}:`, String(row.siguienteFolio))
+    if (value == null) return
+    const siguienteFolio = Number(value)
+    const motivo = window.prompt('Motivo del ajuste (minimo 10 caracteres):', '')
+    if (!motivo) return
+    const confirmacion = window.prompt('Escribe AJUSTAR FOLIO para confirmar. Nunca se permite reutilizar folios ya emitidos:', '')
+    if (confirmacion !== 'AJUSTAR FOLIO') return toast.error('Confirmacion cancelada o incorrecta.')
+    ajustarMut.mutate({ id: row.id, siguienteFolio, motivo: motivo.trim(), confirmacion }, {
+      onSuccess: result => toast.success(`Siguiente folio actualizado de ${result.ajuste.folioAnterior} a ${result.ajuste.folioNuevo}.`),
+      onError: err => toast.error(errorText(err)),
+    })
+  }
+
   const columns = [
     { key: 'tipoNombre', label: 'Documento', render: (v, row) => `${v} (${row.tipoDte})` },
     { key: 'folioDesde', label: 'Rango', render: (_, row) => `${row.folioDesde} — ${row.folioHasta}` },
     { key: 'siguienteFolio', label: 'Siguiente folio' },
     { key: 'disponibles', label: 'Disponibles', align: 'right', render: v => <Badge tone={v > 0 ? 'green' : 'red'}>{v}</Badge> },
     { key: 'ambiente', label: 'Ambiente', render: v => v === 'produccion' ? 'Producción' : 'Certificación' },
-    ...(canWrite ? [{ key: 'id', label: '', align: 'right', render: (_, row) => <button onClick={() => handleDelete(row)} style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>Borrar</button> }] : []),
+    ...(canWrite ? [{ key: 'id', label: '', align: 'right', render: (_, row) => <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>{canAdjustFolios && <button onClick={() => handleAdjust(row)} style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>Ajustar folio</button>}<button onClick={() => handleDelete(row)} style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>Borrar</button></div> }] : []),
   ]
 
   return (
@@ -179,13 +197,14 @@ function CafsSection({ canWrite }) {
 export default function ConfiguracionPage() {
   const user = useAuthStore(s => s.user)
   const canWrite = can(user, 'facturacion', 'write')
+  const canAdjustFolios = user?.role === 'admin'
   return (
     <main className="page page-wide">
       <PageHeader title="Configuración" subtitle="Facturación electrónica DTE/SII" breadcrumb={['Inicio', 'Facturación', 'Configuración']} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         <EmpresaSection canWrite={canWrite} />
         <CertificadoSection canWrite={canWrite} />
-        <CafsSection canWrite={canWrite} />
+        <CafsSection canWrite={canWrite} canAdjustFolios={canAdjustFolios} />
       </div>
     </main>
   )

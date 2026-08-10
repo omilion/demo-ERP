@@ -50,6 +50,7 @@ function tallerLabel(odt) {
 
 const TALLER_TABS = [
   { id: 'all',          label: 'Todos' },
+  { id: 'Corte',        label: 'Taller de Corte' },
   { id: 'Espumas',      label: 'Espumas' },
   { id: 'Confecciones', label: 'Confecciones' },
   { id: 'Madera',       label: 'Madera' },
@@ -57,6 +58,7 @@ const TALLER_TABS = [
 ]
 
 const TAB_PARAMS = {
+  Corte:          { tipo: 'Corte' },
   Espumas:      { tipo: 'Espumas' },
   Confecciones: { tipo: 'Confecciones' },
   Madera:       { tipo: 'Madera' },

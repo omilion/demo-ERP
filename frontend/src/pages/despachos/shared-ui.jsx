@@ -70,6 +70,7 @@ export function DespachoCamposFields({ form, set }) {
         <Field label="N° de seguimiento"><input value={form.numeroSeguimiento || ''} onChange={e => set('numeroSeguimiento', e.target.value)} style={input} /></Field>
         <Field label="Monto envío"><input value={form.montoEnvio || ''} onChange={e => set('montoEnvio', e.target.value)} style={input} /></Field>
         <Field label="Contacto"><input value={form.contacto || ''} onChange={e => set('contacto', e.target.value)} style={input} /></Field>
+        <Field label="Correo contacto despacho *"><input type="email" required value={form.emailContacto || ''} onChange={e => set('emailContacto', e.target.value)} placeholder="contacto@cliente.cl" style={input} /></Field>
         <Field label="Región">
           <select value={form.region || ''} onChange={e => { set('region', e.target.value); set('comuna', '') }} style={input}>
             <option value="">Seleccionar región...</option>

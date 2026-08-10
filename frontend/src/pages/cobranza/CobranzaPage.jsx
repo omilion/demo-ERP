@@ -1,4 +1,4 @@
-import { toast, confirmDialog, promptDialog } from '../../store/notif'
+import { toast } from '../../store/notif'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs } from '../../components/shared'
@@ -82,6 +82,7 @@ export default function CobranzaPage() {
   const [documento, setDocumento] = useState('')
   const [nDoc, setNDoc] = useState('')
   const [creador, setCreador] = useState('')
+  const [cobranzaFiltro, setCobranzaFiltro] = useState('')
   const debounceRef = useRef(null)
 
   // Historico filters
@@ -125,7 +126,9 @@ export default function CobranzaPage() {
   }, [histSearch])
 
   // Active cobranza
-  const activeParams = { orderBy: 'asc', estadoPago: estadoTab, limit: '500' }
+  const activeParams = { orderBy: 'asc', limit: '500' }
+  if (!cobranzaFiltro) activeParams.estadoPago = estadoTab
+  if (cobranzaFiltro) activeParams.cobranzaFiltro = cobranzaFiltro
   if (debounced) activeParams.search = debounced
   if (fechaDesde) activeParams.fechaDesde = fechaDesde
   if (fechaHasta) activeParams.fechaHasta = fechaHasta
@@ -379,6 +382,12 @@ export default function CobranzaPage() {
           {ESTADO_TABS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
         </select>
 
+        <select value={cobranzaFiltro} onChange={e => setCobranzaFiltro(e.target.value)} style={miniInput}>
+          <option value="">Todas las entregas</option>
+          <option value="entregados_sin_factura">Entregados sin factura</option>
+          <option value="entregados_con_saldo">Entregados con saldo</option>
+        </select>
+
         <select value={documento} onChange={e => setDocumento(e.target.value)} style={miniInput}>
           <option value="">Todos los doc.</option>
           <option value="Factura">Factura</option>
@@ -389,10 +398,11 @@ export default function CobranzaPage() {
         <input type="text" placeholder="N° Doc" value={nDoc} onChange={e => setNDoc(e.target.value)} style={{ ...miniInput, width: 80 }} />
         <input type="text" placeholder="Creador" value={creador} onChange={e => setCreador(e.target.value)} style={{ ...miniInput, width: 90 }} />
 
-        {(search || estadoTab !== 'No pagada' || documento || nDoc || creador || fechaDesde || fechaHasta || fechaDocDesde || fechaDocHasta) && (
+        {(search || estadoTab !== 'No pagada' || cobranzaFiltro || documento || nDoc || creador || fechaDesde || fechaHasta || fechaDocDesde || fechaDocHasta) && (
           <Btn variant="secondary" size="xs" onClick={() => {
             setSearch('')
             setEstadoTab('No pagada')
+            setCobranzaFiltro('')
             setDocumento('')
             setNDoc('')
             setCreador('')

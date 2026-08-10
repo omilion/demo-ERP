@@ -1,3 +1,5 @@
+import { sanitizeCommercialIdentifier } from './operational-rules.js'
+
 function normalizeText(value) {
   return String(value || '')
     .trim()
@@ -11,7 +13,7 @@ export function isConvenioMarcoTipo(tipo) {
 }
 
 export function normalizeConvenioMarcoOc(value) {
-  return String(value ?? '').replace(/\s+/g, '').trim()
+  return sanitizeCommercialIdentifier(value)
 }
 
 export async function validateConvenioMarcoOcForWrite(prisma, { tipo, licitacion, excludeId } = {}) {

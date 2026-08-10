@@ -79,6 +79,12 @@ async function main() {
 
   const adminUser = await prisma.user.findUnique({ where: { email: 'admin@plastimar.cl' } })
 
+  await prisma.taller.upsert({
+    where: { nombre: 'Taller de Corte' },
+    update: { activo: true },
+    create: { nombre: 'Taller de Corte', activo: true },
+  })
+
   for (const p of PRODUCTOS_SEED) {
     const producto = { estadoInventario: 'Inventariado', ...p }
     await prisma.producto.upsert({

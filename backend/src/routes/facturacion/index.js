@@ -8,8 +8,16 @@ import { renderDteHtml, renderDteRecibidoHtml } from '../../facturacion/printDte
 import { renderDtePdf, renderDteRecibidoPdf } from '../../facturacion/printDtePdf.js'
 import { syncGmailReceptor } from '../../facturacion/receptorDte.js'
 import { sendDteEmail, buildReenvioHtml } from '../../facturacion/mailer.js'
+import { assertNotaDteInput, evaluarDocumentoParaNota } from '../../facturacion/notas.js'
 
 const ESTADOS = ['borrador', 'emitido', 'enviado', 'aceptado', 'rechazado', 'error']
+
+function formatRutDisplay(value) {
+  const normalized = normalizeRut(value)
+  const [body, verifier] = normalized.split('-')
+  if (!body || !verifier) return normalized
+  return `${body.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}-${verifier}`
+}
 
 function sendError(reply, error) {
   return reply.code(422).send({ error: (error && error.message) || 'Error de facturación.' })
@@ -157,11 +165,40 @@ export default async function facturacionRoutes(fastify) {
   const db = createFacturacionDb(fastify.prisma)
   const engine = createFacturacionEngine({ db, dataDir: path.join(process.cwd(), 'data', 'facturacion') })
 
+  // Red de seguridad del envio automatico: POST /documentos/:id/emitir intenta
+  // enviar al SII apenas emite, pero si ese intento falla (SII caido, timeout,
+  // ECONNRESET) el documento queda 'emitido' sin trackId y antes se quedaba
+  // asi para siempre hasta que alguien lo notara y apretara "Enviar" a mano.
+  // Este barrido reintenta esos documentos solo, cada 3 minutos, mientras el
+  // proceso este vivo.
+  let reintentando = false
+  const reintentarPendientes = async () => {
+    if (reintentando) return
+    reintentando = true
+    try {
+      const pendientes = await db.documentos.list({ estado: 'emitido' })
+      if (!pendientes.length) return
+      const { resultados } = await enviarLotePorTipo({ ids: pendientes.map(d => d.id), db, engine })
+      for (const r of resultados) {
+        if (r.ok) fastify.log.info({ docId: r.id, folio: r.folio, trackId: r.trackId }, 'Reintento automatico de envio SII exitoso')
+        else fastify.log.warn({ docId: r.id, folio: r.folio, err: r.error }, 'Reintento automatico de envio SII fallo, se reintenta en el proximo barrido')
+      }
+    } catch (err) {
+      fastify.log.warn({ err }, 'Barrido de reintento de envios SII fallo')
+    } finally {
+      reintentando = false
+    }
+  }
+  const reintentoInterval = setInterval(reintentarPendientes, 3 * 60 * 1000)
+  reintentoInterval.unref()
+  fastify.addHook('onClose', (_instance, done) => { clearInterval(reintentoInterval); done() })
+
   // Modulo de negocio: usa el rbac normal, igual que ventas/caja/despacho. El
   // candado allowExtra:false queda reservado para el modulo 'admin', si no el
   // permiso no se puede delegar a ningun usuario.
   const readAuth = { preHandler: [fastify.authenticate, fastify.rbac('facturacion', 'read')] }
   const writeAuth = { preHandler: [fastify.authenticate, fastify.rbac('facturacion', 'write')] }
+  const folioAdminAuth = { preHandler: [fastify.authenticate, fastify.rbac('admin', 'write', { allowExtra: false })] }
 
   // --- Empresa (emisor) ---
 
@@ -184,7 +221,7 @@ export default async function facturacionRoutes(fastify) {
       const saved = await db.saveEmpresa({
         ...current,
         ...body,
-        rut: body.rut ? normalizeRut(body.rut) : current.rut,
+        rut: body.rut ? formatRutDisplay(body.rut) : current.rut,
         rutEnvia: body.rutEnvia ? normalizeRut(body.rutEnvia) : current.rutEnvia,
         certPass: body.certPass ? body.certPass : current.certPass
       })
@@ -207,15 +244,67 @@ export default async function facturacionRoutes(fastify) {
   // --- CAF / folios ---
 
   fastify.get('/cafs', readAuth, async () => {
-    const cafs = await fastify.prisma.factCaf.findMany({ orderBy: [{ tipoDte: 'asc' }, { folioDesde: 'asc' }] })
+    const [cafs, ajustes] = await Promise.all([
+      fastify.prisma.factCaf.findMany({ orderBy: [{ tipoDte: 'asc' }, { folioDesde: 'asc' }] }),
+      fastify.prisma.factFolioAjuste.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }),
+    ])
     return {
       cafs: cafs.map((caf) => ({
         ...caf,
         xml: undefined,
         tipoNombre: TIPOS_DTE[caf.tipoDte] || `DTE ${caf.tipoDte}`,
-        disponibles: Math.max(0, caf.folioHasta - caf.siguienteFolio + 1)
+        disponibles: Math.max(0, caf.folioHasta - caf.siguienteFolio + 1),
+        ajustes: ajustes.filter(ajuste => ajuste.cafId === caf.id),
       }))
     }
+  })
+
+  fastify.post('/cafs/:id/ajustar-folio', folioAdminAuth, async (request, reply) => {
+    const cafId = Number(request.params.id)
+    const siguienteFolio = Number(request.body?.siguienteFolio)
+    const motivo = String(request.body?.motivo || '').trim()
+    const confirmacion = String(request.body?.confirmacion || '').trim()
+    if (!Number.isInteger(cafId) || cafId <= 0) return reply.code(400).send({ error: 'CAF invalido.' })
+    if (!Number.isInteger(siguienteFolio) || siguienteFolio <= 0) return reply.code(400).send({ error: 'Siguiente folio invalido.' })
+    if (motivo.length < 10) return reply.code(400).send({ error: 'Indica un motivo de al menos 10 caracteres.' })
+    if (confirmacion !== 'AJUSTAR FOLIO') return reply.code(400).send({ error: 'Confirmacion invalida.' })
+
+    const result = await fastify.prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`facturacion-caf:${cafId}`})::bigint)`
+      const caf = await tx.factCaf.findUnique({ where: { id: cafId } })
+      if (!caf) return { status: 404, error: 'CAF no encontrado.' }
+      if (siguienteFolio < caf.folioDesde || siguienteFolio > caf.folioHasta + 1) {
+        return { status: 409, error: `El folio debe quedar entre ${caf.folioDesde} y ${caf.folioHasta + 1}.` }
+      }
+      const used = await tx.factDocumento.aggregate({
+        where: {
+          tipoDte: caf.tipoDte,
+          folio: { not: null },
+          OR: [{ ambiente: caf.ambiente }, { ambiente: null }],
+        },
+        _max: { folio: true },
+      })
+      const maxUsado = Number(used._max.folio || 0)
+      if (siguienteFolio <= maxUsado) {
+        return { status: 409, error: `No se puede reutilizar un folio ya consumido. El ultimo folio local es ${maxUsado}; usa ${maxUsado + 1} o superior.` }
+      }
+      if (siguienteFolio === caf.siguienteFolio) return { status: 409, error: 'El CAF ya tiene ese siguiente folio.' }
+      const ajuste = await tx.factFolioAjuste.create({
+        data: {
+          cafId,
+          tipoDte: caf.tipoDte,
+          folioAnterior: caf.siguienteFolio,
+          folioNuevo: siguienteFolio,
+          motivo,
+          usuarioId: Number(request.user?.id) || null,
+          usuarioNombre: request.user?.nombre || request.user?.email || `Usuario ${request.user?.id || ''}`.trim(),
+        },
+      })
+      const actualizado = await tx.factCaf.update({ where: { id: cafId }, data: { siguienteFolio } })
+      return { ajuste, caf: { ...actualizado, xml: undefined }, maxUsado }
+    })
+    if (result?.error) return reply.code(result.status || 400).send({ error: result.error })
+    return result
   })
 
   fastify.post('/cafs', writeAuth, async (request, reply) => {
@@ -275,12 +364,42 @@ export default async function facturacionRoutes(fastify) {
     return { documentos: documentos.map((doc) => ({ ...doc, tipoNombre: TIPOS_DTE[doc.tipoDte] || `DTE ${doc.tipoDte}` })) }
   })
 
+  fastify.get('/documentos-referenciables', readAuth, async (request, reply) => {
+    const tipoNota = Number(request.query?.tipoNota)
+    if (![56, 61].includes(tipoNota)) return reply.code(400).send({ error: 'Indica tipoNota 56 o 61.' })
+    const search = String(request.query?.search || '').trim().toLowerCase()
+    const compactSearch = search.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^0-9a-z]/g, '')
+    const todos = await db.documentos.list()
+    const candidatos = todos
+      .map(documento => ({ documento, evaluacion: evaluarDocumentoParaNota({ documento, tipoNota, notas: todos }) }))
+      .filter(({ evaluacion }) => evaluacion.elegible)
+      .filter(({ documento }) => {
+        if (!compactSearch) return true
+        const tipoNombre = TIPOS_DTE[documento.tipoDte] || ''
+        const receptor = documento.receptor || {}
+        const terms = [
+          documento.id, `DTE ${documento.id}`, documento.folio, `folio ${documento.folio}`,
+          documento.ordenId, documento.ordenId ? `venta ${documento.ordenId}` : '', `T${documento.tipoDte}F${documento.folio}`,
+          tipoNombre, receptor.rut, receptor.razonSocial,
+        ].join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^0-9a-z]/g, '')
+        return terms.includes(compactSearch)
+      })
+      .slice(0, 50)
+      .map(({ documento, evaluacion }) => ({
+        ...documento,
+        tipoNombre: TIPOS_DTE[documento.tipoDte] || `DTE ${documento.tipoDte}`,
+        ...evaluacion,
+      }))
+    return { documentos: candidatos, total: candidatos.length }
+  })
+
   fastify.post('/documentos', writeAuth, async (request, reply) => {
     try {
       const input = validateDocumentoInput(request.body)
       // Foto del usuario autenticado: nunca se acepta desde el payload.
       input.usuarioNombre = request.user?.nombre || null
       input.totales = input.tipoDte === 43 ? input.totales : (input.tipoDte >= 110 && input.tipoDte <= 112 ? computeTotalesExportacion(input.items) : computeTotales(input.items, input.tipoDte))
+      await assertNotaDteInput({ doc: input, db })
       const created = await db.documentos.create(input)
       return reply.code(201).send(created)
     } catch (error) {

@@ -41,6 +41,7 @@ export default async function listVentas(fastify) {
       documento,
       nDoc,
       creador,
+      cobranzaFiltro,
     } = request.query
     const pagination = parsePagination(request.query, { defaultLimit: 100, maxLimit: 500 })
     if (!pagination) return reply.code(400).send({ error: 'Paginacion invalida' })
@@ -61,6 +62,25 @@ export default async function listVentas(fastify) {
       if (lte) where.createdAt.lte = lte
     }
     if (creador) where.creadorNombre = { contains: creador, mode: 'insensitive' }
+    if (cobranzaFiltro) {
+      if (!['entregados_sin_factura', 'entregados_con_saldo'].includes(String(cobranzaFiltro))) {
+        return reply.code(400).send({ error: 'cobranzaFiltro invalido' })
+      }
+      where.estadoEntrega = 'Entregada'
+      if (cobranzaFiltro === 'entregados_con_saldo') where.estadoPago = { not: 'Pagada' }
+      if (cobranzaFiltro === 'entregados_sin_factura') {
+        const facturados = await fastify.prisma.factDocumento.findMany({
+          where: {
+            ordenId: { not: null },
+            tipoDte: { in: [33, 39] },
+            estado: { notIn: ['borrador', 'rechazado', 'error', 'anulado'] },
+          },
+          select: { ordenId: true },
+        })
+        const facturadosIds = [...new Set(facturados.map(documento => documento.ordenId).filter(Boolean))]
+        if (facturadosIds.length) where = mergeWhere(where, { id: { notIn: facturadosIds } })
+      }
+    }
     if (clienteId) {
       const parsedClienteId = parsePositiveInt(clienteId)
       if (!parsedClienteId) return reply.code(400).send({ error: 'clienteId invalido' })
@@ -149,7 +169,7 @@ export default async function listVentas(fastify) {
     ])
 
     const ordenIds = [...new Set([...ordenes, ...statsOrdenes].map(o => o.id))]
-    const [pagosArr, multasArr] = ordenIds.length ? await Promise.all([
+    const [pagosArr, multasArr, notasInternasArr] = ordenIds.length ? await Promise.all([
       fastify.prisma.movimientoCaja.findMany({
         where: { ordenId: { in: ordenIds }, eliminado: false },
         orderBy: { createdAt: 'desc' },
@@ -158,11 +178,16 @@ export default async function listVentas(fastify) {
         where: { ordenId: { in: ordenIds } },
         orderBy: { fecha: 'desc' },
       }),
-    ]) : [[], []]
+      fastify.prisma.notaCreditoInterna.findMany({
+        where: { ordenId: { in: ordenIds }, estado: 'activa' },
+      }),
+    ]) : [[], [], []]
     const pagosMap = {}
     for (const pago of pagosArr) (pagosMap[pago.ordenId] ||= []).push(pago)
     const multasMap = {}
     for (const multa of multasArr) (multasMap[multa.ordenId] ||= []).push(multa)
+    const notasInternasMap = {}
+    for (const nota of notasInternasArr) (notasInternasMap[nota.ordenId] ||= []).push(nota)
 
     const withClientes = await attachClientes(fastify, ordenes)
     const enriched = await Promise.all(
@@ -170,6 +195,7 @@ export default async function listVentas(fastify) {
         const financialState = computeVentaFinancialState(o, {
           movimientos: pagosMap[o.id] || [],
           multas: multasMap[o.id] || [],
+          notasInternas: notasInternasMap[o.id] || [],
         })
         return {
           ...o,
@@ -177,6 +203,7 @@ export default async function listVentas(fastify) {
           items: await attachProductos(fastify, o.items),
           pagos: pagosMap[o.id] || [],
           multas: multasMap[o.id] || [],
+          notasInternas: notasInternasMap[o.id] || [],
         }
       })
     )
@@ -189,6 +216,7 @@ export default async function listVentas(fastify) {
         const financialState = computeVentaFinancialState(o, {
           movimientos: pagosMap[o.id] || [],
           multas: multasMap[o.id] || [],
+          notasInternas: notasInternasMap[o.id] || [],
         })
         acc.montoPendiente += financialState.saldo
         if (diasDesde(o.createdAt) > 30) acc.masDe30 += 1

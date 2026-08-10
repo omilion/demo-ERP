@@ -15,14 +15,18 @@ import { assertDteLineLimits, buildDocumento, isBoleta, TIPOS_DTE } from './docu
 import { buildDte, buildEnvio } from './envio.js';
 import { toLatin1Buffer, XML_DECL, normalizeRut, isValidRut, formatDate } from './xmlUtil.js';
 import * as sii from './siiClient.js';
+import { assertNotaDteInput } from './notas.js';
 
 const ESTADOS_ACEPTADO = new Set(['DOK', 'EOK']);
 const ESTADOS_RECHAZADO = new Set(['RCH', 'RFR', 'RSC', 'RCT', 'FAU', 'FNA']);
 const ESTADOS_DOCUMENTO_VIGENTE = new Set(['emitido', 'enviado', 'aceptado']);
 const TIPOS_VENTA_TRIBUTARIA = new Set([33, 39]);
 
-const referenciaDocumento = (referencias, docId) => (Array.isArray(referencias) ? referencias : [])
-  .some(ref => Number(ref?.docLocalId) === Number(docId));
+const anulaDocumento = (referencias, docId) => (Array.isArray(referencias) ? referencias : [])
+  .some(ref => Number(ref?.docLocalId) === Number(docId) && (
+    Number(ref?.codRef) === 1
+    || (!ref?.codRef && /anul/i.test(String(ref?.razon || '')))
+  ));
 
 export const findDocumentoVentaVigente = (doc, documentosVenta = []) => {
   if (!doc?.ordenId || !TIPOS_VENTA_TRIBUTARIA.has(Number(doc.tipoDte))) return null;
@@ -33,7 +37,7 @@ export const findDocumentoVentaVigente = (doc, documentosVenta = []) => {
     if (Number(item.id) === Number(doc.id)) return false;
     if (!TIPOS_VENTA_TRIBUTARIA.has(Number(item.tipoDte))) return false;
     if (!ESTADOS_DOCUMENTO_VIGENTE.has(String(item.estado))) return false;
-    return !notasCreditoActivas.some(nc => referenciaDocumento(nc.referencias, item.id));
+    return !notasCreditoActivas.some(nc => anulaDocumento(nc.referencias, item.id));
   }) || null;
 };
 
@@ -234,6 +238,7 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
     }
     const receptor = await resolveReceptor(doc, empresa);
     const referencias = await resolveReferencias({ ...doc, receptor });
+    await assertNotaDteInput({ doc: { ...doc, receptor, referencias }, db });
 
     const asignacion = await db.cafs.tomarFolio(doc.tipoDte, empresa.ambiente, empresa.fchResol);
     if (!asignacion) {

@@ -19,8 +19,23 @@ import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../u
 
 const DOCUMENTOS_VENTA = ['Factura Plast', 'Factura Laura', 'Boleta Electronica', 'NC Plast', 'NC Laura', 'NC Inter Plast', 'ND Plast', 'ND Laura']
 
-const TIPOS = ['Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala']
+const TIPOS = ['Licitación', 'Convenio Marco', 'Marketplace', 'Venta Web', 'Venta Sala']
 const TIPO_DEFAULT = 'Venta Sala'
+
+const cleanCommercialId = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9-]/g, '').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '').toUpperCase().slice(0, 80)
+
+function calculateDeliveryDateIso(days, type = 'corridos') {
+  const amount = Number(days)
+  if (!Number.isInteger(amount) || amount < 0) return ''
+  const date = new Date()
+  date.setHours(12, 0, 0, 0)
+  let remaining = amount
+  while (remaining > 0) {
+    date.setDate(date.getDate() + 1)
+    if (type === 'corridos' || (date.getDay() !== 0 && date.getDay() !== 6)) remaining -= 1
+  }
+  return date.toISOString().slice(0, 10)
+}
 
 function isConvenioMarco(tipo) {
   return normalizeText(tipo) === 'convenio marco'
@@ -28,7 +43,7 @@ function isConvenioMarco(tipo) {
 
 function isNormalDiscountTipo(tipo) {
   const text = normalizeText(tipo)
-  return text === 'normal' || text === 'venta sala' || text === 'venta web' || text === 'venta directa'
+  return text === 'normal' || text === 'venta sala' || text === 'venta web' || text === 'venta directa' || text === 'marketplace'
 }
 
 function defaultPrecioUnitario(producto, tipoVenta) {
@@ -877,14 +892,6 @@ function SearchableSelect({ value, onChange, options, disabled, placeholder }) {
   const selectedOption = options.find(o => String(o.value) === String(value))
 
   useEffect(() => {
-    if (selectedOption) {
-      setSearchTerm(selectedOption.value ? selectedOption.label : '')
-    } else {
-      setSearchTerm('')
-    }
-  }, [value, selectedOption])
-
-  useEffect(() => {
     const handler = e => {
       if (ref.current && !ref.current.contains(e.target)) {
         setIsOpen(false)
@@ -915,10 +922,14 @@ function SearchableSelect({ value, onChange, options, disabled, placeholder }) {
     <div ref={ref} style={{ position: 'relative' }}>
       <input
         type="text"
-        value={searchTerm}
+        value={isOpen ? searchTerm : (selectedOption?.value ? selectedOption.label : '')}
         disabled={disabled}
         placeholder={placeholder || "Escribe para buscar cliente..."}
-        onFocus={() => !disabled && setIsOpen(true)}
+        onFocus={() => {
+          if (disabled) return
+          setSearchTerm(selectedOption?.value ? selectedOption.label : '')
+          setIsOpen(true)
+        }}
         onChange={e => {
           setSearchTerm(e.target.value)
           setIsOpen(true)
@@ -1030,8 +1041,9 @@ export default function VentasFormPage() {
     estadoPago: 'No pagada', estadoEntrega: 'Pendiente entrega',
     abono: '', guias: '', facturado: '', descuentoPct: '', licitacion: searchParams.get('oc') || '', observaciones: searchParams.get('obs') || '',
     licitacionFecha: '', licitacionPlazo: '', licitacionReferencia: '', licitacionOC: '',
-    enviosParciales: false, montoDespacho: '', fechaPlazo: '',
-    direccionDespacho: '', direccionDespachoExtra: '', contactoDespacho: '', telefonoContactoDespacho: '',
+    enviosParciales: false, montoDespacho: '', fechaPlazo: '', plazoEntregaDias: '', plazoEntregaTipo: 'corridos',
+    direccionDespacho: '', direccionDespachoExtra: '', contactoDespacho: '', telefonoContactoDespacho: '', emailContactoDespacho: '',
+    marketplaceCanal: '', marketplaceComisionPct: '', marketplaceComisionMonto: '',
     regionDespacho: '', comunaDespacho: '', ciudadDespacho: '', vendedorId: '',
   })
   const selectedClienteId = data.clienteId ? Number(data.clienteId) : null
@@ -1071,13 +1083,19 @@ export default function VentasFormPage() {
       set('enviosParciales', !!found.enviosParciales)
       set('montoDespacho', found.montoDespacho != null ? String(found.montoDespacho) : '')
       set('fechaPlazo', found.fechaPlazo ? new Date(found.fechaPlazo).toISOString().slice(0, 10) : '')
+      set('plazoEntregaDias', found.plazoEntregaDias != null ? String(found.plazoEntregaDias) : '')
+      set('plazoEntregaTipo', found.plazoEntregaTipo || 'corridos')
       set('direccionDespacho', found.direccionDespacho || '')
       set('direccionDespachoExtra', found.direccionDespachoExtra || '')
       set('contactoDespacho', found.contactoDespacho || '')
       set('telefonoContactoDespacho', found.telefonoContactoDespacho || '')
+      set('emailContactoDespacho', found.emailContactoDespacho || '')
       set('regionDespacho', found.regionDespacho || '')
       set('comunaDespacho', found.comunaDespacho || '')
       set('ciudadDespacho', found.ciudadDespacho || '')
+      set('marketplaceCanal', found.marketplaceCanal || '')
+      set('marketplaceComisionPct', found.marketplaceComisionPct != null ? String(found.marketplaceComisionPct) : '')
+      set('marketplaceComisionMonto', found.marketplaceComisionMonto != null ? String(found.marketplaceComisionMonto) : '')
 
       const firstCot = found.cotizaciones?.[0]
       set('licitacionFecha', firstCot?.fecha ? new Date(firstCot.fecha).toISOString().slice(0, 10) : '')
@@ -1164,6 +1182,14 @@ export default function VentasFormPage() {
         return
       }
     }
+    if (!/^\S+@\S+\.\S+$/.test(String(data.emailContactoDespacho || '').trim())) {
+      toast.warning('Ingresa el correo obligatorio del contacto de despacho')
+      return
+    }
+    if (data.tipo === 'Marketplace' && !String(data.marketplaceCanal || '').trim()) {
+      toast.warning('Indica el canal Marketplace')
+      return
+    }
 
     const normalizedItems = shouldSendItems ? normalizeItems(items, { withOverrides: data.tipo === 'Licitación' }) : null
     const payload = {
@@ -1174,13 +1200,19 @@ export default function VentasFormPage() {
       enviosParciales: !!data.enviosParciales,
       montoDespacho: Number(data.montoDespacho) || 0,
       fechaPlazo: data.fechaPlazo ? new Date(data.fechaPlazo) : null,
+      plazoEntregaDias: data.plazoEntregaDias === '' ? null : Number(data.plazoEntregaDias),
+      plazoEntregaTipo: data.plazoEntregaTipo || 'corridos',
       direccionDespacho: data.direccionDespacho || null,
       direccionDespachoExtra: data.direccionDespachoExtra || null,
       contactoDespacho: data.contactoDespacho || null,
       telefonoContactoDespacho: data.telefonoContactoDespacho || null,
+      emailContactoDespacho: data.emailContactoDespacho || null,
       regionDespacho: data.regionDespacho || null,
       comunaDespacho: data.comunaDespacho || null,
       ciudadDespacho: data.ciudadDespacho || null,
+      marketplaceCanal: data.tipo === 'Marketplace' ? data.marketplaceCanal || null : null,
+      marketplaceComisionPct: data.tipo === 'Marketplace' && data.marketplaceComisionPct !== '' ? Number(data.marketplaceComisionPct) : null,
+      marketplaceComisionMonto: data.tipo === 'Marketplace' && data.marketplaceComisionMonto !== '' ? Number(data.marketplaceComisionMonto) : null,
     }
     if (data.tipo === 'Licitación') {
       payload.licitacionFecha = data.licitacionFecha || undefined
@@ -1318,7 +1350,7 @@ export default function VentasFormPage() {
               <Input value={data.licitacionReferencia || ''} onChange={v => set('licitacionReferencia', v)} placeholder="Ej: Escuela Municipal" />
             </FormField>
             <FormField label="Orden de Compra">
-              <Input value={data.licitacionOC || ''} onChange={v => set('licitacionOC', v)} placeholder="Ej: 12345-67-SE16" />
+              <Input value={data.licitacionOC || ''} onChange={v => set('licitacionOC', cleanCommercialId(v))} placeholder="Ej: 12345-67-SE16" />
             </FormField>
           </div>
         </>
@@ -1328,10 +1360,28 @@ export default function VentasFormPage() {
         <>
           <FormDivider label="Detalles del Convenio Marco" />
           <FormField label="N OC Convenio Marco (Requerido)" hint="Obligatorio y no duplicable">
-            <Input value={data.licitacion || ''} onChange={v => set('licitacion', v)} placeholder="Numero OC" />
+            <Input value={data.licitacion || ''} onChange={v => set('licitacion', cleanCommercialId(v))} placeholder="Numero OC" />
           </FormField>
         </>
       )}
+
+      {data.tipo === 'Marketplace' && <>
+        <FormDivider label="Venta Marketplace y comisión" />
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 14 }}>
+          <FormField label="Canal Marketplace" required>
+            <Input value={data.marketplaceCanal || ''} onChange={v => set('marketplaceCanal', v)} placeholder="Mercado Libre, Falabella, Paris..." />
+          </FormField>
+          <FormField label="Comisión %">
+            <Input type="number" value={data.marketplaceComisionPct || ''} onChange={v => set('marketplaceComisionPct', v)} min="0" max="100" />
+          </FormField>
+          <FormField label="Comisión fija" hint="Si se informa, reemplaza el porcentaje">
+            <Input type="number" value={data.marketplaceComisionMonto || ''} onChange={v => set('marketplaceComisionMonto', v)} prefix="$" min="0" />
+          </FormField>
+        </div>
+        <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: 'var(--bg)', fontSize: 13 }}>
+          Abono neto estimado: <strong>${Math.max(0, totalCalculado - (Number(data.marketplaceComisionMonto) || Math.round(totalCalculado * Number(data.marketplaceComisionPct || 0) / 100))).toLocaleString('es-CL')}</strong>
+        </div>
+      </>}
 
       <FormDivider label="Cliente" />
       <FormField label="Cliente / Organismo">
@@ -1385,7 +1435,13 @@ export default function VentasFormPage() {
 
       <FormDivider label="Información de Despacho" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-        <FormField label="Fecha Plazo de Entrega">
+        <FormField label="Días para entrega" required>
+          <Input type="number" min="0" max="3650" value={data.plazoEntregaDias || ''} onChange={v => { set('plazoEntregaDias', v); set('fechaPlazo', calculateDeliveryDateIso(v, data.plazoEntregaTipo)) }} placeholder="Ej: 15" />
+        </FormField>
+        <FormField label="Tipo de días" required>
+          <Select value={data.plazoEntregaTipo || 'corridos'} onChange={v => { set('plazoEntregaTipo', v); set('fechaPlazo', calculateDeliveryDateIso(data.plazoEntregaDias, v)) }} options={[{ value: 'habiles', label: 'Días hábiles' }, { value: 'corridos', label: 'Días corridos' }]} />
+        </FormField>
+        <FormField label="Fecha tope calculada">
           <Input type="date" value={data.fechaPlazo || ''} onChange={v => set('fechaPlazo', v)} />
         </FormField>
         <FormField label="Monto Despacho Cotizado">
@@ -1419,7 +1475,7 @@ export default function VentasFormPage() {
           <Input value={data.ciudadDespacho || ''} onChange={v => set('ciudadDespacho', v)} placeholder="Ciudad" />
         </FormField>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 14 }}>
         <FormField label="Dirección de Despacho (Override)" hint="Dejar vacío para usar dirección por defecto del cliente">
           <Input value={data.direccionDespacho || ''} onChange={v => set('direccionDespacho', v)} placeholder="Calle y número" />
         </FormField>
@@ -1433,6 +1489,9 @@ export default function VentasFormPage() {
         </FormField>
         <FormField label="Teléfono Contacto Despacho">
           <Input value={data.telefonoContactoDespacho || ''} onChange={v => set('telefonoContactoDespacho', v)} placeholder="Teléfono del contacto" />
+        </FormField>
+        <FormField label="Correo Contacto Despacho" required>
+          <Input type="email" value={data.emailContactoDespacho || ''} onChange={v => set('emailContactoDespacho', v)} placeholder="contacto@cliente.cl" />
         </FormField>
       </div>
       {isEdit && found?.cotizaciones?.length > 0 && (

@@ -283,6 +283,7 @@ model Producto {
   ubicacionCatalogo Ubicacion?   @relation(fields: [ubicacionId], references: [id])
   proveedores      ProductoProveedor[]
   taller           Taller?       @relation("ProductoTaller", fields: [tallerId], references: [id])
+  notaCreditoInternaItems NotaCreditoInternaItem[]
   receta           ProductoReceta?
   costeoSnapshots  CosteoSnapshot[]
 
@@ -514,6 +515,12 @@ model Orden {
   direccionDespachoExtra String?    @map("direccion_despacho_extra")
   contactoDespacho   String?        @map("contacto_despacho")
   telefonoContactoDespacho String?  @map("telefono_contacto_despacho")
+  emailContactoDespacho String?     @map("email_contacto_despacho")
+  plazoEntregaDias   Int?           @map("plazo_entrega_dias")
+  plazoEntregaTipo   String?        @map("plazo_entrega_tipo")
+  marketplaceCanal  String?        @map("marketplace_canal")
+  marketplaceComisionPct Float?     @map("marketplace_comision_pct")
+  marketplaceComisionMonto Float?   @map("marketplace_comision_monto")
   regionDespacho     String?        @map("region_despacho")
   comunaDespacho     String?        @map("comuna_despacho")
   ciudadDespacho     String?        @map("ciudad_despacho")
@@ -526,6 +533,7 @@ model Orden {
   packingBultos      PackingBulto[]
   packingEventos     PackingEvento[]
   despachoAjustes    DespachoAjusteHistorial[]
+  notasCreditoInternas NotaCreditoInterna[]
   clienteSucursal    ClienteSucursal? @relation(fields: [clienteSucursalId], references: [id], onDelete: SetNull)
   descuentoSolicitud DescuentoSolicitud? @relation("OrdenDescuentoSolicitud", fields: [descuentoSolicitudId], references: [id], onDelete: SetNull)
 
@@ -622,6 +630,8 @@ model CotizacionLicitacion {
   descuentoMonto       Float?                     @map("descuento_monto")
   descuentoSnapshot    Json?                      @map("descuento_snapshot")
   fechaPlazo           DateTime?                  @map("fecha_plazo")
+  plazoEntregaDias     Int?                       @map("plazo_entrega_dias")
+  plazoEntregaTipo     String?                    @map("plazo_entrega_tipo")
   enviosParciales      Boolean                    @default(false) @map("envios_parciales")
   montoDespacho        Float                      @default(0) @map("monto_despacho")
   items                CotizacionLicitacionItem[]
@@ -901,6 +911,8 @@ model CrmRegistro {
   estado          String?
   usuario         String?
   vendedorId      Int?      @map("vendedor_id")
+  asignadoAt      DateTime? @map("asignado_at")
+  asignacionOrigen String?   @map("asignacion_origen")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -1048,6 +1060,7 @@ model Odt {
   fechaEntregaCompromiso DateTime? @map("fecha_entrega_compromiso")
   items         OdtItem[]
   bitacora      BitacoraTaller[]
+  evidencias    TallerEvidencia[]
   movimientosBodega MovimientoBodega[]
   despachos     Despacho[]
   guiasDespacho GuiaDespacho[]
@@ -1061,6 +1074,7 @@ model BitacoraTaller {
   odtId          Int?      @map("odt_id")
   usuario        String
   usuarioReporta String?   @map("usuario_reporta")
+  ipEquipo       String?   @map("ip_equipo")
   sucursalId     Int?      @map("sucursal_id")
   fecha          DateTime?
   texto          String
@@ -1255,10 +1269,101 @@ model OdtItemTaller {
   odtItem               OdtItem   @relation(fields: [odtItemId], references: [id], onDelete: Cascade)
   taller                Taller    @relation(fields: [tallerId], references: [id])
   operarioResponsable   User?     @relation("OdtResponsable", fields: [operarioResponsableId], references: [id])
+  avances               OdtAvance[]
+  evidencias            TallerEvidencia[]
 
   @@unique([odtItemId, tallerId])
   @@index([tallerId])
   @@map("odt_item_talleres")
+  @@schema("taller")
+}
+
+model CrmAsignacionHistorial {
+  id             Int      @id @default(autoincrement())
+  crmId          Int      @map("crm_id")
+  vendedorId     Int?     @map("vendedor_id")
+  vendedorAnteriorId Int? @map("vendedor_anterior_id")
+  origen         String
+  motivo         String?
+  asignadoPorId  Int?     @map("asignado_por_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([crmId, createdAt])
+  @@index([vendedorId, createdAt])
+  @@map("crm_asignaciones_historial")
+  @@schema("ventas")
+}
+
+model NotaCreditoInterna {
+  id             Int      @id @default(autoincrement())
+  ordenId        Int      @map("orden_id")
+  monto          Float
+  motivo         String
+  estado         String   @default("activa")
+  usuarioId      Int?     @map("usuario_id")
+  usuarioNombre  String?  @map("usuario_nombre")
+  anuladaAt      DateTime? @map("anulada_at")
+  anuladaPor     String?  @map("anulada_por")
+  motivoAnulacion String? @map("motivo_anulacion")
+  createdAt      DateTime @default(now()) @map("created_at")
+  orden          Orden    @relation(fields: [ordenId], references: [id], onDelete: Restrict)
+  items          NotaCreditoInternaItem[]
+
+  @@index([ordenId, estado])
+  @@map("notas_credito_internas")
+  @@schema("ventas")
+}
+
+model NotaCreditoInternaItem {
+  id             Int      @id @default(autoincrement())
+  notaId         Int      @map("nota_id")
+  ordenItemId    Int      @map("orden_item_id")
+  productoId     Int      @map("producto_id")
+  cantidad       Int
+  precioUnitario Float    @map("precio_unitario")
+  monto          Float
+  stockReintegrado Boolean @default(false) @map("stock_reintegrado")
+  nota           NotaCreditoInterna @relation(fields: [notaId], references: [id], onDelete: Cascade)
+  producto       Producto @relation(fields: [productoId], references: [id], onDelete: Restrict)
+
+  @@index([notaId])
+  @@index([productoId])
+  @@map("notas_credito_interna_items")
+  @@schema("ventas")
+}
+
+model OdtAvance {
+  id                  Int          @id @default(autoincrement())
+  odtItemTallerId     Int          @map("odt_item_taller_id")
+  cantidadTerminada   Float        @map("cantidad_terminada")
+  fechaTrabajo        DateTime     @default(now()) @map("fecha_trabajo")
+  observacion         String?
+  usuario             String
+  ipEquipo            String?      @map("ip_equipo")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  odtItemTaller       OdtItemTaller @relation(fields: [odtItemTallerId], references: [id], onDelete: Cascade)
+
+  @@index([odtItemTallerId, fechaTrabajo])
+  @@map("odt_avances")
+  @@schema("taller")
+}
+
+model TallerEvidencia {
+  id              Int          @id @default(autoincrement())
+  odtId           Int          @map("odt_id")
+  odtItemTallerId Int          @map("odt_item_taller_id")
+  archivoUrl      String       @map("archivo_url")
+  nombreArchivo   String       @map("nombre_archivo")
+  mimeType        String       @map("mime_type")
+  usuario         String
+  ipEquipo        String?      @map("ip_equipo")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  odt             Odt          @relation(fields: [odtId], references: [id], onDelete: Cascade)
+  odtItemTaller   OdtItemTaller @relation(fields: [odtItemTallerId], references: [id], onDelete: Cascade)
+
+  @@index([odtId, createdAt])
+  @@index([odtItemTallerId, createdAt])
+  @@map("taller_evidencias")
   @@schema("taller")
 }
 
@@ -1490,6 +1595,7 @@ model Despacho {
   montoEnvio   Int?      @map("monto_envio")
   direccion    String?
   contacto     String?
+  emailContacto String?   @map("email_contacto")
   region       String?
   comuna       String?
   parcial      Boolean   @default(false)
@@ -2062,6 +2168,8 @@ model FactEmpresa {
   comuna      String
   ciudad      String?
   acteco      String?
+  telefono    String?
+  email       String?
   ambiente    String   @default("certificacion")
   rutEnvia    String?  @map("rut_envia")
   fchResol    String?  @map("fch_resol")
@@ -2086,6 +2194,22 @@ model FactCaf {
 
   @@index([tipoDte, ambiente])
   @@map("cafs")
+  @@schema("facturacion")
+}
+
+model FactFolioAjuste {
+  id             Int      @id @default(autoincrement())
+  cafId          Int      @map("caf_id")
+  tipoDte        Int      @map("tipo_dte")
+  folioAnterior  Int      @map("folio_anterior")
+  folioNuevo     Int      @map("folio_nuevo")
+  motivo         String
+  usuarioId      Int?     @map("usuario_id")
+  usuarioNombre  String?  @map("usuario_nombre")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([cafId, createdAt])
+  @@map("folio_ajustes")
   @@schema("facturacion")
 }
 

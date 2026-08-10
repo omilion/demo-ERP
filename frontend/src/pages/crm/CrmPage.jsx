@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { DndContext, DragOverlay, PointerSensor, pointerWithin, rectIntersection, useSensor, useSensors } from '@dnd-kit/core'
 import { useDroppable, useDraggable } from '@dnd-kit/core'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
-import { useCrm, useCrmEjecutivas, useCrmPatch, useCrmOrdenLink, useCrmConvertirCliente, useCrmPendientesHoy, useCrmMetricas } from '../../api/crm'
+import { useCrm, useCrmEjecutivas, useCrmPatch, useCrmOrdenLink, useCrmConvertirCliente, useCrmPendientesHoy, useCrmMetricas, useCrmCreate, useCrmAsignarPendientes } from '../../api/crm'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/auth'
@@ -153,6 +153,7 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
     estado:          normalizeEstado(item.estado),
     prioridad:       item.prioridad || '',
     ejecutiva:       item.ejecutiva || '',
+    vendedorId:      item.vendedorId ? String(item.vendedorId) : '',
     fechaProximo:    item.fechaProximo ? item.fechaProximo.slice(0, 10) : '',
     fechaCotizacion: item.fechaCotizacion ? item.fechaCotizacion.slice(0, 10) : '',
     nombre:          item.nombre || '',
@@ -171,7 +172,13 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
 
   async function save() {
-    await patch.mutateAsync({ id: item.id, ...form, estado: normalizeEstado(form.estado) })
+    const payload = { id: item.id, ...form, estado: normalizeEstado(form.estado) }
+    if (user?.role === 'admin' && String(item.vendedorId || '') !== String(form.vendedorId || '')) {
+      const motivo = await promptDialog({ title: 'Motivo de reasignacion', detail: 'La reasignacion quedara registrada en el historial CRM.', placeholder: 'Ej.: redistribucion de cartera' })
+      if (!motivo || String(motivo).trim().length < 5) return toast.warning('Indica un motivo de reasignacion.')
+      payload.motivoReasignacion = String(motivo).trim()
+    }
+    await patch.mutateAsync(payload)
     onSaved?.()
     onClose()
   }
@@ -239,10 +246,7 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
           </Field>
 
           <Field label="Ejecutiva">
-            <input list="crm-ejecutivas" value={form.ejecutiva} onChange={set('ejecutiva')} style={inputStyle} disabled={user?.role !== 'admin'} />
-            <datalist id="crm-ejecutivas">
-              {ejecutivas.map(e => <option key={e.ejecutiva} value={e.ejecutiva} />)}
-            </datalist>
+            {user?.role === 'admin' ? <select value={form.vendedorId} onChange={set('vendedorId')} style={inputStyle}><option value="">Sin asignar</option>{ejecutivas.filter(e => e.vendedorId).map(e => <option key={e.vendedorId} value={e.vendedorId}>{e.ejecutiva}</option>)}</select> : <input value={form.ejecutiva} style={inputStyle} disabled />}
           </Field>
           <Field label="N° cotización">
             <input value={form.ncotizacion} onChange={set('ncotizacion')} style={{ ...inputStyle, fontFamily: "'DM Mono', monospace" }} />
@@ -443,7 +447,39 @@ function TableView({ items, total, limit, onOpen, view, setView, ejecutiva, setE
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────────
+function NuevoLeadModal({ onClose }) {
+  const [form, setForm] = useState({ nombre: '', rsocial: '', rut: '', email: '', telefono: '', prioridad: 'Media', comentarios: '' })
+  const create = useCrmCreate()
+  const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
+  const fieldStyle = { width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 7, font: 'inherit', fontSize: 12 }
+  const save = async () => {
+    try {
+      const result = await create.mutateAsync(form)
+      toast.success(`Lead asignado automaticamente a ${result.vendedor.nombre}.`)
+      onClose()
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'No se pudo crear el lead.')
+    }
+  }
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'oklch(0 0 0 / .45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={event => event.stopPropagation()} style={{ width: 560, maxWidth: '100%', background: '#fff', borderRadius: 12, boxShadow: '0 16px 48px oklch(0 0 0 / .2)' }}>
+        <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}><div><strong>Nuevo lead CRM</strong><div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>Asignacion round-robin, maximo 10 leads diarios por vendedor.</div></div><button onClick={onClose} style={{ border: 0, background: 'none' }}><Icon name="x" size={18} /></button></div>
+        <div style={{ padding: 18 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {[['nombre', 'Nombre contacto'], ['rsocial', 'Razon social'], ['rut', 'RUT'], ['email', 'Correo'], ['telefono', 'Telefono']].map(([key, label]) => <label key={key} style={{ fontSize: 11, fontWeight: 600 }}>{label}<input type={key === 'email' ? 'email' : 'text'} value={form[key]} onChange={event => set(key, event.target.value)} style={{ ...fieldStyle, display: 'block', marginTop: 5 }} /></label>)}
+            <label style={{ fontSize: 11, fontWeight: 600 }}>Prioridad<select value={form.prioridad} onChange={event => set('prioridad', event.target.value)} style={{ ...fieldStyle, display: 'block', marginTop: 5 }}><option>Alta</option><option>Media</option><option>Baja</option></select></label>
+          </div>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, marginTop: 12 }}>Comentarios<textarea value={form.comentarios} onChange={event => set('comentarios', event.target.value)} rows={3} style={{ ...fieldStyle, display: 'block', marginTop: 5, resize: 'vertical' }} /></label>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn variant="primary" onClick={save} disabled={create.isPending}>{create.isPending ? 'Asignando...' : 'Crear y asignar'}</Btn></div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function CrmPage() {
+  const user = useAuthStore(s => s.user)
   const queryClient = useQueryClient()
   const [view, setView]               = useState('pipeline')
   const [ejecutiva, setEjecutiva]     = useState('')
@@ -455,6 +491,7 @@ export default function CrmPage() {
   const [activeId, setActiveId]       = useState(null)
   const [overId, setOverId]           = useState(null)
   const [selected, setSelected]       = useState(null)
+  const [creating, setCreating]       = useState(false)
   const ref = useRef(null)
 
   useEffect(() => {
@@ -467,6 +504,16 @@ export default function CrmPage() {
   const { data: pendientesHoyData } = useCrmPendientesHoy()
   const { data: metricas } = useCrmMetricas({ fechaDesde, fechaHasta })
   const patch = useCrmPatch()
+  const assignPending = useCrmAsignarPendientes()
+
+  const runAssignPending = async () => {
+    const accepted = await confirmDialog({ title: 'Asignar leads pendientes', detail: 'Se repartiran equitativamente entre vendedores activos, respetando el maximo de 10 asignaciones por vendedor durante el dia.', confirmLabel: 'Asignar' })
+    if (!accepted) return
+    assignPending.mutate(undefined, {
+      onSuccess: result => toast.success(`${result.total} leads asignados. ${result.pendientesSinAsignar} quedaron pendientes por capacidad.`),
+      onError: error => toast.error(error?.response?.data?.error || 'No se pudieron asignar los pendientes.'),
+    })
+  }
 
   const params = {}
   if (ejecutiva)  params.ejecutiva  = ejecutiva
@@ -545,10 +592,13 @@ export default function CrmPage() {
         subtitle={`${total.toLocaleString('es-CL')} registros de seguimiento`}
         breadcrumb={['Inicio', 'Ventas', 'CRM']}
         actions={<>
+          <Btn variant="primary" icon="plus" size="sm" onClick={() => setCreating(true)}>Nuevo lead</Btn>
+          {user?.role === 'admin' && <Btn variant="secondary" icon="users" size="sm" onClick={runAssignPending} disabled={assignPending.isPending}>Asignar pendientes</Btn>}
           <ViewToggle view={view} setView={setView} />
           <Btn variant="secondary" icon="download" size="sm">Exportar</Btn>
         </>}
       />
+      {creating && <NuevoLeadModal onClose={() => setCreating(false)} />}
 
       <div className="kpi-strip">
         <KpiCard label="Total registros"   value={total.toLocaleString('es-CL')} icon="fileText"      sublabel="Seguimientos CRM" />

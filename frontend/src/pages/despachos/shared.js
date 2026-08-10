@@ -16,6 +16,7 @@ export const emptyDespacho = {
   montoEnvio: '',
   direccion: '',
   contacto: '',
+  emailContacto: '',
   region: '',
   comuna: '',
   parcial: false,

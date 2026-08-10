@@ -4,6 +4,7 @@ import { PageHeader, Btn } from '../../components/shared'
 import { FormField, Input } from '../../components/forms'
 import { EmitirDteModal } from '../../components/facturacion/DteModals'
 import { DteItemsEditor } from '../../components/facturacion/DteItemsEditor'
+import { NotaDteFlow } from '../../components/facturacion/NotaDteFlow'
 import { useClientes } from '../../api/clientes'
 import { useCreateVenta, useVenta, useVentas } from '../../api/ventas'
 import { useCotizaciones, useCrearVentaDesdeLicitacion } from '../../api/cotizaciones'
@@ -144,7 +145,7 @@ export default function EmitirManualPage() {
   }
 
   const documentoVinculado = permiteVenta && ventaVinculada
-  const mostrarManual = esNota || !permiteVenta || (sinVenta && !ventaVinculada)
+  const mostrarManual = !esNota && (!permiteVenta || (sinVenta && !ventaVinculada))
   const subtitle = documentoVinculado ? `${TIPOS_DTE[tipoDte]} vinculada a venta #${ventaVinculada.nInterno || ventaVinculada.id}` : `${TIPOS_DTE[tipoDte]}${sinVenta ? ' sin venta asociada' : ''}`
 
   return <main className="page page-wide">
@@ -154,9 +155,11 @@ export default function EmitirManualPage() {
       <div role="group" aria-label="Tipo de documento" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: 8 }}>
         {TIPOS_EMISION.map(tipo => <button key={tipo.id} type="button" onClick={() => seleccionarTipo(tipo.id)} aria-pressed={tipo.id === tipoDte} style={{ padding: '11px 12px', borderRadius: 8, textAlign: 'left', cursor: 'pointer', border: tipo.id === tipoDte ? '2px solid var(--blue)' : '1px solid var(--border)', background: tipo.id === tipoDte ? 'var(--blue-50)' : '#fff', color: 'var(--text)' }}><span style={{ display: 'block', fontWeight: 700, fontSize: 13 }}>{tipo.id} · {TIPOS_DTE[tipo.id]}</span><span style={{ display: 'block', marginTop: 3, color: 'var(--text-2)', fontSize: 11 }}>{tipo.ayuda}</span></button>)}
       </div>
-      {esNota && <div style={infoStyle}><strong>Nota de crédito o débito:</strong> al continuar se abre el buscador de ventas y documentos que vas a corregir. Puedes agregar 3 o más referencias.</div>}
+      {esNota && <div style={infoStyle}><strong>Nota de crédito o débito:</strong> busca el DTE original por RUT o documento, revisa las operaciones permitidas y previsualiza la nota antes de emitirla al SII.</div>}
       {esGuia && <div style={infoStyle}><strong>Guía de despacho:</strong> una venta encontrada se prepara desde Despachos, donde ya existe el control de cantidades por enviar.</div>}
     </section>
+
+    {esNota && <NotaDteFlow tipoDte={tipoDte} onSuccess={({ emitido, documento }) => { toast.success(`DTE emitido${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`); navigate('/facturacion/documentos') }} />}
 
     {permiteVenta && !ventaVinculada && !sinVenta && <section style={cardStyle}>
       <div style={stepTitle}>2. Buscar venta</div>

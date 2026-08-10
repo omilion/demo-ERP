@@ -11,6 +11,7 @@ import { TIPOS_DTE } from '../../utils/facturacion'
 import { downloadDteXml, openDtePdf } from '../../utils/dteDocuments'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import { InternalCreditNotes } from '../facturacion/InternalCreditNotes'
 
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
@@ -464,6 +465,7 @@ function TabDocumentos({ v, pagos, dtes, canWrite, canWriteFacturacion, onNota }
       </div>
 
       <FormDivider label="Documentos tributarios electrónicos" />
+      <InternalCreditNotes venta={v} canWrite={canWrite} dtes={dtes} />
       {dtes.length === 0 ? (
         <div style={{ padding: '10px 0 18px', color: 'var(--text-3)', fontSize: 13 }}>No hay DTEs asociados a esta venta.</div>
       ) : (

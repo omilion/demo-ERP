@@ -3,6 +3,7 @@ import { applyVentaStockDeltas, buildReplacementStockDeltas, buildStockDeltasFro
 import { computeVentaFinancialState } from '../ventas/financial.js'
 import { can as canAccess } from '../../middleware/rbac.js'
 import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import { calculateDeliveryDate, sanitizeCommercialIdentifier } from '../ventas/operational-rules.js'
 import {
   assertDiscountAuthorizationForDraft,
   buildDiscountSnapshot,
@@ -604,7 +605,7 @@ export default async function cotizacionesRoutes(fastify) {
   fastify.post('/', {
     preHandler: [fastify.authenticate, fastify.rbac('licitaciones', 'write')],
   }, async (request, reply) => {
-    const { idLicitacion, fecha, rutCliente, estado, obs, plazo, ordenCompra, sucursalId, referencia, items = [], fechaPlazo, enviosParciales, montoDespacho } = request.body || {}
+    const { idLicitacion, fecha, rutCliente, estado, obs, plazo, ordenCompra, sucursalId, referencia, items = [], fechaPlazo, plazoEntregaDias, plazoEntregaTipo, enviosParciales, montoDespacho } = request.body || {}
     if (!fecha) return reply.code(400).send({ error: 'fecha requerida' })
     if (!Array.isArray(items)) return reply.code(400).send({ error: 'items debe ser un arreglo' })
     const itemData = []
@@ -627,11 +628,15 @@ export default async function cotizacionesRoutes(fastify) {
             estado: estado || 'Pendiente',
             obs,
             plazo,
-            ordenCompra,
+            ordenCompra: sanitizeCommercialIdentifier(ordenCompra),
             sucursalId: userSucursalId ?? (sucursalId ? parseInt(sucursalId, 10) : null),
             referencia,
             usuario,
-            fechaPlazo: fechaPlazo ? new Date(fechaPlazo) : null,
+            fechaPlazo: plazoEntregaDias !== undefined && plazoEntregaDias !== null
+              ? calculateDeliveryDate({ startDate: fecha, days: Number(plazoEntregaDias), type: plazoEntregaTipo || 'corridos' })
+              : (fechaPlazo ? new Date(fechaPlazo) : null),
+            plazoEntregaDias: plazoEntregaDias === '' || plazoEntregaDias === undefined ? null : Number(plazoEntregaDias),
+            plazoEntregaTipo: plazoEntregaTipo || null,
             enviosParciales: enviosParciales || false,
             montoDespacho: montoDespacho || 0,
             items: itemData.length > 0 ? {
@@ -661,10 +666,16 @@ export default async function cotizacionesRoutes(fastify) {
     if (body.rutCliente !== undefined) data.rutCliente = body.rutCliente
     if (body.obs !== undefined) data.obs = body.obs
     if (body.plazo !== undefined) data.plazo = body.plazo
-    if (body.ordenCompra !== undefined) data.ordenCompra = body.ordenCompra
+    if (body.ordenCompra !== undefined) data.ordenCompra = sanitizeCommercialIdentifier(body.ordenCompra)
     if (body.referencia !== undefined) data.referencia = body.referencia
     if (body.fecha !== undefined) data.fecha = body.fecha ? new Date(body.fecha) : null
     if (body.fechaPlazo !== undefined) data.fechaPlazo = body.fechaPlazo ? new Date(body.fechaPlazo) : null
+    if (body.plazoEntregaDias !== undefined) {
+      const days = body.plazoEntregaDias === '' || body.plazoEntregaDias === null ? null : Number(body.plazoEntregaDias)
+      data.plazoEntregaDias = days
+      data.plazoEntregaTipo = body.plazoEntregaTipo || 'corridos'
+      data.fechaPlazo = days === null ? null : calculateDeliveryDate({ startDate: body.fecha || new Date(), days, type: data.plazoEntregaTipo })
+    } else if (body.plazoEntregaTipo !== undefined) data.plazoEntregaTipo = body.plazoEntregaTipo
     if (body.enviosParciales !== undefined) data.enviosParciales = body.enviosParciales
     if (body.montoDespacho !== undefined) data.montoDespacho = body.montoDespacho
     if (body.rutCliente !== undefined) Object.assign(data, clearCotizacionDiscountData())
@@ -1012,6 +1023,9 @@ export default async function cotizacionesRoutes(fastify) {
             rutCliente: cot.rutCliente,
             licitacion: cot.idLicitacion,
             observaciones: buildVentaObservacionesFromCotizacion(cot),
+            fechaPlazo: cot.fechaPlazo,
+            plazoEntregaDias: cot.plazoEntregaDias,
+            plazoEntregaTipo: cot.plazoEntregaTipo,
             ...descuentoData,
             userId: request.user.id,
             creadorNombre: request.user.nombre || request.user.email || 'Sistema',

@@ -21,6 +21,16 @@ export const useDocumento = (id) => useQuery({
   enabled: !!id,
 })
 
+export const useDocumentosReferenciables = (params = {}, options = {}) => {
+  const queryParams = cleanParams(params)
+  return useQuery({
+    queryKey: ['facturacion', 'documentos-referenciables', queryParams],
+    queryFn: () => api.get('/facturacion/documentos-referenciables', { params: queryParams }).then(r => r.data),
+    staleTime: 15_000,
+    ...options,
+  })
+}
+
 export const useCrearDocumento = () => {
   const qc = useQueryClient()
   return useMutation({
@@ -112,6 +122,14 @@ export const useDeleteCaf = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id) => api.delete(`/facturacion/cafs/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'cafs'] }),
+  })
+}
+
+export const useAjustarFolioCaf = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.post(`/facturacion/cafs/${id}/ajustar-folio`, data).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'cafs'] }),
   })
 }

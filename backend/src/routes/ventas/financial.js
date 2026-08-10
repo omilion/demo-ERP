@@ -25,7 +25,7 @@ export function isLegacySaldoAdjustmentDocument(documento, tipoDocumento = null)
     .some(text => isNcText(text) || isNdText(text))
 }
 
-export function computeFinancialAdjustments({ movimientos = [], multas = [] } = {}) {
+export function computeFinancialAdjustments({ movimientos = [], multas = [], notasInternas = [] } = {}) {
   const notas = (movimientos || [])
     .filter(mov => !mov.eliminado)
     .filter(mov => normalizeText(mov.estadoDoc || 'Activa') !== 'nula')
@@ -36,7 +36,11 @@ export function computeFinancialAdjustments({ movimientos = [], multas = [] } = 
   const multasTotal = (multas || [])
     .reduce((sum, multa) => sum + Math.abs(Number(multa.monto || 0)), 0)
 
-  return notas + multasTotal
+  const notasInternasTotal = (notasInternas || [])
+    .filter(nota => normalizeText(nota.estado) === 'activa')
+    .reduce((sum, nota) => sum + Math.abs(Number(nota.monto || 0)), 0)
+
+  return notas + multasTotal + notasInternasTotal
 }
 
 export function resolveEstadoPago({ total = 0, abono = 0, ajustesFinancieros = 0 } = {}) {
@@ -61,8 +65,8 @@ export function computeVentaFinancialState(orden, inputs = {}) {
 }
 
 export async function fetchVentaFinancialInputs(prisma, ordenId) {
-  if (!ordenId) return { movimientos: [], multas: [] }
-  const [movimientos, multas] = await Promise.all([
+  if (!ordenId) return { movimientos: [], multas: [], notasInternas: [] }
+  const [movimientos, multas, notasInternas] = await Promise.all([
     prisma.movimientoCaja.findMany({
       where: {
         ordenId,
@@ -82,8 +86,12 @@ export async function fetchVentaFinancialInputs(prisma, ordenId) {
       where: { ordenId },
       select: { id: true, monto: true },
     }),
+    prisma.notaCreditoInterna.findMany({
+      where: { ordenId, estado: 'activa' },
+      select: { id: true, monto: true, estado: true },
+    }),
   ])
-  return { movimientos, multas }
+  return { movimientos, multas, notasInternas }
 }
 
 export async function computeVentaFinancialStateFromDb(prisma, orden, options = {}) {
