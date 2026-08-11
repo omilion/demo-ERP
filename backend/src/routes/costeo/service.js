@@ -67,13 +67,24 @@ export async function getRecetas(prisma, { tallerId, conReceta, search, page = 1
   const parsedLimit = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
   const skip = (parsedPage - 1) * parsedLimit;
 
-  const where = { activo: true };
+  const where = {
+    activo: true,
+    // El costeo de fabricacion corresponde exclusivamente al catalogo MK.
+    // En la base hay variantes mk/Mk/MK, por eso el prefijo es insensitive.
+    codigoInterno: { startsWith: 'MK', mode: 'insensitive' },
+  };
+  const filtrosCombinados = [];
 
   if (search) {
-    where.OR = [
-      { codigoInterno: { contains: String(search).trim(), mode: 'insensitive' } },
-      { nombre: { contains: String(search).trim(), mode: 'insensitive' } },
-    ];
+    const texto = String(search).trim();
+    if (texto) {
+      filtrosCombinados.push({
+        OR: [
+          { codigoInterno: { contains: texto, mode: 'insensitive' } },
+          { nombre: { contains: texto, mode: 'insensitive' } },
+        ],
+      });
+    }
   }
 
   if (conReceta === 'true' || conReceta === true) {
@@ -85,11 +96,15 @@ export async function getRecetas(prisma, { tallerId, conReceta, search, page = 1
   } else if (conReceta === 'false' || conReceta === false) {
     where.receta = null;
   } else if (tallerId) {
-    where.OR = [
-      { tallerId: parseInt(tallerId, 10) },
-      { receta: { tallerId: parseInt(tallerId, 10) } },
-    ];
+    filtrosCombinados.push({
+      OR: [
+        { tallerId: parseInt(tallerId, 10) },
+        { receta: { tallerId: parseInt(tallerId, 10) } },
+      ],
+    });
   }
+
+  if (filtrosCombinados.length) where.AND = filtrosCombinados;
 
   const [total, items] = await Promise.all([
     prisma.producto.count({ where }),

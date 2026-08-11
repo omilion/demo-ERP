@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Badge, Btn, Icon, PageHeader, SearchBar, Table } from '../../components/shared';
+import { Badge, Btn, Icon, PageHeader, Pager, SearchBar, Table } from '../../components/shared';
 import { useRecetas, useTarifas, useCreateTarifa, useDeleteTarifa, useMaterialesHistorialPrecios, useRecalcularMasivo } from '../../api/costeo';
 import { useBodegaTaller, useUpdateBodegaTaller, useCreateBodegaTaller } from '../../api/bodegaTaller';
 import { useTalleres } from '../../api/pasarTaller';
@@ -12,6 +12,8 @@ const toArray = (value) => {
   if (Array.isArray(value?.items)) return value.items;
   return [];
 };
+
+const COSTEO_PAGE_SIZE = 50;
 
 export default function CosteoPage() {
   const [activeTab, setActiveTab] = useState('recetas');
@@ -86,16 +88,19 @@ function RecetasTab() {
   const [search, setSearch] = useState('');
   const [tallerIdFilter, setTallerIdFilter] = useState('');
   const [conRecetaFilter, setConRecetaFilter] = useState('');
+  const [page, setPage] = useState(1);
   const [selectedProducto, setSelectedProducto] = useState(null);
   // Los talleres se leen de la base: estaban fijos en el codigo y ademas mal
   // mapeados (decia 1=Espumas cuando 1 es confecciones, y "Madera" no existe).
   const { data: talleresData } = useTalleres();
   const talleres = toArray(talleresData);
 
-  const { data: recetasData, isLoading } = useRecetas({
+  const { data: recetasData, isLoading, isFetching } = useRecetas({
     search,
     tallerId: tallerIdFilter || undefined,
     conReceta: conRecetaFilter || undefined,
+    page,
+    limit: COSTEO_PAGE_SIZE,
   });
 
   const recalcularMasivo = useRecalcularMasivo();
@@ -113,6 +118,8 @@ function RecetasTab() {
   };
 
   const productos = toArray(recetasData);
+  const total = Number(recetasData?.total) || 0;
+  const pages = Math.max(1, Number(recetasData?.totalPages) || 1);
 
   const columns = [
     { key: 'codigoInterno', label: 'Código', render: (v) => <span style={{ fontWeight: 600 }}>{v}</span> },
@@ -157,11 +164,21 @@ function RecetasTab() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <SearchBar value={search} onChange={setSearch} placeholder="Buscar producto..." />
+          <SearchBar
+            value={search}
+            onChange={(value) => {
+              setSearch(value);
+              setPage(1);
+            }}
+            placeholder="Buscar producto MK..."
+          />
 
           <select
             value={tallerIdFilter}
-            onChange={(e) => setTallerIdFilter(e.target.value)}
+            onChange={(e) => {
+              setTallerIdFilter(e.target.value);
+              setPage(1);
+            }}
             style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}
           >
             <option value="">Todos los talleres</option>
@@ -170,7 +187,10 @@ function RecetasTab() {
 
           <select
             value={conRecetaFilter}
-            onChange={(e) => setConRecetaFilter(e.target.value)}
+            onChange={(e) => {
+              setConRecetaFilter(e.target.value);
+              setPage(1);
+            }}
             style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}
           >
             <option value="">Todos los estados</option>
@@ -185,6 +205,15 @@ function RecetasTab() {
       </div>
 
       <Table columns={columns} rows={isLoading ? [] : productos} emptyMessage={isLoading ? 'Cargando recetas…' : 'Sin productos'} />
+      <Pager
+        page={page}
+        pages={pages}
+        total={total}
+        limit={Number(recetasData?.limit) || COSTEO_PAGE_SIZE}
+        shown={productos.length}
+        onChange={setPage}
+        disabled={isFetching}
+      />
 
       {selectedProducto && (
         <EditorRecetaModal

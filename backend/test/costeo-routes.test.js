@@ -29,6 +29,7 @@ describe('costeo rutas (integracion con base real)', () => {
   let vendedorReadToken;
   let taller;
   let producto;
+  let productoNoMk;
   let material;
 
   const auth = token => ({ authorization: `Bearer ${token}` });
@@ -44,7 +45,10 @@ describe('costeo rutas (integracion con base real)', () => {
 
     taller = await prisma.taller.create({ data: { nombre: `taller ${marker}` } });
     producto = await prisma.producto.create({
-      data: { codigoInterno: `PROD-${marker}`, nombre: `Producto ${marker}`, precioLista: 1000 },
+      data: { codigoInterno: `MK-${marker}`, nombre: `Producto ${marker}`, precioLista: 1000 },
+    });
+    productoNoMk = await prisma.producto.create({
+      data: { codigoInterno: `OTRO-${marker}`, nombre: `Producto ${marker}`, precioLista: 1000 },
     });
     material = await prisma.bodegaTaller.create({
       data: { codigoInterno: `MAT-${marker}`, nombre: `Espuma ${marker}`, precio: 5000, tallerId: taller.id },
@@ -71,6 +75,7 @@ describe('costeo rutas (integracion con base real)', () => {
       await prisma.bodegaTaller.delete({ where: { id: material.id } }).catch(() => {});
     }
     if (producto) await prisma.producto.delete({ where: { id: producto.id } }).catch(() => {});
+    if (productoNoMk) await prisma.producto.delete({ where: { id: productoNoMk.id } }).catch(() => {});
     if (taller) {
       await prisma.tarifaProceso.deleteMany({ where: { tallerId: taller.id } });
       await prisma.taller.delete({ where: { id: taller.id } }).catch(() => {});
@@ -357,9 +362,20 @@ describe('costeo rutas (integracion con base real)', () => {
     });
   });
 
-  it('GET /recetas devuelve el listado paginado', async () => {
-    const res = await app.inject({ method: 'GET', url: '/api/costeo/recetas', headers: auth(adminToken) });
+  it('GET /recetas devuelve solo productos MK y metadata de paginacion', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/costeo/recetas?search=${marker}&page=1&limit=1`,
+      headers: auth(adminToken),
+    });
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body).data).toBeDefined();
+    const body = JSON.parse(res.body);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].id).toBe(producto.id);
+    expect(body.data[0].codigoInterno.toUpperCase().startsWith('MK')).toBe(true);
+    expect(body.total).toBe(1);
+    expect(body.page).toBe(1);
+    expect(body.limit).toBe(1);
+    expect(body.totalPages).toBe(1);
   });
 });
