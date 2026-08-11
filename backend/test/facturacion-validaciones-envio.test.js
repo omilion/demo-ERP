@@ -44,7 +44,11 @@ describe('facturacion/estado SII', () => {
     expect(estadoDesdeRespuestaSii('enviado', { estado: 'DOK' })).toBe('aceptado')
   })
 
-  it('consulta el DTE individual cuando EPR informa reparos o no decide el resultado', () => {
+  it('consulta el DTE individual cuando EPR informa rechazo, reparos o no decide el resultado', () => {
+    expect(requiereConsultaIndividualDte({
+      estado: 'EPR',
+      resumen: { informados: 1, aceptados: 0, rechazados: 1, reparos: 0 }
+    })).toBe(true)
     expect(requiereConsultaIndividualDte({
       estado: 'EPR',
       resumen: { informados: 1, aceptados: 0, rechazados: 0, reparos: 1 }

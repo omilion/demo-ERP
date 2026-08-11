@@ -69,7 +69,8 @@ export const requiereConsultaIndividualDte = (resultado = {}) => {
   const resumen = resultado.resumen || {};
   return codigo === 'EPR'
     && Number(resumen.informados) > 0
-    && (Number(resumen.reparos) > 0
+    && (Number(resumen.rechazados) > 0
+      || Number(resumen.reparos) > 0
       || (Number(resumen.aceptados) === 0 && Number(resumen.rechazados) === 0));
 };
 
