@@ -48,6 +48,11 @@ export const CODREF_MOTIVOS = {
   3: 'Corrige montos',
 }
 
+export const hasActiveSalesDte = (dtes = []) => dtes.some(doc =>
+  [33, 39].includes(Number(doc.tipoDte))
+  && !['borrador', 'rechazado', 'error', 'anulado'].includes(doc.estado)
+)
+
 // Catalogo TpoDocRef del SII para el bloque <Referencia>: los tipos de DTE
 // que Plastimar emite (mismos codigos que TIPOS_DTE) mas los codigos no-DTE
 // mas usados (orden de compra del cliente, etc.). Numeracion 801-806

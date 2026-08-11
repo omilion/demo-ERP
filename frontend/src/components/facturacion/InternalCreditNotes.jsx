@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Badge, Btn, Icon } from '../shared'
 import { toast, confirmDialog } from '../../store/notif'
 import { useAnularNotaInterna, useCrearNotaInterna, useNotasInternas } from '../../api/notasInternas'
+import { hasActiveSalesDte } from '../../utils/facturacion'
 
 const money = value => '$' + Math.round(Number(value || 0)).toLocaleString('es-CL')
 const input = { width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 7, font: 'inherit', fontSize: 12 }
@@ -10,7 +11,7 @@ export function InternalCreditNotes({ venta, canWrite, dtes = [] }) {
   const { data: notas = [], isLoading } = useNotasInternas(venta.id)
   const [open, setOpen] = useState(false)
   const anular = useAnularNotaInterna()
-  const tieneDteVenta = dtes.some(doc => [33, 39].includes(Number(doc.tipoDte)) && !['borrador', 'rechazado', 'error', 'anulado'].includes(doc.estado))
+  const tieneDteVenta = hasActiveSalesDte(dtes)
 
   const anularNota = async nota => {
     const accepted = await confirmDialog({ title: `Anular NC interna #${nota.id}`, message: 'Se descontara nuevamente el stock reintegrado y se restaurara el saldo de la venta.', confirmLabel: 'Anular nota', danger: true })
@@ -29,7 +30,7 @@ export function InternalCreditNotes({ venta, canWrite, dtes = [] }) {
     <div style={{ marginBottom: 18 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <div><div style={{ fontSize: 12, fontWeight: 700 }}>Notas de credito internas</div><div style={{ fontSize: 11, color: 'var(--text-3)' }}>Ajustan saldo y devuelven stock; no se envian al SII.</div></div>
-        {canWrite && !tieneDteVenta && <Btn variant="secondary" icon="rotateCcw" onClick={() => setOpen(true)}>Crear NC interna</Btn>}
+        {canWrite && !tieneDteVenta && <Btn variant="secondary" icon="refreshCw" onClick={() => setOpen(true)}>Crear NC interna</Btn>}
       </div>
       {tieneDteVenta && <div style={{ background: '#fff8e6', border: '1px solid var(--amber)', borderRadius: 7, padding: 9, fontSize: 11, color: 'var(--text-2)' }}>Esta venta ya tiene factura/boleta emitida. Debes usar la nota de credito SII del documento correspondiente.</div>}
       {!tieneDteVenta && !isLoading && notas.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 12, padding: '8px 0' }}>Sin notas internas.</div>}
@@ -41,12 +42,12 @@ export function InternalCreditNotes({ venta, canWrite, dtes = [] }) {
           {canWrite && nota.estado === 'activa' && <button onClick={() => anularNota(nota)} disabled={anular.isPending} style={{ border: 0, background: 'none', color: 'var(--red)', textDecoration: 'underline', cursor: 'pointer', fontSize: 11, marginTop: 6, padding: 0 }}>Anular y reversar stock</button>}
         </div>
       ))}
-      {open && <InternalNoteModal venta={venta} onClose={() => setOpen(false)} />}
+      {open && <InternalCreditNoteModal venta={venta} onClose={() => setOpen(false)} />}
     </div>
   )
 }
 
-function InternalNoteModal({ venta, onClose }) {
+export function InternalCreditNoteModal({ venta, onClose }) {
   const [quantities, setQuantities] = useState({})
   const [motivo, setMotivo] = useState('')
   const [customAmount, setCustomAmount] = useState('')

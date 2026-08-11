@@ -7,11 +7,11 @@ import { useVenta, useDeleteVenta, useForzarTaller, useUpdateVenta, useAnularVen
 import { useProductos } from '../../api/productos'
 import { useDocumentos, useReenviarDocumento } from '../../api/facturacion'
 import { EmitirDteModal, NotaDteModal } from '../facturacion/DteModals'
-import { TIPOS_DTE } from '../../utils/facturacion'
+import { hasActiveSalesDte, TIPOS_DTE } from '../../utils/facturacion'
 import { downloadDteXml, openDtePdf } from '../../utils/dteDocuments'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
-import { InternalCreditNotes } from '../facturacion/InternalCreditNotes'
+import { InternalCreditNoteModal, InternalCreditNotes } from '../facturacion/InternalCreditNotes'
 
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
@@ -714,7 +714,7 @@ function opBtnStyle(color) {
   }
 }
 
-function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmitirDte, canDelete }) {
+function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmitirDte, canDelete, canManageInternalCreditNotes, internalCreditNoteBlocked, onCreateInternalCreditNote }) {
   const navigate = useNavigate()
   const anularVenta = useAnularVenta()
   const activarVenta = useActivarVenta()
@@ -766,6 +766,16 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmit
       <button onClick={abrirNotaVenta} style={opBtnStyle('var(--blue)')}>
         <Icon name="printer" size={14} /> Nota de Venta
       </button>
+      {canManageInternalCreditNotes && (
+        <button
+          onClick={onCreateInternalCreditNote}
+          disabled={internalCreditNoteBlocked || v.eliminada}
+          title={internalCreditNoteBlocked ? 'La venta ya tiene factura o boleta. Corresponde emitir una nota de crédito SII.' : v.eliminada ? 'La venta está anulada.' : 'Crear una nota de crédito no tributaria para ajustar saldo y stock.'}
+          style={{ ...opBtnStyle('var(--green-600)'), opacity: internalCreditNoteBlocked || v.eliminada ? 0.55 : 1, cursor: internalCreditNoteBlocked || v.eliminada ? 'not-allowed' : 'pointer' }}
+        >
+          <Icon name="refreshCw" size={14} /> Nota de Crédito Interna
+        </button>
+      )}
       <button onClick={() => navigate(`/pasar-taller?ordenId=${v.id}`)} style={opBtnStyle('var(--amber)')}>
         <Icon name="tool" size={14} /> Notificar a Taller
       </button>
@@ -849,6 +859,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [emitirDte, setEmitirDte] = useState(false)
   const [notaDte, setNotaDte] = useState(null)
+  const [notaInterna, setNotaInterna] = useState(false)
 
   const { data: full, isLoading } = useVenta(venta.id)
   const deleteVenta = useDeleteVenta()
@@ -863,7 +874,8 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const documentosCount = pagos.filter(isReferencialPago).length
   const dtes = documentosDteQuery.data?.documentos || []
   const canWriteFacturacion = can(user, 'facturacion', 'write')
-  const ventaYaEmitida = dtes.some(doc => [33, 39].includes(Number(doc.tipoDte)) && ['emitido', 'enviado', 'aceptado'].includes(doc.estado))
+  const ventaYaEmitida = hasActiveSalesDte(dtes)
+  const canManageInternalCreditNotes = canWrite || canWriteFacturacion
   const fecha = v.createdAt
     ? new Date(v.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—'
@@ -955,6 +967,9 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                 canEmitirDte={canWriteFacturacion && !ventaYaEmitida}
                 onEmitirDte={() => setEmitirDte(true)}
                 canDelete={canDelete}
+                canManageInternalCreditNotes={canManageInternalCreditNotes}
+                internalCreditNoteBlocked={ventaYaEmitida}
+                onCreateInternalCreditNote={() => setNotaInterna(true)}
               />
               <DocumentosPagosList pagos={pagos} dtes={dtes} />
             </div>
@@ -1164,6 +1179,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
         )}
         {emitirDte && <EmitirDteModal venta={v} onClose={() => setEmitirDte(false)} onSuccess={({ emitido, documento }) => { setEmitirDte(false); toast.success(`DTE emitido${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`) }} />}
         {notaDte && <NotaDteModal documento={notaDte.documento} tipoDte={notaDte.tipoDte} onClose={() => setNotaDte(null)} onSuccess={({ emitido, documento }) => { setNotaDte(null); toast.success(`DTE emitido${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`) }} />}
+        {notaInterna && <InternalCreditNoteModal venta={v} onClose={() => setNotaInterna(false)} />}
       </section>
     )
   }
