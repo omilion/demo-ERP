@@ -6,6 +6,13 @@ import { useTalleres } from '../../api/pasarTaller';
 import { EditorRecetaModal } from './components/EditorRecetaModal';
 import { toast, confirmDialog } from '../../store/notif';
 
+const toArray = (value) => {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.data)) return value.data;
+  if (Array.isArray(value?.items)) return value.items;
+  return [];
+};
+
 export default function CosteoPage() {
   const [activeTab, setActiveTab] = useState('recetas');
 
@@ -83,7 +90,7 @@ function RecetasTab() {
   // Los talleres se leen de la base: estaban fijos en el codigo y ademas mal
   // mapeados (decia 1=Espumas cuando 1 es confecciones, y "Madera" no existe).
   const { data: talleresData } = useTalleres();
-  const talleres = Array.isArray(talleresData) ? talleresData : (talleresData?.data || []);
+  const talleres = toArray(talleresData);
 
   const { data: recetasData, isLoading } = useRecetas({
     search,
@@ -105,7 +112,7 @@ function RecetasTab() {
     }
   };
 
-  const productos = recetasData?.data || [];
+  const productos = toArray(recetasData);
 
   const columns = [
     { key: 'codigoInterno', label: 'Código', render: (v) => <span style={{ fontWeight: 600 }}>{v}</span> },
@@ -177,7 +184,7 @@ function RecetasTab() {
         </Btn>
       </div>
 
-      <Table columns={columns} data={productos} isLoading={isLoading} />
+      <Table columns={columns} rows={isLoading ? [] : productos} emptyMessage={isLoading ? 'Cargando recetas…' : 'Sin productos'} />
 
       {selectedProducto && (
         <EditorRecetaModal
@@ -204,8 +211,8 @@ function MateriasPrimasTab() {
   const [historyMaterialId, setHistoryMaterialId] = useState(null);
   const [creando, setCreando] = useState(false);
 
-  const talleres = Array.isArray(talleresData) ? talleresData : (talleresData?.data || []);
-  const todos = Array.isArray(bodegaData) ? bodegaData : (bodegaData?.data || []);
+  const talleres = toArray(talleresData);
+  const todos = toArray(bodegaData);
   const tallerNombre = id => { const t = talleres.find(x => x.id === id); return t ? (t.label || t.nombre) : null; };
 
   // Filtro en memoria: el listado de materias primas es chico (decenas), no
@@ -282,7 +289,7 @@ function MateriasPrimasTab() {
         </div>
       </div>
 
-      <Table columns={columns} data={items} isLoading={isLoading} />
+      <Table columns={columns} rows={isLoading ? [] : items} emptyMessage={isLoading ? 'Cargando materias primas…' : 'Sin materias primas'} />
 
       {creando && <NuevaMateriaPrimaModal talleres={talleres} onClose={() => setCreando(false)} />}
 
@@ -416,7 +423,8 @@ function NuevaMateriaPrimaModal({ talleres, onClose }) {
 }
 
 function MaterialHistoryModal({ materialId, onClose }) {
-  const { data: history = [] } = useMaterialesHistorialPrecios(materialId);
+  const { data: historyData } = useMaterialesHistorialPrecios(materialId);
+  const history = toArray(historyData);
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -448,17 +456,24 @@ function MaterialHistoryModal({ materialId, onClose }) {
 
 // ── TAB 3: TARIFAS DE MANO DE OBRA ─────────────────────────────────────────
 function TarifasTab() {
-  const { data: tarifas = [], isLoading } = useTarifas();
+  const { data: tarifasData, isLoading } = useTarifas();
+  const { data: talleresData } = useTalleres();
   const createTarifa = useCreateTarifa();
   const deleteTarifa = useDeleteTarifa();
 
+  const tarifas = toArray(tarifasData);
+  const talleres = toArray(talleresData);
+
   const [showCreate, setShowCreate] = useState(false);
-  const [tallerId, setTallerId] = useState(1);
+  const [tallerId, setTallerId] = useState('');
   const [proceso, setProceso] = useState('corte');
   const [valorHora, setValorHora] = useState('');
 
   const handleCreate = async () => {
-    if (!valorHora) return;
+    if (!tallerId || !proceso.trim() || valorHora === '') {
+      toast.warning('Selecciona taller, proceso y valor hora');
+      return;
+    }
     try {
       await createTarifa.mutateAsync({
         tallerId: Number(tallerId),
@@ -506,7 +521,7 @@ function TarifasTab() {
         <Btn onClick={() => setShowCreate(true)}>+ Nueva Tarifa Proceso</Btn>
       </div>
 
-      <Table columns={columns} data={tarifas} isLoading={isLoading} />
+      <Table columns={columns} rows={isLoading ? [] : tarifas} emptyMessage={isLoading ? 'Cargando tarifas…' : 'Sin tarifas vigentes'} />
 
       {showCreate && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -517,9 +532,8 @@ function TarifasTab() {
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600 }}>Taller</label>
                 <select value={tallerId} onChange={(e) => setTallerId(e.target.value)} style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', marginTop: 4 }}>
-                  <option value="1">Espumas</option>
-                  <option value="2">Confecciones</option>
-                  <option value="3">Madera</option>
+                  <option value="">Selecciona un taller</option>
+                  {talleres.map((t) => <option key={t.id} value={String(t.id)}>{t.label || t.nombre}</option>)}
                 </select>
               </div>
 

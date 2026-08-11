@@ -96,6 +96,45 @@ describe('POST /api/ventas', () => {
     await app.prisma.producto.delete({ where: { id: producto.id } }).catch(() => {})
   })
 
+  it('acepta solo marketplaces acordados y normaliza Paris a París', async () => {
+    const firstCliente = await app.prisma.cliente.findFirst()
+    const marker = `TEST-VENTA-MARKETPLACE-${Date.now()}`
+    const producto = await app.prisma.producto.create({
+      data: { codigoInterno: `${marker}-P`, nombre: `${marker} Producto`, activo: true },
+    })
+    let ordenId = null
+    try {
+      const payload = {
+        tipo: 'Marketplace',
+        clienteId: firstCliente?.id,
+        items: [{ productoId: producto.id, cantidad: 1, precioUnitario: 10000 }],
+      }
+      const invalida = await app.inject({
+        method: 'POST', url: '/api/ventas',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { ...payload, marketplaceCanal: 'Otro' },
+      })
+      expect(invalida.statusCode).toBe(400)
+
+      const valida = await app.inject({
+        method: 'POST', url: '/api/ventas',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { ...payload, marketplaceCanal: 'Paris', marketplaceComisionPct: 10 },
+      })
+      expect(valida.statusCode).toBe(201)
+      const body = JSON.parse(valida.body)
+      ordenId = body.id
+      expect(body.marketplaceCanal).toBe('París')
+      expect(body.marketplaceComisionMonto).toBe(1000)
+    } finally {
+      if (ordenId) {
+        await app.prisma.ordenItem.deleteMany({ where: { ordenId } }).catch(() => {})
+        await app.prisma.orden.delete({ where: { id: ordenId } }).catch(() => {})
+      }
+      await app.prisma.producto.delete({ where: { id: producto.id } }).catch(() => {})
+    }
+  })
+
   it('rejects direct facturado on create outside Cobranza/Caja', async () => {
     const firstCliente = await app.prisma.cliente.findFirst()
     const marker = `TEST-VENTA-CREATE-FACT-${Date.now()}`

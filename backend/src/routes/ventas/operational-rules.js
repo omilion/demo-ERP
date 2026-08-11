@@ -1,5 +1,14 @@
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+export const MARKETPLACE_CANALES = ['París', 'Mercado Libre', 'Falabella']
+
+const MARKETPLACE_CANALES_NORMALIZADOS = new Map(
+  MARKETPLACE_CANALES.map(canal => [
+    canal.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(),
+    canal,
+  ])
+)
+
 export function sanitizeCommercialIdentifier(value) {
   return String(value ?? '')
     .normalize('NFD')
@@ -39,8 +48,13 @@ export function normalizeMarketplace({ tipo, canal, comisionPct, comisionMonto, 
   if (String(tipo || '') !== 'Marketplace') {
     return { marketplaceCanal: null, marketplaceComisionPct: null, marketplaceComisionMonto: null }
   }
-  const marketplaceCanal = String(canal || '').trim().slice(0, 80)
-  if (!marketplaceCanal) return { error: 'Selecciona o indica el canal Marketplace.' }
+  const canalNormalizado = String(canal || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+  const marketplaceCanal = MARKETPLACE_CANALES_NORMALIZADOS.get(canalNormalizado)
+  if (!marketplaceCanal) return { error: `Selecciona un canal Marketplace válido: ${MARKETPLACE_CANALES.join(', ')}.` }
   const pct = comisionPct === null || comisionPct === undefined || comisionPct === '' ? null : Number(comisionPct)
   const monto = comisionMonto === null || comisionMonto === undefined || comisionMonto === '' ? null : Number(comisionMonto)
   if (pct !== null && (!Number.isFinite(pct) || pct < 0 || pct > 100)) return { error: 'La comisión Marketplace debe estar entre 0 y 100%.' }

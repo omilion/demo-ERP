@@ -20,6 +20,7 @@ import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../u
 const DOCUMENTOS_VENTA = ['Factura Plast', 'Factura Laura', 'Boleta Electronica', 'NC Plast', 'NC Laura', 'NC Inter Plast', 'ND Plast', 'ND Laura']
 
 const TIPOS = ['Licitación', 'Convenio Marco', 'Marketplace', 'Venta Web', 'Venta Sala']
+const MARKETPLACE_CANALES = ['París', 'Mercado Libre', 'Falabella']
 const TIPO_DEFAULT = 'Venta Sala'
 
 const cleanCommercialId = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9-]/g, '').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '').toUpperCase().slice(0, 80)
@@ -1372,7 +1373,14 @@ export default function VentasFormPage() {
         <FormDivider label="Venta Marketplace y comisión" />
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 14 }}>
           <FormField label="Canal Marketplace" required>
-            <Input value={data.marketplaceCanal || ''} onChange={v => set('marketplaceCanal', v)} placeholder="Mercado Libre, Falabella, Paris..." />
+            <Select
+              value={data.marketplaceCanal || ''}
+              onChange={v => set('marketplaceCanal', v)}
+              options={[
+                { value: '', label: 'Selecciona un marketplace' },
+                ...MARKETPLACE_CANALES.map(canal => ({ value: canal, label: canal })),
+              ]}
+            />
           </FormField>
           <FormField label="Comisión %">
             <Input type="number" value={data.marketplaceComisionPct || ''} onChange={v => set('marketplaceComisionPct', v)} min="0" max="100" />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { calculateDeliveryDate, isValidContactEmail, normalizeMarketplace, sanitizeCommercialIdentifier } from '../src/routes/ventas/operational-rules.js'
+import { calculateDeliveryDate, isValidContactEmail, MARKETPLACE_CANALES, normalizeMarketplace, sanitizeCommercialIdentifier } from '../src/routes/ventas/operational-rules.js'
 import { computeFinancialAdjustments, resolveEstadoPago } from '../src/routes/ventas/financial.js'
 
 describe('reglas operativas de la minuta', () => {
@@ -19,8 +19,11 @@ describe('reglas operativas de la minuta', () => {
   })
 
   it('calcula y valida comision marketplace', () => {
+    expect(MARKETPLACE_CANALES).toEqual(['París', 'Mercado Libre', 'Falabella'])
     expect(normalizeMarketplace({ tipo: 'Marketplace', canal: 'Mercado Libre', comisionPct: 12, total: 100_000 })).toEqual({ marketplaceCanal: 'Mercado Libre', marketplaceComisionPct: 12, marketplaceComisionMonto: 12_000 })
-    expect(normalizeMarketplace({ tipo: 'Marketplace', canal: '', total: 100_000 }).error).toMatch(/canal Marketplace/)
+    expect(normalizeMarketplace({ tipo: 'Marketplace', canal: 'Paris', total: 100_000 }).marketplaceCanal).toBe('París')
+    expect(normalizeMarketplace({ tipo: 'Marketplace', canal: '', total: 100_000 }).error).toMatch(/canal Marketplace válido/)
+    expect(normalizeMarketplace({ tipo: 'Marketplace', canal: 'Otro', total: 100_000 }).error).toMatch(/París, Mercado Libre, Falabella/)
   })
 
   it('incluye NC interna activa en el saldo sin considerar anuladas', () => {

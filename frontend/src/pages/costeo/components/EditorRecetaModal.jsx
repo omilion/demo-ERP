@@ -2,16 +2,10 @@ import { useState, useEffect, useMemo } from 'react';
 import { useReceta, useUpdateReceta, useAplicarCosteo, useTarifas } from '../../../api/costeo';
 import { useBodegaTaller } from '../../../api/bodegaTaller';
 import { useTelas } from '../../../api/telas';
+import { useTalleres } from '../../../api/pasarTaller';
 import { calcularCosteo } from '../../../../../backend/src/routes/costeo/engine.js';
 import { toast, confirmDialog } from '../../../store/notif';
 import { Badge, Btn, Icon } from '../../../components/shared';
-
-const TALLERES_OPTS = [
-  { id: 1, nombre: 'Espumas' },
-  { id: 2, nombre: 'Confecciones' },
-  { id: 3, nombre: 'Madera' },
-  { id: 4, nombre: 'Externo' },
-];
 
 const PROCESOS_SUGERIDOS = [
   { id: 'corte', label: 'Corte de espuma' },
@@ -26,11 +20,13 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
   const { data: materialesBodega = [] } = useBodegaTaller();
   const { data: telas = [] } = useTelas();
   const { data: tarifasVigentes = [] } = useTarifas();
+  const { data: talleresData } = useTalleres();
+  const talleres = Array.isArray(talleresData) ? talleresData : (talleresData?.data || talleresData?.items || []);
 
   const updateReceta = useUpdateReceta();
   const aplicarCosteo = useAplicarCosteo();
 
-  const [tallerId, setTallerId] = useState(producto?.tallerId || 1);
+  const [tallerId, setTallerId] = useState(producto?.tallerId || '');
   const [margenTransferencia, setMargenTransferencia] = useState(35);
   const [ajusteGlobalPct, setAjusteGlobalPct] = useState(3);
   const [accesoriosMonto, setAccesoriosMonto] = useState(0);
@@ -45,7 +41,7 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
       const r = recetaData.receta;
       // The editor form is intentionally hydrated when the remote recipe changes.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTallerId(r.tallerId || producto?.tallerId || 1);
+      setTallerId(r.tallerId || producto?.tallerId || '');
       setMargenTransferencia(r.margenTransferencia ?? 35);
       setAjusteGlobalPct(r.ajusteGlobalPct ?? 3);
       setAccesoriosMonto(r.accesoriosMonto ?? 0);
@@ -187,6 +183,10 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
 
   // Handlers for dynamic process rows
   const addProcesoRow = () => {
+    if (!tallerId) {
+      toast.warning('Selecciona primero el taller asignado');
+      return;
+    }
     setProcesos([
       ...procesos,
       { tallerId, proceso: 'confeccion', horas: 1.0 },
@@ -204,6 +204,10 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
   };
 
   const handleSaveReceta = async () => {
+    if (!tallerId) {
+      toast.warning('Selecciona el taller asignado');
+      return;
+    }
     try {
       await updateReceta.mutateAsync({
         productoId: producto.id,
@@ -224,6 +228,10 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
   };
 
   const handleAplicarCosteo = async () => {
+    if (!tallerId) {
+      toast.warning('Selecciona el taller asignado');
+      return;
+    }
     const ok = await confirmDialog(
       `¿Confirmas aplicar el nuevo costo de transferencia ($${liveCalculation.costoTransferencia.toLocaleString('es-CL')}) a la lista de precios? El precio actual ($${(producto.precioLista || 0).toLocaleString('es-CL')}) se actualizará y quedará registrado inmutablemente.`
     );
@@ -285,9 +293,10 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, background: 'var(--bg-1)', padding: 14, borderRadius: 8 }}>
               <div>
                 <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)' }}>Taller Asignado</label>
-                <select value={tallerId} onChange={(e) => setTallerId(Number(e.target.value))} style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', marginTop: 4 }}>
-                  {TALLERES_OPTS.map((t) => (
-                    <option key={t.id} value={t.id}>{t.nombre}</option>
+                <select value={tallerId} onChange={(e) => setTallerId(e.target.value)} style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', marginTop: 4 }}>
+                  <option value="">Selecciona un taller</option>
+                  {talleres.map((t) => (
+                    <option key={t.id} value={String(t.id)}>{t.label || t.nombre}</option>
                   ))}
                 </select>
               </div>
