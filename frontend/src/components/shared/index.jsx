@@ -214,7 +214,7 @@ export const Btn = ({ children, variant = 'primary', size = 'md', icon, onClick,
     danger: { background: hov ? 'oklch(0.48 0.20 25)' : 'var(--red)', color: '#fff' },
   }
   return (
-    <button type={type} onClick={disabled ? undefined : onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ ...base, ...variants[variant], ...style }}>
+    <button type={type} disabled={disabled} onClick={disabled ? undefined : onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ ...base, ...variants[variant], ...style }}>
       {icon && <Icon name={icon} size={14} />}{children}
     </button>
   )

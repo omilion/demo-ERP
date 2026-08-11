@@ -204,6 +204,57 @@ function RecetasTab() {
         </Btn>
       </div>
 
+      {pages > 1 && (
+        <div
+          aria-label="Paginación de productos MK"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap',
+            padding: '10px 14px',
+            marginBottom: 10,
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            background: '#fff',
+          }}
+        >
+          <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+            <strong>{total.toLocaleString('es-CL')}</strong> productos MK · {COSTEO_PAGE_SIZE} por página
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Btn size="xs" variant="secondary" onClick={() => setPage(1)} disabled={page <= 1 || isFetching}>
+              Primera
+            </Btn>
+            <Btn size="xs" variant="secondary" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1 || isFetching}>
+              Anterior
+            </Btn>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-2)' }}>
+              Página
+              <select
+                aria-label="Ir a página de productos MK"
+                value={page}
+                onChange={(event) => setPage(Number(event.target.value))}
+                disabled={isFetching}
+                style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}
+              >
+                {Array.from({ length: pages }, (_, index) => index + 1).map((pageNumber) => (
+                  <option key={pageNumber} value={pageNumber}>{pageNumber}</option>
+                ))}
+              </select>
+              de {pages}
+            </label>
+            <Btn size="xs" variant="secondary" onClick={() => setPage((current) => Math.min(pages, current + 1))} disabled={page >= pages || isFetching}>
+              Siguiente
+            </Btn>
+            <Btn size="xs" variant="secondary" onClick={() => setPage(pages)} disabled={page >= pages || isFetching}>
+              Última
+            </Btn>
+          </div>
+        </div>
+      )}
+
       <Table columns={columns} rows={isLoading ? [] : productos} emptyMessage={isLoading ? 'Cargando recetas…' : 'Sin productos'} />
       <Pager
         page={page}
