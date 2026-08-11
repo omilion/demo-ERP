@@ -29,15 +29,13 @@ export const createFacturacionDb = (prisma) => {
   const cafs = {
     tomarFolio: (tipoDte, ambiente, fchResol = null) => prisma.$transaction(async (tx) => {
       // Un CAF anterior a la resolución vigente pertenece a una autorización
-      // previa en producción. En certificación el SII entrega rangos de prueba
-      // reutilizables cuya fecha puede ser anterior a la resolución del set;
-      // filtrarlos deja el ERP sin folios aunque el CAF todavía tenga rango.
-      const minFechaAutorizacion = ambiente === 'produccion' ? fchResol : null;
-      const locked = minFechaAutorizacion
+      // previa, incluso en certificación. El SII puede aceptar el sobre pero
+      // rechazar todos sus DTE (EPR/FAU), por lo que ese rango no debe usarse.
+      const locked = fchResol
         ? await tx.$queryRaw`
           SELECT id FROM "facturacion"."cafs"
           WHERE "tipo_dte" = ${tipoDte} AND "ambiente" = ${ambiente}
-            AND "fecha_autorizacion" >= ${minFechaAutorizacion}
+            AND "fecha_autorizacion" >= ${fchResol}
             AND "siguiente_folio" <= "folio_hasta"
           ORDER BY "fecha_autorizacion" DESC, "folio_desde" ASC
           LIMIT 1

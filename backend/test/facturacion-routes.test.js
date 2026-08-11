@@ -146,7 +146,7 @@ describe('routes /api/facturacion', () => {
         folioDesde: 870001,
         folioHasta: 870060,
         siguienteFolio: 870001,
-        fechaAutorizacion: '2018-07-13',
+        fechaAutorizacion: '2026-07-23',
         ambiente: 'certificacion',
         xml: '<CAF/>',
       },
@@ -174,6 +174,43 @@ describe('routes /api/facturacion', () => {
     expect(body.disponibles).toBe(40)
     expect(body.ajuste).toMatchObject({ folioAnterior: 870001, folioNuevo: 870021 })
     expect(body.ajuste.motivo).toMatch(/REANUDACION CERTIFICACION/)
+  })
+
+  it('rechaza reanudar un CAF de certificacion anterior a la resolucion vigente', async () => {
+    const caf = await app.prisma.factCaf.create({
+      data: {
+        tipoDte: 43,
+        folioDesde: 875001,
+        folioHasta: 875060,
+        siguienteFolio: 875001,
+        fechaAutorizacion: '2018-07-13',
+        ambiente: 'certificacion',
+        xml: '<CAF/>',
+      },
+    })
+    qaCafIds.push(caf.id)
+
+    const listado = await app.inject({
+      method: 'GET',
+      url: '/api/facturacion/cafs',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    const cafListado = JSON.parse(listado.body).cafs.find(item => item.id === caf.id)
+    expect(cafListado).toMatchObject({ disponibles: 0, vigenteResolucion: false })
+    expect(cafListado.bloqueo).toMatch(/anterior a la resolucion vigente/)
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/facturacion/cafs/${caf.id}/reanudar-certificacion`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        motivo: 'Intento controlado sobre CAF historico',
+        confirmacion: 'REANUDAR CAF CERTIFICACION',
+      },
+    })
+
+    expect(res.statusCode).toBe(409)
+    expect(JSON.parse(res.body).error).toMatch(/anterior a la resolucion vigente/)
   })
 
   it('rechaza reanudar un CAF de produccion', async () => {

@@ -244,18 +244,25 @@ export default async function facturacionRoutes(fastify) {
   // --- CAF / folios ---
 
   fastify.get('/cafs', readAuth, async () => {
-    const [cafs, ajustes] = await Promise.all([
+    const [cafs, ajustes, empresa] = await Promise.all([
       fastify.prisma.factCaf.findMany({ orderBy: [{ tipoDte: 'asc' }, { folioDesde: 'asc' }] }),
       fastify.prisma.factFolioAjuste.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }),
+      fastify.prisma.factEmpresa.findUnique({ where: { id: 1 } }),
     ])
     return {
-      cafs: cafs.map((caf) => ({
-        ...caf,
-        xml: undefined,
-        tipoNombre: TIPOS_DTE[caf.tipoDte] || `DTE ${caf.tipoDte}`,
-        disponibles: Math.max(0, caf.folioHasta - caf.siguienteFolio + 1),
-        ajustes: ajustes.filter(ajuste => ajuste.cafId === caf.id),
-      }))
+      cafs: cafs.map((caf) => {
+        const vigenteResolucion = !empresa?.fchResol
+          || Boolean(caf.fechaAutorizacion && caf.fechaAutorizacion >= empresa.fchResol)
+        return {
+          ...caf,
+          xml: undefined,
+          tipoNombre: TIPOS_DTE[caf.tipoDte] || `DTE ${caf.tipoDte}`,
+          disponibles: vigenteResolucion ? Math.max(0, caf.folioHasta - caf.siguienteFolio + 1) : 0,
+          vigenteResolucion,
+          bloqueo: vigenteResolucion ? null : `CAF anterior a la resolucion vigente (${empresa.fchResol}).`,
+          ajustes: ajustes.filter(ajuste => ajuste.cafId === caf.id),
+        }
+      })
     }
   })
 
@@ -327,6 +334,9 @@ export default async function facturacionRoutes(fastify) {
       if (caf.ambiente !== 'certificacion' || empresa?.ambiente !== 'certificacion') {
         return { status: 409, error: 'Solo se pueden reanudar folios cuando el CAF y la empresa estan en certificacion.' }
       }
+      if (empresa?.fchResol && (!caf.fechaAutorizacion || caf.fechaAutorizacion < empresa.fchResol)) {
+        return { status: 409, error: `El CAF es anterior a la resolucion vigente (${empresa.fchResol}) y el SII rechaza sus DTE. Debes cargar un CAF nuevo de certificacion.` }
+      }
       const [used, ajustesPrevios] = await Promise.all([
         tx.factDocumento.aggregate({
           where: {
@@ -395,6 +405,9 @@ export default async function facturacionRoutes(fastify) {
       const empresa = await engine.getEmpresa()
       if (empresa.rut && parsed.rutEmisor && normalizeRut(parsed.rutEmisor) !== normalizeRut(empresa.rut)) {
         return reply.code(400).send({ error: `El CAF pertenece a ${parsed.rutEmisor}, no a la empresa configurada (${empresa.rut}).` })
+      }
+      if (empresa.fchResol && (!parsed.fechaAutorizacion || parsed.fechaAutorizacion < empresa.fchResol)) {
+        return reply.code(409).send({ error: `El CAF es anterior a la resolucion vigente (${empresa.fchResol}). Solicita y carga un CAF nuevo del SII.` })
       }
       const ambiente = (data?.fields?.ambiente?.value ?? request.body?.ambiente) === 'produccion' ? 'produccion' : 'certificacion'
       const record = await fastify.prisma.factCaf.create({
