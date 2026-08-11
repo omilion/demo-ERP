@@ -65,26 +65,41 @@ describe('facturacion/db (Prisma adapter)', () => {
     expect([r1.folio, r2.folio].sort()).toEqual([700, 701])
   })
 
-  it('no reutiliza un CAF anterior a la resolucion vigente', async () => {
+  it('no reutiliza en produccion un CAF anterior a la resolucion vigente', async () => {
     const oldCaf = await prisma.factCaf.create({
       data: {
         tipoDte: 112, folioDesde: 810, folioHasta: 810, siguienteFolio: 810,
-        fechaAutorizacion: '2018-07-13', ambiente: 'qa-resolucion', xml: '<CAF/>'
+        fechaAutorizacion: '2018-07-13', ambiente: 'produccion', xml: '<CAF/>'
       }
     })
     const currentCaf = await prisma.factCaf.create({
       data: {
         tipoDte: 112, folioDesde: 910, folioHasta: 910, siguienteFolio: 910,
-        fechaAutorizacion: '2026-07-23', ambiente: 'qa-resolucion', xml: '<CAF/>'
+        fechaAutorizacion: '2026-07-23', ambiente: 'produccion', xml: '<CAF/>'
       }
     })
     try {
-      const asignacion = await db.cafs.tomarFolio(112, 'qa-resolucion', '2026-07-21')
+      const asignacion = await db.cafs.tomarFolio(112, 'produccion', '2026-07-21')
       expect(asignacion.folio).toBe(910)
       const oldReloaded = await prisma.factCaf.findUnique({ where: { id: oldCaf.id } })
       expect(oldReloaded.siguienteFolio).toBe(810)
     } finally {
       await prisma.factCaf.deleteMany({ where: { id: { in: [oldCaf.id, currentCaf.id] } } })
+    }
+  })
+
+  it('permite en certificacion un CAF de pruebas anterior a la resolucion', async () => {
+    const caf = await prisma.factCaf.create({
+      data: {
+        tipoDte: 111, folioDesde: 810, folioHasta: 810, siguienteFolio: 810,
+        fechaAutorizacion: '2018-07-13', ambiente: 'certificacion', xml: '<CAF/>'
+      }
+    })
+    try {
+      const asignacion = await db.cafs.tomarFolio(111, 'certificacion', '2026-07-21')
+      expect(asignacion.folio).toBe(810)
+    } finally {
+      await prisma.factCaf.delete({ where: { id: caf.id } })
     }
   })
 

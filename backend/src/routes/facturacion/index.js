@@ -307,6 +307,52 @@ export default async function facturacionRoutes(fastify) {
     return result
   })
 
+  fastify.post('/cafs/:id/reiniciar-certificacion', folioAdminAuth, async (request, reply) => {
+    const cafId = Number(request.params.id)
+    const motivo = String(request.body?.motivo || '').trim()
+    const confirmacion = String(request.body?.confirmacion || '').trim()
+    if (!Number.isInteger(cafId) || cafId <= 0) return reply.code(400).send({ error: 'CAF invalido.' })
+    if (motivo.length < 10) return reply.code(400).send({ error: 'Indica un motivo de al menos 10 caracteres.' })
+    if (confirmacion !== 'REINICIAR CAF CERTIFICACION') return reply.code(400).send({ error: 'Confirmacion invalida.' })
+
+    const result = await fastify.prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`facturacion-caf:${cafId}`})::bigint)`
+      const [caf, empresa] = await Promise.all([
+        tx.factCaf.findUnique({ where: { id: cafId } }),
+        tx.factEmpresa.findUnique({ where: { id: 1 } }),
+      ])
+      if (!caf) return { status: 404, error: 'CAF no encontrado.' }
+      if (caf.ambiente !== 'certificacion' || empresa?.ambiente !== 'certificacion') {
+        return { status: 409, error: 'Solo se pueden reiniciar folios cuando el CAF y la empresa estan en certificacion.' }
+      }
+      if (caf.siguienteFolio === caf.folioDesde) {
+        return { status: 409, error: `El CAF ya comienza en el folio ${caf.folioDesde}.` }
+      }
+      const ajuste = await tx.factFolioAjuste.create({
+        data: {
+          cafId,
+          tipoDte: caf.tipoDte,
+          folioAnterior: caf.siguienteFolio,
+          folioNuevo: caf.folioDesde,
+          motivo: `[REINICIO CERTIFICACION] ${motivo}`,
+          usuarioId: Number(request.user?.id) || null,
+          usuarioNombre: request.user?.nombre || request.user?.email || `Usuario ${request.user?.id || ''}`.trim(),
+        },
+      })
+      const actualizado = await tx.factCaf.update({
+        where: { id: cafId },
+        data: { siguienteFolio: caf.folioDesde },
+      })
+      return {
+        ajuste,
+        caf: { ...actualizado, xml: undefined },
+        disponibles: actualizado.folioHasta - actualizado.folioDesde + 1,
+      }
+    })
+    if (result?.error) return reply.code(result.status || 400).send({ error: result.error })
+    return result
+  })
+
   fastify.post('/cafs', writeAuth, async (request, reply) => {
     try {
       const data = await request.file()

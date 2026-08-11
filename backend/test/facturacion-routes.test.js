@@ -13,6 +13,7 @@ function tokenFor(app, role = 'admin') {
 
 describe('routes /api/facturacion', () => {
   let app, token
+  const qaCafIds = []
 
   beforeAll(async () => {
     app = buildApp({ logger: false })
@@ -22,6 +23,10 @@ describe('routes /api/facturacion', () => {
 
   afterAll(async () => {
     await app.prisma.factDocumento.deleteMany({ where: { extra: { path: ['qaMarker'], equals: true } } })
+    if (qaCafIds.length) {
+      await app.prisma.factFolioAjuste.deleteMany({ where: { cafId: { in: qaCafIds } } })
+      await app.prisma.factCaf.deleteMany({ where: { id: { in: qaCafIds } } })
+    }
     await app.close()
   })
 
@@ -90,6 +95,64 @@ describe('routes /api/facturacion', () => {
     const res = await app.inject({ method: 'GET', url: '/api/facturacion/cafs', headers: { authorization: `Bearer ${token}` } })
     expect(res.statusCode).toBe(200)
     expect(Array.isArray(JSON.parse(res.body).cafs)).toBe(true)
+  })
+
+  it('reinicia un CAF de certificacion al inicio del rango y registra auditoria', async () => {
+    const caf = await app.prisma.factCaf.create({
+      data: {
+        tipoDte: 43,
+        folioDesde: 870001,
+        folioHasta: 870060,
+        siguienteFolio: 870021,
+        fechaAutorizacion: '2018-07-13',
+        ambiente: 'certificacion',
+        xml: '<CAF/>',
+      },
+    })
+    qaCafIds.push(caf.id)
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/facturacion/cafs/${caf.id}/reiniciar-certificacion`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        motivo: 'Reinicio automatizado del CAF de pruebas',
+        confirmacion: 'REINICIAR CAF CERTIFICACION',
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.caf.siguienteFolio).toBe(870001)
+    expect(body.disponibles).toBe(60)
+    expect(body.ajuste).toMatchObject({ folioAnterior: 870021, folioNuevo: 870001 })
+    expect(body.ajuste.motivo).toMatch(/REINICIO CERTIFICACION/)
+  })
+
+  it('rechaza reiniciar un CAF de produccion', async () => {
+    const caf = await app.prisma.factCaf.create({
+      data: {
+        tipoDte: 43,
+        folioDesde: 880001,
+        folioHasta: 880060,
+        siguienteFolio: 880021,
+        fechaAutorizacion: '2026-07-23',
+        ambiente: 'produccion',
+        xml: '<CAF/>',
+      },
+    })
+    qaCafIds.push(caf.id)
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/facturacion/cafs/${caf.id}/reiniciar-certificacion`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        motivo: 'Intento controlado sobre CAF productivo',
+        confirmacion: 'REINICIAR CAF CERTIFICACION',
+      },
+    })
+    expect(res.statusCode).toBe(409)
+    expect(JSON.parse(res.body).error).toMatch(/Solo se pueden reiniciar folios/)
+    const unchanged = await app.prisma.factCaf.findUnique({ where: { id: caf.id } })
+    expect(unchanged.siguienteFolio).toBe(880021)
   })
 
   it('GET /api/facturacion/documentos filters by ordenId (for the venta Documentos tab)', async () => {

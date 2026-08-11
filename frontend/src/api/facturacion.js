@@ -134,6 +134,14 @@ export const useAjustarFolioCaf = () => {
   })
 }
 
+export const useReiniciarCafCertificacion = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.post(`/facturacion/cafs/${id}/reiniciar-certificacion`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['facturacion', 'cafs'] }),
+  })
+}
+
 export const useEnviarLote = () => {
   const qc = useQueryClient()
   return useMutation({
