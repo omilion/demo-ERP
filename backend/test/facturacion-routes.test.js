@@ -97,6 +97,48 @@ describe('routes /api/facturacion', () => {
     expect(Array.isArray(JSON.parse(res.body).cafs)).toBe(true)
   })
 
+  it('ajusta un CAF considerando solo documentos de su propio rango', async () => {
+    const caf = await app.prisma.factCaf.create({
+      data: {
+        tipoDte: 43,
+        folioDesde: 890001,
+        folioHasta: 890060,
+        siguienteFolio: 890001,
+        fechaAutorizacion: '2026-07-23',
+        ambiente: 'certificacion',
+        xml: '<CAF/>',
+      },
+    })
+    qaCafIds.push(caf.id)
+    await app.prisma.factDocumento.create({
+      data: {
+        tipoDte: 43,
+        folio: 990000,
+        estado: 'aceptado',
+        ambiente: 'certificacion',
+        extra: { qaMarker: true },
+      },
+    })
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/facturacion/cafs/${caf.id}/ajustar-folio`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        siguienteFolio: 890010,
+        motivo: 'Recuperacion desde respaldo historico',
+        confirmacion: 'AJUSTAR FOLIO',
+      },
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body)).toMatchObject({
+      maxUsado: 0,
+      caf: { siguienteFolio: 890010 },
+      ajuste: { folioAnterior: 890001, folioNuevo: 890010 },
+    })
+  })
+
   it('reanuda un CAF de certificacion desde el mayor folio seguro y registra auditoria', async () => {
     const caf = await app.prisma.factCaf.create({
       data: {

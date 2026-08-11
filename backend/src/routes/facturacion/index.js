@@ -279,7 +279,9 @@ export default async function facturacionRoutes(fastify) {
       const used = await tx.factDocumento.aggregate({
         where: {
           tipoDte: caf.tipoDte,
-          folio: { not: null },
+          // Un mismo tipo DTE puede tener varios CAF con rangos distintos.
+          // Un folio alto de otro CAF no debe impedir ajustar este rango.
+          folio: { gte: caf.folioDesde, lte: caf.folioHasta },
           OR: [{ ambiente: caf.ambiente }, { ambiente: null }],
         },
         _max: { folio: true },
