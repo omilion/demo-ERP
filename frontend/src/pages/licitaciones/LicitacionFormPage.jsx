@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Btn, PageHeader } from '../../components/shared'
 import { useCreateCotizacion } from '../../api/cotizaciones'
+import { sanitizeOrdenCompra, sanitizePlazoDias } from '../../utils/licitacionFields'
 
 const ESTADOS = ['Pendiente', 'En proceso', 'Adjudicada', 'No Adjudicada', 'Rechazada', 'Cerrada']
 
@@ -24,7 +25,11 @@ export default function LicitacionFormPage() {
 
   const submit = (event) => {
     event.preventDefault()
-    createCotizacion.mutate(form, {
+    createCotizacion.mutate({
+      ...form,
+      plazo: sanitizePlazoDias(form.plazo),
+      ordenCompra: sanitizeOrdenCompra(form.ordenCompra),
+    }, {
       onSuccess: data => navigate(`/licitaciones/${data.id}`),
       onError: e => toast.error(e.response?.data?.error || 'Error al crear cotizacion'),
     })
@@ -58,10 +63,28 @@ export default function LicitacionFormPage() {
             <input value={form.referencia} onChange={e => setField('referencia', e.target.value)} style={inputStyle} />
           </Field>
           <Field label="Orden de compra">
-            <input value={form.ordenCompra} onChange={e => setField('ordenCompra', e.target.value)} style={inputStyle} />
+            <input
+              value={form.ordenCompra}
+              onChange={e => setField('ordenCompra', sanitizeOrdenCompra(e.target.value))}
+              maxLength={80}
+              placeholder="Ej: OC-12345"
+              title="Solo letras, números y guiones"
+              style={inputStyle}
+            />
           </Field>
-          <Field label="Plazo">
-            <input value={form.plazo} onChange={e => setField('plazo', e.target.value)} style={inputStyle} />
+          <Field label="Plazo de la licitación (días)">
+            <input
+              type="number"
+              min="0"
+              max="3650"
+              step="1"
+              inputMode="numeric"
+              value={form.plazo}
+              onChange={e => setField('plazo', sanitizePlazoDias(e.target.value))}
+              onKeyDown={e => ['e', 'E', '+', '-', '.', ','].includes(e.key) && e.preventDefault()}
+              placeholder="Ej: 30"
+              style={inputStyle}
+            />
           </Field>
         </div>
         <Field label="Observaciones">

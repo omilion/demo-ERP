@@ -6,6 +6,7 @@ import { Badge, Btn, KpiCard, PageHeader, Pager, Table } from '../../components/
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 import { downloadFromBackend } from '../../utils/csv'
+import { plazoLabel } from '../../utils/licitacionFields'
 
 const ESTADOS = ['', 'Pendiente', 'Adjudicada', 'No Adjudicada', 'En proceso', 'Rechazada', 'Cerrada']
 const ESTADO_TONE = {
@@ -142,7 +143,7 @@ export default function ReportesLicitacionesPage() {
     { key: 'detalle', label: 'Detalle', wrap: true, render: v => <span style={{ display: 'block', minWidth: 240, maxWidth: 380, whiteSpace: 'normal', lineHeight: 1.35 }}>{v || '-'}</span> },
     { key: 'fechaCreacion', label: 'Fecha Creacion', render: v => <span style={{ fontFamily: "'DM Mono', monospace" }}>{fmtDate(v, true)}</span> },
     { key: 'fecha', label: 'Fecha Licitacion', render: v => <span style={{ fontFamily: "'DM Mono', monospace" }}>{fmtDate(v)}</span> },
-    { key: 'plazo', label: 'Plazo' },
+    { key: 'plazo', label: 'Plazo', render: (_, row) => plazoLabel(row) },
     { key: 'totalNeto', label: 'Total Neto', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{fmt(v)}</span> },
     { key: 'iva', label: 'IVA', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace" }}>{fmt(v)}</span> },
     { key: 'totalConIva', label: 'Total C/IVA', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>{fmt(v)}</span> },

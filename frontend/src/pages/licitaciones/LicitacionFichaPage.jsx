@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Btn } from '../../components/shared'
 import { useCotizacion } from '../../api/cotizaciones'
+import { plazoLabel } from '../../utils/licitacionFields'
 
 const fmt = n => '$ ' + Number(n || 0).toLocaleString('es-CL')
 const fallbackImg = '/legacy-img/no_foto_chica.jpg'
@@ -73,7 +74,7 @@ export default function LicitacionFichaPage() {
             <Info label="Referencia" value={data.referencia || '-'} />
           </div>
           <div style={{ alignSelf: 'end' }}>
-            <Info label="Plazo entrega" value={data.plazo || '-'} />
+            <Info label="Plazo licitación" value={plazoLabel(data)} />
             <Info label="Plazo límite" value={fmtDate(data.fechaPlazo)} />
             <Info label="Envíos parciales" value={data.enviosParciales ? 'Permitido' : 'No'} />
             <Info label="Monto despacho" value={fmt(data.montoDespacho)} />

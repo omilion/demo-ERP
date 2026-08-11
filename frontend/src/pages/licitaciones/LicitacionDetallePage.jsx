@@ -13,6 +13,7 @@ import { useEvaluarDescuentoCotizacion, useSolicitarDescuentoCotizacion } from '
 import { useProductos } from '../../api/productos'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import { plazoDiasFromLicitacion, plazoLabel, sanitizeOrdenCompra, sanitizePlazoDias } from '../../utils/licitacionFields'
 
 const ESTADO_TONE = {
   'Pendiente':  'amber', 'Adjudicada': 'green', 'Cerrada': 'neutral',
@@ -27,8 +28,8 @@ const licitacionForm = data => ({
   estado: data.estado || 'Pendiente',
   rutCliente: data.rutCliente || '',
   obs: data.obs || '',
-  plazo: data.plazo || '',
-  ordenCompra: data.ordenCompra || '',
+  plazo: plazoDiasFromLicitacion(data),
+  ordenCompra: sanitizeOrdenCompra(data.ordenCompra),
   referencia: data.referencia || '',
   fecha: data.fecha ? data.fecha.slice(0, 10) : '',
   fechaPlazo: data.fechaPlazo ? data.fechaPlazo.slice(0, 10) : '',
@@ -324,7 +325,14 @@ export default function LicitacionDetallePage() {
   const totalAdjudicado = items.reduce((s, i) => s + (i.cantAdjudicados || 0) * (i.precio || 0), 0)
 
   const handleSave = () => {
-    updateMut.mutate({ id: data.id, data: form }, { onSuccess: () => setEditing(false) })
+    updateMut.mutate({
+      id: data.id,
+      data: {
+        ...form,
+        plazo: sanitizePlazoDias(form.plazo),
+        ordenCompra: sanitizeOrdenCompra(form.ordenCompra),
+      },
+    }, { onSuccess: () => setEditing(false) })
   }
 
   const handleDelete = async () => {
@@ -510,14 +518,30 @@ export default function LicitacionDetallePage() {
             <FormField label="Fecha">
               <Input type="date" value={form.fecha} onChange={v => setForm(f => ({ ...f, fecha: v }))} />
             </FormField>
-            <FormField label="Plazo de Entrega (Texto)">
-              <Input value={form.plazo} onChange={v => setForm(f => ({ ...f, plazo: v }))} />
+            <FormField label="Plazo de la licitación (días)">
+              <Input
+                type="number"
+                min="0"
+                max="3650"
+                step="1"
+                inputMode="numeric"
+                value={form.plazo}
+                onChange={v => setForm(f => ({ ...f, plazo: sanitizePlazoDias(v) }))}
+                onKeyDown={e => ['e', 'E', '+', '-', '.', ','].includes(e.key) && e.preventDefault()}
+                placeholder="Ej: 30"
+              />
             </FormField>
             <FormField label="Fecha Límite Licitación">
               <Input type="date" value={form.fechaPlazo} onChange={v => setForm(f => ({ ...f, fechaPlazo: v }))} />
             </FormField>
             <FormField label="OC">
-              <Input value={form.ordenCompra} onChange={v => setForm(f => ({ ...f, ordenCompra: v }))} />
+              <Input
+                value={form.ordenCompra}
+                onChange={v => setForm(f => ({ ...f, ordenCompra: sanitizeOrdenCompra(v) }))}
+                maxLength={80}
+                placeholder="Ej: OC-12345"
+                title="Solo letras, números y guiones"
+              />
             </FormField>
             <FormField label="RUT organismo">
               <Input value={form.rutCliente} onChange={v => setForm(f => ({ ...f, rutCliente: v }))} />
@@ -552,6 +576,7 @@ export default function LicitacionDetallePage() {
               <InfoCard label="Fecha límite" value={data.fechaPlazo ? new Date(data.fechaPlazo).toLocaleDateString('es-CL') : '—'} />
               <InfoCard label="Envíos Parciales" value={data.enviosParciales ? 'Permitido' : 'No permitido'} />
               <InfoCard label="Monto Despacho" value={fmt(data.montoDespacho)} />
+              <InfoCard label="Plazo licitación" value={plazoLabel(data)} />
               <InfoCard label="OC" value={data.ordenCompra || '—'} />
               <InfoCard label="Vendedor" value={data.usuario || '—'} />
             </div>

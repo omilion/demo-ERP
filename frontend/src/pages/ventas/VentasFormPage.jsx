@@ -16,14 +16,13 @@ import { useCrearDocumentoVenta } from '../../api/caja'
 import { useDescuentos, useEvaluarDescuentos, useSolicitarDescuento, useSolicitudesDescuento } from '../../api/descuentos'
 import { can, canAny } from '../../utils/permissions'
 import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
+import { plazoDiasFromLicitacion, sanitizeOrdenCompra, sanitizePlazoDias } from '../../utils/licitacionFields'
 
 const DOCUMENTOS_VENTA = ['Factura Plast', 'Factura Laura', 'Boleta Electronica', 'NC Plast', 'NC Laura', 'NC Inter Plast', 'ND Plast', 'ND Laura']
 
 const TIPOS = ['Licitación', 'Convenio Marco', 'Marketplace', 'Venta Web', 'Venta Sala']
 const MARKETPLACE_CANALES = ['París', 'Mercado Libre', 'Falabella']
 const TIPO_DEFAULT = 'Venta Sala'
-
-const cleanCommercialId = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9-]/g, '').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '').toUpperCase().slice(0, 80)
 
 function calculateDeliveryDateIso(days, type = 'corridos') {
   const amount = Number(days)
@@ -1045,7 +1044,7 @@ export default function VentasFormPage() {
     enviosParciales: false, montoDespacho: '', fechaPlazo: '', plazoEntregaDias: '', plazoEntregaTipo: 'corridos',
     direccionDespacho: '', direccionDespachoExtra: '', contactoDespacho: '', telefonoContactoDespacho: '', emailContactoDespacho: '',
     marketplaceCanal: '', marketplaceComisionPct: '', marketplaceComisionMonto: '',
-    regionDespacho: '', comunaDespacho: '', ciudadDespacho: '', vendedorId: '',
+    regionDespacho: '', comunaDespacho: '', vendedorId: '',
   })
   const selectedClienteId = data.clienteId ? Number(data.clienteId) : null
   const { data: sucursalesCliente = [] } = useClienteSucursales(selectedClienteId)
@@ -1093,16 +1092,15 @@ export default function VentasFormPage() {
       set('emailContactoDespacho', found.emailContactoDespacho || '')
       set('regionDespacho', found.regionDespacho || '')
       set('comunaDespacho', found.comunaDespacho || '')
-      set('ciudadDespacho', found.ciudadDespacho || '')
       set('marketplaceCanal', found.marketplaceCanal || '')
       set('marketplaceComisionPct', found.marketplaceComisionPct != null ? String(found.marketplaceComisionPct) : '')
       set('marketplaceComisionMonto', found.marketplaceComisionMonto != null ? String(found.marketplaceComisionMonto) : '')
 
       const firstCot = found.cotizaciones?.[0]
       set('licitacionFecha', firstCot?.fecha ? new Date(firstCot.fecha).toISOString().slice(0, 10) : '')
-      set('licitacionPlazo', firstCot?.plazo || '')
+      set('licitacionPlazo', plazoDiasFromLicitacion(firstCot || {}))
       set('licitacionReferencia', firstCot?.referencia || '')
-      set('licitacionOC', firstCot?.ordenCompra || '')
+      set('licitacionOC', sanitizeOrdenCompra(firstCot?.ordenCompra))
 
       const initialItems = found.items?.length
         ? found.items.map(i => ({
@@ -1210,16 +1208,15 @@ export default function VentasFormPage() {
       emailContactoDespacho: data.emailContactoDespacho || null,
       regionDespacho: data.regionDespacho || null,
       comunaDespacho: data.comunaDespacho || null,
-      ciudadDespacho: data.ciudadDespacho || null,
       marketplaceCanal: data.tipo === 'Marketplace' ? data.marketplaceCanal || null : null,
       marketplaceComisionPct: data.tipo === 'Marketplace' && data.marketplaceComisionPct !== '' ? Number(data.marketplaceComisionPct) : null,
       marketplaceComisionMonto: data.tipo === 'Marketplace' && data.marketplaceComisionMonto !== '' ? Number(data.marketplaceComisionMonto) : null,
     }
     if (data.tipo === 'Licitación') {
       payload.licitacionFecha = data.licitacionFecha || undefined
-      payload.licitacionPlazo = data.licitacionPlazo || undefined
+      payload.licitacionPlazo = sanitizePlazoDias(data.licitacionPlazo) || undefined
       payload.licitacionReferencia = data.licitacionReferencia || undefined
-      payload.licitacionOC = data.licitacionOC || undefined
+      payload.licitacionOC = sanitizeOrdenCompra(data.licitacionOC) || undefined
     }
     if (data.clienteId) payload.clienteId = Number(data.clienteId)
     payload.clienteSucursalId = data.clienteSucursalId ? Number(data.clienteSucursalId) : null
@@ -1347,14 +1344,24 @@ export default function VentasFormPage() {
             </FormField>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 14 }}>
-            <FormField label="Plazo">
-              <Input value={data.licitacionPlazo || ''} onChange={v => set('licitacionPlazo', v)} placeholder="Ej: 30 días" />
+            <FormField label="Plazo de la licitación (días)">
+              <Input
+                type="number"
+                min="0"
+                max="3650"
+                step="1"
+                inputMode="numeric"
+                value={data.licitacionPlazo || ''}
+                onChange={v => set('licitacionPlazo', sanitizePlazoDias(v))}
+                onKeyDown={e => ['e', 'E', '+', '-', '.', ','].includes(e.key) && e.preventDefault()}
+                placeholder="Ej: 30"
+              />
             </FormField>
             <FormField label="Referencia">
               <Input value={data.licitacionReferencia || ''} onChange={v => set('licitacionReferencia', v)} placeholder="Ej: Escuela Municipal" />
             </FormField>
             <FormField label="Orden de Compra">
-              <Input value={data.licitacionOC || ''} onChange={v => set('licitacionOC', cleanCommercialId(v))} placeholder="Ej: 12345-67-SE16" />
+              <Input value={data.licitacionOC || ''} onChange={v => set('licitacionOC', sanitizeOrdenCompra(v))} maxLength={80} title="Solo letras, números y guiones" placeholder="Ej: 12345-67-SE16" />
             </FormField>
           </div>
         </>
@@ -1364,7 +1371,7 @@ export default function VentasFormPage() {
         <>
           <FormDivider label="Detalles del Convenio Marco" />
           <FormField label="N OC Convenio Marco (Requerido)" hint="Obligatorio y no duplicable">
-            <Input value={data.licitacion || ''} onChange={v => set('licitacion', cleanCommercialId(v))} placeholder="Numero OC" />
+            <Input value={data.licitacion || ''} onChange={v => set('licitacion', sanitizeOrdenCompra(v))} placeholder="Numero OC" />
           </FormField>
         </>
       )}
@@ -1466,7 +1473,7 @@ export default function VentasFormPage() {
         </div>
       </div>
       {/* Región y Comuna encadenadas: elegir región filtra las comunas disponibles */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
         <FormField label="Región Despacho">
           <Select
             value={data.regionDespacho || ''}
@@ -1481,9 +1488,6 @@ export default function VentasFormPage() {
             disabled={!data.regionDespacho}
             options={[{ value: '', label: data.regionDespacho ? '— Seleccionar comuna —' : 'Elige región primero' }, ...comunas.map(c => ({ value: c.nombre, label: c.nombre }))]}
           />
-        </FormField>
-        <FormField label="Ciudad Despacho">
-          <Input value={data.ciudadDespacho || ''} onChange={v => set('ciudadDespacho', v)} placeholder="Ciudad" />
         </FormField>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 14 }}>

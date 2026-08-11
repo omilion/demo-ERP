@@ -13,11 +13,24 @@ export function sanitizeCommercialIdentifier(value) {
   return String(value ?? '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
     .replace(/[^A-Za-z0-9-]/g, '')
     .replace(/-{2,}/g, '-')
     .replace(/^-+|-+$/g, '')
     .toUpperCase()
     .slice(0, 80)
+}
+
+export function normalizeLicitacionPlazo(value) {
+  if (value === undefined) return { value: undefined }
+  if (value === null || String(value).trim() === '') return { value: '' }
+  const raw = String(value).trim()
+  if (!/^\d+$/.test(raw)) return { error: 'El plazo de la licitación debe ser un número entero de días.' }
+  const days = Number(raw)
+  if (!Number.isInteger(days) || days < 0 || days > 3650) {
+    return { error: 'El plazo de la licitación debe estar entre 0 y 3650 días.' }
+  }
+  return { value: String(days) }
 }
 
 export function isValidContactEmail(value) {

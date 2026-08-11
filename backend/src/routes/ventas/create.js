@@ -7,7 +7,7 @@ import { canApplyDescuento, requiresDescuentoPermission } from './descuentos-per
 import { validateVentaDescuentoCatalogForWrite } from './descuentos-catalog.js'
 import { assertDiscountAuthorizationForDraft } from '../descuentos/rules-engine.js'
 import { autoNotifyTaller } from '../pasar-taller/service.js'
-import { calculateDeliveryDate, normalizeMarketplace, sanitizeCommercialIdentifier } from './operational-rules.js'
+import { calculateDeliveryDate, normalizeLicitacionPlazo, normalizeMarketplace, sanitizeCommercialIdentifier } from './operational-rules.js'
 
 
 const ItemSchema = z.object({
@@ -95,6 +95,8 @@ export default async function createVenta(fastify) {
       vendedorId,
       ...rest
     } = parsed.data
+    const normalizedLicitacionPlazo = normalizeLicitacionPlazo(licitacionPlazo)
+    if (normalizedLicitacionPlazo.error) return reply.code(400).send({ error: normalizedLicitacionPlazo.error })
     if (abono > 0 || facturado !== undefined || (estadoPago && estadoPago !== 'No pagada')) {
       return reply.code(400).send({ error: 'Los abonos, facturado y estado de pago se registran desde Cobranza/Caja' })
     }
@@ -246,7 +248,7 @@ export default async function createVenta(fastify) {
               // adjudicadas se confirman despues, item por item, segun lo que
               // el organismo licitante realmente adjudique (LicitacionDetallePage).
               fecha: licitacionFecha ? new Date(licitacionFecha) : undefined,
-              plazo: licitacionPlazo || undefined,
+              plazo: normalizedLicitacionPlazo.value || undefined,
               referencia: licitacionReferencia || undefined,
               ordenCompra: ocLicitacion || undefined,
               fechaPlazo: plazoCalculado || (fechaPlazo ? new Date(fechaPlazo) : undefined),
@@ -275,7 +277,7 @@ export default async function createVenta(fastify) {
               // Pendiente por defecto: se adjudica despues item por item segun
               // lo que confirme el organismo licitante (LicitacionDetallePage).
               estado: 'Pendiente',
-              plazo: licitacionPlazo || '',
+              plazo: normalizedLicitacionPlazo.value || '',
               referencia: licitacionReferencia || '',
               ordenCompra: ocLicitacion || '',
               ordenId: created.id,

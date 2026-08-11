@@ -5,6 +5,7 @@ import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../compone
 import { useCotizaciones, useReportesLicitaciones, useCrearVentaDesdeLicitacion } from '../../api/cotizaciones'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import { plazoLabel } from '../../utils/licitacionFields'
 
 const ESTADO_TONE = {
   'Pendiente':    'amber',
@@ -30,7 +31,7 @@ function exportCsv(rows) {
   const lines = [headers.join(';')]
   for (const r of rows) {
     lines.push([
-      r.idLicitacion, r.rutCliente, r.referencia, r.ordenCompra, r.plazo,
+      r.idLicitacion, r.rutCliente, r.referencia, r.ordenCompra, plazoLabel(r),
       r.estado, r.fechaCreacion ? new Date(r.fechaCreacion).toLocaleDateString('es-CL') : '',
       r.usuario, r.obs,
     ].map(escape).join(';'))
@@ -123,7 +124,7 @@ export default function LicitacionesPage() {
         ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-2)' }}>{v}</span>
         : <span style={{ color: 'var(--text-3)' }}>—</span> },
     { key: 'plazo', label: 'Plazo',
-      render: v => <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{v || '—'}</span> },
+      render: (_, row) => <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{plazoLabel(row)}</span> },
     { key: 'estado', label: 'Estado',
       render: v => <Badge tone={ESTADO_TONE[v] || 'gray'}>{v}</Badge> },
     { key: 'fechaCreacion', label: 'Fecha',

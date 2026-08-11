@@ -604,7 +604,7 @@ describe('RBAC /api/cotizaciones', () => {
         method: 'POST',
         url: '/api/cotizaciones',
         headers: { authorization: `Bearer ${licitacionesWriteToken}` },
-        payload: { idLicitacion: marker, fecha: '2026-05-27', estado: 'Adjudicada', plazo: '10 dias', ordenCompra: `${marker}-OC` },
+        payload: { idLicitacion: marker, fecha: '2026-05-27', estado: 'Adjudicada', plazo: '10', ordenCompra: `${marker}-OC` },
       })
       expect(create.statusCode).toBe(201)
       const cot = JSON.parse(create.body)
@@ -1846,7 +1846,7 @@ describe('Venta directa stock, lifecycle and sucursal scope', () => {
           clienteId: firstCliente?.id,
           licitacion: marker,
           licitacionFecha: '2026-05-27',
-          licitacionPlazo: '30 días',
+          licitacionPlazo: '30',
           licitacionReferencia: 'Escuela A-100',
           licitacionOC: 'OC-123',
           items: [{ productoId: producto.id, cantidad: 2, precioUnitario: 1000 }],
@@ -1863,7 +1863,7 @@ describe('Venta directa stock, lifecycle and sucursal scope', () => {
       expect(cot).toBeDefined()
       expect(cot.ordenId).toBe(body.id)
       expect(new Date(cot.fecha).toISOString().slice(0, 10)).toBe('2026-05-27')
-      expect(cot.plazo).toBe('30 días')
+      expect(cot.plazo).toBe('30')
       expect(cot.referencia).toBe('Escuela A-100')
       expect(cot.ordenCompra).toBe('OC-123')
       // No se auto-adjudica al crear la venta: el organismo licitante adjudica
@@ -1877,7 +1877,7 @@ describe('Venta directa stock, lifecycle and sucursal scope', () => {
         headers: { authorization: `Bearer ${token}` },
         payload: {
           licitacionFecha: '2026-05-28',
-          licitacionPlazo: '45 días',
+          licitacionPlazo: '45',
           licitacionReferencia: 'Escuela A-101',
           licitacionOC: 'OC-124',
         }
@@ -1888,7 +1888,7 @@ describe('Venta directa stock, lifecycle and sucursal scope', () => {
         where: { id: cot.id }
       })
       expect(new Date(cotUpdated.fecha).toISOString().slice(0, 10)).toBe('2026-05-28')
-      expect(cotUpdated.plazo).toBe('45 días')
+      expect(cotUpdated.plazo).toBe('45')
       // Actualizar metadata de la venta tampoco debe forzar Adjudicada.
       expect(cotUpdated.estado).toBe('Pendiente')
       expect(cotUpdated.referencia).toBe('Escuela A-101')

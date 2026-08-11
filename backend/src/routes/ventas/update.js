@@ -7,7 +7,7 @@ import { canApplyDescuento } from './descuentos-permissions.js'
 import { getVentaDescuentoCatalogKind, validateVentaDescuentoCatalogForWrite } from './descuentos-catalog.js'
 import { assertDiscountAuthorizationForDraft } from '../descuentos/rules-engine.js'
 import { autoNotifyTaller } from '../pasar-taller/service.js'
-import { calculateDeliveryDate, normalizeMarketplace, sanitizeCommercialIdentifier } from './operational-rules.js'
+import { calculateDeliveryDate, normalizeLicitacionPlazo, normalizeMarketplace, sanitizeCommercialIdentifier } from './operational-rules.js'
 
 export const ESTADO_PAGO_VALUES = ['No pagada', 'Pagada', 'Parcial']
 export const ESTADO_ENTREGA_VALUES = ['Pendiente entrega', 'En despacho', 'Entregada', 'Parcial']
@@ -117,6 +117,8 @@ export default async function updateVenta(fastify) {
         ciudadDespacho,
         ...ordenData
       } = parsed.data
+      const normalizedLicitacionPlazo = normalizeLicitacionPlazo(licitacionPlazo)
+      if (normalizedLicitacionPlazo.error) return reply.code(400).send({ error: normalizedLicitacionPlazo.error })
       const sucursalId = getUserSucursalId(request.user)
       const current = await fastify.prisma.orden.findFirst({
         where: { id, ...(sucursalId ? { sucursalId } : {}) },
@@ -441,7 +443,7 @@ export default async function updateVenta(fastify) {
               idLicitacion: licId,
             }
             if (licitacionFecha !== undefined) dataToUpdate.fecha = licitacionFecha ? new Date(licitacionFecha) : null
-            if (licitacionPlazo !== undefined) dataToUpdate.plazo = licitacionPlazo
+            if (licitacionPlazo !== undefined) dataToUpdate.plazo = normalizedLicitacionPlazo.value
             if (licitacionReferencia !== undefined) dataToUpdate.referencia = licitacionReferencia
             if (licitacionOC !== undefined) dataToUpdate.ordenCompra = sanitizeCommercialIdentifier(licitacionOC)
             if (fechaPlazo !== undefined) dataToUpdate.fechaPlazo = fechaPlazo ? new Date(fechaPlazo) : null
@@ -479,7 +481,7 @@ export default async function updateVenta(fastify) {
                 rutCliente: clientObj?.rut || '',
                 // Pendiente por defecto, igual que al crear (ver create.js).
                 estado: 'Pendiente',
-                plazo: licitacionPlazo || '',
+                plazo: normalizedLicitacionPlazo.value || '',
                 referencia: licitacionReferencia || '',
                 ordenCompra: sanitizeCommercialIdentifier(licitacionOC) || '',
                 ordenId: id,

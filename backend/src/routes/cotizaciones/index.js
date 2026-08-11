@@ -3,7 +3,7 @@ import { applyVentaStockDeltas, buildReplacementStockDeltas, buildStockDeltasFro
 import { computeVentaFinancialState } from '../ventas/financial.js'
 import { can as canAccess } from '../../middleware/rbac.js'
 import { rowsToCsv, sendCsv } from '../../utils/csv.js'
-import { calculateDeliveryDate, sanitizeCommercialIdentifier } from '../ventas/operational-rules.js'
+import { calculateDeliveryDate, normalizeLicitacionPlazo, sanitizeCommercialIdentifier } from '../ventas/operational-rules.js'
 import {
   assertDiscountAuthorizationForDraft,
   buildDiscountSnapshot,
@@ -614,6 +614,8 @@ export default async function cotizacionesRoutes(fastify) {
       if (parsedItem.error) return reply.code(400).send({ error: parsedItem.error })
       itemData.push(parsedItem.data)
     }
+    const normalizedPlazo = normalizeLicitacionPlazo(plazo)
+    if (normalizedPlazo.error) return reply.code(400).send({ error: normalizedPlazo.error })
     const usuario = request.user?.nombre || request.user?.email || 'Sistema'
     const userSucursalId = getUserSucursalId(request.user)
 
@@ -627,7 +629,7 @@ export default async function cotizacionesRoutes(fastify) {
             rutCliente,
             estado: estado || 'Pendiente',
             obs,
-            plazo,
+            plazo: normalizedPlazo.value,
             ordenCompra: sanitizeCommercialIdentifier(ordenCompra),
             sucursalId: userSucursalId ?? (sucursalId ? parseInt(sucursalId, 10) : null),
             referencia,
@@ -665,7 +667,11 @@ export default async function cotizacionesRoutes(fastify) {
     if (body.estado !== undefined) data.estado = body.estado
     if (body.rutCliente !== undefined) data.rutCliente = body.rutCliente
     if (body.obs !== undefined) data.obs = body.obs
-    if (body.plazo !== undefined) data.plazo = body.plazo
+    if (body.plazo !== undefined) {
+      const normalizedPlazo = normalizeLicitacionPlazo(body.plazo)
+      if (normalizedPlazo.error) return reply.code(400).send({ error: normalizedPlazo.error })
+      data.plazo = normalizedPlazo.value
+    }
     if (body.ordenCompra !== undefined) data.ordenCompra = sanitizeCommercialIdentifier(body.ordenCompra)
     if (body.referencia !== undefined) data.referencia = body.referencia
     if (body.fecha !== undefined) data.fecha = body.fecha ? new Date(body.fecha) : null
