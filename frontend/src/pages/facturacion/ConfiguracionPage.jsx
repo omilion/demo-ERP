@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { PageHeader, Btn, Badge, Table } from '../../components/shared'
 import { FormField, Input, Select } from '../../components/forms'
-import { useEmpresa, useUpdateEmpresa, useUploadCertificado, useCafs, useUploadCaf, useDeleteCaf, useAjustarFolioCaf, useReiniciarCafCertificacion } from '../../api/facturacion'
+import { useEmpresa, useUpdateEmpresa, useUploadCertificado, useCafs, useUploadCaf, useDeleteCaf, useAjustarFolioCaf, useReanudarCafCertificacion } from '../../api/facturacion'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 import { toast, confirmDialog } from '../../store/notif'
@@ -123,7 +123,7 @@ function CafsSection({ canWrite, canAdjustFolios }) {
   const uploadMut = useUploadCaf()
   const deleteMut = useDeleteCaf()
   const ajustarMut = useAjustarFolioCaf()
-  const reiniciarMut = useReiniciarCafCertificacion()
+  const reanudarMut = useReanudarCafCertificacion()
   const fileRef = useRef(null)
   const ambiente = empresaData?.empresa?.ambiente || 'certificacion'
 
@@ -163,21 +163,20 @@ function CafsSection({ canWrite, canAdjustFolios }) {
     })
   }
 
-  const handleResetCertification = async row => {
+  const handleResumeCertification = async row => {
     const ok = await confirmDialog({
-      title: 'Reiniciar folios de certificación',
-      detail: `El CAF de ${row.tipoNombre} volverá al folio ${row.folioDesde}. Esto reutiliza folios solo para continuar las pruebas ante el SII y nunca está permitido en producción.`,
-      tone: 'danger',
+      title: 'Reanudar folios de certificación',
+      detail: `Se calculará el primer folio seguro del CAF de ${row.tipoNombre} usando el historial local y de auditoría. No se reutilizarán folios ya enviados al SII.`,
     })
     if (!ok) return
-    const confirmacion = window.prompt('Escribe REINICIAR CAF CERTIFICACION para confirmar:', '')
-    if (confirmacion !== 'REINICIAR CAF CERTIFICACION') return toast.error('Confirmación cancelada o incorrecta.')
-    reiniciarMut.mutate({
+    const confirmacion = window.prompt('Escribe REANUDAR CAF CERTIFICACION para confirmar:', '')
+    if (confirmacion !== 'REANUDAR CAF CERTIFICACION') return toast.error('Confirmación cancelada o incorrecta.')
+    reanudarMut.mutate({
       id: row.id,
-      motivo: 'Reinicio del rango para continuar pruebas SII',
+      motivo: 'Recuperacion del siguiente folio seguro para pruebas SII',
       confirmacion,
     }, {
-      onSuccess: result => toast.success(`CAF reiniciado. Próximo folio: ${result.caf.siguienteFolio}; disponibles: ${result.disponibles}.`),
+      onSuccess: result => toast.success(`CAF listo. Próximo folio seguro: ${result.caf.siguienteFolio}; disponibles: ${result.disponibles}.`),
       onError: err => toast.error(errorText(err)),
     })
   }
@@ -188,7 +187,7 @@ function CafsSection({ canWrite, canAdjustFolios }) {
     { key: 'siguienteFolio', label: 'Siguiente folio' },
     { key: 'disponibles', label: 'Disponibles', align: 'right', render: v => <Badge tone={v > 0 ? 'green' : 'red'}>{v}</Badge> },
     { key: 'ambiente', label: 'Ambiente', render: v => v === 'produccion' ? 'Producción' : 'Certificación' },
-    ...(canWrite ? [{ key: 'id', label: '', align: 'right', render: (_, row) => <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>{canAdjustFolios && row.ambiente === 'certificacion' && <button onClick={() => handleResetCertification(row)} disabled={reiniciarMut.isPending} style={{ background: 'none', border: 'none', color: 'var(--amber)', cursor: reiniciarMut.isPending ? 'wait' : 'pointer', fontWeight: 600, fontSize: 12 }}>Reiniciar pruebas</button>}{canAdjustFolios && <button onClick={() => handleAdjust(row)} style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>Ajustar folio</button>}<button onClick={() => handleDelete(row)} style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>Borrar</button></div> }] : []),
+    ...(canWrite ? [{ key: 'id', label: '', align: 'right', render: (_, row) => <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>{canAdjustFolios && row.ambiente === 'certificacion' && <button onClick={() => handleResumeCertification(row)} disabled={reanudarMut.isPending} style={{ background: 'none', border: 'none', color: 'var(--amber)', cursor: reanudarMut.isPending ? 'wait' : 'pointer', fontWeight: 600, fontSize: 12 }}>Reanudar pruebas</button>}{canAdjustFolios && <button onClick={() => handleAdjust(row)} style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>Ajustar folio</button>}<button onClick={() => handleDelete(row)} style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>Borrar</button></div> }] : []),
   ]
 
   return (

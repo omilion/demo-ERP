@@ -97,37 +97,44 @@ describe('routes /api/facturacion', () => {
     expect(Array.isArray(JSON.parse(res.body).cafs)).toBe(true)
   })
 
-  it('reinicia un CAF de certificacion al inicio del rango y registra auditoria', async () => {
+  it('reanuda un CAF de certificacion desde el mayor folio seguro y registra auditoria', async () => {
     const caf = await app.prisma.factCaf.create({
       data: {
         tipoDte: 43,
         folioDesde: 870001,
         folioHasta: 870060,
-        siguienteFolio: 870021,
+        siguienteFolio: 870001,
         fechaAutorizacion: '2018-07-13',
         ambiente: 'certificacion',
         xml: '<CAF/>',
       },
     })
     qaCafIds.push(caf.id)
+    await app.prisma.factFolioAjuste.create({
+      data: {
+        cafId: caf.id, tipoDte: caf.tipoDte,
+        folioAnterior: 870021, folioNuevo: 870001,
+        motivo: '[REINICIO CERTIFICACION] prueba previa', usuarioNombre: 'QA',
+      },
+    })
     const res = await app.inject({
       method: 'POST',
-      url: `/api/facturacion/cafs/${caf.id}/reiniciar-certificacion`,
+      url: `/api/facturacion/cafs/${caf.id}/reanudar-certificacion`,
       headers: { authorization: `Bearer ${token}` },
       payload: {
-        motivo: 'Reinicio automatizado del CAF de pruebas',
-        confirmacion: 'REINICIAR CAF CERTIFICACION',
+        motivo: 'Reanudacion automatizada del CAF de pruebas',
+        confirmacion: 'REANUDAR CAF CERTIFICACION',
       },
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
-    expect(body.caf.siguienteFolio).toBe(870001)
-    expect(body.disponibles).toBe(60)
-    expect(body.ajuste).toMatchObject({ folioAnterior: 870021, folioNuevo: 870001 })
-    expect(body.ajuste.motivo).toMatch(/REINICIO CERTIFICACION/)
+    expect(body.caf.siguienteFolio).toBe(870021)
+    expect(body.disponibles).toBe(40)
+    expect(body.ajuste).toMatchObject({ folioAnterior: 870001, folioNuevo: 870021 })
+    expect(body.ajuste.motivo).toMatch(/REANUDACION CERTIFICACION/)
   })
 
-  it('rechaza reiniciar un CAF de produccion', async () => {
+  it('rechaza reanudar un CAF de produccion', async () => {
     const caf = await app.prisma.factCaf.create({
       data: {
         tipoDte: 43,
@@ -142,15 +149,15 @@ describe('routes /api/facturacion', () => {
     qaCafIds.push(caf.id)
     const res = await app.inject({
       method: 'POST',
-      url: `/api/facturacion/cafs/${caf.id}/reiniciar-certificacion`,
+      url: `/api/facturacion/cafs/${caf.id}/reanudar-certificacion`,
       headers: { authorization: `Bearer ${token}` },
       payload: {
         motivo: 'Intento controlado sobre CAF productivo',
-        confirmacion: 'REINICIAR CAF CERTIFICACION',
+        confirmacion: 'REANUDAR CAF CERTIFICACION',
       },
     })
     expect(res.statusCode).toBe(409)
-    expect(JSON.parse(res.body).error).toMatch(/Solo se pueden reiniciar folios/)
+    expect(JSON.parse(res.body).error).toMatch(/Solo se pueden reanudar folios/)
     const unchanged = await app.prisma.factCaf.findUnique({ where: { id: caf.id } })
     expect(unchanged.siguienteFolio).toBe(880021)
   })

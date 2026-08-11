@@ -307,13 +307,13 @@ export default async function facturacionRoutes(fastify) {
     return result
   })
 
-  fastify.post('/cafs/:id/reiniciar-certificacion', folioAdminAuth, async (request, reply) => {
+  fastify.post('/cafs/:id/reanudar-certificacion', folioAdminAuth, async (request, reply) => {
     const cafId = Number(request.params.id)
     const motivo = String(request.body?.motivo || '').trim()
     const confirmacion = String(request.body?.confirmacion || '').trim()
     if (!Number.isInteger(cafId) || cafId <= 0) return reply.code(400).send({ error: 'CAF invalido.' })
     if (motivo.length < 10) return reply.code(400).send({ error: 'Indica un motivo de al menos 10 caracteres.' })
-    if (confirmacion !== 'REINICIAR CAF CERTIFICACION') return reply.code(400).send({ error: 'Confirmacion invalida.' })
+    if (confirmacion !== 'REANUDAR CAF CERTIFICACION') return reply.code(400).send({ error: 'Confirmacion invalida.' })
 
     const result = await fastify.prisma.$transaction(async tx => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`facturacion-caf:${cafId}`})::bigint)`
@@ -323,30 +323,56 @@ export default async function facturacionRoutes(fastify) {
       ])
       if (!caf) return { status: 404, error: 'CAF no encontrado.' }
       if (caf.ambiente !== 'certificacion' || empresa?.ambiente !== 'certificacion') {
-        return { status: 409, error: 'Solo se pueden reiniciar folios cuando el CAF y la empresa estan en certificacion.' }
+        return { status: 409, error: 'Solo se pueden reanudar folios cuando el CAF y la empresa estan en certificacion.' }
       }
-      if (caf.siguienteFolio === caf.folioDesde) {
-        return { status: 409, error: `El CAF ya comienza en el folio ${caf.folioDesde}.` }
+      const [used, ajustesPrevios] = await Promise.all([
+        tx.factDocumento.aggregate({
+          where: {
+            tipoDte: caf.tipoDte,
+            folio: { gte: caf.folioDesde, lte: caf.folioHasta },
+            OR: [{ ambiente: 'certificacion' }, { ambiente: null }],
+          },
+          _max: { folio: true },
+        }),
+        tx.factFolioAjuste.findMany({
+          where: { cafId },
+          select: { folioAnterior: true, folioNuevo: true },
+        }),
+      ])
+      const foliosAuditados = ajustesPrevios
+        .flatMap(ajuste => [ajuste.folioAnterior, ajuste.folioNuevo])
+        .filter(folio => folio >= caf.folioDesde && folio <= caf.folioHasta + 1)
+      const siguienteFolio = Math.max(
+        caf.siguienteFolio,
+        caf.folioDesde,
+        Number(used._max.folio || 0) + 1,
+        ...foliosAuditados,
+      )
+      if (siguienteFolio > caf.folioHasta) {
+        return { status: 409, error: `El CAF de certificacion esta agotado hasta el folio ${caf.folioHasta}. Debes cargar un nuevo CAF del SII.` }
+      }
+      if (siguienteFolio === caf.siguienteFolio) {
+        return { status: 409, error: `El CAF ya esta listo para continuar en el folio ${siguienteFolio}.` }
       }
       const ajuste = await tx.factFolioAjuste.create({
         data: {
           cafId,
           tipoDte: caf.tipoDte,
           folioAnterior: caf.siguienteFolio,
-          folioNuevo: caf.folioDesde,
-          motivo: `[REINICIO CERTIFICACION] ${motivo}`,
+          folioNuevo: siguienteFolio,
+          motivo: `[REANUDACION CERTIFICACION] ${motivo}`,
           usuarioId: Number(request.user?.id) || null,
           usuarioNombre: request.user?.nombre || request.user?.email || `Usuario ${request.user?.id || ''}`.trim(),
         },
       })
       const actualizado = await tx.factCaf.update({
         where: { id: cafId },
-        data: { siguienteFolio: caf.folioDesde },
+        data: { siguienteFolio },
       })
       return {
         ajuste,
         caf: { ...actualizado, xml: undefined },
-        disponibles: actualizado.folioHasta - actualizado.folioDesde + 1,
+        disponibles: actualizado.folioHasta - actualizado.siguienteFolio + 1,
       }
     })
     if (result?.error) return reply.code(result.status || 400).send({ error: result.error })
