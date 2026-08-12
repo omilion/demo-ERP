@@ -1016,7 +1016,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 820 }}>
                       <thead>
                         <tr style={{ background: 'var(--bg)' }}>
-                          {['', 'Producto', 'Cant.', 'P. Unit.', 'IVA', 'Subtotal', 'Entregados', 'Pendiente', 'Estado Taller'].map((h, i) => (
+                          {['', 'Producto', 'Cant.', 'P. Unit. (IVA incl.)', 'IVA', 'Subtotal (IVA incl.)', 'Entregados', 'Pendiente', 'Estado Taller'].map((h, i) => (
                             <th key={i} style={{ padding: i === 0 ? '7px 4px' : '7px ' + (i === 1 ? '12px' : '8px'), textAlign: i <= 1 ? 'left' : 'right', fontWeight: 600, color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, whiteSpace: 'nowrap' }}>{h}</th>
                           ))}
                         </tr>
