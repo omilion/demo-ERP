@@ -13,15 +13,6 @@ function hasUsableDatabaseUrl() {
   }
 }
 
-async function loginAs(app, role = 'admin') {
-  const res = await app.inject({
-    method: 'POST',
-    url: '/api/auth/login',
-    payload: { email: `${role}@plastimar.cl`, password: 'dev1234' },
-  })
-  return JSON.parse(res.body).accessToken
-}
-
 function tokenFor(app, role = 'admin', sucursalId = null) {
   return app.jwt.sign({
     id: 1,
@@ -66,7 +57,7 @@ describeDb('reportes gerenciales backend', () => {
   beforeAll(async () => {
     app = buildApp({ logger: false })
     await app.ready()
-    token = await loginAs(app)
+    token = tokenFor(app, 'admin')
   })
 
   afterAll(async () => {
@@ -327,7 +318,7 @@ describeDb('reportes gerenciales backend', () => {
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
-    const baseOdts = await app.prisma.odt.findMany({ where: { eliminado: false, createdAt: { gte: new Date(2026, 3, 1), lte: new Date(2026, 3, 30, 23, 59, 59, 999) } } })
+    const baseOdts = await app.prisma.odt.findMany({ where: { eliminado: false, createdAt: { lte: new Date(2026, 3, 30, 23, 59, 59, 999) } } })
     expect(body.taller.pendientes).toBe(baseOdts.filter(o => String(o.estado || '').toLowerCase() !== 'terminada').length)
     expect(body.despachos.pendientes).toBeGreaterThanOrEqual(1)
   })
@@ -347,5 +338,17 @@ describeDb('reportes gerenciales backend', () => {
     expect(res.body).toContain('Stock;Productos criticos')
     expect(res.body).toContain('Licitaciones;pendiente')
     expect(res.body).toContain('Operacion;Despachos pendientes')
+  })
+
+  it('exporta el consolidado gerencial en XLSX', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/export/gerencial.xlsx?desde=${desde}&hasta=${hasta}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    expect(res.headers['content-disposition']).toContain('.xlsx')
+    expect(res.rawPayload.subarray(0, 2).toString()).toBe('PK')
   })
 })

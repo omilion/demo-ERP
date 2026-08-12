@@ -37,12 +37,42 @@ const todayIso = () => new Date().toISOString().slice(0, 10)
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 const mono = { fontFamily: "'DM Mono', monospace" }
 
+const getAyerIso = () => {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const getEstaSemanaRange = () => {
+  const now = new Date()
+  const day = now.getDay() // 0 = Sun, 1 = Mon, ..., 6 = Sat
+  const diffToMonday = day === 0 ? 6 : day - 1
+  const monday = new Date(now)
+  monday.setDate(now.getDate() - diffToMonday)
+
+  const fmtDate = d => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const dayStr = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${dayStr}`
+  }
+
+  return {
+    desde: fmtDate(monday),
+    hasta: fmtDate(now)
+  }
+}
+
 function getInitialQuick(searchParams) {
   if (searchParams.get('no_pagada') || searchParams.get('noPagada')) return 'noPagada'
   if (searchParams.get('pendiente_entrega') || searchParams.get('pendienteEntrega')) return 'pendienteEntrega'
   if (searchParams.get('entregada')) return 'entregada'
   if (searchParams.get('ventasHoy')) return 'ventasHoy'
-  return ''
+  if (searchParams.get('desde') || searchParams.get('hasta') || searchParams.get('all')) return ''
+  return 'ventasHoy'
 }
 
 export default function MatrizVentasPage() {
@@ -59,15 +89,15 @@ export default function MatrizVentasPage() {
   const [hasta, setHasta] = useState(searchParams.get('hasta') || '')
   const [estadoPago, setEstadoPago] = useState(searchParams.get('estadoPago') || '')
   const [estadoEntrega, setEstadoEntrega] = useState(searchParams.get('estadoEntrega') || '')
-  const [scope, setScope] = useState(searchParams.get('scope') || 'operacional')
   const [page, setPage] = useState(1)
 
   const setFilter = setter => value => {
     setter(value)
+    if (quick === 'ventasHoy') setQuick('')
     setPage(1)
   }
 
-  const params = { page: String(page), scope }
+  const params = { page: String(page) }
   if (tab !== 'all') params.tipo = tab
   if (quick) params[quick] = '1'
   if (search) params.search = search
@@ -94,8 +124,81 @@ export default function MatrizVentasPage() {
   const suffix = todayIso()
   const hasUserFilters = Boolean(
     tab !== 'all' || quick || search || desde || hasta ||
-    estadoPago || estadoEntrega || scope !== 'operacional'
+    estadoPago || estadoEntrega
   )
+
+  const selectedTabObj = TABS.find(t => t.id === tab)
+  const totalMontoSum = data.totalMonto ?? data.items?.reduce((s, row) => s + Number(row.total || 0), 0) ?? 0
+
+  const ayerIso = getAyerIso()
+  const estaSemanaRange = getEstaSemanaRange()
+  const isAyerActive = Boolean(desde && desde === ayerIso && hasta === ayerIso)
+  const isEstaSemanaActive = Boolean(desde && desde === estaSemanaRange.desde && hasta === estaSemanaRange.hasta)
+
+  function aplicarAyer() {
+    if (isAyerActive) {
+      setDesde('')
+      setHasta('')
+    } else {
+      setTab('all')
+      setQuick('')
+      setDesde(ayerIso)
+      setHasta(ayerIso)
+    }
+    setPage(1)
+  }
+
+  function aplicarEstaSemana() {
+    if (isEstaSemanaActive) {
+      setDesde('')
+      setHasta('')
+    } else {
+      setTab('all')
+      setQuick('')
+      setDesde(estaSemanaRange.desde)
+      setHasta(estaSemanaRange.hasta)
+    }
+    setPage(1)
+  }
+
+  let badgeTitle = 'Venta Total Hoy'
+  if (isAyerActive) {
+    badgeTitle = 'Ventas Cierre Ayer'
+  } else if (isEstaSemanaActive) {
+    badgeTitle = 'Ventas Esta Semana'
+  } else if (desde || hasta) {
+    badgeTitle = 'Venta para el período'
+  } else if (tab !== 'all') {
+    const channelName = selectedTabObj ? selectedTabObj.label : 'Canal'
+    badgeTitle = quick === 'ventasHoy' ? `Ventas ${channelName} Hoy` : `Total ${channelName}`
+  } else if (quick === 'noPagada') {
+    badgeTitle = 'Total Ventas No Pagadas'
+  } else if (quick === 'pendienteEntrega') {
+    badgeTitle = 'Total Ventas Pendiente Entrega'
+  } else if (quick === 'entregada') {
+    badgeTitle = 'Total Entregadas No Pagadas'
+  }
+
+  const countWord = total === 1 ? 'venta' : 'ventas'
+  const ventasCountText = `${total.toLocaleString('es-CL')} ${countWord}`
+  const totalAmountText = fmt(totalMontoSum)
+
+  let customEmptyMessage = 'Sin ventas para los filtros aplicados'
+  if (quick === 'ventasHoy' || (!desde && !hasta && !search && !estadoPago && !estadoEntrega && (quick === '' || quick === 'ventasHoy'))) {
+    if (tab !== 'all') {
+      const channelName = selectedTabObj ? selectedTabObj.label : tab
+      customEmptyMessage = `No hay ventas del día para ${channelName}`
+    } else {
+      customEmptyMessage = `No hay ventas del día`
+    }
+  } else if (desde || hasta) {
+    customEmptyMessage = `No hay ventas para el período seleccionado`
+  } else if (search) {
+    customEmptyMessage = `No se encontraron ventas para "${search}"`
+  } else if (quick) {
+    customEmptyMessage = `No hay ventas registradas para este filtro`
+  }
+
   const paginationControls = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', width: '100%' }}>
       <Tabs 
@@ -104,24 +207,32 @@ export default function MatrizVentasPage() {
         onChange={t => { setTab(t); setPage(1) }} 
         style={{ marginBottom: 0, borderBottom: 'none', gap: 1 }} 
       />
-      <SearchBar
-        placeholder="Buscar por cliente, OT, guía, OC..."
-        value={search}
-        onChange={setFilter(setSearch)}
-        style={{ width: 220 }}
-      />
+      <div style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '2px 10px',
+        height: 26,
+        borderRadius: 6,
+        background: 'var(--green-50)',
+        border: '1px solid var(--green-200)',
+        fontSize: 12,
+        fontWeight: 600,
+        boxSizing: 'border-box'
+      }}>
+        <span style={{ color: 'var(--green-800)', fontWeight: 700 }}>{badgeTitle}:</span>
+        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: 'var(--text-1)' }}>
+          {ventasCountText}
+        </span>
+        <span style={{ color: 'var(--green-400)', fontWeight: 700 }}>•</span>
+        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 800, color: 'var(--green-700)' }}>
+          {totalAmountText}
+        </span>
+      </div>
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
         <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={pagerBtn(page <= 1)}>Anterior</button>
         <span style={{ fontSize: 12, color: 'var(--text-2)', fontFamily: "'DM Mono', monospace", minWidth: 46, textAlign: 'center' }}>{page} / {pages}</span>
         <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} style={pagerBtn(page >= pages)}>Siguiente</button>
-        <button
-          disabled={!hasUserFilters || isLoading}
-          onClick={() => exportar('resumen')}
-          style={exportFilteredBtn(!hasUserFilters || isLoading)}
-          title={hasUserFilters ? 'Exporta todos los resultados filtrados, no solo esta pagina' : 'Aplica un filtro para activar este export'}
-        >
-          Exportar
-        </button>
       </div>
     </div>
   )
@@ -147,12 +258,38 @@ export default function MatrizVentasPage() {
     setHasta('')
     setEstadoPago('')
     setEstadoEntrega('')
-    setScope('operacional')
+    setTab('all')
     setPage(1)
   }
 
   function aplicarQuick(value) {
     setQuick(q => q === value ? '' : value)
+    setPage(1)
+  }
+
+  function aplicarCanal(targetTab, targetQuick = 'ventasHoy') {
+    if (tab === targetTab && quick === targetQuick) {
+      setTab('all')
+      setQuick('')
+    } else {
+      setTab(targetTab)
+      setQuick(targetQuick)
+    }
+    setPage(1)
+  }
+
+  function aplicarYtd() {
+    const startOfYear = `${new Date().getFullYear()}-01-01`
+    const isYtdActive = desde === startOfYear && hasta === todayIso()
+    if (isYtdActive) {
+      setDesde('')
+      setHasta('')
+    } else {
+      setTab('all')
+      setQuick('')
+      setDesde(startOfYear)
+      setHasta(todayIso())
+    }
     setPage(1)
   }
 
@@ -319,6 +456,9 @@ export default function MatrizVentasPage() {
         breadcrumb={['Inicio', 'Ventas', 'Matriz']}
         actions={(
           <>
+            <Btn variant="primary" icon="download" size="sm" onClick={() => exportar('resumen')}>
+              Exportar vista actual
+            </Btn>
             {EXPORTS.map(exp => (
               <Btn key={exp.formato} variant="secondary" icon="download" size="sm" onClick={() => exportar(exp.formato)}>
                 {exp.label}
@@ -327,25 +467,68 @@ export default function MatrizVentasPage() {
           </>
         )}
       />
-      <div className="kpi-strip">
+      <div className="kpi-strip-inline">
+        {/* 1: Entregadas no pagadas */}
         <KpiCard
-          label="Ventas sala/marco (Hoy)"
-          value={fmt(tot?.kpis?.hoy?.ordenes?.total || 0)}
-          sublabel={`Mes: ${fmt(tot?.kpis?.mes?.ordenes?.total || 0)} (${tot?.kpis?.mes?.ordenes?.count || 0} vts)`}
-          icon="package"
+          label="Entregadas no pagadas"
+          value={Number(tot?.kpis?.operacional?.entregadaNoPagada || 0).toLocaleString('es-CL')}
+          sublabel="Entregadas con cobro pendiente"
+          icon="alertTriangle"
+          tone={tot?.kpis?.operacional?.entregadaNoPagada ? 'red' : 'green'}
+          active={quick === 'entregada'}
+          onClick={() => aplicarQuick('entregada')}
         />
+        {/* 2: No pagadas */}
+        <KpiCard
+          label="No pagadas"
+          value={Number(tot?.kpis?.operacional?.noPagada || 0).toLocaleString('es-CL')}
+          sublabel="Total ventas activas por cobrar"
+          icon="creditCard"
+          tone={tot?.kpis?.operacional?.noPagada ? 'amber' : 'green'}
+          active={quick === 'noPagada'}
+          onClick={() => aplicarQuick('noPagada')}
+        />
+        {/* 3: Pendiente entrega */}
+        <KpiCard
+          label="Pendiente entrega"
+          value={Number(tot?.kpis?.operacional?.pendienteEntrega || 0).toLocaleString('es-CL')}
+          sublabel="Ventas activas sin entregar"
+          icon="send"
+          tone={tot?.kpis?.operacional?.pendienteEntrega ? 'amber' : 'green'}
+          active={quick === 'pendienteEntrega'}
+          onClick={() => aplicarQuick('pendienteEntrega')}
+        />
+        {/* 4: Ventas web (Hoy) */}
         <KpiCard
           label="Ventas web (Hoy)"
           value={fmt(tot?.kpis?.hoy?.ocOnline?.total || 0)}
           sublabel={`Mes: ${fmt(tot?.kpis?.mes?.ocOnline?.total || 0)} (${tot?.kpis?.mes?.ocOnline?.count || 0} vts)`}
           icon="cloud"
+          tone="blue"
+          active={tab === 'venta-web' && quick === 'ventasHoy'}
+          onClick={() => aplicarCanal('venta-web', 'ventasHoy')}
         />
+        {/* 5: Ventas sala/marco (Hoy) */}
+        <KpiCard
+          label="Ventas sala/marco (Hoy)"
+          value={fmt(tot?.kpis?.hoy?.ordenes?.total || 0)}
+          sublabel={`Mes: ${fmt(tot?.kpis?.mes?.ordenes?.total || 0)} (${tot?.kpis?.mes?.ordenes?.count || 0} vts)`}
+          icon="package"
+          tone="neutral"
+          active={tab === 'venta-sala' && quick === 'ventasHoy'}
+          onClick={() => aplicarCanal('venta-sala', 'ventasHoy')}
+        />
+        {/* 6: Licitaciones (Hoy) */}
         <KpiCard
           label="Licitaciones (Hoy)"
           value={fmt(tot?.kpis?.hoy?.licitaciones?.total || 0)}
           sublabel={`Mes: ${fmt(tot?.kpis?.mes?.licitaciones?.total || 0)} (${tot?.kpis?.mes?.licitaciones?.count || 0} vts)`}
           icon="briefcase"
+          tone="purple"
+          active={tab === 'licitacion' && quick === 'ventasHoy'}
+          onClick={() => aplicarCanal('licitacion', 'ventasHoy')}
         />
+        {/* 7: YTD (Acumulado año) */}
         <KpiCard
           label="YTD (Acumulado año)"
           value={fmt(tot?.kpis?.ytd?.total || 0)}
@@ -354,76 +537,67 @@ export default function MatrizVentasPage() {
           tone="green"
           trend={tot?.kpis?.variacionYtd}
           trendTone="green-good"
-        />
-      </div>
-
-      {/* Estado operacional: cuanto falta despachar/cobrar ahora mismo (sin filtro de
-          fecha). Equivale a los contadores de la barra superior del sistema legacy.
-          Cada tarjeta aplica su filtro, igual que el boton rapido del mismo nombre. */}
-      <div className="kpi-strip">
-        <KpiCard
-          label="Pendiente entrega"
-          value={Number(tot?.kpis?.operacional?.pendienteEntrega || 0).toLocaleString('es-CL')}
-          sublabel="Ventas activas sin entregar"
-          icon="send"
-          tone={tot?.kpis?.operacional?.pendienteEntrega ? 'amber' : 'green'}
-          onClick={() => aplicarQuick('pendienteEntrega')}
-        />
-        <KpiCard
-          label="Entregadas no pagadas"
-          value={Number(tot?.kpis?.operacional?.entregadaNoPagada || 0).toLocaleString('es-CL')}
-          sublabel="Entregadas con cobro pendiente"
-          icon="alertTriangle"
-          tone={tot?.kpis?.operacional?.entregadaNoPagada ? 'red' : 'green'}
-          onClick={() => aplicarQuick('entregada')}
-        />
-        <KpiCard
-          label="No pagadas"
-          value={Number(tot?.kpis?.operacional?.noPagada || 0).toLocaleString('es-CL')}
-          sublabel="Total ventas activas por cobrar"
-          icon="creditCard"
-          tone={tot?.kpis?.operacional?.noPagada ? 'amber' : 'green'}
-          onClick={() => aplicarQuick('noPagada')}
+          active={Boolean(desde && desde === `${new Date().getFullYear()}-01-01` && hasta === todayIso())}
+          onClick={aplicarYtd}
         />
       </div>
 
       <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {QUICK_FILTERS.map(item => (
-            <button key={item.id} onClick={() => aplicarQuick(item.id)} style={quickBtn(quick === item.id)}>
-              {item.label}
+        <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)' }}>Desde:</span>
+            <input type="date" value={desde} onChange={e => setFilter(setDesde)(e.target.value)} style={compactInputStyle} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)' }}>Hasta:</span>
+            <input type="date" value={hasta} onChange={e => setFilter(setHasta)(e.target.value)} style={compactInputStyle} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <button
+              onClick={aplicarAyer}
+              style={quickDateBtnStyle(isAyerActive)}
+              title="Filtrar ventas del día anterior (Ayer)"
+            >
+              Ayer
             </button>
-          ))}
-          <button onClick={limpiarFiltros} style={quickBtn(false)}>Limpiar</button>
-        </div>
-
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 8 }}>
-            <FormField label="Desde"><Input type="date" value={desde} onChange={setFilter(setDesde)} /></FormField>
-            <FormField label="Hasta"><Input type="date" value={hasta} onChange={setFilter(setHasta)} /></FormField>
-            <FormField label="Estado pago">
-              <select value={estadoPago} onChange={e => setFilter(setEstadoPago)(e.target.value)} style={selectStyle}>
-                {ESTADO_PAGO_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
-              </select>
-            </FormField>
-            <FormField label="Estado entrega">
-              <select value={estadoEntrega} onChange={e => setFilter(setEstadoEntrega)(e.target.value)} style={selectStyle}>
-                {ESTADO_ENTREGA_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
-              </select>
-            </FormField>
-            <FormField label="Alcance">
-              <select value={scope} onChange={e => setFilter(setScope)(e.target.value)} style={selectStyle}>
-                <option value="operacional">Operacional</option>
-                <option value="historico">Historico</option>
-                <option value="todos">Todos</option>
-              </select>
-            </FormField>
+            <button
+              onClick={aplicarEstaSemana}
+              style={quickDateBtnStyle(isEstaSemanaActive)}
+              title="Filtrar ventas de esta semana (Lunes a Hoy)"
+            >
+              Esta semana
+            </button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)' }}>Pago:</span>
+            <select value={estadoPago} onChange={e => setFilter(setEstadoPago)(e.target.value)} style={compactSelectStyle}>
+              {ESTADO_PAGO_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)' }}>Entrega:</span>
+            <select value={estadoEntrega} onChange={e => setFilter(setEstadoEntrega)(e.target.value)} style={compactSelectStyle}>
+              {ESTADO_ENTREGA_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+            <SearchBar
+              placeholder="Buscar cliente, OT, guía, OC..."
+              value={search}
+              onChange={setFilter(setSearch)}
+              style={{ width: 280, height: 28 }}
+            />
+            {hasUserFilters && (
+              <button onClick={limpiarFiltros} style={compactClearBtn} title="Limpiar todos los filtros activos">
+                ✕ Limpiar
+              </button>
+            )}
           </div>
         </div>
 
         {isLoading
           ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={data.items} emptyMessage="Sin ventas" onRowDoubleClick={openVenta} ariaLabel="Matriz de ventas" getRowKey={row => row.id} toolbarExtra={paginationControls} />
+          : <Table columns={cols} rows={data.items} emptyMessage={customEmptyMessage} onRowDoubleClick={openVenta} ariaLabel="Matriz de ventas" getRowKey={row => row.id} toolbarExtra={paginationControls} />
         }
       </div>
     </main>
@@ -457,3 +631,22 @@ const exportFilteredBtn = disabled => ({
 })
 const quickBtn = active => ({ padding: '7px 12px', fontSize: 12, borderRadius: 6, border: `1px solid ${active ? 'var(--green-600)' : 'var(--border)'}`, background: active ? 'var(--green-50)' : '#fff', cursor: 'pointer', color: active ? 'var(--green-800)' : 'var(--text-2)', fontWeight: active ? 700 : 500 })
 const selectStyle = { width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', background: '#fff', boxSizing: 'border-box' }
+const compactInputStyle = { height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff', color: 'var(--text-1)', boxSizing: 'border-box' }
+const compactSelectStyle = { height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff', color: 'var(--text-1)', boxSizing: 'border-box' }
+const compactClearBtn = { height: 28, padding: '0 10px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: '1px solid #fca5a5', background: '#fee2e2', color: '#991b1b', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }
+const quickDateBtnStyle = active => ({
+  height: 28,
+  padding: '0 10px',
+  fontSize: 11,
+  fontWeight: active ? 700 : 600,
+  borderRadius: 6,
+  border: active ? '1px solid var(--green-700)' : '1px solid var(--border)',
+  background: active ? 'var(--green-700)' : '#fff',
+  color: active ? '#fff' : 'var(--text-2)',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+  boxSizing: 'border-box',
+  transition: 'all 0.15s ease',
+  display: 'inline-flex',
+  alignItems: 'center',
+})

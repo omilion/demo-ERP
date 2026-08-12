@@ -49,7 +49,8 @@ function scopedMovimientoCajaWhere(user, where = {}) {
 
 function tipoOrdenWhere(tipo) {
   if (tipo === 'venta-sala' || tipo === 'venta-directa') return { tipo: { in: ['Venta sala', 'Venta directa', 'Venta Sala', 'Normal'] } }
-  if (tipo === 'convenio-marco') return { tipo: 'Convenio Marco' }
+  if (tipo === 'venta-web' || tipo === 'web') return { tipo: { in: ['Venta Web', 'Venta web', 'OC Online', 'Web'] } }
+  if (tipo === 'convenio-marco') return { tipo: { in: ['Convenio Marco', 'Convenio marco'] } }
   if (tipo === 'licitacion') return { tipo: { contains: 'Licit', mode: 'insensitive' } }
   return {}
 }
@@ -613,8 +614,8 @@ function matrizSourceFlags(ctx) {
   const q = ctx.query
   const restrictToOrden = Boolean(q.nInterno || q.odt || q.guia || q.nc || q.nd || q.estadoPago || q.estadoEntrega || q.noPagada || q.pendienteEntrega || q.entregada || ctx.scope === 'historico')
   const tipo = q.tipo
-  const inOrden = !tipo || ['venta-sala', 'venta-directa', 'convenio-marco', 'licitacion'].includes(tipo) || restrictToOrden
-  const inOcOnline = !restrictToOrden && !q.rut && !q.nombre && !q.idLicitacion && (!tipo || tipo === 'venta-web')
+  const inOrden = !tipo || ['venta-sala', 'venta-directa', 'convenio-marco', 'licitacion', 'venta-web', 'web'].includes(tipo) || restrictToOrden
+  const inOcOnline = !restrictToOrden && !q.rut && !q.nombre && !q.idLicitacion && (!tipo || tipo === 'venta-web' || tipo === 'web')
   const inLicitacion = !restrictToOrden && (!tipo || tipo === 'licitacion' || q.idLicitacion)
   return { inOrden, inOcOnline, inLicitacion }
 }
@@ -628,9 +629,8 @@ async function matrizWheres(fastify, ctx, user) {
 }
 
 // Paginacion a nivel de BD: por cada fuente se traen solo (id, fecha) de los primeros
-// skip+limit registros (ordenados desc) y el count() exacto. Se mezclan las llaves, se
-// corta la pagina y solo se hidratan las <=limit filas visibles. Nunca se materializan
-// todas las filas en memoria.
+// (skip+limit) elementos mas recientes, luego se funden en memoria y se toman exactamente [skip, skip+limit].
+// Asi NO se cargan miles de registros ni sus detalles para armar una pagina.
 async function getMatrizPage(fastify, query, user, { page, limit }) {
   const ctx = await buildContext(fastify, query, user)
   if (ctx.error) return ctx
@@ -662,7 +662,7 @@ async function getMatrizPage(fastify, query, user, { page, limit }) {
   const byKey = new Map()
   for (const r of [...ordenRows, ...ocRows, ...licRows]) byKey.set(`${r.fuente}:${r.id}`, r)
   const items = pageKeys.map(k => byKey.get(`${k.fuente}:${k.id}`)).filter(Boolean)
-  return { items, total: ordenCount + ocCount + licCount, ctx }
+  return { items, total: ordenCount + ocCount + licCount, limit, page, ctx }
 }
 
 async function aggOrdenMonto(fastify, where) {
@@ -708,11 +708,24 @@ async function getTotalsForPeriod(fastify, start, end, user) {
   }
   const ordenes = await aggOrdenMonto(fastify, ordenesWhere)
 
-  const ocWhere = {
+  const ocTableWhere = {
     fechaHora: { gte: start, lte: end },
     ...scopedWhere(user)
   }
-  const ocOnline = await aggOcMonto(fastify, ocWhere)
+  const ordenWebWhere = {
+    eliminada: false,
+    createdAt: { gte: start, lte: end },
+    tipo: { in: ['Venta Web', 'Venta web', 'OC Online', 'Web'] },
+    ...userSucursalWhere(user)
+  }
+  const [ocTable, ordenWeb] = await Promise.all([
+    aggOcMonto(fastify, ocTableWhere),
+    aggOrdenMonto(fastify, ordenWebWhere)
+  ])
+  const ocOnline = {
+    count: ocTable.count + ordenWeb.count,
+    total: ocTable.total + ordenWeb.total
+  }
 
   const licWhere = {
     fecha: { gte: start, lte: end },

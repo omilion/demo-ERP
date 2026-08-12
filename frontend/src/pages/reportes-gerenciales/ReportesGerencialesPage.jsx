@@ -143,6 +143,23 @@ function GroupList({ rows, labelKey = 'label', valueKey = 'value', format = num 
   )
 }
 
+function BarChart({ title, values, format = money, color = 'var(--green-600)' }) {
+  const rows = Object.entries(values || {}).map(([label, value]) => ({ label, value: Number(value?.total ?? value ?? 0) })).slice(-12)
+  if (!rows.length) return <EmptyBlock />
+  const max = Math.max(...rows.map(row => row.value), 1)
+  return (
+    <div aria-label={title} style={{ display: 'grid', gridTemplateColumns: `repeat(${rows.length}, minmax(26px, 1fr))`, gap: 8, alignItems: 'end', minHeight: 190, paddingTop: 12 }}>
+      {rows.map(row => (
+        <div key={row.label} title={`${row.label}: ${format(row.value)}`} style={{ minWidth: 0, display: 'grid', gap: 6, justifyItems: 'center' }}>
+          <strong style={{ color: 'var(--text-2)', fontSize: 10, fontFamily: "'DM Mono', monospace" }}>{format(row.value)}</strong>
+          <div style={{ width: '100%', minHeight: 8, height: `${Math.max(8, Math.round((row.value / max) * 112))}px`, background: color, borderRadius: '5px 5px 2px 2px' }} />
+          <span style={{ color: 'var(--text-3)', fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%', whiteSpace: 'nowrap' }}>{row.label}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function filterVentas(items, filters) {
   const vendedor = norm(filters.vendedor)
   const cliente = norm(filters.cliente)
@@ -264,8 +281,8 @@ export default function ReportesGerencialesPage() {
   const updateFilter = (key, value) => setFilters(current => ({ ...current, [key]: value }))
   const resetFilters = () => setFilters({ desde: initialRange.desde, hasta: initialRange.hasta, tipo: '', vendedor: '', cliente: '' })
   const exportGerencial = () => downloadFromBackend(
-    '/reportes/export/gerencial',
-    `reporte_gerencial_${new Date().toISOString().slice(0, 10)}.csv`,
+    '/reportes/export/gerencial.xlsx',
+    `reporte_gerencial_${new Date().toISOString().slice(0, 10)}.xlsx`,
     {
       desde: filters.desde || undefined,
       hasta: filters.hasta || undefined,
@@ -277,8 +294,9 @@ export default function ReportesGerencialesPage() {
 
   const tabs = [
     { id: 'resumen', label: 'Resumen' },
-    { id: 'ventas', label: 'Ventas', count: statusCount(ventasProblem, ventaCount || ventas.length) },
+    { id: 'ventas', label: 'Comercial', count: statusCount(ventasProblem, ventaCount || ventas.length) },
     { id: 'operacion', label: 'Operacion', count: statusCount(operacionProblem, pendientesOperacionTotal) },
+    { id: 'finanzas', label: 'Finanzas', count: statusCount(cobranzaProblem, cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.count || 0) },
     { id: 'riesgos', label: 'Riesgos', count: statusCount(riesgoProblem, stockCriticoTotal + licitacionesPendientesCount) },
   ]
 
@@ -290,7 +308,7 @@ export default function ReportesGerencialesPage() {
         breadcrumb={['Inicio', 'Reportes']}
         actions={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Btn variant="secondary" icon="download" onClick={exportGerencial}>Exportar CSV</Btn>
+            <Btn variant="secondary" icon="download" onClick={exportGerencial}>Exportar Excel</Btn>
             <Btn variant="secondary" icon="refreshCw" onClick={resetFilters}>Limpiar filtros</Btn>
           </div>
         }
@@ -372,6 +390,15 @@ export default function ReportesGerencialesPage() {
 
       {active === 'ventas' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
+          <Panel title="Tendencia y comparativo" icon="trendingUp">
+            <QueryBlock problem={ventasProblem}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 12 }}>
+                <div><div style={{ color: 'var(--text-3)', fontSize: 11 }}>Vs. período anterior</div><strong style={{ color: Number(ventasGerencialQuery.data?.comparativo?.variacionVentas || 0) < 0 ? 'var(--red)' : 'var(--green-700)', fontSize: 18 }}>{ventasGerencialQuery.data?.comparativo?.variacionVentas == null ? '-' : `${(ventasGerencialQuery.data.comparativo.variacionVentas * 100).toFixed(1)}%`}</strong></div>
+                <div><div style={{ color: 'var(--text-3)', fontSize: 11 }}>Ventas período anterior</div><strong style={{ fontSize: 16 }}>{money(ventasGerencialQuery.data?.comparativo?.periodoAnterior?.total)}</strong></div>
+              </div>
+              <BarChart title="Tendencia de ventas" values={ventasGerencialQuery.data?.byPeriodo} />
+            </QueryBlock>
+          </Panel>
           <Panel title="Por vendedor" icon="user">
             <QueryBlock problem={combinedProblem(perms.ventas, [ventasQuery])}>
               <GroupList rows={ventaPorVendedor} format={money} />
@@ -424,6 +451,15 @@ export default function ReportesGerencialesPage() {
 
       {active === 'operacion' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
+          <Panel title="Cumplimiento operacional" icon="alertTriangle">
+            <QueryBlock problem={operacionProblem}>
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>OT vencidas</span><Badge tone={operacionesGerencialQuery.data?.taller?.vencidas ? 'red' : 'green'}>{operacionesGerencialQuery.data?.taller?.vencidas || 0}</Badge></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>OT en riesgo (próximos 7 días)</span><Badge tone={operacionesGerencialQuery.data?.taller?.enRiesgo ? 'amber' : 'green'}>{operacionesGerencialQuery.data?.taller?.enRiesgo || 0}</Badge></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Despachos vencidos</span><Badge tone={operacionesGerencialQuery.data?.despachos?.vencidos ? 'red' : 'green'}>{operacionesGerencialQuery.data?.despachos?.vencidos || 0}</Badge></div>
+              </div>
+            </QueryBlock>
+          </Panel>
           <Panel title="OT pendientes" icon="wrench" action={<Badge tone="amber">{statusCount(combinedProblem(perms.taller, [odtsQuery]), odtsPendientes.length)}</Badge>}>
             <QueryBlock problem={combinedProblem(perms.taller, [odtsQuery])}>
               <Table
@@ -458,6 +494,28 @@ export default function ReportesGerencialesPage() {
                 ariaLabel="Despachos pendientes"
                 getRowKey={(row, index) => row.id || row.interno || index}
               />
+            </QueryBlock>
+          </Panel>
+        </div>
+      )}
+
+      {active === 'finanzas' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
+          <Panel title="Cobranza por antigüedad" icon="creditCard">
+            <QueryBlock problem={cobranzaProblem}>
+              <GroupList
+                rows={Object.entries(cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.antiguedad || {}).map(([label, value]) => ({ label: `${label} días`, value: value.total, count: value.count }))}
+                format={money}
+              />
+            </QueryBlock>
+          </Panel>
+          <Panel title="Caja del período" icon="dollarSign">
+            <QueryBlock problem={cajaProblem}>
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Ingresos</span><strong>{money(ingresos)}</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Egresos</span><strong>{money(egresos)}</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, borderTop: '1px solid var(--border)' }}><span>Neto</span><strong>{money(ingresos - egresos)}</strong></div>
+              </div>
             </QueryBlock>
           </Panel>
         </div>

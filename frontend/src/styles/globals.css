@@ -72,6 +72,19 @@ a { text-decoration: none; color: inherit; }
   margin-bottom: 20px;
 }
 
+.kpi-strip-inline {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 1400px) {
+  .kpi-strip-inline {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
 .dash-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));

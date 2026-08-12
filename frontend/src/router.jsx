@@ -4,7 +4,7 @@ import { Shell } from './components/Shell'
 import { OdtLegacyRedirect } from './components/LegacyRedirects'
 import LoginPage from './pages/login/LoginPage'
 import DashboardPage, { DashboardOperativoPage } from './pages/dashboard/DashboardPage'
-import VentasPage from './pages/ventas/VentasPage'
+import MatrizVentasPage from './pages/matriz-ventas/MatrizVentasPage'
 import VentaDetallePage from './pages/ventas/VentaDetallePage'
 import VentasFormPage from './pages/ventas/VentasFormPage'
 import VentaPrintPage from './pages/ventas/VentaPrintPage'
@@ -37,7 +37,6 @@ import ProveedoresPage from './pages/proveedores/ProveedoresPage'
 import ProveedorDetallePage from './pages/proveedores/ProveedorDetallePage'
 import CrmPage from './pages/crm/CrmPage'
 import ConfigPage from './pages/config/ConfigPage'
-import MatrizVentasPage from './pages/matriz-ventas/MatrizVentasPage'
 import DespachosPage from './pages/despachos/DespachosPage'
 import GuiaPrintPage from './pages/despachos/GuiaPrintPage'
 import GuiaFormPage from './pages/despachos/GuiaFormPage'
@@ -88,7 +87,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
       { path: 'dashboard/operativo', element: <DashboardOperativoPage /> },
-      { path: 'ventas', element: protect(<VentasPage />, { module: 'ventas' }) },
+      { path: 'ventas', element: protect(<MatrizVentasPage />, { module: 'ventas' }) },
       { path: 'ventas/:id', element: protect(<VentaDetallePage />, { module: 'ventas' }) },
       { path: 'ventas/nueva', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
       { path: 'ventas/:id/editar', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
@@ -130,7 +129,7 @@ export const router = createBrowserRouter([
       { path: 'proveedores/:id', element: protect(<ProveedorDetallePage />, { module: 'proveedores' }) },
       { path: 'crm', element: protect(<CrmPage />, { module: 'ventas' }) },
       { path: 'config',        element: <ProtectedRoute allowedRoles={['admin']}><ConfigPage /></ProtectedRoute> },
-      { path: 'matriz-ventas', element: protect(<MatrizVentasPage />, { module: 'ventas' }) },
+      { path: 'matriz-ventas', element: <Navigate to="/ventas" replace /> },
       { path: 'despachos', element: protect(<DespachosPage />, { module: 'despacho' }) },
       { path: 'despachos/nuevo', element: protect(<DespachoFormPage />, { module: 'despacho', permission: 'write' }) },
       { path: 'despachos/:id/editar', element: protect(<DespachoFormPage />, { module: 'despacho', permission: 'write' }) },

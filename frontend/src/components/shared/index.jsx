@@ -97,12 +97,14 @@ export const Badge = ({ children, tone = 'neutral', size = 'sm' }) => {
 }
 
 // ── KpiCard ───────────────────────────────────────────────────────────────────
-export const KpiCard = ({ label, value, sublabel, icon, tone = 'neutral', onClick, trend, trendTone }) => {
+export const KpiCard = ({ label, value, sublabel, icon, tone = 'neutral', onClick, trend, trendTone, active }) => {
   const tones = {
-    neutral: { accent: 'var(--green-600)', badge: 'var(--green-50)' },
-    amber:   { accent: 'var(--amber)',     badge: 'var(--amber-bg)' },
-    red:     { accent: 'var(--red)',       badge: 'var(--red-bg)' },
-    blue:    { accent: 'var(--blue)',      badge: 'var(--blue-bg)' },
+    neutral: { accent: 'var(--green-600)', badge: 'var(--green-50)', bg: '#f8fafc', activeBg: '#e2e8f0' },
+    amber:   { accent: '#d97706',           badge: '#fef3c7',           bg: '#fffdf5', activeBg: '#fef3c7' },
+    red:     { accent: '#dc2626',           badge: '#fee2e2',           bg: '#fff5f5', activeBg: '#fee2e2' },
+    blue:    { accent: '#0284c7',           badge: '#e0f2fe',           bg: '#f0f9ff', activeBg: '#e0f2fe' },
+    green:   { accent: '#16a34a',           badge: '#dcfce7',           bg: '#f0fdf4', activeBg: '#dcfce7' },
+    purple:  { accent: '#7c3aed',           badge: '#ede9fe',           bg: '#faf5ff', activeBg: '#ede9fe' },
   }
   const t = tones[tone] || tones.neutral
   const [hov, setHov] = useState(false)
@@ -112,30 +114,59 @@ export const KpiCard = ({ label, value, sublabel, icon, tone = 'neutral', onClic
     : (isPositiveGood ? 'var(--red)' : 'var(--green-600)')
   return (
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{
-      background: '#fff', borderRadius: 10, padding: '16px 20px',
-      boxShadow: hov ? '0 6px 18px oklch(0 0 0 / 0.10)' : 'var(--shadow-sm)',
-      border: `1px solid ${hov ? t.accent : 'var(--border)'}`,
+      background: active ? t.activeBg : (hov ? '#fff' : t.bg),
+      borderRadius: 10,
+      padding: '12px 34px 12px 14px',
+      boxShadow: active ? `0 0 0 2px ${t.accent}, var(--shadow-md)` : (hov ? '0 6px 18px oklch(0 0 0 / 0.10)' : 'var(--shadow-sm)'),
+      border: `1px solid ${active || hov ? t.accent : 'var(--border)'}`,
       cursor: onClick ? 'pointer' : 'default',
       transition: 'all 0.18s', position: 'relative', overflow: 'hidden',
-      flex: '1 1 0', minWidth: 160,
+      flex: '1 1 0', minWidth: 0,
     }}>
       <div style={{ position: 'absolute', top: 0, left: 0, width: 3, height: '100%', background: t.accent, borderRadius: '10px 0 0 10px' }} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 8, background: t.badge, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name={icon} size={16} color={t.accent} />
-        </div>
-        {trend !== undefined && (
-          <span style={{ fontSize: 11, color: trendColor, display: 'flex', alignItems: 'center', gap: 2 }}>
+
+      {trend !== undefined && (
+        <div style={{ position: 'absolute', top: 8, right: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: trendColor, display: 'flex', alignItems: 'center', gap: 2 }}>
             <Icon name={trend >= 0 ? 'trendingUp' : 'trendingDown'} size={12} color={trendColor} />
             {Math.abs(trend)}%
           </span>
-        )}
-      </div>
-      <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 24, fontWeight: 500, color: 'var(--text-1)', letterSpacing: -1, lineHeight: 1 }}>
+        </div>
+      )}
+
+      {/* Number Value (+15% = 22px) */}
+      <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 22, fontWeight: 700, color: 'var(--text-1)', letterSpacing: -0.5, lineHeight: 1.1 }}>
         {typeof value === 'number' ? value.toLocaleString('es-CL') : value}
       </div>
-      <div style={{ marginTop: 5, fontSize: 12, fontWeight: 500, color: 'var(--text-2)' }}>{label}</div>
-      {sublabel && <div style={{ marginTop: 2, fontSize: 11, color: 'var(--text-3)' }}>{sublabel}</div>}
+
+      {/* Title (+30% = 14px) */}
+      <div style={{ marginTop: 4, fontSize: 14, fontWeight: 700, color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {label}
+      </div>
+
+      {/* Sublabel */}
+      {sublabel && (
+        <div style={{ marginTop: 2, fontSize: 10, color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {sublabel}
+        </div>
+      )}
+
+      {/* Icon in Bottom-Right Corner */}
+      <div style={{
+        position: 'absolute',
+        bottom: 8,
+        right: 8,
+        width: 26,
+        height: 26,
+        borderRadius: 7,
+        background: t.badge,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        pointerEvents: 'none'
+      }}>
+        <Icon name={icon} size={14} color={t.accent} />
+      </div>
     </div>
   )
 }
@@ -222,14 +253,14 @@ export const Btn = ({ children, variant = 'primary', size = 'md', icon, onClick,
 
 // ── SearchBar ─────────────────────────────────────────────────────────────────
 export const SearchBar = ({ placeholder, value, onChange, style }) => (
-  <div style={{ position: 'relative', ...style }}>
-    <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none' }}>
+  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', boxSizing: 'border-box', ...style }}>
+    <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
       <Icon name="search" size={14} />
     </span>
     <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder || 'Buscar…'} style={{
-      width: '100%', padding: '8px 12px 8px 34px', borderRadius: 8,
+      width: '100%', height: '100%', padding: '0 12px 0 30px', borderRadius: 6,
       border: '1px solid var(--border)', background: '#fff', fontFamily: 'inherit',
-      fontSize: 13, color: 'var(--text-1)', outline: 'none', transition: 'border-color 0.15s',
+      fontSize: 12, color: 'var(--text-1)', outline: 'none', transition: 'border-color 0.15s', boxSizing: 'border-box',
     }}
       onFocus={e => e.target.style.borderColor = 'var(--green-600)'}
       onBlur={e => e.target.style.borderColor = 'var(--border)'}
