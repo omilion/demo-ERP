@@ -1361,7 +1361,7 @@ export default function VentasFormPage() {
               <Input value={data.licitacionReferencia || ''} onChange={v => set('licitacionReferencia', v)} placeholder="Ej: Escuela Municipal" />
             </FormField>
             <FormField label="Orden de Compra">
-              <Input value={data.licitacionOC || ''} onChange={v => set('licitacionOC', sanitizeOrdenCompra(v))} maxLength={80} title="Solo letras, números y guiones" placeholder="Ej: 12345-67-SE16" />
+              <Input value={data.licitacionOC || ''} onChange={v => set('licitacionOC', sanitizeOrdenCompra(v, { live: true }))} maxLength={80} title="Solo letras, números y guiones" placeholder="Ej: 12345-67-SE16" />
             </FormField>
           </div>
         </>
@@ -1371,7 +1371,7 @@ export default function VentasFormPage() {
         <>
           <FormDivider label="Detalles del Convenio Marco" />
           <FormField label="N OC Convenio Marco (Requerido)" hint="Obligatorio y no duplicable">
-            <Input value={data.licitacion || ''} onChange={v => set('licitacion', sanitizeOrdenCompra(v))} placeholder="Numero OC" />
+            <Input value={data.licitacion || ''} onChange={v => set('licitacion', sanitizeOrdenCompra(v, { live: true }))} placeholder="Numero OC" />
           </FormField>
         </>
       )}

@@ -537,7 +537,7 @@ export default function LicitacionDetallePage() {
             <FormField label="OC">
               <Input
                 value={form.ordenCompra}
-                onChange={v => setForm(f => ({ ...f, ordenCompra: sanitizeOrdenCompra(v) }))}
+                onChange={v => setForm(f => ({ ...f, ordenCompra: sanitizeOrdenCompra(v, { live: true }) }))}
                 maxLength={80}
                 placeholder="Ej: OC-12345"
                 title="Solo letras, números y guiones"

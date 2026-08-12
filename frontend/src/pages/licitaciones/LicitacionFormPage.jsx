@@ -65,7 +65,7 @@ export default function LicitacionFormPage() {
           <Field label="Orden de compra">
             <input
               value={form.ordenCompra}
-              onChange={e => setField('ordenCompra', sanitizeOrdenCompra(e.target.value))}
+              onChange={e => setField('ordenCompra', sanitizeOrdenCompra(e.target.value, { live: true }))}
               maxLength={80}
               placeholder="Ej: OC-12345"
               title="Solo letras, números y guiones"
