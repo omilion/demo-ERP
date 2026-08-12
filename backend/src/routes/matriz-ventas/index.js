@@ -763,7 +763,12 @@ export async function getMatrizTotales(fastify, query, user) {
   // Contadores operacionales (equivalentes a los del legacy): cuentan TODO lo
   // pendiente sin filtrar por fecha, porque una entrega atrasada de la semana
   // pasada sigue pendiente hoy. Mismo scope de sucursal que el resto.
-  const operacionalBase = { estado: 'Activa', eliminada: false, ...userSucursalWhere(user) }
+  const operacionalBase = {
+    estado: 'Activa',
+    eliminada: false,
+    nInterno: { not: null, gt: 0 },
+    ...userSucursalWhere(user),
+  }
   const [pendienteEntrega, entregadaNoPagada, noPagada] = await Promise.all([
     fastify.prisma.orden.count({ where: { ...operacionalBase, estadoEntrega: 'Pendiente entrega' } }),
     fastify.prisma.orden.count({

@@ -298,7 +298,6 @@ export default function MatrizVentasPage() {
         </div>
       ) : '-' },
     { key: 'regionDespacho', label: 'Región Desp.', render: v => <span style={{ fontSize: 12 }}>{v || '—'}</span> },
-    { key: 'ciudadDespacho', label: 'Ciudad Desp.', render: v => <span style={{ fontSize: 12 }}>{v || '—'}</span> },
     { key: 'detalleProductos', label: 'Detalle', width: 430, wrap: true, render: (_, row) => renderDetalle(row) },
     { key: 'fecha', label: 'Fecha Creacion', render: v => <span style={{ ...mono, fontSize: 11 }}>{formatDateTime(v)}</span> },
     { key: 'creadorNombre', label: 'Creada por', render: v => <span style={{ fontSize: 12 }}>{v || '-'}</span> },

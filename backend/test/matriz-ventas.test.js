@@ -619,5 +619,21 @@ describe('matriz ventas - fecha autonoma, estado inicial y paginacion', () => {
       await cleanup(app, f2)
     }
   })
+
+  it('excluye ventas anómalas sin número interno de los KPIs operacionales', async () => {
+    const marker = `kpis-sin-interno-${Date.now()}`
+    const headers = { authorization: `Bearer ${tokenFor(app, 'admin')}` }
+    const before = JSON.parse((await app.inject({ method: 'GET', url: '/api/matriz-ventas/totales', headers })).body)
+    const fixture = await createOrder(app, marker, { nInterno: null })
+
+    try {
+      const response = await app.inject({ method: 'GET', url: '/api/matriz-ventas/totales', headers })
+      expect(response.statusCode).toBe(200)
+      const after = JSON.parse(response.body)
+      expect(after.kpis.operacional).toEqual(before.kpis.operacional)
+    } finally {
+      await cleanup(app, fixture)
+    }
+  })
 })
 

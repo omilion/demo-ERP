@@ -49,16 +49,36 @@ const text = value => String(value ?? '').trim()
 const norm = value => text(value).toUpperCase()
 const normRut = value => norm(value).replace(/[.\-\s]/g, '')
 const bool = value => ['1', 'si', 'sí', 'true'].includes(norm(value).toLowerCase())
+const calendarDate = (year, month, day, hour = 0, minute = 0, second = 0) => {
+  const parts = [year, month, day, hour, minute, second].map(Number)
+  if (parts.some(part => !Number.isInteger(part))) return null
+  const [y, m, d, h, min, s] = parts
+  if (m < 1 || m > 12 || d < 1 || d > 31 || h < 0 || h > 23 || min < 0 || min > 59 || s < 0 || s > 59) return null
+  const parsed = new Date(Date.UTC(y, m - 1, d, h, min, s))
+  if (parsed.getUTCFullYear() !== y || parsed.getUTCMonth() !== m - 1 || parsed.getUTCDate() !== d) return null
+  return parsed
+}
 const date = value => {
   const raw = text(value)
   if (!raw || raw.startsWith('0000-00-00')) return null
-  const parsed = new Date(raw.replace(' ', 'T'))
-  return Number.isNaN(parsed.getTime()) ? null : parsed
+  let match = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/)
+  if (match) return calendarDate(match[3], match[2], match[1], match[4] || 0, match[5] || 0, match[6] || 0)
+  match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/)
+  if (match) return calendarDate(match[1], match[2], match[3], match[4] || 0, match[5] || 0, match[6] || 0)
+  return null
 }
 const day = value => {
   if (!value) return ''
   if (typeof value === 'string') return value.slice(0, 10)
   return value.toISOString().slice(0, 10)
+}
+const chileDayFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit',
+})
+const chileDay = value => {
+  if (!value) return ''
+  const parts = Object.fromEntries(chileDayFormatter.formatToParts(value).map(part => [part.type, part.value]))
+  return `${parts.year}-${parts.month}-${parts.day}`
 }
 const chunks = (items, size) => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size))
 
@@ -145,7 +165,7 @@ function legacyOrder(row, clienteId) {
   }
 }
 
-const comparableOrderFields = ['tipo', 'estado', 'estadoPago', 'estadoEntrega', 'rutCliente', 'emailCliente', 'sucursalId', 'creadorNombre', 'observaciones', 'licitacion', 'eliminada', 'userMod']
+const comparableOrderFields = ['tipo', 'estado', 'estadoPago', 'estadoEntrega', 'clienteId', 'rutCliente', 'emailCliente', 'sucursalId', 'creadorNombre', 'observaciones', 'licitacion', 'eliminada', 'userMod']
 function orderChanged(current, next) {
   if (comparableOrderFields.some(field => (current[field] ?? null) !== (next[field] ?? null))) return true
   return day(current.fechaEstadoEntrega) !== day(next.fechaEstadoEntrega)
@@ -188,8 +208,8 @@ function cajaKey(row) {
   const kind = ingreso > 0 ? 'ingreso' : 'egreso'
   const amount = Math.abs(ingreso - egreso)
   const ni = legacy ? int(row.n_interno) : int(row.orden?.nInterno)
-  const rawDate = legacy ? row.fecha_hora : row.fecha
-  return [ni, day(rawDate), kind, amount.toFixed(2), norm(row.medio_pago ?? row.medioPago), norm(row.n_doc ?? row.nDoc), norm(row.numero_nota_credito_interna ?? row.numeroNCInterna)].join('|')
+  const dateKey = legacy ? day(date(row.fecha_hora)) : chileDay(row.fecha)
+  return [ni, dateKey, kind, amount.toFixed(2), norm(row.medio_pago ?? row.medioPago), norm(row.n_doc ?? row.nDoc), norm(row.numero_nota_credito_interna ?? row.numeroNCInterna)].join('|')
 }
 
 async function main() {
@@ -237,7 +257,7 @@ async function main() {
     for (const cliente of created) clientByRut.set(normRut(cliente.rut), cliente.id)
   }
 
-  const orders = await prisma.orden.findMany({ select: { id: true, nInterno: true, tipo: true, estado: true, estadoPago: true, estadoEntrega: true, fechaEstadoEntrega: true, rutCliente: true, emailCliente: true, sucursalId: true, creadorNombre: true, observaciones: true, licitacion: true, eliminada: true, userMod: true } })
+  const orders = await prisma.orden.findMany({ select: { id: true, nInterno: true, tipo: true, estado: true, estadoPago: true, estadoEntrega: true, fechaEstadoEntrega: true, clienteId: true, rutCliente: true, emailCliente: true, sucursalId: true, creadorNombre: true, observaciones: true, licitacion: true, eliminada: true, userMod: true } })
   const orderByInterno = new Map(orders.filter(order => order.nInterno).map(order => [order.nInterno, order]))
   const insertOrders = []
   const updateOrders = []
@@ -284,7 +304,7 @@ async function main() {
       for (const product of created) productIdByCode.set(norm(product.codigoInterno), product.id)
     }
 
-    const existingItems = await prisma.ordenItem.findMany({ select: { id: true, ordenId: true, productoId: true, codigoInterno: true, nombre: true, descripcion: true, cantidad: true, nEntregados: true, precioUnitario: true, precioConIva: true, cargoTransporte: true, eliminado: true, userMod: true, fecham: true, orden: { select: { nInterno: true } } } })
+    const existingItems = await prisma.ordenItem.findMany({ orderBy: { id: 'asc' }, select: { id: true, ordenId: true, productoId: true, codigoInterno: true, nombre: true, descripcion: true, cantidad: true, nEntregados: true, precioUnitario: true, precioConIva: true, cargoTransporte: true, eliminado: true, userMod: true, fecham: true, orden: { select: { nInterno: true } } } })
     const byKey = new Map()
     for (const item of existingItems) {
       const key = itemKey(item)
@@ -344,13 +364,15 @@ async function main() {
       const ni = int(source.n_interno)
       const orderId = orderIdByInterno.get(ni)
       if (!ni || !orderId) continue
+      const ingreso = num(source.ingreso)
+      const egreso = num(source.egreso)
+      const monto = Math.abs(ingreso - egreso)
+      if (monto < 0.005) continue
       const key = cajaKey(source)
       const used = consumed.get(key) || 0
       consumed.set(key, used + 1)
       if (used < (existingCounts.get(key) || 0)) continue
-      const ingreso = num(source.ingreso)
-      const egreso = num(source.egreso)
-      insert.push({ ordenId: orderId, tipo: ingreso > 0 ? 'ingreso' : 'egreso', monto: Math.abs(ingreso - egreso), medioPago: text(source.medio_pago), cuotas: source.cuotas == null ? null : int(source.cuotas), fecha: date(source.fecha_hora), documento: text(source.documento) || null, nDoc: text(source.n_doc) || null, tipoDocumento: text(source.tipo_documento) || null, estadoDoc: text(source.estado_doc) || null, estadoPagoDoc: text(source.estado_pago_doc) || null, pagaCon: source.paga_con == null ? null : num(source.paga_con), usuario: text(source.usuario) || null, origenMedioPago: text(source.origen_medio_pago) || null, nMedioPago: text(source.n_medio_pago) || null, numeroNCInterna: text(source.numero_nota_credito_interna) || null, eliminado: false, userMod: text(source.user) || null, fecham: date(source.fecham) })
+      insert.push({ ordenId: orderId, tipo: ingreso > 0 ? 'ingreso' : 'egreso', monto, medioPago: text(source.medio_pago), cuotas: source.cuotas == null ? null : int(source.cuotas), fecha: date(source.fecha_hora), documento: text(source.documento) || null, nDoc: text(source.n_doc) || null, tipoDocumento: text(source.tipo_documento) || null, estadoDoc: text(source.estado_doc) || null, estadoPagoDoc: text(source.estado_pago_doc) || null, pagaCon: source.paga_con == null ? null : num(source.paga_con), usuario: text(source.usuario) || null, origenMedioPago: text(source.origen_medio_pago) || null, nMedioPago: text(source.n_medio_pago) || null, numeroNCInterna: text(source.numero_nota_credito_interna) || null, eliminado: false, userMod: text(source.user) || null, fecham: date(source.fecham) })
     }
     console.log(`Caja: ${insert.length} movimientos por insertar`)
     if (APPLY) for (const batch of chunks(insert, 300)) await prisma.movimientoCaja.createMany({ data: batch })
@@ -367,7 +389,7 @@ async function main() {
       if (keys.has(key)) continue
       keys.add(key)
       const ni = legacyIdToInterno.get(int(sourceInterno))
-      insert.push({ ordenId: ni ? orderIdByInterno.get(ni) || null : null, interno: sourceInterno || null, plazoEntrega: text(source.plazo_entrega) || null, fechaInterno: date(source.fecha_interno), fechaEntrega: date(source.fecha_entrega), tipoDespacho: text(source.tipo_despacho) || null, transporte: text(source.transporte) || null, montoEnvio: source.monto_envio == null ? null : int(source.monto_envio), direccion: text(source.direccion) || null, contacto: text(source.contacto) || null, region: text(source.region) || null, comuna: text(source.comuna) || null, parcial: bool(source.parcial), tieneMulta: bool(source.tiene_multa), usuario: text(source.usuario) || null, eliminado: false, userMod: text(source.user) || null, fecham: date(source.fecham) })
+      insert.push({ ordenId: ni ? orderIdByInterno.get(ni) || null : null, interno: sourceInterno || null, plazoEntrega: text(source.plazo_entrega) || null, fechaInterno: date(source.fecha_interno), fechaEntrega: date(source.fecha_entrega), tipoDespacho: text(source.tipo_despacho) || null, transporte: text(source.transporte) || null, montoEnvio: source.monto_envio == null ? null : int(source.monto_envio), direccion: text(source.direccion) || null, contacto: text(source.contacto) || null, region: text(source.region) || null, comuna: text(source.comuna) || null, parcial: bool(source.parcial), tieneMulta: bool(source.multa), usuario: text(source.usuario) || null, eliminado: false, userMod: text(source.user) || null, fecham: date(source.fecham) })
     }
     console.log(`Despachos: ${insert.length} por insertar`)
     if (APPLY) for (const batch of chunks(insert, 200)) await prisma.despacho.createMany({ data: batch })
