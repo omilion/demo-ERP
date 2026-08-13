@@ -286,6 +286,8 @@ model Producto {
   notaCreditoInternaItems NotaCreditoInternaItem[]
   receta           ProductoReceta?
   costeoSnapshots  CosteoSnapshot[]
+  importacionItems ImportacionItem[]
+  ordenCompraProveedorItems OrdenCompraProveedorItem[]
 
   @@index([subcategoriaId])
   @@index([categoriaId])
@@ -354,6 +356,8 @@ model Proveedor {
   pagoFactura     String? @map("pago_factura")
   activo          Boolean @default(true)
   productoProveedores ProductoProveedor[]
+  importaciones       Importacion[]
+  ordenesCompraProveedor OrdenCompraProveedor[]
 
   @@map("proveedores")
   @@schema("catalogo")
@@ -1710,6 +1714,122 @@ model PackingEvento {
   @@map("packing_eventos")
   @@schema("bodega")
 }
+
+model Importacion {
+  id               Int               @id @default(autoincrement())
+  numeroContenedor String            @map("numero_contenedor")
+  tipoTransporte   String            @default("Marítimo") @map("tipo_transporte")
+  proveedorId      Int?              @map("proveedor_id")
+  proveedorNombre  String?           @map("proveedor_nombre")
+  origen           String?
+  puertoDestino    String?           @map("puerto_destino")
+  navieraAgencia   String?           @map("naviera_agencia")
+  fechaEmbarque    DateTime?         @map("fecha_embarque")
+  fechaEta         DateTime?         @map("fecha_eta")
+  fechaRecepcion   DateTime?         @map("fecha_recepcion")
+  estado           String            @default("En tránsito")
+  documentoAduana  String?           @map("documento_aduana")
+  costoFlete       Float             @default(0) @map("costo_flete")
+  costoSeguro      Float             @default(0) @map("costo_seguro")
+  costoAduana      Float             @default(0) @map("costo_aduana")
+  totalCif         Float             @default(0) @map("total_cif")
+  observaciones    String?
+  usuarioId        Int?              @map("user_id")
+  usuarioNombre    String?           @map("usuario_nombre")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  items            ImportacionItem[]
+  proveedor        Proveedor?        @relation(fields: [proveedorId], references: [id], onDelete: SetNull)
+
+  @@index([numeroContenedor])
+  @@index([estado])
+  @@index([fechaEta])
+  @@map("importaciones")
+  @@schema("bodega")
+}
+
+model ImportacionItem {
+  id               Int         @id @default(autoincrement())
+  importacionId    Int         @map("importacion_id")
+  productoId       Int?        @map("producto_id")
+  codigoInterno    String?     @map("codigo_interno")
+  nombre           String?
+  cantidadEsperada Int         @map("cantidad_esperada")
+  cantidadRecibida Int         @default(0) @map("cantidad_recibida")
+  costoUnitario    Float       @default(0) @map("costo_unitario")
+  recibido         Boolean     @default(false)
+  createdAt        DateTime    @default(now()) @map("created_at")
+  importacion      Importacion @relation(fields: [importacionId], references: [id], onDelete: Cascade)
+  producto         Producto?   @relation(fields: [productoId], references: [id], onDelete: SetNull)
+
+  @@index([importacionId])
+  @@index([productoId])
+  @@map("importacion_items")
+  @@schema("bodega")
+}
+
+model OrdenCompraProveedor {
+  id                     Int                        @id @default(autoincrement())
+  numeroOc               String                     @unique @map("numero_oc")
+  proveedorId            Int                        @map("proveedor_id")
+  proveedorNombre        String?                    @map("proveedor_nombre")
+  proveedorRut           String?                    @map("proveedor_rut")
+  proveedorEmail         String?                    @map("proveedor_email")
+  proveedorContacto      String?                    @map("proveedor_contacto")
+  fechaEmision           DateTime                   @default(now()) @map("fecha_emision")
+  fechaRequerida         DateTime?                  @map("fecha_requerida")
+  fechaRangoVentasDesde  DateTime?                  @map("fecha_rango_ventas_desde")
+  fechaRangoVentasHasta  DateTime?                  @map("fecha_rango_ventas_hasta")
+  estado                 String                     @default("Borrador")
+  subtotalNeto           Float                      @default(0) @map("subtotal_neto")
+  iva                    Float                      @default(0)
+  total                  Float                      @default(0)
+  moneda                 String                     @default("CLP")
+  condicionPago          String?                    @map("condicion_pago")
+  observaciones          String?
+  motivoRechazo          String?                    @map("motivo_rechazo")
+  creadorId              Int?                       @map("creador_id")
+  creadorNombre          String?                    @map("creador_nombre")
+  aprobadorId            Int?                       @map("aprobador_id")
+  aprobadorNombre        String?                    @map("aprobador_nombre")
+  fechaAprobacion        DateTime?                  @map("fecha_aprobacion")
+  createdAt              DateTime                   @default(now()) @map("created_at")
+  updatedAt              DateTime                   @updatedAt @map("updated_at")
+  items                  OrdenCompraProveedorItem[]
+  proveedor              Proveedor                  @relation(fields: [proveedorId], references: [id])
+
+  @@index([proveedorId])
+  @@index([estado])
+  @@index([fechaEmision])
+  @@map("ordenes_compra_proveedores")
+  @@schema("bodega")
+}
+
+model OrdenCompraProveedorItem {
+  id                     Int                  @id @default(autoincrement())
+  ordenCompraProveedorId Int                  @map("orden_compra_proveedor_id")
+  productoId             Int?                 @map("producto_id")
+  codigoInterno          String?              @map("codigo_interno")
+  nombre                 String?
+  cantidadPedida         Int                  @map("cantidad_pedida")
+  cantidadRecepcionada   Int                  @default(0) @map("cantidad_recepcionada")
+  costoUnitario          Float                @default(0) @map("costo_unitario")
+  subtotal               Float                @default(0)
+  ventasPeriodo          Int?                 @default(0) @map("ventas_periodo")
+  stockActual            Int?                 @default(0) @map("stock_actual")
+  stockCritico           Int?                 @default(0) @map("stock_critico")
+  enTransito             Int?                 @default(0) @map("en_transito")
+  createdAt              DateTime             @default(now()) @map("created_at")
+  ordenCompraProveedor   OrdenCompraProveedor @relation(fields: [ordenCompraProveedorId], references: [id], onDelete: Cascade)
+  producto               Producto?            @relation(fields: [productoId], references: [id], onDelete: SetNull)
+
+  @@index([ordenCompraProveedorId])
+  @@index([productoId])
+  @@map("orden_compra_proveedor_items")
+  @@schema("bodega")
+}
+
+// ── RRHH ─────────────────────────────────────────────────────────────
 
 model Trabajador {
   id                 Int           @id @default(autoincrement())
