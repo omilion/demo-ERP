@@ -196,7 +196,7 @@ function MainMenuTile({ label, icon, route, tone = 'green', onClick }) {
   )
 }
 
-function buildQuickAccess({ show, canReadCatalogo, canWriteVentas, stats, inv, tal, isLoading }) {
+function buildQuickAccess({ show, canReadCatalogo, canWriteVentas, canReadProveedores, canReadCaja, stats, inv, tal, isLoading }) {
   const n = v => isLoading ? '...' : (v ?? 0).toLocaleString('es-CL')
   const invCritico = (inv.critico ?? 0) + (inv.sinStock ?? 0)
   const talCritico = (tal.critico ?? 0) + (tal.sinStock ?? 0)
@@ -206,21 +206,27 @@ function buildQuickAccess({ show, canReadCatalogo, canWriteVentas, stats, inv, t
     show.bodega && { label: 'Stock Crítico Bodega Inventario', icon: 'alertTriangle', tone: 'red', badge: n(invCritico), route: '/bodega?filtro=critico' },
     show.bodega && { label: 'Mantención Bodega Taller', icon: 'box', tone: 'green', route: '/bodega?tab=taller' },
     show.bodega && { label: 'Stock Crítico Bodega Taller', icon: 'alertTriangle', tone: 'green', badge: n(talCritico), route: '/bodega?tab=taller&filtro=critico' },
-    show.ventas && { label: 'Matriz Ventas', icon: 'grid', tone: 'blue', route: '/matriz-ventas' },
-    show.ventas && { label: 'Ventas No pagadas', icon: 'alertTriangle', tone: 'red', badge: n(stats?.ventas?.noPagadas), route: '/ventas?filtro=no_pagadas' },
-    show.ventas && { label: 'Ventas Pendientes entrega', icon: 'truck', tone: 'red', badge: n(stats?.ventas?.pendienteEntrega), route: '/ventas?filtro=pendiente_entrega' },
+    show.ventas && { label: 'Matriz Ventas', icon: 'grid', tone: 'blue', route: '/ventas' },
+    show.ventas && { label: 'Ventas No pagadas', icon: 'alertTriangle', tone: 'red', badge: n(stats?.ventas?.noPagadas), route: '/ventas?noPagada=1' },
+    show.ventas && { label: 'Ventas Pendientes entrega', icon: 'truck', tone: 'amber', badge: n(stats?.ventas?.pendienteEntrega), route: '/ventas?pendienteEntrega=1' },
     canReadCatalogo && { label: 'Consulta Precios', icon: 'tag', tone: 'blue', route: '/consulta-precios' },
     canWriteVentas && { label: 'Venta por Sala', icon: 'shoppingCart', tone: 'cyan', route: '/ventas/nueva' },
-    show.taller && { label: 'OT Taller Pendientes', icon: 'wrench', tone: 'cyan', badge: n(stats?.odts?.pendientes), route: '/taller?estado=Pendiente' },
+    show.taller && { label: 'OT Taller Pendientes', icon: 'wrench', tone: 'cyan', badge: n(stats?.odts?.pendientes), route: '/taller?pendiente=si' },
     show.taller && { label: 'OT Taller Prioritarias', icon: 'wrench', tone: 'red', badge: n(stats?.odts?.urgentes), route: '/taller?prioridad=urgente' },
-    show.taller && { label: 'OT Taller Espumas Pendientes', icon: 'wrench', tone: 'green', route: '/taller?tipo=Espumas&estado=Pendiente' },
-    show.taller && { label: 'OT Taller Espumas Prioritarias', icon: 'wrench', tone: 'green', route: '/taller?tipo=Espumas&prioridad=urgente' },
-    show.taller && { label: 'OT Taller Confecciones Pendientes', icon: 'wrench', tone: 'blue', route: '/taller?tipo=Confecciones&estado=Pendiente' },
-    show.taller && { label: 'OT Taller Confecciones Prioritarias', icon: 'wrench', tone: 'blue', route: '/taller?tipo=Confecciones&prioridad=urgente' },
-    show.taller && { label: 'OT Taller Madera Pendientes', icon: 'wrench', tone: 'cyan', route: '/taller?tipo=Madera&estado=Pendiente' },
-    show.taller && { label: 'OT Taller Madera Prioritarias', icon: 'wrench', tone: 'cyan', route: '/taller?tipo=Madera&prioridad=urgente' },
-    show.cobranza && { label: 'Cobranza / Documentos pagos Proveedores', icon: 'dollarSign', tone: 'amber', route: '/cobranza' },
-  ].filter(Boolean)
+    show.taller && { label: 'OT Taller Espumas Pendientes', icon: 'wrench', tone: 'cyan', route: '/taller?tipo=Espumas&pendiente=si' },
+    show.taller && { label: 'OT Taller Espumas Prioritarias', icon: 'wrench', tone: 'red', route: '/taller?tipo=Espumas&prioridad=urgente' },
+    show.taller && { label: 'OT Taller Confecciones Pendientes', icon: 'wrench', tone: 'cyan', route: '/taller?tipo=Confecciones&pendiente=si' },
+    show.taller && { label: 'OT Taller Confecciones Prioritarias', icon: 'wrench', tone: 'red', route: '/taller?tipo=Confecciones&prioridad=urgente' },
+    show.taller && { label: 'OT Taller Madera Pendientes', icon: 'wrench', tone: 'cyan', route: '/taller?tipo=Madera&pendiente=si' },
+    show.taller && { label: 'OT Taller Madera Prioritarias', icon: 'wrench', tone: 'red', route: '/taller?tipo=Madera&prioridad=urgente' },
+    show.cobranza && { label: 'Cobranza', icon: 'dollarSign', tone: 'amber', route: '/cobranza' },
+    canReadCaja && { label: 'Movimientos de caja', icon: 'creditCard', tone: 'amber', route: '/caja' },
+    canReadProveedores && { label: 'Pagos a proveedores', icon: 'briefcase', tone: 'amber', route: '/pagos-proveedores' },
+  ].filter(Boolean).map(item => {
+    if (item.route === '/bodega') return { ...item, tone: 'green' }
+    if (item.route === '/bodega?tab=taller&filtro=critico') return { ...item, tone: 'red' }
+    return item
+  })
 }
 
 function getAccessModel(user, stats, isLoading) {
@@ -247,7 +253,7 @@ function getAccessModel(user, stats, isLoading) {
   }
   const inv = stats?.stock?.Inventario ?? {}
   const tal = stats?.stock?.Taller ?? {}
-  const quickAccess = buildQuickAccess({ show, canReadCatalogo, canWriteVentas, stats, inv, tal, isLoading })
+  const quickAccess = buildQuickAccess({ show, canReadCatalogo, canWriteVentas, canReadProveedores, canReadCaja, stats, inv, tal, isLoading })
   return { show, inv, tal, quickAccess }
 }
 
@@ -271,6 +277,12 @@ export default function DashboardPage() {
   const { data: stats, isLoading } = useDashboardStats()
   const { user } = useAuthStore()
   const { show, quickAccess } = getAccessModel(user, stats, isLoading)
+  const quickAccessGroups = [
+    { label: 'Comercial', tone: 'var(--blue)', items: quickAccess.filter(item => item.route.startsWith('/ventas') || item.route === '/matriz-ventas' || item.route === '/consulta-precios') },
+    { label: 'Bodega', tone: 'var(--green-600)', items: quickAccess.filter(item => item.route.startsWith('/bodega')) },
+    { label: 'Operaciones y taller', tone: '#0891b2', items: quickAccess.filter(item => item.route.startsWith('/taller')) },
+    { label: 'Finanzas', tone: 'var(--amber)', items: quickAccess.filter(item => item.route.startsWith('/cobranza') || item.route.startsWith('/caja') || item.route.startsWith('/pagos-proveedores')) },
+  ].filter(group => group.items.length)
 
   const isVendedor = user?.role === 'vendedor'
   const { data: pendientesCrm } = useCrmPendientesHoy()
@@ -447,6 +459,7 @@ export default function DashboardPage() {
   const mainModules = [
     { label: 'Dashboard', icon: 'barChart2', tone: 'green', route: '/dashboard/operativo' },
     show.ventas && { label: 'Ventas', icon: 'shoppingCart', tone: 'blue', route: '/matriz-ventas' },
+    can(user, 'reportes') && { label: 'Gerencia', icon: 'barChart2', tone: 'slate', route: '/reportes/gerenciales' },
     show.bodega && { label: 'Bodega', icon: 'warehouse', tone: 'green', route: '/bodega' },
     show.caja && { label: 'Caja', icon: 'creditCard', tone: 'slate', route: '/caja' },
     show.rrhh && { label: 'RRHH', icon: 'users', tone: 'amber', route: '/rrhh' },
@@ -483,17 +496,25 @@ export default function DashboardPage() {
             border: '1px solid var(--border)',
             borderTop: 0,
             borderRadius: '0 0 8px 8px',
-            padding: 6,
+            padding: 12,
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
-            gap: 6,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: 12,
+            alignItems: 'start',
           }}>
-            {quickAccess.map(item => (
-              <QuickAccessTile
-                key={`${item.route}-${item.label}`}
-                {...item}
-                onClick={() => navigate(item.route)}
-              />
+            {quickAccessGroups.map(group => (
+              <section key={group.label} aria-label={group.label} style={{ minWidth: 0 }}>
+                <h2 style={{ margin: '0 0 8px', paddingLeft: 9, borderLeft: `4px solid ${group.tone}`, color: 'var(--text-2)', fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase' }}>{group.label}</h2>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {group.items.map(item => (
+                    <QuickAccessTile
+                      key={`${item.route}-${item.label}`}
+                      {...item}
+                      onClick={() => navigate(item.route)}
+                    />
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         </section>

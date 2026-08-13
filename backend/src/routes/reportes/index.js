@@ -13,6 +13,7 @@ import { buildProveedorWhere, proveedorOrderBy } from '../proveedores/helpers.js
 import { buildBodegaTallerWhere, enrichBodegaTallerItems, filterStockCriticoItems } from '../bodega-taller/helpers.js'
 import { registerComisionesReportRoutes } from './comisiones.js'
 import { registerMovimientosAnormalesReportRoutes } from './movimientos-anormales.js'
+import ExcelJS from 'exceljs'
 
 const VENTA_DIRECTA_TIPOS = ['Venta sala', 'Venta directa', 'Venta Sala', 'Venta Directa', 'Normal']
 
@@ -21,6 +22,18 @@ function buildDateRange(desde, hasta) {
   const lte = hasta ? parseDate(hasta, true) : null
   if ((desde && !gte) || (hasta && !lte)) return { error: 'Rango de fechas inválido' }
   return { gte, lte }
+}
+
+function previousDateRange(range) {
+  if (!range.gte || !range.lte) return null
+  const duration = range.lte.getTime() - range.gte.getTime() + 1
+  const lte = new Date(range.gte.getTime() - 1)
+  return { gte: new Date(lte.getTime() - duration + 1), lte }
+}
+
+function percentageChange(current, previous) {
+  if (!previous) return null
+  return (Number(current || 0) - Number(previous || 0)) / Math.abs(Number(previous))
 }
 
 function applyRange(where, field, range) {
@@ -555,7 +568,7 @@ export async function buildVentasExportWhere(fastify, query = {}) {
   return { where }
 }
 
-async function buildVentasGerenciales(fastify, query, user) {
+async function buildVentasGerenciales(fastify, query, user, { includeComparison = true } = {}) {
   const { desde, hasta, rut, cliente, vendedor, tipo, periodo = 'mes' } = query
   const range = buildDateRange(desde, hasta)
   if (range.error) return { error: range.error }
@@ -608,7 +621,7 @@ async function buildVentasGerenciales(fastify, query, user) {
   for (const o of ocs) push({ fecha: o.fechaHora, cliente: o.emailComprador, vendedor: o.codigoVendedor, tipo: 'Venta Web', monto: o.total || 0 })
   for (const l of licitaciones) push({ fecha: l.fecha, cliente: l.rutCliente, vendedor: l.usuario, tipo: 'Licitacion', monto: totalLicitacion(l) })
 
-  return {
+  const result = {
     filtros: { desde: desde || null, hasta: hasta || null, periodo },
     total,
     count,
@@ -622,6 +635,25 @@ async function buildVentasGerenciales(fastify, query, user) {
     byVendedor,
     byTipo,
   }
+  const previousRange = includeComparison ? previousDateRange(range) : null
+  if (previousRange) {
+    const previous = await buildVentasGerenciales(fastify, {
+      ...query,
+      desde: previousRange.gte.toISOString().slice(0, 10),
+      hasta: previousRange.lte.toISOString().slice(0, 10),
+    }, user, { includeComparison: false })
+    result.comparativo = {
+      periodoAnterior: {
+        desde: previousRange.gte,
+        hasta: previousRange.lte,
+        total: previous.total,
+        count: previous.count,
+      },
+      variacionVentas: percentageChange(total, previous.total),
+      variacionOperaciones: percentageChange(count, previous.count),
+    }
+  }
+  return result
 }
 
 async function buildCobranzaCajaGerencial(fastify, query = {}, user = null) {
@@ -643,6 +675,13 @@ async function buildCobranzaCajaGerencial(fastify, query = {}, user = null) {
     fastify.prisma.movimientoCaja.findMany({ where: cajaWhere }),
   ])
   const byEstado = {}
+  const antiguedad = {
+    '0-30': { count: 0, total: 0 },
+    '31-60': { count: 0, total: 0 },
+    '61-90': { count: 0, total: 0 },
+    '91+': { count: 0, total: 0 },
+  }
+  const fechaCorte = range.lte || new Date()
   let porCobrar = 0
   let cobrado = 0
   for (const c of cobranza) {
@@ -655,6 +694,12 @@ async function buildCobranzaCajaGerencial(fastify, query = {}, user = null) {
     byEstado[estado].monto += monto
     if (estado === 'PENDIENTE') porCobrar += valor
     if (estado === 'CANCELADA') cobrado += monto
+    if (estado === 'PENDIENTE' && c.fechaFactura) {
+      const days = Math.max(0, Math.floor((fechaCorte.getTime() - new Date(c.fechaFactura).getTime()) / 86_400_000))
+      const bucket = days <= 30 ? '0-30' : days <= 60 ? '31-60' : days <= 90 ? '61-90' : '91+'
+      antiguedad[bucket].count += 1
+      antiguedad[bucket].total += valor
+    }
   }
   const cajaStats = caja.reduce((acc, m) => {
     const monto = Number(m.monto || 0)
@@ -663,7 +708,7 @@ async function buildCobranzaCajaGerencial(fastify, query = {}, user = null) {
     addMetric(acc.byMedioPago, m.medioPago, monto)
     return acc
   }, { ingresos: 0, egresos: 0, byMedioPago: {} })
-  return { cuentasPorCobrar: { porCobrar, cobrado, count: cobranza.length, byEstado }, caja: { ...cajaStats, count: caja.length } }
+  return { cuentasPorCobrar: { porCobrar, cobrado, count: cobranza.length, byEstado, antiguedad }, caja: { ...cajaStats, count: caja.length } }
 }
 
 async function buildStockGerencial(fastify, query = {}) {
@@ -710,9 +755,10 @@ async function buildLicitacionesGerencial(fastify, query = {}, user = null) {
 async function buildOperacionesGerencial(fastify, query = {}) {
   const range = buildDateRange(query.desde, query.hasta)
   if (range.error) return { error: range.error }
+  const now = new Date()
   const [odts, despachos, guias] = await Promise.all([
-    fastify.prisma.odt.findMany({ where: { ...applyRange({}, 'createdAt', range), eliminado: false } }),
-    fastify.prisma.despacho.findMany({ where: applyRange({ eliminado: false }, 'fechaEntrega', range) }),
+    fastify.prisma.odt.findMany({ where: { eliminado: false, ...(range.lte ? { createdAt: { lte: range.lte } } : {}) } }),
+    fastify.prisma.despacho.findMany({ where: { eliminado: false, ...(range.lte ? { OR: [{ fechaEntrega: null }, { fechaEntrega: { lte: range.lte } }] } : {}) } }),
     fastify.prisma.guiaDespacho.findMany({ where: { eliminado: false }, select: { ordenId: true, odtId: true, origenTipo: true, origenId: true } }),
   ])
   const odtsPendientes = odts.filter(o => String(o.estado || '').toLowerCase() !== 'terminada')
@@ -731,9 +777,14 @@ async function buildOperacionesGerencial(fastify, query = {}) {
   })
   const byEstadoOdt = {}
   for (const o of odtsPendientes) addMetric(byEstadoOdt, o.estado, 0, 1)
-  const now = new Date()
+  const odtsVencidas = odtsPendientes.filter(o => o.fechaEntregaCompromiso && new Date(o.fechaEntregaCompromiso) < now)
+  const odtsEnRiesgo = odtsPendientes.filter(o => {
+    if (!o.fechaEntregaCompromiso) return false
+    const days = (new Date(o.fechaEntregaCompromiso).getTime() - now.getTime()) / 86_400_000
+    return days >= 0 && days <= 7
+  })
   return {
-    taller: { pendientes: odtsPendientes.length, byEstado: byEstadoOdt },
+    taller: { pendientes: odtsPendientes.length, vencidas: odtsVencidas.length, enRiesgo: odtsEnRiesgo.length, byEstado: byEstadoOdt },
     despachos: {
       pendientes: despachosPendientes.length,
       vencidos: despachosPendientes.filter(d => d.fechaEntrega && new Date(d.fechaEntrega) < now).length,
@@ -812,12 +863,87 @@ function buildGerencialExportRows(reportes = {}, query = {}) {
   return rows
 }
 
+function styleGerencialWorksheet(sheet, title) {
+  sheet.views = [{ state: 'frozen', ySplit: 3 }]
+  sheet.mergeCells('A1:D1')
+  const titleCell = sheet.getCell('A1')
+  titleCell.value = title
+  titleCell.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } }
+  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF14532D' } }
+  titleCell.alignment = { vertical: 'middle' }
+  sheet.getRow(1).height = 28
+  sheet.getRow(3).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+  sheet.getRow(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF166534' } }
+  sheet.columns.forEach(column => { column.width = 24 })
+}
+
+async function buildGerencialXlsx(reportes, query = {}) {
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = 'Plastimar Sisgestion'
+  workbook.created = new Date()
+  const resumen = workbook.addWorksheet('Resumen gerencial')
+  styleGerencialWorksheet(resumen, 'ReporterÃ­a gerencial Plastimar')
+  resumen.getCell('A2').value = `PerÃ­odo: ${query.desde || 'Inicio'} a ${query.hasta || 'Hoy'}`
+  resumen.getCell('A2').font = { italic: true, color: { argb: 'FF475569' } }
+  resumen.getRow(3).values = ['SecciÃ³n', 'Indicador', 'Valor', 'Detalle']
+  const rows = buildGerencialExportRows(reportes, query)
+  rows.forEach(row => resumen.addRow([row.seccion, row.indicador, row.valor, row.detalle]))
+  resumen.getColumn(3).numFmt = '#,##0'
+  resumen.autoFilter = { from: 'A3', to: `D${Math.max(3, rows.length + 3)}` }
+
+  const ventas = reportes.ventas
+  if (ventas) {
+    const sheet = workbook.addWorksheet('Comercial')
+    styleGerencialWorksheet(sheet, 'Comercial')
+    sheet.getRow(3).values = ['Indicador', 'Valor', 'PerÃ­odo anterior', 'VariaciÃ³n']
+    const previous = ventas.comparativo?.periodoAnterior || {}
+    sheet.addRows([
+      ['Ventas del perÃ­odo', ventas.total || 0, previous.total || 0, ventas.comparativo?.variacionVentas ?? null],
+      ['Operaciones', ventas.count || 0, previous.count || 0, ventas.comparativo?.variacionOperaciones ?? null],
+    ])
+    sheet.getColumn(2).numFmt = '#,##0'
+    sheet.getColumn(3).numFmt = '#,##0'
+    sheet.getColumn(4).numFmt = '0.0%;[Red]-0.0%'
+    sheet.addRow([])
+    sheet.addRow(['Ventas por tipo', 'Monto'])
+    Object.entries(ventas.byTipo || {}).sort(([, a], [, b]) => b.total - a.total).forEach(([label, value]) => sheet.addRow([label, value.total || 0]))
+  }
+
+  const operaciones = reportes.operaciones
+  if (operaciones) {
+    const sheet = workbook.addWorksheet('Operaciones')
+    styleGerencialWorksheet(sheet, 'Operaciones')
+    sheet.getRow(3).values = ['Indicador', 'Valor']
+    sheet.addRows([
+      ['OT pendientes', operaciones.taller?.pendientes || 0],
+      ['OT vencidas', operaciones.taller?.vencidas || 0],
+      ['OT en riesgo (7 dÃ­as)', operaciones.taller?.enRiesgo || 0],
+      ['Despachos pendientes', operaciones.despachos?.pendientes || 0],
+      ['Despachos vencidos', operaciones.despachos?.vencidos || 0],
+    ])
+  }
+
+  const riesgos = workbook.addWorksheet('Finanzas y riesgos')
+  styleGerencialWorksheet(riesgos, 'Finanzas y riesgos')
+  riesgos.getRow(3).values = ['Indicador', 'Valor', 'Detalle']
+  const cobranza = reportes.cobranzaCaja
+  if (cobranza) {
+    riesgos.addRow(['CxC pendiente', cobranza.cuentasPorCobrar?.porCobrar || 0, 'Cuentas pendientes del perÃ­odo'])
+    Object.entries(cobranza.cuentasPorCobrar?.antiguedad || {}).forEach(([label, value]) => riesgos.addRow([`CxC ${label} dÃ­as`, value.total || 0, `${value.count || 0} documentos`]))
+    riesgos.addRow(['Caja neta', Number(cobranza.caja?.ingresos || 0) - Number(cobranza.caja?.egresos || 0), 'Ingresos menos egresos'])
+  }
+  if (reportes.stock) riesgos.addRow(['Stock crÃ­tico', Number(reportes.stock.stockCritico?.totales?.productosCriticos || 0) + Number(reportes.stock.stockCritico?.totales?.materialesCriticos || 0), 'Productos y materiales'])
+  if (reportes.licitaciones) riesgos.addRow(['Licitaciones pendientes', reportes.licitaciones.byResultado?.pendiente?.count || 0, 'Pendientes de resoluciÃ³n'])
+  riesgos.getColumn(2).numFmt = '#,##0'
+  return workbook.xlsx.writeBuffer()
+}
+
 export default async function reportesRoutes(fastify) {
   registerComisionesReportRoutes(fastify)
   registerMovimientosAnormalesReportRoutes(fastify)
 
   fastify.get('/gerencial/ventas', {
-    preHandler: [fastify.authenticate, fastify.rbac('cobranza', 'read')],
+    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request, reply) => {
     const reporte = await buildVentasGerenciales(fastify, request.query, request.user)
     if (reporte.error) return reply.code(400).send({ error: reporte.error })
@@ -899,7 +1025,7 @@ export default async function reportesRoutes(fastify) {
   }, async (request, reply) => {
     const reportes = {}
     if (canReadModule(request.user, 'ventas') || canReadModule(request.user, 'cobranza')) {
-      const ventas = await buildVentasGerenciales(fastify, request.query, request.user)
+      const ventas = await buildVentasGerenciales(fastify, request.query, request.user, { includeComparison: false })
       if (ventas.error) return reply.code(400).send({ error: ventas.error })
       reportes.ventas = ventas
     }
@@ -933,6 +1059,23 @@ export default async function reportesRoutes(fastify) {
       { key: 'detalle', label: 'Detalle' },
     ])
     return sendCsv(reply, `reporte_gerencial_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+  })
+
+  fastify.get('/export/gerencial.xlsx', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async (request, reply) => {
+    const reportes = {}
+    if (canReadModule(request.user, 'ventas') || canReadModule(request.user, 'cobranza')) reportes.ventas = await buildVentasGerenciales(fastify, request.query, request.user)
+    if (canReadAll(request.user, ['caja', 'cobranza'])) reportes.cobranzaCaja = await buildCobranzaCajaGerencial(fastify, request.query, request.user)
+    if (canReadModule(request.user, 'bodega')) reportes.stock = await buildStockGerencial(fastify, request.query)
+    if (canReadModule(request.user, 'licitaciones')) reportes.licitaciones = await buildLicitacionesGerencial(fastify, request.query, request.user)
+    if (canReadAll(request.user, ['taller', 'despacho'])) reportes.operaciones = await buildOperacionesGerencial(fastify, request.query)
+    if (!Object.keys(reportes).length) return reply.code(403).send({ error: 'Sin permisos para exportar reportes gerenciales' })
+    const buffer = await buildGerencialXlsx(reportes, request.query)
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="reporte_gerencial_${new Date().toISOString().slice(0, 10)}.xlsx"`)
+      .send(Buffer.from(buffer))
   })
 
   fastify.get('/export/productos', {

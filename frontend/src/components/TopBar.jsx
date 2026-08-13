@@ -10,13 +10,17 @@ import plastimarLogo from '../assets/plastimar-logo.webp'
 const NAV_GROUPS = [
   { label: 'Ventas', items: [
     { label: '+ Nueva Venta', route: '/ventas/nueva', module: 'ventas', permission: 'write', highlight: true },
-    { label: 'Ventas', route: '/ventas', module: 'ventas' },
-    { label: 'Matriz Ventas', route: '/matriz-ventas', module: 'ventas' },
+    { label: 'Matriz Ventas', route: '/ventas', module: 'ventas' },
     { label: 'OC Online / Venta Web', route: '/ordenes-compra', module: 'ventas' },
     { label: 'CRM', route: '/crm', module: 'ventas' },
     { label: 'Clientes', route: '/clientes', module: 'clientes' },
-    { label: 'Reporteria Gerencial', route: '/reportes/gerenciales', module: 'reportes' },
-    { label: 'Comisiones', route: '/reportes/comisiones', roles: ['admin'] },
+  ] },
+  { label: 'Taller', items: [
+    { label: 'Órdenes de Taller', route: '/taller', module: 'taller' },
+    { label: 'Taller de Corte', route: '/taller-corte', module: 'taller' },
+    { label: 'Pasar a Taller', route: '/pasar-taller', module: 'taller', permission: 'write' },
+    { label: 'Bitacora', route: '/bitacora-taller', module: 'taller' },
+    { label: 'Historial Materiales', route: '/historial-materiales', module: 'taller' },
   ] },
   { label: 'Bodega', items: [
     { label: 'Inventario', route: '/bodega', module: 'bodega' },
@@ -43,36 +47,30 @@ const NAV_GROUPS = [
     { label: 'Emitir documento exportación', route: '/facturacion/exportacion', module: 'facturacion', permission: 'write' },
     { label: 'Configuración', route: '/facturacion/configuracion', module: 'facturacion' },
   ] },
-  { label: 'RRHH', items: [
-    { label: 'Trabajadores', route: '/rrhh', module: 'rrhh' },
-  ] },
   { label: 'Licitaciones', items: [
-    { label: 'Licitaciones', route: '/licitaciones', module: 'licitaciones' },
-    { label: 'Convenio Marco', route: '/licitaciones?tipo=convenio', module: 'licitaciones' },
+    { label: 'Cotizaciones Licitación', route: '/licitaciones', module: 'licitaciones' },
+    { label: 'Convenio Marco', route: '/ventas?tipo=convenio-marco', module: 'ventas' },
     { label: 'Reportes Licitaciones', route: '/reportes/licitaciones', module: 'licitaciones' },
   ] },
-  { label: 'Taller', items: [
-    { label: 'Órdenes de Taller', route: '/taller', module: 'taller' },
-    { label: 'Taller de Corte', route: '/taller-corte', module: 'taller' },
-    { label: 'Pasar a Taller', route: '/pasar-taller', module: 'taller', permission: 'write' },
-    { label: 'Costeo de Fabricación', route: '/costeo', module: 'costeo' },
-    { label: 'Bitacora', route: '/bitacora-taller', module: 'taller' },
-    { label: 'Historial Materiales', route: '/historial-materiales', module: 'taller' },
+  { label: 'Gerencia', items: [
+    { label: 'Reporteria Gerencial', route: '/reportes/gerenciales', module: 'reportes' },
+    { label: 'Comisiones', route: '/reportes/comisiones', roles: ['admin'] },
+    { label: 'Reglas de Comision', route: '/admin/comisiones', roles: ['admin'] },
+    { label: 'Costeo de Fabricacion', route: '/costeo', module: 'costeo' },
+    { label: 'Reportes Licitaciones', route: '/reportes/licitaciones', module: 'licitaciones' },
+  ] },
+  { label: 'RRHH', items: [
+    { label: 'Trabajadores', route: '/rrhh', module: 'rrhh' },
   ] },
   { label: 'Admin', items: [
     { label: 'Usuarios', route: '/usuarios', roles: ['admin'] },
     { label: 'Accesos', route: '/accesos', roles: ['admin'] },
     { label: 'Configuracion', route: '/config', roles: ['admin'] },
     { label: 'Reglas de Descuento', route: '/descuentos', requirements: [{ module: 'descuentos', permission: 'write' }] },
-    { label: 'Reglas de Comision', route: '/admin/comisiones', roles: ['admin'] },
     { label: 'Asistente IA', route: '/asistente', roles: ['admin'] },
     { label: 'IA Balance', route: '/admin/ia-balance', roles: ['admin'] },
     { label: 'Integridad', route: '/admin/integridad', roles: ['admin'] },
-    { label: 'Saneamiento Legacy', route: '/admin/saneamiento-legacy', roles: ['admin'] },
-    { label: 'Auditoria', route: '/admin/auditoria', roles: ['admin'] },
-    { label: 'Historico', route: '/admin/historico', roles: ['admin'] },
   ] },
-
 ]
 
 function canUseNavItem(user, item) {

@@ -1016,16 +1016,18 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 820 }}>
                       <thead>
                         <tr style={{ background: 'var(--bg)' }}>
-                          {['', 'Producto', 'Cant.', 'P. Unit.', 'IVA', 'Subtotal', 'Entregados', 'Pendiente', 'Estado Taller'].map((h, i) => (
+                          {['', 'Producto', 'Cant.', 'P. Unit. (Neto)', 'P. Unit. (c/IVA)', 'IVA (19%)', 'Subtotal (c/IVA)', 'Entregados', 'Pendiente', 'Estado Taller'].map((h, i) => (
                             <th key={i} style={{ padding: i === 0 ? '7px 4px' : '7px ' + (i === 1 ? '12px' : '8px'), textAlign: i <= 1 ? 'left' : 'right', fontWeight: 600, color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, whiteSpace: 'nowrap' }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {items.map((item, i) => {
-                          const itemSubtotal = item.precioUnitario * item.cantidad
-                          const itemNeto = Math.round(itemSubtotal / 1.19)
-                          const itemIva = itemSubtotal - itemNeto
+                          const itemNetoUnitario = item.precioUnitario
+                          const itemNetoTotal = itemNetoUnitario * item.cantidad
+                          const itemIvaTotal = Math.round(itemNetoTotal * 0.19)
+                          const itemBrutoUnitario = Math.round(itemNetoUnitario * 1.19)
+                          const itemSubtotalConIva = itemNetoTotal + itemIvaTotal
                           return (
                           <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
                             <td style={{ padding: '8px 4px 8px 12px', width: 40 }}>
@@ -1042,9 +1044,10 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                               )}
                             </td>
                             <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>{item.cantidad}</td>
-                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>{fmt(item.precioUnitario)}</td>
-                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-3)' }}>{fmt(itemIva)}</td>
-                            <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600 }}>{fmt(itemSubtotal)}</td>
+                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>{fmt(itemNetoUnitario)}</td>
+                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>{fmt(itemBrutoUnitario)}</td>
+                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--green-700)', fontWeight: 600 }}>{fmt(itemIvaTotal)}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 700, color: 'var(--text-1)' }}>{fmt(itemSubtotalConIva)}</td>
                             <td style={{ padding: '4px 12px', textAlign: 'right' }}>
                               {canWrite ? (
                                 <input

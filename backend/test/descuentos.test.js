@@ -421,7 +421,7 @@ describe('descuentos reglas comerciales', () => {
 
     const cotConDescuento = await app.prisma.cotizacionLicitacion.findUnique({ where: { id: cot.id } })
     expect(cotConDescuento.descuentoSolicitudId).toBe(solicitud.id)
-    expect(cotConDescuento.descuentoMonto).toBe(2000)
+    expect(cotConDescuento.descuentoMonto).toBe(2380)
 
     const ventaRes = await app.inject({
       method: 'POST',
@@ -432,7 +432,7 @@ describe('descuentos reglas comerciales', () => {
     const venta = JSON.parse(ventaRes.body).orden
     created.ordenes.push(venta.id)
     expect(venta.descuentoSolicitudId).toBe(solicitud.id)
-    expect(venta.descuentoMonto).toBe(2000)
-    expect(venta.descuentoSnapshot.baseElegible).toBe(20000)
+    expect(venta.descuentoMonto).toBe(2380)
+    expect(venta.descuentoSnapshot.baseElegible).toBe(23800)
   })
 })

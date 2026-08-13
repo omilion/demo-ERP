@@ -3,7 +3,7 @@ import api from '../api/client'
 // Descarga endpoint backend que ya devuelve CSV con auth
 export async function downloadFromBackend(url, filename, params = {}) {
   const res = await api.get(url, { params, responseType: 'blob' })
-  const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8' })
+  const blob = new Blob([res.data], { type: res.data?.type || 'application/octet-stream' })
   const objUrl = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = objUrl

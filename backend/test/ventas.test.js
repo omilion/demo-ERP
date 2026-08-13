@@ -400,6 +400,7 @@ describe('POST /api/cotizaciones/:id/crear-venta', () => {
       expect(body.orden.tipo).toBe('Licitación')
       expect(body.orden.items).toHaveLength(1)
       expect(body.orden.items[0].cantidad).toBe(2)
+      expect(body.orden.items[0].precioUnitario).toBe(1785)
       expect((await app.prisma.producto.findUnique({ where: { id: producto.id } })).stock).toBe(3)
       const linked = await app.prisma.cotizacionLicitacion.findUnique({ where: { id: cot.id } })
       expect(linked.ordenId).toBe(body.orden.id)
@@ -416,6 +417,7 @@ describe('POST /api/cotizaciones/:id/crear-venta', () => {
       const syncedItems = await app.prisma.ordenItem.findMany({ where: { ordenId: body.orden.id } })
       expect(syncedItems).toHaveLength(1)
       expect(syncedItems[0].cantidad).toBe(1)
+      expect(syncedItems[0].precioUnitario).toBe(1785)
     } finally {
       if (created.ordenId) {
         await app.prisma.movimientoBodega.deleteMany({ where: { ordenId: created.ordenId } }).catch(() => {})

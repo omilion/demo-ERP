@@ -204,6 +204,14 @@ function computeCotizacionTotals(items = []) {
   return { totalNeto, iva, totalConIva: totalNeto + iva, totalAdjudicado }
 }
 
+// Las cotizaciones de licitacion se registran y se muestran en neto. En cambio,
+// todas las OrdenItem del ERP guardan el precio de venta con IVA incluido.
+// Centralizar la conversion evita que una venta adjudicada llegue a matriz/DTE
+// con un neto tratado erroneamente como bruto.
+function precioLicitacionConIva(precioNeto) {
+  return Math.round(Number(precioNeto || 0) * 1.19)
+}
+
 async function buildCotizacionDiscountPayload(prisma, cot, user, body = {}) {
   let clienteId = null
   let clienteSegmento = null
@@ -226,7 +234,7 @@ async function buildCotizacionDiscountPayload(prisma, cot, user, body = {}) {
       codigoInterno: item.codigoInterno,
       nombre: item.nombre,
       cantidad: Number(item.cantAdjudicados || 0) > 0 ? item.cantAdjudicados : item.cantidad,
-      precioUnitario: item.precio,
+      precioUnitario: precioLicitacionConIva(item.precio),
     })),
   }
 }
@@ -991,7 +999,7 @@ export default async function cotizacionesRoutes(fastify) {
             nombre: it.nombre || prod.nombre,
             descripcion: it.descripcion || prod.descripcion,
             cantidad: it.cantAdjudicados,
-            precioUnitario: it.precio || 0,
+            precioUnitario: precioLicitacionConIva(it.precio),
           })
         }
         if (faltantes.length) {
@@ -1138,7 +1146,7 @@ export default async function cotizacionesRoutes(fastify) {
             nombre: it.nombre || prod.nombre,
             descripcion: it.descripcion || prod.descripcion,
             cantidad: it.cantAdjudicados,
-            precioUnitario: it.precio || 0,
+            precioUnitario: precioLicitacionConIva(it.precio),
           })
         }
         if (faltantes.length) {

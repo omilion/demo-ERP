@@ -347,7 +347,9 @@ export default async function descuentosRoutes(fastify) {
               codigoInterno: item.codigoInterno,
               nombre: item.nombre,
               cantidad: Number(item.cantAdjudicados || 0) > 0 ? item.cantAdjudicados : item.cantidad,
-              precioUnitario: item.precio,
+              // Cotizacion de licitacion: precio es neto; la autorizacion se
+              // valida contra el mismo valor bruto que finalmente lleva la venta.
+              precioUnitario: Math.round(Number(item.precio || 0) * 1.19),
             })),
           }, request.user)
           const storedHash = solicitud.resultadoSnapshot?.draftHash || solicitud.contextoSnapshot?.draftHash

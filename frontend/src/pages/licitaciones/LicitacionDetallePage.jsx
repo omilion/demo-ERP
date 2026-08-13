@@ -445,10 +445,10 @@ export default function LicitacionDetallePage() {
     { key: 'cantAdjudicados', label: 'Adjud.', align: 'right', render: (v, row) => isRowEditing(row)
       ? <input type="number" value={itemForm.cantAdjudicados} onChange={e => setField('cantAdjudicados', e.target.value)} style={{ ...inputSm, width: 64, textAlign: 'right' }} />
       : <span style={{ fontFamily: "'DM Mono', monospace", color: v > 0 ? 'var(--green-700)' : 'var(--text-3)' }}>{v}</span> },
-    { key: 'precio', label: 'Precio', align: 'right', render: (v, row) => isRowEditing(row)
+    { key: 'precio', label: 'P. unit. neto', align: 'right', render: (v, row) => isRowEditing(row)
       ? <input type="number" value={itemForm.precio} onChange={e => setField('precio', e.target.value)} style={{ ...inputSm, width: 90, textAlign: 'right' }} />
       : <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{fmt(v)}</span> },
-    { key: '_total', label: 'Total', align: 'right',
+    { key: '_total', label: 'Total neto', align: 'right',
       render: (_, row) => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600, fontSize: 12 }}>{fmt((row.cantidad||0) * (row.precio||0))}</span> },
     { key: '_acc', label: '', align: 'right',
       render: (_, row) => {
@@ -643,7 +643,7 @@ export default function LicitacionDetallePage() {
                 <input value={newItem.nombre} onChange={e => setNewItem(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre producto" style={inputSm} />
                 <input value={newItem.cantidad} onChange={e => setNewItem(f => ({ ...f, cantidad: e.target.value }))} type="number" placeholder="Cant" style={inputSm} />
                 <input value={newItem.cantAdjudicados} onChange={e => setNewItem(f => ({ ...f, cantAdjudicados: e.target.value }))} type="number" placeholder="Adj" style={inputSm} />
-                <input value={newItem.precio} onChange={e => setNewItem(f => ({ ...f, precio: e.target.value }))} type="number" placeholder="Precio" style={inputSm} />
+                <input value={newItem.precio} onChange={e => setNewItem(f => ({ ...f, precio: e.target.value }))} type="number" placeholder="P. unit. neto" style={inputSm} />
                 <button onClick={addItem} disabled={addItemMut.isPending} style={btnSmPrim}>+ Agregar</button>
               </div>
               <input value={newItem.descripcion} onChange={e => setNewItem(f => ({ ...f, descripcion: e.target.value }))} placeholder="Descripción (opcional)" style={{ ...inputSm, marginTop: 6, width: '100%' }} />
