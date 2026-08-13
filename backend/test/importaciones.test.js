@@ -160,4 +160,64 @@ describe('Módulo de Importaciones', () => {
     })
     expect(resReintento.statusCode).toBe(400)
   })
+
+  it('auto-crea el producto en catálogo si el ítem de importación no matchea ninguno existente', async () => {
+    const contenedorNum = 'MSKU-' + Math.floor(100000 + Math.random() * 900000)
+    const codigoNuevo = testCode('AUTO-NEW')
+
+    const resCreate = await app.inject({
+      method: 'POST',
+      url: '/api/importaciones',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        numeroContenedor: contenedorNum,
+        tipoTransporte: 'Marítimo',
+        proveedorId: testProveedor.id,
+        proveedorNombre: testProveedor.nombre,
+        origen: 'Ningbo, China',
+        puertoDestino: 'San Antonio',
+        navieraAgencia: 'Maersk',
+        fechaEmbarque: new Date().toISOString(),
+        fechaEta: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+        items: [
+          {
+            // Sin productoId: código interno que NO existe todavía en el catálogo
+            codigoInterno: codigoNuevo,
+            nombre: 'Producto Nuevo Nunca Antes Creado',
+            cantidadEsperada: 25,
+            costoUnitario: 4000,
+          },
+        ],
+      },
+    })
+    expect(resCreate.statusCode).toBe(201)
+    const created = JSON.parse(resCreate.body)
+
+    const resSumar = await app.inject({
+      method: 'POST',
+      url: `/api/importaciones/${created.id}/sumar-stock`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+    expect(resSumar.statusCode).toBe(200)
+    const sumarBody = JSON.parse(resSumar.body)
+    expect(sumarBody.data.itemsIngresados[0].productoCreado).toBe(true)
+
+    const nuevoProducto = await prisma.producto.findUnique({ where: { codigoInterno: codigoNuevo } })
+    expect(nuevoProducto).toBeDefined()
+    expect(nuevoProducto.stock).toBe(25)
+    expect(nuevoProducto.nombre).toBe('Producto Nuevo Nunca Antes Creado')
+    expect(nuevoProducto.precioLista).toBe(4000)
+
+    // El ítem de importación queda enlazado al producto recién creado
+    const itemActualizado = await prisma.importacionItem.findFirst({ where: { importacionId: created.id } })
+    expect(itemActualizado.productoId).toBe(nuevoProducto.id)
+
+    // Limpieza
+    await prisma.movimientoBodega.deleteMany({ where: { productoId: nuevoProducto.id } })
+    await prisma.productoProveedor.deleteMany({ where: { productoId: nuevoProducto.id } })
+    await prisma.importacionItem.deleteMany({ where: { productoId: nuevoProducto.id } })
+    await prisma.importacion.delete({ where: { id: created.id } }).catch(() => {})
+    await prisma.producto.delete({ where: { id: nuevoProducto.id } })
+  })
 })

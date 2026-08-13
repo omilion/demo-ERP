@@ -1,5 +1,6 @@
 import { rowsToCsv, sendCsv } from '../../utils/csv.js'
 import { parseDate, parsePagination, parsePositiveInt } from '../operational-utils.js'
+import { computePrecioWeb, resolvePorcVentaSala } from '../productos/pricing.js'
 
 const ESTADOS_VALIDOS = new Set(['En tránsito', 'En aduana', 'Recepcionado', 'Cancelado'])
 const TIPOS_TRANSPORTE = new Set(['Marítimo', 'Aéreo', 'Terrestre'])
@@ -483,12 +484,31 @@ export default async function importacionesRoutes(fastify) {
             ? Math.max(0, Number.parseInt(cantidadesRecibidas[item.id], 10) || 0)
             : item.cantidadEsperada
 
+          let productoCreado = false
+          let producto = null
+
           if (qty > 0) {
-            let producto = null
             if (item.productoId) {
               producto = await tx.producto.findUnique({ where: { id: item.productoId } })
             } else if (item.codigoInterno) {
               producto = await tx.producto.findUnique({ where: { codigoInterno: item.codigoInterno } })
+            }
+
+            if (!producto) {
+              // Ítem de importación sin producto existente en catálogo: se crea
+              // automáticamente para no perder la recepción silenciosamente.
+              const codigoInterno = item.codigoInterno || `IMP-${importacion.numeroContenedor || importacion.id}-${item.id}`
+              producto = await tx.producto.create({
+                data: {
+                  codigoInterno,
+                  nombre: item.nombre || codigoInterno,
+                  proveedor: importacion.proveedor?.nombre || null,
+                  proveedorId: importacion.proveedorId || null,
+                  precioLista: item.costoUnitario || 0,
+                  stock: 0,
+                },
+              })
+              productoCreado = true
             }
 
             if (producto) {
@@ -538,29 +558,40 @@ export default async function importacionesRoutes(fastify) {
                   },
                 })
               }
+
+              // 4. Precio web del producto recien creado (derivado costo + % proveedor)
+              if (productoCreado) {
+                const pct = await resolvePorcVentaSala(tx, producto)
+                await tx.producto.update({
+                  where: { id: producto.id },
+                  data: { precioWeb: computePrecioWeb(producto.precioLista, pct) },
+                })
+              }
             }
           }
 
-          // 4. Update importacion item
+          // 5. Update importacion item
           await tx.importacionItem.update({
             where: { id: item.id },
             data: {
               recibido: true,
               cantidadRecibida: qty,
+              productoId: producto ? producto.id : item.productoId,
             },
           })
 
           itemsActualizados.push({
             id: item.id,
-            productoId: item.productoId,
-            codigoInterno: item.codigoInterno,
+            productoId: producto ? producto.id : item.productoId,
+            codigoInterno: producto ? producto.codigoInterno : item.codigoInterno,
             nombre: item.nombre,
             cantidadEsperada: item.cantidadEsperada,
             cantidadRecibida: qty,
+            productoCreado,
           })
         }
 
-        // 5. Update importacion status to Recepcionado
+        // 6. Update importacion status to Recepcionado
         const updatedImportacion = await tx.importacion.update({
           where: { id },
           data: {
