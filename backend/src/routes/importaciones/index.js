@@ -17,11 +17,11 @@ function parseMoney(val, fallback = 0) {
 export default async function importacionesRoutes(fastify) {
   const { prisma } = fastify
 
-  // Hook authenticate on all routes
-  fastify.addHook('preHandler', fastify.authenticate)
+  const readGuard = [fastify.authenticate, fastify.rbac('bodega', 'read')]
+  const writeGuard = [fastify.authenticate, fastify.rbac('bodega', 'write')]
 
   // 1. Resumen de productos en tránsito (lookup rápido para bodega y ventas)
-  fastify.get('/resumen-transito', async (request, reply) => {
+  fastify.get('/resumen-transito', { preHandler: readGuard }, async (request, reply) => {
     try {
       const activeItems = await prisma.importacionItem.findMany({
         where: {
@@ -98,7 +98,7 @@ export default async function importacionesRoutes(fastify) {
   })
 
   // 2. Listado de Importaciones con KPIs
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/', { preHandler: readGuard }, async (request, reply) => {
     const { search, estado, tipoTransporte, proveedorId, desde, hasta } = request.query
     const { page, limit, skip } = parsePagination(request.query, { defaultLimit: 20, maxLimit: 100 }) || { page: 1, limit: 20, skip: 0 }
 
@@ -219,7 +219,7 @@ export default async function importacionesRoutes(fastify) {
   })
 
   // 3. Detalle de Importación
-  fastify.get('/:id', async (request, reply) => {
+  fastify.get('/:id', { preHandler: readGuard }, async (request, reply) => {
     const id = parsePositiveInt(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID inválido' })
 
@@ -253,7 +253,7 @@ export default async function importacionesRoutes(fastify) {
   })
 
   // 4. Crear Importación
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', { preHandler: writeGuard }, async (request, reply) => {
     const {
       numeroContenedor,
       tipoTransporte = 'Marítimo',
@@ -343,7 +343,7 @@ export default async function importacionesRoutes(fastify) {
   })
 
   // 5. Modificar Importación
-  fastify.put('/:id', async (request, reply) => {
+  fastify.put('/:id', { preHandler: writeGuard }, async (request, reply) => {
     const id = parsePositiveInt(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID inválido' })
 
@@ -433,7 +433,7 @@ export default async function importacionesRoutes(fastify) {
   })
 
   // 6. Eliminar Importación
-  fastify.delete('/:id', async (request, reply) => {
+  fastify.delete('/:id', { preHandler: writeGuard }, async (request, reply) => {
     const id = parsePositiveInt(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID inválido' })
 
@@ -453,7 +453,7 @@ export default async function importacionesRoutes(fastify) {
   })
 
   // 7. SUMAR AL STOCK (Recepción Física del Contenedor en Bodega)
-  fastify.post('/:id/sumar-stock', async (request, reply) => {
+  fastify.post('/:id/sumar-stock', { preHandler: writeGuard }, async (request, reply) => {
     const id = parsePositiveInt(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID inválido' })
 
@@ -591,7 +591,7 @@ export default async function importacionesRoutes(fastify) {
   })
 
   // 8. Exportar Importaciones a CSV/Excel
-  fastify.get('/export', async (request, reply) => {
+  fastify.get('/export', { preHandler: readGuard }, async (request, reply) => {
     try {
       const items = await prisma.importacion.findMany({
         include: {

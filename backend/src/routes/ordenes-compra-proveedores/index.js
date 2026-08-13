@@ -13,6 +13,11 @@ const ESTADOS_VALIDOS = new Set([
   'Cancelada',
 ])
 
+// Estados que solo se alcanzan vía los endpoints de flujo dedicados
+// (/aprobar, /rechazar, /enviar, /recepcionar), nunca por PUT directo,
+// para no saltarse el sello de aprobador/fecha ni el movimiento de stock real.
+const ESTADOS_EDITABLES_DIRECTO = new Set(['Borrador', 'Pendiente Aprobación', 'Cancelada'])
+
 function cleanString(value) {
   if (value === undefined || value === null) return ''
   return String(value).trim()
@@ -50,10 +55,14 @@ async function generarNumeroOC(prisma) {
 export default async function ordenesCompraProveedoresRoutes(fastify) {
   const { prisma } = fastify
 
-  fastify.addHook('preHandler', fastify.authenticate)
+  const readGuard = [fastify.authenticate, fastify.rbac('bodega', 'read')]
+  const writeGuard = [fastify.authenticate, fastify.rbac('bodega', 'write')]
+  // Aprobar/rechazar es una decisión gerencial: solo admin la tiene hoy
+  // (ningún rol de PERMISSIONS tiene 'delete' sobre 'bodega' salvo el '*' de admin).
+  const gerenciaGuard = [fastify.authenticate, fastify.rbac('bodega', 'delete')]
 
   // 1. Motor de Sugerencias de OC basado en ventas diarias vs stock
-  fastify.get('/sugerencias', async (request, reply) => {
+  fastify.get('/sugerencias', { preHandler: readGuard }, async (request, reply) => {
     try {
       const result = await calcularSugerenciasOC(prisma, request.query)
       return result
@@ -64,7 +73,7 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
   })
 
   // 2. Listado de Órdenes de Compra a Proveedores
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/', { preHandler: readGuard }, async (request, reply) => {
     const { search, estado, proveedorId, desde, hasta } = request.query
     const { page, limit, skip } = parsePagination(request.query, { defaultLimit: 20, maxLimit: 100 }) || { page: 1, limit: 20, skip: 0 }
 
@@ -175,7 +184,7 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
   })
 
   // 3. Detalle de Orden de Compra
-  fastify.get('/:id', async (request, reply) => {
+  fastify.get('/:id', { preHandler: readGuard }, async (request, reply) => {
     const id = parsePositiveInt(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID inválido' })
 
@@ -209,7 +218,7 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
   })
 
   // 4. Crear Orden de Compra (desde sugerencia o manual)
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', { preHandler: writeGuard }, async (request, reply) => {
     const {
       proveedorId,
       proveedorNombre,
@@ -307,7 +316,7 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
   })
 
   // 5. Actualizar Orden de Compra
-  fastify.put('/:id', async (request, reply) => {
+  fastify.put('/:id', { preHandler: writeGuard }, async (request, reply) => {
     const id = parsePositiveInt(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID inválido' })
 
@@ -337,7 +346,7 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
     if (fechaRequerida !== undefined) data.fechaRequerida = parseDate(fechaRequerida)
     if (condicionPago !== undefined) data.condicionPago = cleanString(condicionPago) || null
     if (observaciones !== undefined) data.observaciones = cleanString(observaciones) || null
-    if (estado !== undefined && ESTADOS_VALIDOS.has(estado)) data.estado = estado
+    if (estado !== undefined && ESTADOS_EDITABLES_DIRECTO.has(estado)) data.estado = estado
 
     try {
       const updated = await prisma.$transaction(async (tx) => {
@@ -389,7 +398,7 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
   })
 
   // 6. APROBACIÓN POR GERENCIA
-  fastify.post('/:id/aprobar', async (request, reply) => {
+  fastify.post('/:id/aprobar', { preHandler: gerenciaGuard }, async (request, reply) => {
     const id = parsePositiveInt(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID inválido' })
 
@@ -427,7 +436,7 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
   })
 
   // 7. RECHAZO POR GERENCIA
-  fastify.post('/:id/rechazar', async (request, reply) => {
+  fastify.post('/:id/rechazar', { preHandler: gerenciaGuard }, async (request, reply) => {
     const id = parsePositiveInt(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID inválido' })
 
@@ -460,7 +469,7 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
   })
 
   // 8. ENVIAR A PROVEEDOR
-  fastify.post('/:id/enviar', async (request, reply) => {
+  fastify.post('/:id/enviar', { preHandler: writeGuard }, async (request, reply) => {
     const id = parsePositiveInt(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID inválido' })
 
@@ -488,7 +497,7 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
   })
 
   // 9. RECEPCIONAR EN BODEGA
-  fastify.post('/:id/recepcionar', async (request, reply) => {
+  fastify.post('/:id/recepcionar', { preHandler: writeGuard }, async (request, reply) => {
     const id = parsePositiveInt(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID inválido' })
 
@@ -598,7 +607,7 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
   })
 
   // 10. Exportar a CSV/Excel
-  fastify.get('/export', async (request, reply) => {
+  fastify.get('/export', { preHandler: readGuard }, async (request, reply) => {
     try {
       const items = await prisma.ordenCompraProveedor.findMany({
         include: {
