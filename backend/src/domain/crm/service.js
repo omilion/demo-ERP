@@ -30,6 +30,7 @@ export function businessDaysBetween(fromValue, toValue = new Date()) {
 }
 
 export function semaforoForCrm(crm, now = new Date()) {
+  if (crm.esHistorico) return { semaforo: 'HISTORICO', diasSinGestion: null }
   const base = crm.ultimaGestionAt || crm.fechaCotizacion || crm.fecha || crm.createdAt
   const diasSinGestion = base ? businessDaysBetween(base, now) : 0
   const semaforo = diasSinGestion > 10 ? 'VENCIDO' : diasSinGestion === 10 ? 'ROJO' : diasSinGestion >= 5 ? 'AMARILLO' : 'NORMAL'

@@ -335,7 +335,8 @@ export default async function crmRoutes(fastify) {
       const activeLeads = await f.prisma.crmRegistro.findMany({
         where: {
           ...where,
-          estado: { not: '3' }
+          estado: { not: '3' },
+          esHistorico: false,
         },
         select: { createdAt: true }
       })

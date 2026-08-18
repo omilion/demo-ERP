@@ -103,7 +103,11 @@ function CrmCard({ item, isDragging }) {
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 5 }}>
         {item.canalVenta && <Badge tone="gray" style={{ fontSize: 9 }}>{item.canalVenta}</Badge>}
         {item.tipoVenta && <Badge tone="gray" style={{ fontSize: 9 }}>{item.tipoVenta.replaceAll('_', ' ')}</Badge>}
-        {item.semaforo && item.semaforo !== 'NORMAL' && <Badge tone={item.semaforo === 'AMARILLO' ? 'amber' : 'red'} style={{ fontSize: 9 }}>{item.semaforo} · {item.diasSinGestion}d</Badge>}
+        {item.semaforo && item.semaforo !== 'NORMAL' && (
+          <Badge tone={item.semaforo === 'HISTORICO' ? 'gray' : item.semaforo === 'AMARILLO' ? 'amber' : 'red'} style={{ fontSize: 9 }}>
+            {item.semaforo}{item.diasSinGestion != null ? ` · ${item.diasSinGestion}d` : ''}
+          </Badge>
+        )}
         {item.resultadoCierre && <Badge tone={item.resultadoCierre === 'GANADO' ? 'green' : item.resultadoCierre === 'PERDIDO' ? 'red' : 'gray'} style={{ fontSize: 9 }}>{item.resultadoCierre.replaceAll('_', ' ')}</Badge>}
       </div>
 
@@ -824,7 +828,7 @@ export default function CrmPage() {
           </select>
           <select value={canalVenta} onChange={e => setCanalVenta(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todos los canales</option>{(catalogos?.canales || []).map(value => <option key={value}>{value}</option>)}</select>
           <select value={tipoVenta} onChange={e => setTipoVenta(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todos los tipos</option>{(catalogos?.tiposVenta || []).map(value => <option key={value}>{value.replaceAll('_', ' ')}</option>)}</select>
-          <select value={semaforo} onChange={e => setSemaforo(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todo semáforo</option><option>NORMAL</option><option>AMARILLO</option><option>ROJO</option><option>VENCIDO</option></select>
+          <select value={semaforo} onChange={e => setSemaforo(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todo semáforo</option><option>NORMAL</option><option>AMARILLO</option><option>ROJO</option><option>VENCIDO</option><option>HISTORICO</option></select>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Desde</span>
             <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }} />

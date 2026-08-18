@@ -704,6 +704,7 @@ model OrdenCompraOnline {
   crmId           Int?                    @map("crm_id")
   createdAt       DateTime                @default(now()) @map("created_at")
   items           OrdenCompraOnlineItem[]
+  oportunidadCrm  CrmRegistro?            @relation("CrmOcOnlineSource")
 
   @@index([emailComprador])
   @@index([codigoVendedor])
@@ -934,10 +935,15 @@ model CrmRegistro {
   confirmacionReferencia String?              @map("confirmacion_referencia")
   clienteId              Int?                 @map("cliente_id")
   ordenId                Int?                 @map("orden_id")
+  ordenCompraOnlineId    Int?                 @unique @map("orden_compra_online_id")
+  origenDato             String?              @map("origen_dato")
+  codigoVendedorLegacy   String?              @map("codigo_vendedor_legacy")
+  esHistorico            Boolean              @default(false) @map("es_historico")
   createdAt              DateTime             @default(now()) @map("created_at")
   updatedAt              DateTime             @updatedAt @map("updated_at")
   cliente                Cliente?             @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   orden                  Orden?               @relation(fields: [ordenId], references: [id], onDelete: SetNull)
+  ordenCompraOnline      OrdenCompraOnline?   @relation("CrmOcOnlineSource", fields: [ordenCompraOnlineId], references: [id], onDelete: SetNull)
   gestiones              CrmGestion[]
   estadosHistorial       CrmEstadoHistorial[]
 
@@ -947,6 +953,8 @@ model CrmRegistro {
   @@index([ultimaGestionAt])
   @@index([clienteId])
   @@index([ordenId])
+  @@index([origenDato])
+  @@index([esHistorico])
   @@map("crm_registros")
   @@schema("ventas")
 }

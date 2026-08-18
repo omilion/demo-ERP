@@ -12,6 +12,7 @@ export async function evaluateCrmAutomation(prisma, { now = new Date() } = {}) {
     where: {
       etapaComercial: CRM_ETAPAS.COTIZACION_ENVIADA,
       tipoVenta: { not: 'COMPRA_AGIL' },
+      esHistorico: false,
     },
     select: {
       id: true,
