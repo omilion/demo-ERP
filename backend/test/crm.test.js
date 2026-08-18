@@ -141,7 +141,9 @@ describe('CRM estado routes', () => {
   it('gets pending items today', async () => {
     const prisma = {
       crmRegistro: {
-        count: vi.fn().mockResolvedValue(0),
+        count: vi.fn()
+          .mockResolvedValueOnce(7)
+          .mockResolvedValueOnce(2),
         findMany: vi.fn().mockResolvedValue([
           { id: 1, fechaProximo: new Date(Date.now() - 24 * 60 * 60 * 1000) }, // overdue
           { id: 2, fechaProximo: new Date() }, // today
@@ -155,6 +157,8 @@ describe('CRM estado routes', () => {
 
     expect(response.hoy.length).toBe(1)
     expect(response.vencidas.length).toBe(1)
+    expect(response.resumen).toEqual({ total: 9, vencidas: 7, hoy: 2, sinAsignar: 0 })
+    expect(prisma.crmRegistro.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 10 }))
   })
 
   it('gets metrics', async () => {
@@ -162,15 +166,16 @@ describe('CRM estado routes', () => {
       crmRegistro: {
         groupBy: vi.fn().mockResolvedValue([
           { estado: '0', _count: { _all: 2 } },
-          { estado: '3', _count: { _all: 3 } },
+          { estado: '3', _count: { _all: 4 } },
         ]),
         findMany: vi.fn().mockImplementation((args) => {
           if (args.select?.ejecutiva) {
             return Promise.resolve([
-              { ejecutiva: 'Ana', estado: '3', etapaComercial: 'CERRADO', resultadoCierre: 'GANADO' },
+              { ejecutiva: 'Ana', estado: '3', etapaComercial: 'CERRADO', resultadoCierre: 'GANADO', prioridad: 'Alta' },
               { ejecutiva: 'Ana', estado: '3', etapaComercial: 'CERRADO', resultadoCierre: 'PERDIDO' },
               { ejecutiva: 'Ana', estado: '3', etapaComercial: 'CERRADO', resultadoCierre: 'SIN_CLASIFICAR' },
-              { ejecutiva: 'Pedro', estado: '0', etapaComercial: 'PENDIENTE_CLASIFICACION' },
+              { ejecutiva: 'Ana', estado: '3', etapaComercial: 'CERRADO', resultadoCierre: null },
+              { ejecutiva: 'Pedro', estado: '0', etapaComercial: 'PENDIENTE_CLASIFICACION', prioridad: 'alta' },
               { ejecutiva: 'Pedro', estado: '0' },
             ])
           }
@@ -185,10 +190,11 @@ describe('CRM estado routes', () => {
       query: {},
     })
 
-    expect(response.porEstado).toEqual({ '0': 2, '1': 0, '2': 0, '3': 3 })
+    expect(response.porEstado).toEqual({ '0': 2, '1': 0, '2': 0, '3': 4 })
     expect(response.tasaCierre).toBe(50)
-    expect(response.porResultado).toEqual({ GANADO: 1, PERDIDO: 1, SIN_CLASIFICAR: 1 })
-    expect(response.porEjecutiva[0]).toMatchObject({ ejecutiva: 'Ana', total: 3, ganados: 1, perdidos: 1, sinClasificar: 1, tasaCierre: 50 })
+    expect(response.porResultado).toEqual({ GANADO: 1, PERDIDO: 1, SIN_CLASIFICAR: 2 })
+    expect(response.porEjecutiva[0]).toMatchObject({ ejecutiva: 'Ana', total: 4, ganados: 1, perdidos: 1, sinClasificar: 2, tasaCierre: 50 })
+    expect(response.prioridadAlta).toBe(2)
     expect(response.tiempoPromedioEnPipeline).toBeCloseTo(5, 1)
   })
 })

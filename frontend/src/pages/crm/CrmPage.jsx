@@ -593,6 +593,7 @@ export default function CrmPage() {
   const [overId, setOverId]           = useState(null)
   const [selected, setSelected]       = useState(null)
   const [creating, setCreating]       = useState(false)
+  const [agendaOpen, setAgendaOpen]   = useState(false)
   const ref = useRef(null)
 
   useEffect(() => {
@@ -643,7 +644,7 @@ export default function CrmPage() {
 
   const activeItem = activeId != null ? items.find(i => String(i.id) === String(activeId)) : null
 
-  const altaPrioridad = items.filter(c => c.prioridad?.toLowerCase() === 'alta').length
+  const altaPrioridad = metricas?.prioridadAlta ?? items.filter(c => c.prioridad?.toLowerCase() === 'alta').length
   const tasaCierreVal = metricas?.tasaCierre != null ? `${Math.round(metricas.tasaCierre)}%` : '—'
   const tiempoPipeVal = metricas?.tiempoPromedioEnPipeline != null ? `${Math.round(metricas.tiempoPromedioEnPipeline)} días` : '—'
 
@@ -694,7 +695,13 @@ export default function CrmPage() {
     )
   }
 
-  const totalPendientes = (pendientesHoyData?.hoy?.length || 0) + (pendientesHoyData?.vencidas?.length || 0)
+  const agendaResumen = pendientesHoyData?.resumen || {
+    total: (pendientesHoyData?.hoy?.length || 0) + (pendientesHoyData?.vencidas?.length || 0),
+    hoy: pendientesHoyData?.hoy?.length || 0,
+    vencidas: pendientesHoyData?.vencidas?.length || 0,
+    sinAsignar: 0,
+  }
+  const totalPendientes = agendaResumen.total
 
   return (
     <main className="page page-wide">
@@ -713,9 +720,9 @@ export default function CrmPage() {
 
       <div className="kpi-strip">
         <KpiCard label="Total registros"   value={total.toLocaleString('es-CL')} icon="fileText"      sublabel="Seguimientos CRM" />
-        <KpiCard label="Tasa de Cierre"     value={tasaCierreVal}                  icon="checkCircle"   tone="green" sublabel={`Ganadas / cierres clasificados · ${metricas?.porResultado?.SIN_CLASIFICAR || 0} sin clasificar`} />
-        <KpiCard label="Promedio Pipeline"  value={tiempoPipeVal}                  icon="clock"   tone="blue"  sublabel="Días transcurridos" />
-        <KpiCard label="Prioridad Alta"     value={altaPrioridad}                  icon="alertTriangle" tone="red" sublabel="Requieren atención" />
+        <KpiCard label="Tasa de Cierre"     value={tasaCierreVal}                  icon="checkCircle"   tone="green" sublabel={`Ganadas / cierres clasificados · ${metricas?.porResultado?.SIN_CLASIFICAR || 0} cierres por clasificar`} />
+        <KpiCard label="Antigüedad abiertos" value={tiempoPipeVal}                 icon="clock"   tone="blue"  sublabel="Promedio desde su creación" />
+        <KpiCard label="Prioridad Alta"     value={altaPrioridad}                  icon="alertTriangle" tone="red" sublabel="Total según período" />
       </div>
 
       {/* Agenda de pendientes */}
@@ -728,11 +735,27 @@ export default function CrmPage() {
           marginBottom: 16,
           boxShadow: 'var(--shadow-sm)'
         }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Icon name="clock" size={16} style={{ color: 'var(--amber-600)' }} />
-            Mis Pendientes de Hoy y Atrasados ({totalPendientes})
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <Icon name="clock" size={16} style={{ color: 'var(--amber-600)' }} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>
+                {user?.role === 'admin' ? 'Pendientes del equipo' : 'Mis pendientes'}
+              </span>
+              <Badge tone="red">{agendaResumen.vencidas.toLocaleString('es-CL')} atrasados</Badge>
+              <Badge tone="amber">{agendaResumen.hoy.toLocaleString('es-CL')} para hoy</Badge>
+              {user?.role === 'admin' && agendaResumen.sinAsignar > 0 && (
+                <Badge tone="gray">{agendaResumen.sinAsignar.toLocaleString('es-CL')} sin asignar</Badge>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setAgendaOpen(open => !open)}
+              style={{ border: '1px solid var(--border)', borderRadius: 6, background: '#fff', padding: '5px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: 'var(--text-2)' }}
+            >
+              {agendaOpen ? 'Ocultar muestra' : 'Mostrar 10 más antiguos'}
+            </button>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {agendaOpen && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10, maxHeight: 220, overflowY: 'auto' }}>
             {pendientesHoyData.vencidas.map(lead => (
               <div
                 key={lead.id}
@@ -753,6 +776,7 @@ export default function CrmPage() {
                 <span style={{ fontWeight: 700 }}>Atrasado:</span>
                 <span>{lead.nombre || lead.rsocial}</span>
                 <span style={{ fontSize: 10, fontFamily: "'DM Mono', monospace" }}>({new Date(lead.fechaProximo).toLocaleDateString('es-CL')})</span>
+                {user?.role === 'admin' && <span style={{ fontSize: 10 }}>· {lead.vendedorId ? (lead.ejecutiva || 'Asignado') : 'Sin asignar'}</span>}
               </div>
             ))}
             {pendientesHoyData.hoy.map(lead => (
@@ -774,9 +798,10 @@ export default function CrmPage() {
               >
                 <span style={{ fontWeight: 700 }}>Hoy:</span>
                 <span>{lead.nombre || lead.rsocial}</span>
+                {user?.role === 'admin' && <span style={{ fontSize: 10 }}>· {lead.vendedorId ? (lead.ejecutiva || 'Asignado') : 'Sin asignar'}</span>}
               </div>
             ))}
-          </div>
+          </div>}
         </div>
       )}
 

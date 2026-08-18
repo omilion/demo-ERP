@@ -218,35 +218,49 @@ export default async function crmRoutes(fastify) {
     f.get('/pendientes-hoy', {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],
     }, async (request) => {
-      const endOfToday = new Date()
-      endOfToday.setHours(23, 59, 59, 999)
+      const { start, end } = startAndEndOfToday()
 
       // Visibilidad por rol: admin ve todo; vendedor solo sus leads (vendedorId).
       const where = applyScopeByRole({
         estado: { not: '3' },
-        fechaProximo: { lte: endOfToday }
+        fechaProximo: { lt: end }
       }, request.user)
 
-      const pendingLeads = await f.prisma.crmRegistro.findMany({
-        where,
-        orderBy: { fechaProximo: 'asc' }
-      })
-
-      const now = new Date()
-      now.setHours(0, 0, 0, 0)
+      // La agenda es un resumen: evita enviar/renderizar miles de registros legacy.
+      const [pendingLeads, vencidasTotal, hoyTotal, sinAsignarTotal] = await Promise.all([
+        f.prisma.crmRegistro.findMany({
+          where,
+          orderBy: { fechaProximo: 'asc' },
+          take: 10,
+        }),
+        f.prisma.crmRegistro.count({ where: { ...where, fechaProximo: { lt: start } } }),
+        f.prisma.crmRegistro.count({ where: { ...where, fechaProximo: { gte: start, lt: end } } }),
+        request.user?.role === 'admin'
+          ? f.prisma.crmRegistro.count({ where: { ...where, vendedorId: null } })
+          : Promise.resolve(0),
+      ])
 
       const hoy = []
       const vencidas = []
 
       for (const lead of pendingLeads) {
-        if (lead.fechaProximo && new Date(lead.fechaProximo) < now) {
+        if (lead.fechaProximo && new Date(lead.fechaProximo) < start) {
           vencidas.push(lead)
         } else {
           hoy.push(lead)
         }
       }
 
-      return { hoy, vencidas }
+      return {
+        hoy,
+        vencidas,
+        resumen: {
+          total: vencidasTotal + hoyTotal,
+          vencidas: vencidasTotal,
+          hoy: hoyTotal,
+          sinAsignar: sinAsignarTotal,
+        },
+      }
     })
 
     // GET /api/crm/metricas — conversion KPIs
@@ -283,7 +297,7 @@ export default async function crmRoutes(fastify) {
 
       const allLeads = await f.prisma.crmRegistro.findMany({
         where,
-        select: { ejecutiva: true, estado: true, etapaComercial: true, resultadoCierre: true }
+        select: { ejecutiva: true, estado: true, etapaComercial: true, resultadoCierre: true, prioridad: true }
       })
 
       const porEtapa = Object.fromEntries(Object.values(CRM_ETAPAS).map(etapa => [etapa, 0]))
@@ -292,16 +306,21 @@ export default async function crmRoutes(fastify) {
       for (const lead of allLeads) {
         const etapa = normalizeEtapa(lead.etapaComercial, lead.estado)
         porEtapa[etapa] = (porEtapa[etapa] || 0) + 1
-        if (lead.resultadoCierre in porResultado) porResultado[lead.resultadoCierre]++
+        const resultado = lead.resultadoCierre in porResultado
+          ? lead.resultadoCierre
+          : (etapa === CRM_ETAPAS.CERRADO ? CRM_RESULTADOS.SIN_CLASIFICAR : null)
+        if (resultado) porResultado[resultado]++
         const exec = lead.ejecutiva || 'Sin Asignar'
         if (!ejecutivasMap[exec]) {
           ejecutivasMap[exec] = { total: 0, ganados: 0, perdidos: 0, sinClasificar: 0 }
         }
         ejecutivasMap[exec].total++
-        if (lead.resultadoCierre === CRM_RESULTADOS.GANADO) ejecutivasMap[exec].ganados++
-        if (lead.resultadoCierre === CRM_RESULTADOS.PERDIDO) ejecutivasMap[exec].perdidos++
-        if (lead.resultadoCierre === CRM_RESULTADOS.SIN_CLASIFICAR) ejecutivasMap[exec].sinClasificar++
+        if (resultado === CRM_RESULTADOS.GANADO) ejecutivasMap[exec].ganados++
+        if (resultado === CRM_RESULTADOS.PERDIDO) ejecutivasMap[exec].perdidos++
+        if (resultado === CRM_RESULTADOS.SIN_CLASIFICAR) ejecutivasMap[exec].sinClasificar++
       }
+
+      const prioridadAlta = allLeads.filter(lead => String(lead.prioridad || '').toLowerCase() === 'alta').length
 
       const cierresClasificados = porResultado.GANADO + porResultado.PERDIDO
       const tasaCierre = cierresClasificados > 0 ? (porResultado.GANADO / cierresClasificados) * 100 : 0
@@ -339,6 +358,7 @@ export default async function crmRoutes(fastify) {
         porEtapa,
         porResultado,
         tasaCierre,
+        prioridadAlta,
         porEjecutiva,
         total: allLeads.length,
         tiempoPromedioEnPipeline // // POR CONFIRMAR: validez de la métrica basada en createdAt
