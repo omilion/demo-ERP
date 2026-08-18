@@ -398,7 +398,16 @@ export default async function crmRoutes(fastify) {
           estadosHistorial: { orderBy: { createdAt: 'desc' }, take: 100 },
         },
       })
-      return { ...item, ...addSemaforo([item])[0] }
+      const ocItems = item?.ordenCompraOnline?.items || []
+      const codes = [...new Set(ocItems.map(row => String(row.codigoInterno || '').trim()).filter(Boolean))]
+      const products = codes.length
+        ? await f.prisma.producto.findMany({ where: { codigoInterno: { in: codes } }, select: { codigoInterno: true, fotoUrl: true } })
+        : []
+      const productByCode = new Map(products.map(product => [product.codigoInterno, product]))
+      const ordenCompraOnline = item?.ordenCompraOnline
+        ? { ...item.ordenCompraOnline, items: ocItems.map(row => ({ ...row, producto: productByCode.get(row.codigoInterno) || null })) }
+        : null
+      return { ...item, ...addSemaforo([item])[0], ordenCompraOnline }
     })
 
     // PATCH /api/crm/:id

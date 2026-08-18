@@ -7,6 +7,7 @@ import { useCrm, useCrmEjecutivas, useCrmPatch, useCrmOrdenLink, useCrmConvertir
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/auth'
+import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
 
 const ESTADOS = [
   { id: 'PENDIENTE_CLASIFICACION', label: 'Por clasificar', tone: 'gray', color: '#64748b', bg: '#f8fafc' },
@@ -214,8 +215,18 @@ function CrmSummary({ item, detalle, onEdit }) {
           <DetailValue label="Fecha cotización" value={(oc.fechaCotizacion || oc.fechaHora) ? new Date(oc.fechaCotizacion || oc.fechaHora).toLocaleDateString('es-CL') : null} />
           <DetailValue label="Productos" value={`${products.length} ítem${products.length === 1 ? '' : 's'}`} />
         </div>
-        <div style={{ marginTop: 14, border: '1px solid #d1fae5', borderRadius: 7, overflow: 'hidden', background: '#fff' }}>
-          {products.length ? products.map((product, index) => <div key={product.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, padding: '8px 10px', borderBottom: index < products.length - 1 ? '1px solid #ecfdf5' : 'none', fontSize: 12 }}><div><div style={{ fontWeight: 650 }}>{product.nombre || product.descripcion || 'Producto sin nombre'}</div><div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>{product.codigoInterno || 'Sin código'} · {product.cantidad} unidad{product.cantidad === 1 ? '' : 'es'}</div></div><div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-2)', alignSelf: 'center' }}>{money(product.precio * product.cantidad)}</div></div>) : <div style={{ padding: 10, fontSize: 12, color: 'var(--text-3)' }}>La OC fue importada sin detalle de ítems.</div>}
+        <div style={{ marginTop: 14, border: '1px solid #d1fae5', borderRadius: 7, overflowX: 'auto', background: '#fff' }}>
+          {products.length ? <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead><tr style={{ background: '#ecfdf5' }}>{[['Producto', 'left'], ['Código', 'left'], ['Descripción', 'left'], ['Cant.', 'right'], ['P. unitario', 'right'], ['Total', 'right']].map(([label, align]) => <th key={label} style={{ padding: '8px 9px', textAlign: align, color: 'var(--text-3)', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.35 }}>{label}</th>)}</tr></thead>
+            <tbody>{products.map(product => <tr key={product.id} style={{ borderTop: '1px solid #ecfdf5' }}>
+              <td style={{ padding: '8px 9px', minWidth: 180 }}><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><img src={product.producto?.fotoUrl || PRODUCT_PLACEHOLDER_IMAGE} alt="" loading="lazy" onError={useProductPlaceholderOnError} style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 5, border: '1px solid var(--border)', flexShrink: 0 }} /><span style={{ fontWeight: 700, lineHeight: 1.25 }}>{product.nombre || product.descripcion || 'Producto sin nombre'}</span></div></td>
+              <td style={{ padding: '8px 9px', fontFamily: "'DM Mono', monospace", color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{product.codigoInterno || '—'}</td>
+              <td style={{ padding: '8px 9px', color: 'var(--text-2)', minWidth: 120 }}>{product.descripcion || '—'}</td>
+              <td style={{ padding: '8px 9px', textAlign: 'right', fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>{product.cantidad}</td>
+              <td style={{ padding: '8px 9px', textAlign: 'right', fontFamily: "'DM Mono', monospace", whiteSpace: 'nowrap' }}>{money(product.precio)}</td>
+              <td style={{ padding: '8px 9px', textAlign: 'right', fontFamily: "'DM Mono', monospace", fontWeight: 700, whiteSpace: 'nowrap' }}>{money(product.precio * product.cantidad)}</td>
+            </tr>)}</tbody>
+          </table> : <div style={{ padding: 10, fontSize: 12, color: 'var(--text-3)' }}>La OC fue importada sin detalle de ítems.</div>}
         </div>
         <Link to={`/ordenes-compra/${oc.id}`} style={{ display: 'inline-block', marginTop: 11, fontSize: 12, fontWeight: 700, color: 'var(--green-800)' }}>Abrir OC Online completa →</Link>
       </section>}

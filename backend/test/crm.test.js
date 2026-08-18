@@ -105,6 +105,25 @@ describe('CRM estado routes', () => {
     ]))
   })
 
+  it('enriches imported OC items with their product image for CRM detail', async () => {
+    const prisma = {
+      crmRegistro: {
+        findFirst: vi.fn().mockResolvedValue({ id: 10 }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: 10, esHistorico: true, ordenCompraOnline: {
+            id: 88, nCompra: '2026', items: [{ id: 1, codigoInterno: 'SKU-1', cantidad: 2, precio: 1000 }],
+          }, gestiones: [], estadosHistorial: [],
+        }),
+      },
+      producto: { findMany: vi.fn().mockResolvedValue([{ codigoInterno: 'SKU-1', fotoUrl: '/uploads/fotos_chicas/sku-1.jpg' }]) },
+    }
+    const handlers = await buildCrmHandlers(prisma)
+    const response = await handlers['GET /:id']({ params: { id: '10' }, user: { role: 'admin' } }, replyStub())
+
+    expect(prisma.producto.findMany).toHaveBeenCalledWith({ where: { codigoInterno: { in: ['SKU-1'] } }, select: { codigoInterno: true, fotoUrl: true } })
+    expect(response.ordenCompraOnline.items[0].producto).toEqual({ codigoInterno: 'SKU-1', fotoUrl: '/uploads/fotos_chicas/sku-1.jpg' })
+  })
+
   it('updates estado as text instead of number', async () => {
     const updated = { id: 10, estado: '2' }
     const prisma = {
