@@ -116,7 +116,9 @@ describe('CRM estado routes', () => {
     const createdCustomer = { id: 99, rut: '12345678-9', nombre: 'Test Lead' }
     const prisma = {
       crmRegistro: {
+        findFirst: vi.fn().mockResolvedValue({ id: 10 }),
         findUnique: vi.fn().mockResolvedValue(crm),
+        update: vi.fn().mockResolvedValue({ ...crm, clienteId: 99 }),
       },
       cliente: {
         findFirst: vi.fn().mockResolvedValue(null),
@@ -128,6 +130,7 @@ describe('CRM estado routes', () => {
 
     const response = await handlers['POST /:id/convertir-cliente']({
       params: { id: '10' },
+      user: { id: 1, role: 'admin' },
     }, reply)
 
     expect(reply.statusCode).toBe(201)
@@ -164,7 +167,10 @@ describe('CRM estado routes', () => {
         findMany: vi.fn().mockImplementation((args) => {
           if (args.select?.ejecutiva) {
             return Promise.resolve([
-              { ejecutiva: 'Ana', estado: '3' },
+              { ejecutiva: 'Ana', estado: '3', etapaComercial: 'CERRADO', resultadoCierre: 'GANADO' },
+              { ejecutiva: 'Ana', estado: '3', etapaComercial: 'CERRADO', resultadoCierre: 'PERDIDO' },
+              { ejecutiva: 'Ana', estado: '3', etapaComercial: 'CERRADO', resultadoCierre: 'SIN_CLASIFICAR' },
+              { ejecutiva: 'Pedro', estado: '0', etapaComercial: 'PENDIENTE_CLASIFICACION' },
               { ejecutiva: 'Pedro', estado: '0' },
             ])
           }
@@ -180,8 +186,9 @@ describe('CRM estado routes', () => {
     })
 
     expect(response.porEstado).toEqual({ '0': 2, '1': 0, '2': 0, '3': 3 })
-    expect(response.tasaCierre).toBe(60)
-    expect(response.porEjecutiva[0]).toMatchObject({ ejecutiva: 'Ana', total: 1, cerrados: 1, tasaCierre: 100 })
+    expect(response.tasaCierre).toBe(50)
+    expect(response.porResultado).toEqual({ GANADO: 1, PERDIDO: 1, SIN_CLASIFICAR: 1 })
+    expect(response.porEjecutiva[0]).toMatchObject({ ejecutiva: 'Ana', total: 3, ganados: 1, perdidos: 1, sinClasificar: 1, tasaCierre: 50 })
     expect(response.tiempoPromedioEnPipeline).toBeCloseTo(5, 1)
   })
 })

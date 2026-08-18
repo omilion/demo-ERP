@@ -72,3 +72,39 @@ export const useCrmMetricas = (params = {}) =>
     queryFn: () => api.get('/crm/metricas', { params }).then(r => r.data),
     staleTime: 60_000,
   })
+
+export const useCrmCatalogos = () =>
+  useQuery({
+    queryKey: ['crm', 'catalogos'],
+    queryFn: () => api.get('/crm/catalogos').then(r => r.data),
+    staleTime: 30 * 60_000,
+  })
+
+export const useCrmDetalle = (id, enabled = true) =>
+  useQuery({
+    queryKey: ['crm', 'detalle', id],
+    queryFn: () => api.get(`/crm/${id}`).then(r => r.data),
+    enabled: Boolean(id) && enabled,
+  })
+
+export const useCrmTransicion = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.post(`/crm/${id}/transiciones`, data).then(r => r.data),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['crm'] })
+      qc.invalidateQueries({ queryKey: ['crm', 'detalle', variables.id] })
+    },
+  })
+}
+
+export const useCrmGestionCreate = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.post(`/crm/${id}/gestiones`, data).then(r => r.data),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['crm'] })
+      qc.invalidateQueries({ queryKey: ['crm', 'detalle', variables.id] })
+    },
+  })
+}

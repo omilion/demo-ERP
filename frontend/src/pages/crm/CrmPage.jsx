@@ -3,16 +3,17 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { DndContext, DragOverlay, PointerSensor, pointerWithin, rectIntersection, useSensor, useSensors } from '@dnd-kit/core'
 import { useDroppable, useDraggable } from '@dnd-kit/core'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
-import { useCrm, useCrmEjecutivas, useCrmPatch, useCrmOrdenLink, useCrmConvertirCliente, useCrmPendientesHoy, useCrmMetricas, useCrmCreate, useCrmAsignarPendientes } from '../../api/crm'
+import { useCrm, useCrmEjecutivas, useCrmPatch, useCrmOrdenLink, useCrmConvertirCliente, useCrmPendientesHoy, useCrmMetricas, useCrmCreate, useCrmAsignarPendientes, useCrmCatalogos, useCrmDetalle, useCrmTransicion, useCrmGestionCreate } from '../../api/crm'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/auth'
 
 const ESTADOS = [
-  { id: '0', label: 'Pendiente',  tone: 'amber', color: '#f59e0b', bg: '#fffbeb' },
-  { id: '1', label: 'En Gestion', tone: 'blue',  color: '#3b82f6', bg: '#eff6ff' },
-  { id: '2', label: 'En Espera',  tone: 'gray',  color: '#6b7280', bg: '#f9fafb' },
-  { id: '3', label: 'Cerrado',    tone: 'green', color: '#16a34a', bg: '#f0fdf4' },
+  { id: 'PENDIENTE_CLASIFICACION', label: 'Por clasificar', tone: 'gray', color: '#64748b', bg: '#f8fafc' },
+  { id: 'COTIZACION_ENVIADA', label: 'Cotización enviada', tone: 'amber', color: '#f59e0b', bg: '#fffbeb' },
+  { id: 'SEGUIMIENTO', label: 'Seguimiento', tone: 'blue', color: '#3b82f6', bg: '#eff6ff' },
+  { id: 'VENTA_APROBADA', label: 'Venta aprobada', tone: 'purple', color: '#8b5cf6', bg: '#f5f3ff' },
+  { id: 'CERRADO', label: 'Cerrado', tone: 'green', color: '#16a34a', bg: '#f0fdf4' },
 ]
 
 function prioridadTone(p) {
@@ -24,9 +25,11 @@ function prioridadTone(p) {
 }
 
 function normalizeEstado(value) {
-  if (value === null || value === undefined || value === '') return '0'
-  const estado = String(value)
-  return ESTADOS.some(e => e.id === estado) ? estado : '0'
+  if (value === '3') return 'CERRADO'
+  if (value === '2' || value === '1') return 'SEGUIMIENTO'
+  if (value === '0') return 'PENDIENTE_CLASIFICACION'
+  const estado = String(value || '').toUpperCase()
+  return ESTADOS.some(e => e.id === estado) ? estado : 'PENDIENTE_CLASIFICACION'
 }
 
 function Field({ label, children, full }) {
@@ -97,6 +100,13 @@ function CrmCard({ item, isDragging }) {
         </div>
       )}
 
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 5 }}>
+        {item.canalVenta && <Badge tone="gray" style={{ fontSize: 9 }}>{item.canalVenta}</Badge>}
+        {item.tipoVenta && <Badge tone="gray" style={{ fontSize: 9 }}>{item.tipoVenta.replaceAll('_', ' ')}</Badge>}
+        {item.semaforo && item.semaforo !== 'NORMAL' && <Badge tone={item.semaforo === 'AMARILLO' ? 'amber' : 'red'} style={{ fontSize: 9 }}>{item.semaforo} · {item.diasSinGestion}d</Badge>}
+        {item.resultadoCierre && <Badge tone={item.resultadoCierre === 'GANADO' ? 'green' : item.resultadoCierre === 'PERDIDO' ? 'red' : 'gray'} style={{ fontSize: 9 }}>{item.resultadoCierre.replaceAll('_', ' ')}</Badge>}
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
         <div style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>
           {item.ejecutiva || '—'}
@@ -148,9 +158,13 @@ function DraggableCard({ item, onOpen }) {
 function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
   const { user } = useAuthStore()
   const convertirCliente = useCrmConvertirCliente()
+  const transicion = useCrmTransicion()
+  const crearGestion = useCrmGestionCreate()
+  const { data: catalogos } = useCrmCatalogos()
+  const { data: detalle } = useCrmDetalle(item.id)
 
   const [form, setForm] = useState(() => ({
-    estado:          normalizeEstado(item.estado),
+    estado:          normalizeEstado(item.etapaComercial || item.estado),
     prioridad:       item.prioridad || '',
     ejecutiva:       item.ejecutiva || '',
     vendedorId:      item.vendedorId ? String(item.vendedorId) : '',
@@ -165,22 +179,61 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
     accion:          item.accion || '',
     resultado:       item.resultado || '',
     comentarios:     item.comentarios || '',
+    canalVenta:      item.canalVenta || 'OTRO',
+    tipoVenta:       item.tipoVenta || 'OTRA',
+    resultadoCierre: item.resultadoCierre === 'SIN_CLASIFICAR' ? '' : (item.resultadoCierre || ''),
+    motivoPerdida:   item.motivoPerdida || '',
+    motivoPerdidaDetalle: item.motivoPerdidaDetalle || '',
+    confirmacionTipo: item.confirmacionTipo || '',
+    confirmacionReferencia: item.confirmacionReferencia || '',
+    motivoTransicion: '',
   }))
+  const [gestion, setGestion] = useState({ tipo: 'LLAMADA', resultado: '', siguienteAccion: '', fechaProximo: '' })
   const patch = useCrmPatch()
   const { data: ordenLink } = useCrmOrdenLink(item.id, true)
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
 
   async function save() {
-    const payload = { id: item.id, ...form, estado: normalizeEstado(form.estado) }
+    const { estado, resultadoCierre, motivoPerdida, motivoPerdidaDetalle, confirmacionTipo, confirmacionReferencia, motivoTransicion, ...editable } = form
+    const payload = { id: item.id, ...editable }
     if (user?.role === 'admin' && String(item.vendedorId || '') !== String(form.vendedorId || '')) {
       const motivo = await promptDialog({ title: 'Motivo de reasignacion', detail: 'La reasignacion quedara registrada en el historial CRM.', placeholder: 'Ej.: redistribucion de cartera' })
       if (!motivo || String(motivo).trim().length < 5) return toast.warning('Indica un motivo de reasignacion.')
       payload.motivoReasignacion = String(motivo).trim()
     }
-    await patch.mutateAsync(payload)
+    try {
+      await patch.mutateAsync(payload)
+      const previousStage = normalizeEstado(item.etapaComercial || item.estado)
+      const classifyingHistoricalClose = estado === 'CERRADO' && resultadoCierre && resultadoCierre !== item.resultadoCierre
+      if (estado !== previousStage || classifyingHistoricalClose) {
+        await transicion.mutateAsync({
+          id: item.id,
+          etapa: estado,
+          resultadoCierre: resultadoCierre || undefined,
+          motivoPerdida: motivoPerdida || undefined,
+          detalle: motivoPerdidaDetalle || undefined,
+          confirmacionTipo: confirmacionTipo || undefined,
+          confirmacionReferencia: confirmacionReferencia || undefined,
+          motivo: motivoTransicion || undefined,
+        })
+      }
+    } catch (error) {
+      return toast.error(error.response?.data?.error || 'No se pudo guardar el CRM')
+    }
     onSaved?.()
     onClose()
+  }
+
+  async function handleGestion() {
+    try {
+      await crearGestion.mutateAsync({ id: item.id, ...gestion })
+      setGestion({ tipo: 'LLAMADA', resultado: '', siguienteAccion: '', fechaProximo: '' })
+      toast.success('Gestión registrada')
+      onSaved?.()
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'No se pudo registrar la gestión')
+    }
   }
 
   const hasValidRut = String(form.rut || '').trim().length > 0
@@ -245,6 +298,37 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
             </select>
           </Field>
 
+          <Field label="Canal de venta">
+            <select value={form.canalVenta} onChange={set('canalVenta')} style={inputStyle}>
+              {(catalogos?.canales || ['WEB', 'SALA', 'LICITACION', 'OTRO']).map(value => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}
+            </select>
+          </Field>
+          <Field label="Tipo de venta">
+            <select value={form.tipoVenta} onChange={set('tipoVenta')} style={inputStyle}>
+              {(catalogos?.tiposVenta || ['COMPRA_AGIL', 'PUBLICA', 'PRIVADA', 'OTRA']).map(value => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}
+            </select>
+          </Field>
+
+          {form.estado === 'VENTA_APROBADA' && <>
+            <Field label="Confirmación">
+              <select value={form.confirmacionTipo} onChange={set('confirmacionTipo')} style={inputStyle}>
+                <option value="">Seleccionar…</option>
+                {(catalogos?.confirmaciones || ['OC', 'PAGO', 'WEBPAY', 'OTRO']).map(value => <option key={value}>{value}</option>)}
+              </select>
+            </Field>
+            <Field label="Referencia confirmación"><input value={form.confirmacionReferencia} onChange={set('confirmacionReferencia')} style={inputStyle} /></Field>
+          </>}
+
+          {form.estado === 'CERRADO' && <>
+            <Field label="Resultado de cierre">
+              <select value={form.resultadoCierre} onChange={set('resultadoCierre')} style={inputStyle}><option value="">Seleccionar…</option><option value="GANADO">GANADO</option><option value="PERDIDO">PERDIDO</option></select>
+            </Field>
+            {form.resultadoCierre === 'PERDIDO' && <Field label="Motivo de pérdida"><select value={form.motivoPerdida} onChange={set('motivoPerdida')} style={inputStyle}><option value="">Seleccionar…</option>{(catalogos?.motivosPerdida || []).map(value => <option key={value}>{value}</option>)}</select></Field>}
+            {form.resultadoCierre === 'PERDIDO' && <Field label="Detalle de pérdida" full><textarea value={form.motivoPerdidaDetalle} onChange={set('motivoPerdidaDetalle')} rows={2} style={inputStyle} /></Field>}
+          </>}
+
+          {normalizeEstado(item.etapaComercial || item.estado) === 'CERRADO' && form.estado !== 'CERRADO' && <Field label="Motivo de reapertura" full><input value={form.motivoTransicion} onChange={set('motivoTransicion')} style={inputStyle} placeholder="Obligatorio, mínimo 5 caracteres" /></Field>}
+
           <Field label="Ejecutiva">
             {user?.role === 'admin' ? <select value={form.vendedorId} onChange={set('vendedorId')} style={inputStyle}><option value="">Sin asignar</option>{ejecutivas.filter(e => e.vendedorId).map(e => <option key={e.vendedorId} value={e.vendedorId}>{e.ejecutiva}</option>)}</select> : <input value={form.ejecutiva} style={inputStyle} disabled />}
           </Field>
@@ -288,10 +372,21 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
           <Field label="Comentarios internos" full>
             <textarea value={form.comentarios} onChange={set('comentarios')} rows={3} style={{ ...inputStyle, resize: 'vertical' }} placeholder="Notas privadas del equipo…" />
           </Field>
+          <div style={{ gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 4 }}><strong style={{ fontSize: 13 }}>Registrar gestión</strong></div>
+          <Field label="Tipo"><select value={gestion.tipo} onChange={e => setGestion(g => ({ ...g, tipo: e.target.value }))} style={inputStyle}>{(catalogos?.tiposGestion || ['LLAMADA', 'CORREO', 'REUNION', 'VISITA', 'COTIZACION', 'NOTA', 'OTRO']).map(value => <option key={value}>{value}</option>)}</select></Field>
+          <Field label="Próximo contacto"><input type="date" value={gestion.fechaProximo} onChange={e => setGestion(g => ({ ...g, fechaProximo: e.target.value }))} style={inputStyle} /></Field>
+          <Field label="Resultado" full><textarea value={gestion.resultado} onChange={e => setGestion(g => ({ ...g, resultado: e.target.value }))} rows={2} style={inputStyle} /></Field>
+          <Field label="Siguiente acción" full><input value={gestion.siguienteAccion} onChange={e => setGestion(g => ({ ...g, siguienteAccion: e.target.value }))} style={inputStyle} /></Field>
+          <div style={{ gridColumn: '1 / -1' }}><Btn variant="secondary" size="sm" onClick={handleGestion} disabled={crearGestion.isPending || !gestion.resultado.trim()}>Registrar gestión</Btn></div>
+
+          {(detalle?.gestiones?.length > 0 || detalle?.estadosHistorial?.length > 0) && <div style={{ gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+            <strong style={{ fontSize: 13 }}>Historial reciente</strong>
+            {[...(detalle?.gestiones || []).map(row => ({ fecha: row.realizadaAt, texto: `${row.tipo}: ${row.resultado}` })), ...(detalle?.estadosHistorial || []).map(row => ({ fecha: row.createdAt, texto: `${row.estadoAnterior || 'Inicio'} → ${row.estadoNuevo}${row.resultadoCierre ? ` (${row.resultadoCierre})` : ''}` }))].sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 15).map((row, index) => <div key={`${row.fecha}-${index}`} style={{ fontSize: 11, padding: '5px 0', borderBottom: '1px solid var(--border)' }}><span style={{ color: 'var(--text-3)', marginRight: 8 }}>{new Date(row.fecha).toLocaleString('es-CL')}</span>{row.texto}</div>)}
+          </div>}
         </div>
 
         <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          {form.estado === '3' && (
+          {form.estado === 'CERRADO' && (
             <Btn
               variant="secondary"
               size="sm"
@@ -303,7 +398,7 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
             </Btn>
           )}
           <Btn variant="secondary" size="sm" onClick={onClose}>Cancelar</Btn>
-          <Btn variant="primary" size="sm" onClick={save} disabled={patch.isPending}>
+          <Btn variant="primary" size="sm" onClick={save} disabled={patch.isPending || transicion.isPending}>
             {patch.isPending ? 'Guardando…' : 'Guardar'}
           </Btn>
         </div>
@@ -387,9 +482,9 @@ function TableView({ items, total, limit, onOpen, view, setView, ejecutiva, setE
     { key: 'ejecutiva', label: 'Ejecutiva', render: v => <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{v || '—'}</span> },
     { key: 'prioridad', label: 'Prioridad', render: v => v ? <Badge tone={prioridadTone(v)}>{v}</Badge> : '—' },
     {
-      key: 'estado', label: 'Estado',
-      render: v => {
-        const e = ESTADOS.find(s => s.id === normalizeEstado(v))
+      key: 'etapaComercial', label: 'Etapa',
+      render: (v, row) => {
+        const e = ESTADOS.find(s => s.id === normalizeEstado(v || row.estado))
         return e ? <Badge tone={e.tone}>{e.label}</Badge> : '—'
       }
     },
@@ -448,7 +543,8 @@ function TableView({ items, total, limit, onOpen, view, setView, ejecutiva, setE
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 function NuevoLeadModal({ onClose }) {
-  const [form, setForm] = useState({ nombre: '', rsocial: '', rut: '', email: '', telefono: '', prioridad: 'Media', comentarios: '' })
+  const [form, setForm] = useState({ nombre: '', rsocial: '', rut: '', email: '', telefono: '', prioridad: 'Media', canalVenta: 'OTRO', tipoVenta: 'OTRA', comentarios: '' })
+  const { data: catalogos } = useCrmCatalogos()
   const create = useCrmCreate()
   const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
   const fieldStyle = { width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 7, font: 'inherit', fontSize: 12 }
@@ -469,6 +565,8 @@ function NuevoLeadModal({ onClose }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             {[['nombre', 'Nombre contacto'], ['rsocial', 'Razon social'], ['rut', 'RUT'], ['email', 'Correo'], ['telefono', 'Telefono']].map(([key, label]) => <label key={key} style={{ fontSize: 11, fontWeight: 600 }}>{label}<input type={key === 'email' ? 'email' : 'text'} value={form[key]} onChange={event => set(key, event.target.value)} style={{ ...fieldStyle, display: 'block', marginTop: 5 }} /></label>)}
             <label style={{ fontSize: 11, fontWeight: 600 }}>Prioridad<select value={form.prioridad} onChange={event => set('prioridad', event.target.value)} style={{ ...fieldStyle, display: 'block', marginTop: 5 }}><option>Alta</option><option>Media</option><option>Baja</option></select></label>
+            <label style={{ fontSize: 11, fontWeight: 600 }}>Canal<select value={form.canalVenta} onChange={event => set('canalVenta', event.target.value)} style={{ ...fieldStyle, display: 'block', marginTop: 5 }}>{(catalogos?.canales || ['WEB', 'SALA', 'LICITACION', 'OTRO']).map(value => <option key={value}>{value}</option>)}</select></label>
+            <label style={{ fontSize: 11, fontWeight: 600 }}>Tipo de venta<select value={form.tipoVenta} onChange={event => set('tipoVenta', event.target.value)} style={{ ...fieldStyle, display: 'block', marginTop: 5 }}>{(catalogos?.tiposVenta || ['COMPRA_AGIL', 'PUBLICA', 'PRIVADA', 'OTRA']).map(value => <option key={value}>{value.replaceAll('_', ' ')}</option>)}</select></label>
           </div>
           <label style={{ display: 'block', fontSize: 11, fontWeight: 600, marginTop: 12 }}>Comentarios<textarea value={form.comentarios} onChange={event => set('comentarios', event.target.value)} rows={3} style={{ ...fieldStyle, display: 'block', marginTop: 5, resize: 'vertical' }} /></label>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn variant="primary" onClick={save} disabled={create.isPending}>{create.isPending ? 'Asignando...' : 'Crear y asignar'}</Btn></div>
@@ -484,6 +582,9 @@ export default function CrmPage() {
   const [view, setView]               = useState('pipeline')
   const [ejecutiva, setEjecutiva]     = useState('')
   const [prioridad, setPrioridad]     = useState('')
+  const [canalVenta, setCanalVenta]   = useState('')
+  const [tipoVenta, setTipoVenta]     = useState('')
+  const [semaforo, setSemaforo]       = useState('')
   const [search, setSearch]           = useState('')
   const [debounced, setDebounced]     = useState('')
   const [fechaDesde, setFechaDesde]   = useState('')
@@ -503,7 +604,8 @@ export default function CrmPage() {
   const { data: ejecutivas = [] } = useCrmEjecutivas()
   const { data: pendientesHoyData } = useCrmPendientesHoy()
   const { data: metricas } = useCrmMetricas({ fechaDesde, fechaHasta })
-  const patch = useCrmPatch()
+  const { data: catalogos } = useCrmCatalogos()
+  const transicion = useCrmTransicion()
   const assignPending = useCrmAsignarPendientes()
 
   const runAssignPending = async () => {
@@ -518,6 +620,9 @@ export default function CrmPage() {
   const params = {}
   if (ejecutiva)  params.ejecutiva  = ejecutiva
   if (prioridad)  params.prioridad  = prioridad
+  if (canalVenta) params.canalVenta = canalVenta
+  if (tipoVenta) params.tipoVenta = tipoVenta
+  if (semaforo) params.semaforo = semaforo
   if (debounced)  params.search     = debounced
   if (fechaDesde) params.fechaDesde = fechaDesde
   if (fechaHasta) params.fechaHasta = fechaHasta
@@ -530,7 +635,7 @@ export default function CrmPage() {
     const map = {}
     ESTADOS.forEach(e => { map[e.id] = [] })
     items.forEach(i => {
-      const col = map[normalizeEstado(i.estado)]
+      const col = map[normalizeEstado(i.etapaComercial || i.estado)]
       if (col) col.push(i)
     })
     return map
@@ -555,7 +660,13 @@ export default function CrmPage() {
     if (!over) return
     const newEstado = normalizeEstado(over.id)
     const item = items.find(i => String(i.id) === String(active.id))
-    if (!item || normalizeEstado(item.estado) === newEstado) return
+    if (!item || normalizeEstado(item.etapaComercial || item.estado) === newEstado) return
+    const currentStage = normalizeEstado(item.etapaComercial || item.estado)
+    if (['VENTA_APROBADA', 'CERRADO'].includes(newEstado) || currentStage === 'CERRADO') {
+      setSelected(item)
+      toast.warning('Completa los datos obligatorios de la transición en el detalle.')
+      return
+    }
 
     const queryKey = ['crm', params]
     const previousData = queryClient.getQueryData(queryKey)
@@ -566,14 +677,14 @@ export default function CrmPage() {
         ...old,
         items: old.items.map(i =>
           String(i.id) === String(item.id)
-            ? { ...i, estado: newEstado }
+            ? { ...i, etapaComercial: newEstado }
             : i
         )
       }
     })
 
-    patch.mutate(
-      { id: item.id, estado: newEstado },
+    transicion.mutate(
+      { id: item.id, etapa: newEstado },
       {
         onError: err => {
           queryClient.setQueryData(queryKey, previousData)
@@ -602,7 +713,7 @@ export default function CrmPage() {
 
       <div className="kpi-strip">
         <KpiCard label="Total registros"   value={total.toLocaleString('es-CL')} icon="fileText"      sublabel="Seguimientos CRM" />
-        <KpiCard label="Tasa de Cierre"     value={tasaCierreVal}                  icon="checkCircle"   tone="green" sublabel="Leads ganados" />
+        <KpiCard label="Tasa de Cierre"     value={tasaCierreVal}                  icon="checkCircle"   tone="green" sublabel={`Ganadas / cierres clasificados · ${metricas?.porResultado?.SIN_CLASIFICAR || 0} sin clasificar`} />
         <KpiCard label="Promedio Pipeline"  value={tiempoPipeVal}                  icon="clock"   tone="blue"  sublabel="Días transcurridos" />
         <KpiCard label="Prioridad Alta"     value={altaPrioridad}                  icon="alertTriangle" tone="red" sublabel="Requieren atención" />
       </div>
@@ -686,6 +797,9 @@ export default function CrmPage() {
             <option value="Media">Media</option>
             <option value="Baja">Baja</option>
           </select>
+          <select value={canalVenta} onChange={e => setCanalVenta(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todos los canales</option>{(catalogos?.canales || []).map(value => <option key={value}>{value}</option>)}</select>
+          <select value={tipoVenta} onChange={e => setTipoVenta(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todos los tipos</option>{(catalogos?.tiposVenta || []).map(value => <option key={value}>{value.replaceAll('_', ' ')}</option>)}</select>
+          <select value={semaforo} onChange={e => setSemaforo(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todo semáforo</option><option>NORMAL</option><option>AMARILLO</option><option>ROJO</option><option>VENCIDO</option></select>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Desde</span>
             <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }} />
@@ -720,7 +834,7 @@ export default function CrmPage() {
           {isLoading ? (
             <div style={{ padding: '80px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando pipeline…</div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ESTADOS.length}, minmax(0, 1fr))`, gap: 12, alignItems: 'flex-start', paddingBottom: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ESTADOS.length}, minmax(260px, 1fr))`, gap: 12, alignItems: 'flex-start', paddingBottom: 16, overflowX: 'auto' }}>
               {ESTADOS.map(estado => (
                 <KanbanColumn
                   key={estado.id}

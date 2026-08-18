@@ -2,6 +2,7 @@ import { rowsToCsv, sendCsv } from '../../utils/csv.js'
 import { getUserSucursalId } from '../caja/scope.js'
 import { computeTotal } from '../ventas/helpers.js'
 import { applyVentaStockDeltas, buildStockDeltasFromItems, isVentaDirectaStockTipo } from '../ventas/stock.js'
+import { approveCrmFromPurchaseOrder } from '../../domain/crm/service.js'
 
 const ESTADOS_COMPRA = new Set([
   'Pendiente',
@@ -263,6 +264,7 @@ export default async function ordenesCompraRoutes(fastify) {
         },
         include: { items: true },
       })
+      await approveCrmFromPurchaseOrder(tx, orden, oc.nCompra, request.user)
 
       const stock = await applyVentaStockDeltas(tx, {
         deltas: isVentaDirectaStockTipo(orden.tipo) ? buildStockDeltasFromItems(itemsData, 1) : new Map(),

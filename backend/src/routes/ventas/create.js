@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { linkCrmToOrder } from '../../domain/crm/service.js'
 import { computeTotal, attachCliente } from './helpers.js'
 import { ESTADO_PAGO_VALUES, ESTADO_ENTREGA_VALUES } from './update.js'
 import { applyVentaStockDeltas, buildStockDeltasFromItems, isVentaDirectaStockTipo } from './stock.js'
@@ -230,6 +231,7 @@ export default async function createVenta(fastify) {
         },
         include: { items: true },
       })
+      await linkCrmToOrder(tx, created)
 
       if (rest.tipo === 'Licitación') {
         const licId = rest.licitacion || 'S/N'

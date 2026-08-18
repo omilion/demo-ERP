@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { resolveOrdenForWrite } from '../relation-guards.js'
 import { computeVentaFinancialState, computeVentaFinancialStateFromDb, resolveEstadoPago, syncOrdenFinancialState } from '../ventas/financial.js'
 import { getUserSucursalId, isMovimientoInUserSucursal, isReferencialMedioPago, withTurnoSucursalScope } from './scope.js'
+import { approveCrmFromOrderPayment } from '../../domain/crm/service.js'
 
 const MEDIOS_PAGO = [
   'Efectivo',
@@ -533,6 +534,12 @@ export default async function movimientosRoutes(fastify) {
           userMod: usuario,
           fecha,
           sucursalId: movimientoSucursalId,
+        })
+        await approveCrmFromOrderPayment(tx, ordenId, {
+          medioPago: d.medioPago,
+          referencia,
+          actor: request.user,
+          now: fecha,
         })
 
         return {

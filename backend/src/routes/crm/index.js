@@ -1,3 +1,13 @@
+import {
+  CRM_CANALES,
+  CRM_ETAPAS,
+  CRM_RESULTADOS,
+  CRM_TIPOS_VENTA,
+  crmCatalogos,
+  normalizeEtapa,
+} from '../../domain/crm/constants.js'
+import { addSemaforo, createCrmGestion, elapsedDays, transitionCrm } from '../../domain/crm/service.js'
+
 const CRM_ESTADOS = new Set(['0', '1', '2', '3'])
 
 function normalizeEstado(value) {
@@ -13,6 +23,17 @@ function normalizeEstado(value) {
 function applyScopeByRole(where, user) {
   if (user?.role !== 'admin') where.vendedorId = user?.id ?? -1
   return where
+}
+
+async function ensureCrmAccess(prisma, id, user) {
+  const where = { id }
+  if (user?.role !== 'admin') where.vendedorId = user?.id ?? -1
+  return prisma.crmRegistro.findFirst({ where, select: { id: true } })
+}
+
+function handleDomainError(error, reply) {
+  if (!error?.statusCode) throw error
+  return reply.code(error.statusCode).send({ error: error.message })
 }
 
 function startAndEndOfToday() {
@@ -68,17 +89,25 @@ async function assignLead(tx, crmId, { origen, asignadoPorId = null, motivo = nu
 
 export default async function crmRoutes(fastify) {
   fastify.register(async function (f) {
+    f.get('/catalogos', {
+      preHandler: [f.authenticate, f.rbac('ventas', 'read')],
+    }, async () => crmCatalogos())
+
     // GET /api/crm?ejecutiva=...&estado=...&prioridad=...&search=...&page=1
     f.get('/', {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],
     }, async (request) => {
-      const { ejecutiva, estado, prioridad, search, page = '1', fechaDesde, fechaHasta } = request.query
+      const { ejecutiva, estado, etapa, resultadoCierre, canalVenta, tipoVenta, semaforo, prioridad, search, page = '1', fechaDesde, fechaHasta } = request.query
       const LIMIT = 500
       const offset = (parseInt(page) - 1) * LIMIT
 
       const where = applyScopeByRole({}, request.user)
       if (ejecutiva) where.ejecutiva = { contains: ejecutiva, mode: 'insensitive' }
       if (prioridad) where.prioridad = prioridad
+      if (etapa) where.etapaComercial = String(etapa).toUpperCase()
+      if (resultadoCierre) where.resultadoCierre = String(resultadoCierre).toUpperCase()
+      if (canalVenta) where.canalVenta = String(canalVenta).toUpperCase()
+      if (tipoVenta) where.tipoVenta = String(tipoVenta).toUpperCase()
       if (estado !== undefined && estado !== '') {
         const normalizedEstado = normalizeEstado(estado)
         if (normalizedEstado !== undefined) where.estado = normalizedEstado
@@ -107,7 +136,9 @@ export default async function crmRoutes(fastify) {
         f.prisma.crmRegistro.count({ where }),
       ])
 
-      return { items, total, limit: LIMIT }
+      const enriched = addSemaforo(items)
+      const filtered = semaforo ? enriched.filter(item => item.semaforo === String(semaforo).toUpperCase()) : enriched
+      return { items: filtered, total: semaforo ? filtered.length : total, limit: LIMIT }
     })
 
     f.post('/', {
@@ -127,6 +158,13 @@ export default async function crmRoutes(fastify) {
         const vendedor = await selectRoundRobinSeller(tx)
         if (!vendedor) return { status: 409, error: 'No hay vendedores disponibles: todos alcanzaron el maximo de 10 leads diarios o no existen vendedores activos' }
         const now = new Date()
+        const canalVenta = String(b.canalVenta || 'OTRO').trim().toUpperCase()
+        const tipoVenta = String(b.tipoVenta || 'OTRA').trim().toUpperCase()
+        if (!CRM_CANALES.includes(canalVenta)) return { status: 400, error: 'Canal de venta invalido' }
+        if (!CRM_TIPOS_VENTA.includes(tipoVenta)) return { status: 400, error: 'Tipo de venta invalido' }
+        const etapaComercial = b.etapaComercial
+          ? normalizeEtapa(b.etapaComercial)
+          : (String(b.ncotizacion || '').trim() ? CRM_ETAPAS.COTIZACION_ENVIADA : CRM_ETAPAS.PENDIENTE_CLASIFICACION)
         const lead = await tx.crmRegistro.create({
           data: {
             nombre: nombre || null,
@@ -138,6 +176,11 @@ export default async function crmRoutes(fastify) {
             comentarios: String(b.comentarios || '').trim() || null,
             prioridad: String(b.prioridad || '').trim() || 'Media',
             estado: '0',
+            etapaComercial,
+            canalVenta,
+            tipoVenta,
+            estadoCambiadoAt: now,
+            ultimaGestionAt: now,
             fecha: new Date(),
             usuario: request.user?.nombre || request.user?.email || null,
             vendedorId: vendedor.id,
@@ -236,31 +279,38 @@ export default async function crmRoutes(fastify) {
         total += group._count._all
       }
 
-      const totalCerrados = porEstado['3']
-      const tasaCierre = total > 0 ? (totalCerrados / total) * 100 : 0
+      // Compatibilidad legacy: porEstado se conserva, pero no representa éxito comercial.
 
       const allLeads = await f.prisma.crmRegistro.findMany({
         where,
-        select: { ejecutiva: true, estado: true }
+        select: { ejecutiva: true, estado: true, etapaComercial: true, resultadoCierre: true }
       })
 
+      const porEtapa = Object.fromEntries(Object.values(CRM_ETAPAS).map(etapa => [etapa, 0]))
+      const porResultado = { GANADO: 0, PERDIDO: 0, SIN_CLASIFICAR: 0 }
       const ejecutivasMap = {}
       for (const lead of allLeads) {
+        const etapa = normalizeEtapa(lead.etapaComercial, lead.estado)
+        porEtapa[etapa] = (porEtapa[etapa] || 0) + 1
+        if (lead.resultadoCierre in porResultado) porResultado[lead.resultadoCierre]++
         const exec = lead.ejecutiva || 'Sin Asignar'
         if (!ejecutivasMap[exec]) {
-          ejecutivasMap[exec] = { total: 0, cerrados: 0 }
+          ejecutivasMap[exec] = { total: 0, ganados: 0, perdidos: 0, sinClasificar: 0 }
         }
         ejecutivasMap[exec].total++
-        if (lead.estado === '3') {
-          ejecutivasMap[exec].cerrados++
-        }
+        if (lead.resultadoCierre === CRM_RESULTADOS.GANADO) ejecutivasMap[exec].ganados++
+        if (lead.resultadoCierre === CRM_RESULTADOS.PERDIDO) ejecutivasMap[exec].perdidos++
+        if (lead.resultadoCierre === CRM_RESULTADOS.SIN_CLASIFICAR) ejecutivasMap[exec].sinClasificar++
       }
 
+      const cierresClasificados = porResultado.GANADO + porResultado.PERDIDO
+      const tasaCierre = cierresClasificados > 0 ? (porResultado.GANADO / cierresClasificados) * 100 : 0
       const porEjecutiva = Object.entries(ejecutivasMap).map(([ejecutiva, stats]) => ({
         ejecutiva,
         total: stats.total,
-        cerrados: stats.cerrados,
-        tasaCierre: stats.total > 0 ? (stats.cerrados / stats.total) * 100 : 0
+        ...stats,
+        cerrados: stats.ganados + stats.perdidos + stats.sinClasificar,
+        tasaCierre: stats.ganados + stats.perdidos > 0 ? (stats.ganados / (stats.ganados + stats.perdidos)) * 100 : 0
       })).sort((a, b) => b.total - a.total)
 
       const activeLeads = await f.prisma.crmRegistro.findMany({
@@ -286,10 +336,31 @@ export default async function crmRoutes(fastify) {
 
       return {
         porEstado,
+        porEtapa,
+        porResultado,
         tasaCierre,
         porEjecutiva,
+        total: allLeads.length,
         tiempoPromedioEnPipeline // // POR CONFIRMAR: validez de la métrica basada en createdAt
       }
+    })
+
+    f.get('/:id', {
+      preHandler: [f.authenticate, f.rbac('ventas', 'read')],
+    }, async (request, reply) => {
+      const id = parseInt(request.params.id, 10)
+      if (!Number.isInteger(id) || id <= 0) return reply.code(400).send({ error: 'ID CRM invalido' })
+      if (!await ensureCrmAccess(f.prisma, id, request.user)) return reply.code(404).send({ error: 'Registro CRM no encontrado' })
+      const item = await f.prisma.crmRegistro.findUnique({
+        where: { id },
+        include: {
+          cliente: { select: { id: true, rut: true, nombre: true } },
+          orden: { select: { id: true, nInterno: true, tipo: true, estado: true, estadoPago: true, estadoEntrega: true, facturado: true } },
+          gestiones: { orderBy: { realizadaAt: 'desc' }, take: 100 },
+          estadosHistorial: { orderBy: { createdAt: 'desc' }, take: 100 },
+        },
+      })
+      return { ...item, ...addSemaforo([item])[0] }
     })
 
     // PATCH /api/crm/:id
@@ -333,6 +404,17 @@ export default async function crmRoutes(fastify) {
         data.estado = normalizedEstado
       }
       if (b.prioridad !== undefined) data.prioridad = b.prioridad || null
+      if (b.canalVenta !== undefined) {
+        const value = String(b.canalVenta || '').toUpperCase()
+        if (value && !CRM_CANALES.includes(value)) return reply.status(400).send({ error: 'Canal de venta invalido' })
+        data.canalVenta = value || null
+      }
+      if (b.tipoVenta !== undefined) {
+        const value = String(b.tipoVenta || '').toUpperCase()
+        if (value && !CRM_TIPOS_VENTA.includes(value)) return reply.status(400).send({ error: 'Tipo de venta invalido' })
+        data.tipoVenta = value || null
+      }
+      if (b.subestadoEspera !== undefined) data.subestadoEspera = b.subestadoEspera || null
       if (b.comentarios !== undefined) data.comentarios = b.comentarios || null
       if (b.fechaProximo !== undefined) data.fechaProximo = b.fechaProximo ? new Date(b.fechaProximo) : null
       if (b.ejecutiva !== undefined && !(isAdmin && b.vendedorId !== undefined)) data.ejecutiva = b.ejecutiva || null
@@ -359,12 +441,45 @@ export default async function crmRoutes(fastify) {
       return updated
     })
 
+    f.get('/:id/gestiones', {
+      preHandler: [f.authenticate, f.rbac('ventas', 'read')],
+    }, async (request, reply) => {
+      const id = parseInt(request.params.id, 10)
+      if (!await ensureCrmAccess(f.prisma, id, request.user)) return reply.code(404).send({ error: 'Registro CRM no encontrado' })
+      return f.prisma.crmGestion.findMany({ where: { crmId: id }, orderBy: { realizadaAt: 'desc' }, take: 200 })
+    })
+
+    f.post('/:id/gestiones', {
+      preHandler: [f.authenticate, f.rbac('ventas', 'write')],
+    }, async (request, reply) => {
+      const id = parseInt(request.params.id, 10)
+      if (!await ensureCrmAccess(f.prisma, id, request.user)) return reply.code(404).send({ error: 'Registro CRM no encontrado' })
+      try {
+        return reply.code(201).send(await createCrmGestion(f.prisma, id, request.body || {}, request.user))
+      } catch (error) {
+        return handleDomainError(error, reply)
+      }
+    })
+
+    f.post('/:id/transiciones', {
+      preHandler: [f.authenticate, f.rbac('ventas', 'write')],
+    }, async (request, reply) => {
+      const id = parseInt(request.params.id, 10)
+      if (!await ensureCrmAccess(f.prisma, id, request.user)) return reply.code(404).send({ error: 'Registro CRM no encontrado' })
+      try {
+        return await transitionCrm(f.prisma, id, request.body || {}, request.user, { isAdmin: request.user?.role === 'admin' })
+      } catch (error) {
+        return handleDomainError(error, reply)
+      }
+    })
+
     // POST /api/crm/:id/convertir-cliente — Convert CRM lead to Customer
     f.post('/:id/convertir-cliente', {
       preHandler: [f.authenticate, f.rbac('clientes', 'write')],
     }, async (request, reply) => {
       const id = parseInt(request.params.id)
       if (isNaN(id)) return reply.code(400).send({ error: 'ID de lead inválido' })
+      if (!await ensureCrmAccess(f.prisma, id, request.user)) return reply.code(404).send({ error: 'Lead no encontrado' })
 
       const crm = await f.prisma.crmRegistro.findUnique({ where: { id } })
       if (!crm) return reply.code(404).send({ error: 'Lead no encontrado' })
@@ -379,6 +494,7 @@ export default async function crmRoutes(fastify) {
       })
 
       if (existing) {
+        await f.prisma.crmRegistro.update({ where: { id }, data: { clienteId: existing.id } })
         return { clienteId: existing.id, creado: false }
       }
 
@@ -397,6 +513,8 @@ export default async function crmRoutes(fastify) {
         }
       })
 
+      await f.prisma.crmRegistro.update({ where: { id }, data: { clienteId: created.id } })
+
       return reply.code(201).send({ clienteId: created.id, creado: true })
     })
 
@@ -405,6 +523,7 @@ export default async function crmRoutes(fastify) {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],
     }, async (request) => {
       const id = parseInt(request.params.id)
+      if (!await ensureCrmAccess(f.prisma, id, request.user)) return { orden: null }
       const c = await f.prisma.crmRegistro.findUnique({ where: { id }, select: { ncotizacion: true } })
       if (!c?.ncotizacion) return { orden: null }
       const raw = String(c.ncotizacion).trim()
@@ -414,6 +533,7 @@ export default async function crmRoutes(fastify) {
         where: { nInterno: ni },
         select: { id: true, nInterno: true, tipo: true, estado: true, estadoPago: true, estadoEntrega: true, createdAt: true, clienteId: true },
       })
+      if (orden) await f.prisma.crmRegistro.update({ where: { id }, data: { ordenId: orden.id, clienteId: orden.clienteId || undefined } })
       return { orden }
     })
 

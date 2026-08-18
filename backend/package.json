@@ -24,6 +24,10 @@
     "data:sprint1-audit": "node scripts/sprint1-saneamiento-audit.mjs",
     "smoke:staging": "node scripts/staging-smoke.mjs",
     "job:stock-critico": "node src/jobs/stockCritico.mjs",
+    "job:crm": "node src/jobs/crmAutomation.mjs",
+    "job:crm:apply": "node src/jobs/crmAutomation.mjs --apply",
+    "crm:backfill": "node scripts/crm-comercial-backfill.mjs",
+    "crm:backfill:apply": "node scripts/crm-comercial-backfill.mjs --apply",
     "job:gmail-receptor": "node scripts/poll-gmail-receptor.mjs"
   },
   "keywords": [],

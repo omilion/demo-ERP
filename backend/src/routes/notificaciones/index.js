@@ -2,6 +2,8 @@
 // usuario abre la campana, se revisan las condiciones en vivo y se devuelve una
 // lista unificada. Solo lectura, ordenada por severidad/fecha.
 
+import { semaforoForCrm } from '../../domain/crm/service.js'
+
 const DIA_MS = 24 * 60 * 60 * 1000
 
 function diasHasta(fecha) {
@@ -128,6 +130,25 @@ export default async function notificacionesRoutes(fastify) {
     }
 
     // Orden final: severidad alta primero, luego por fecha más antigua/urgente.
+    // CRM sin gestión: respeta cartera del vendedor y usa el mismo semáforo del pipeline.
+    if (puede('ventas')) {
+      const crmWhere = { etapaComercial: { not: 'CERRADO' } }
+      if (request.user?.role !== 'admin') crmWhere.vendedorId = request.user?.id ?? -1
+      const leads = await prisma.crmRegistro.findMany({ where: crmWhere, orderBy: { ultimaGestionAt: 'asc' }, take: 100 })
+      for (const lead of leads) {
+        const { semaforo, diasSinGestion } = semaforoForCrm(lead, ahora)
+        if (semaforo === 'NORMAL') continue
+        items.push({
+          tipo: 'crm_sin_gestion',
+          severidad: semaforo === 'AMARILLO' ? 'media' : 'alta',
+          titulo: `${semaforo === 'VENCIDO' ? 'Gestión CRM vencida' : `Alerta CRM ${semaforo.toLowerCase()}`}: ${lead.nombre || lead.rsocial || `#${lead.id}`}`,
+          detalle: `${diasSinGestion} día(s) hábiles sin gestión · ${lead.etapaComercial || 'Etapa legacy'}`,
+          fecha: lead.ultimaGestionAt || lead.fechaCotizacion || lead.fecha || lead.createdAt,
+          link: '/crm',
+        })
+      }
+    }
+
     const sevRank = { alta: 0, media: 1, baja: 2 }
     items.sort((a, b) => (sevRank[a.severidad] - sevRank[b.severidad]) || (new Date(a.fecha) - new Date(b.fecha)))
 
