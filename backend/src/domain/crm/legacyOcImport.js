@@ -1,6 +1,7 @@
 import { CRM_ETAPAS, CRM_RESULTADOS, normalizeEtapa } from './constants.js'
 
 export const LEGACY_OC_ORIGIN = 'OC_ONLINE_LEGACY'
+export const CRM_CARTERA_CUTOFF = new Date('2025-01-01T00:00:00.000Z')
 
 export const LEGACY_SELLER_NAMES = Object.freeze({
   '1092': 'Cinthia Palacios',
@@ -49,7 +50,8 @@ export function buildLegacyOcCrmData(oc, existing = null) {
     ordenCompraOnlineId: oc.id,
     origenDato: LEGACY_OC_ORIGIN,
     codigoVendedorLegacy: sellerCode,
-    esHistorico: true,
+    // Cartera vigente: desde el corte acordado inclusive. Histórico: anterior.
+    esHistorico: fecha < CRM_CARTERA_CUTOFF,
     ejecutiva: existing?.ejecutiva || sellerName,
     canalVenta: existing?.canalVenta || 'WEB',
     tipoVenta: existing?.tipoVenta || 'OTRA',

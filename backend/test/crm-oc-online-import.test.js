@@ -26,7 +26,7 @@ describe('importación CRM desde OC Online legacy', () => {
     expect(mapLegacyOcStatus('Recepcionada')).toEqual({ etapaComercial: 'PENDIENTE_CLASIFICACION', estado: '0', resultadoCierre: null })
   })
 
-  it('preserves seller provenance and marks new rows as historical', () => {
+  it('preserves seller provenance and keeps rows from 2025 onward in the active portfolio', () => {
     const data = buildLegacyOcCrmData(baseOc)
     expect(data).toMatchObject({
       ncotizacion: 'OC-2025-90',
@@ -34,10 +34,15 @@ describe('importación CRM desde OC Online legacy', () => {
       origenDato: 'OC_ONLINE_LEGACY',
       codigoVendedorLegacy: '1092',
       ejecutiva: 'Cinthia Palacios',
-      esHistorico: true,
+      esHistorico: false,
       canalVenta: 'WEB',
       etapaComercial: 'COTIZACION_ENVIADA',
     })
+  })
+
+  it('marks records before the agreed 2025 cutoff as historical', () => {
+    const data = buildLegacyOcCrmData({ ...baseOc, fechaHora: new Date('2024-12-31T23:59:59Z') })
+    expect(data.esHistorico).toBe(true)
   })
 
   it('does not overwrite a newer non-decisive CRM stage', () => {
