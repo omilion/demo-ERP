@@ -197,18 +197,19 @@ function DetailValue({ label, value }) {
 function CrmSummary({ item, detalle, onEdit }) {
   const oc = detalle?.ordenCompraOnline
   const products = oc?.items || []
+  const totalCotizado = Number(oc?.total || 0) || products.reduce((sum, product) => sum + Number(product.precio || 0) * Number(product.cantidad || 0), 0)
   const latest = detalle?.gestiones?.[0]
   return (
     <div style={{ padding: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 18 }}>
         <div><div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-3)', fontWeight: 750, letterSpacing: 0.5 }}>Resumen del registro</div><div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 3 }}>Etapa: {ESTADOS.find(e => e.id === normalizeEstado(item.etapaComercial || item.estado))?.label || 'Sin clasificar'}</div></div>
-        <Btn variant="secondary" size="sm" onClick={onEdit}>Gestión y detalle</Btn>
+        <Btn variant="primary" size="sm" onClick={onEdit} style={{ fontSize: 14, padding: '6px 10px', color: '#fff' }}>Gestión y detalle</Btn>
       </div>
 
       {oc && <section style={{ border: '1px solid #bbf7d0', background: '#f0fdf4', borderRadius: 10, padding: 14, marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
           <div><div style={{ fontSize: 11, color: 'var(--green-800)', textTransform: 'uppercase', fontWeight: 750, letterSpacing: 0.45 }}>Lo cotizado al cliente</div><div style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, fontSize: 14, color: 'var(--green-900)', marginTop: 3 }}>OC Online #{oc.nCompra}</div></div>
-          <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10, color: 'var(--text-3)' }}>TOTAL COTIZADO</div><div style={{ fontSize: 18, fontWeight: 750, color: 'var(--green-900)' }}>{money(oc.total)}</div></div>
+          <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10, color: 'var(--text-3)' }}>TOTAL COTIZADO</div><div style={{ fontSize: 18, fontWeight: 750, color: 'var(--green-900)' }}>{money(totalCotizado)}</div></div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, marginTop: 14, paddingTop: 12, borderTop: '1px solid #bbf7d0' }}>
           <DetailValue label="Estado original" value={oc.estadoCompra} />
@@ -375,14 +376,14 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
         maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 64px oklch(0 0 0/0.25)',
       }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '7px 10px' }}>
             <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', fontWeight: 750, letterSpacing: 0.4 }}>Cliente</div>
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-1)', marginTop: 2 }}>{recordTitle}</div>
             <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace", marginTop: 2 }}>#{item.ncotizacion || item.id} · registro CRM #{item.id}</div>
             {item.esHistorico && <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4, fontWeight: 600 }}>HISTÓRICO · OC Online</div>}
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-            <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', fontWeight: 750, letterSpacing: 0.4 }}>Ejecutivo</div><div style={{ fontSize: 12, color: 'var(--text-1)', fontWeight: 650, marginTop: 3 }}>{item.ejecutiva || 'Sin asignar'}</div></div>
+            <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', fontWeight: 750, letterSpacing: 0.4 }}>Ejecutivo</div><div style={{ fontSize: 16, color: 'var(--text-1)', fontWeight: 700, marginTop: 3 }}>{item.ejecutiva || 'Sin asignar'}</div></div>
             <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-3)', padding: 0, width: 28, height: 28 }}>×</button>
           </div>
         </div>
