@@ -201,8 +201,8 @@ function CrmSummary({ item, detalle, onEdit }) {
   return (
     <div style={{ padding: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 18 }}>
-        <div><div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-3)', fontWeight: 750, letterSpacing: 0.5 }}>Resumen del registro</div><div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 3 }}>{item.ejecutiva || 'Sin ejecutiva asignada'} · {ESTADOS.find(e => e.id === normalizeEstado(item.etapaComercial || item.estado))?.label}</div></div>
-        <Btn variant="secondary" size="sm" onClick={onEdit}>Editar y gestionar</Btn>
+        <div><div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-3)', fontWeight: 750, letterSpacing: 0.5 }}>Resumen del registro</div><div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 3 }}>Etapa: {ESTADOS.find(e => e.id === normalizeEstado(item.etapaComercial || item.estado))?.label || 'Sin clasificar'}</div></div>
+        <Btn variant="secondary" size="sm" onClick={onEdit}>Gestión y detalle</Btn>
       </div>
 
       {oc && <section style={{ border: '1px solid #bbf7d0', background: '#f0fdf4', borderRadius: 10, padding: 14, marginBottom: 16 }}>
@@ -217,11 +217,10 @@ function CrmSummary({ item, detalle, onEdit }) {
         </div>
         <div style={{ marginTop: 14, border: '1px solid #d1fae5', borderRadius: 7, overflowX: 'auto', background: '#fff' }}>
           {products.length ? <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse', fontSize: 11 }}>
-            <thead><tr style={{ background: '#ecfdf5' }}>{[['Producto', 'left'], ['Código', 'left'], ['Descripción', 'left'], ['Cant.', 'right'], ['P. unitario', 'right'], ['Total', 'right']].map(([label, align]) => <th key={label} style={{ padding: '8px 9px', textAlign: align, color: 'var(--text-3)', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.35 }}>{label}</th>)}</tr></thead>
+            <thead><tr style={{ background: '#ecfdf5' }}>{[['Producto', 'left'], ['Código', 'left'], ['Cant.', 'right'], ['P. unitario', 'right'], ['Total', 'right']].map(([label, align]) => <th key={label} style={{ padding: '8px 9px', textAlign: align, color: 'var(--text-3)', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.35 }}>{label}</th>)}</tr></thead>
             <tbody>{products.map(product => <tr key={product.id} style={{ borderTop: '1px solid #ecfdf5' }}>
-              <td style={{ padding: '8px 9px', minWidth: 180 }}><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><img src={product.producto?.fotoUrl || PRODUCT_PLACEHOLDER_IMAGE} alt="" loading="lazy" onError={useProductPlaceholderOnError} style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 5, border: '1px solid var(--border)', flexShrink: 0 }} /><span style={{ fontWeight: 700, lineHeight: 1.25 }}>{product.nombre || product.descripcion || 'Producto sin nombre'}</span></div></td>
+              <td style={{ padding: '8px 9px', minWidth: 180 }}><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><img src={product.producto?.fotoUrl || PRODUCT_PLACEHOLDER_IMAGE} alt="" loading="lazy" onError={useProductPlaceholderOnError} style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 5, border: '1px solid var(--border)', flexShrink: 0 }} /><span style={{ fontWeight: 700, lineHeight: 1.25 }}>{product.nombre || 'Producto sin nombre'}</span></div></td>
               <td style={{ padding: '8px 9px', fontFamily: "'DM Mono', monospace", color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{product.codigoInterno || '—'}</td>
-              <td style={{ padding: '8px 9px', color: 'var(--text-2)', minWidth: 120 }}>{product.descripcion || '—'}</td>
               <td style={{ padding: '8px 9px', textAlign: 'right', fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>{product.cantidad}</td>
               <td style={{ padding: '8px 9px', textAlign: 'right', fontFamily: "'DM Mono', monospace", whiteSpace: 'nowrap' }}>{money(product.precio)}</td>
               <td style={{ padding: '8px 9px', textAlign: 'right', fontFamily: "'DM Mono', monospace", fontWeight: 700, whiteSpace: 'nowrap' }}>{money(product.precio * product.cantidad)}</td>
@@ -241,6 +240,28 @@ function CrmSummary({ item, detalle, onEdit }) {
   )
 }
 
+function CotizacionDetalle({ oc }) {
+  const products = oc?.items || []
+  if (!oc) return null
+  return <section style={{ gridColumn: '1 / -1', border: '1px solid #bbf7d0', background: '#f0fdf4', borderRadius: 10, padding: 14 }}>
+    <div style={{ fontSize: 11, color: 'var(--green-800)', textTransform: 'uppercase', fontWeight: 750, letterSpacing: 0.45 }}>Detalle de productos cotizados</div>
+    <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 3 }}>OC Online #{oc.nCompra} · {products.length} ítems · Total: <strong>{money(oc.total)}</strong></div>
+    <div style={{ marginTop: 12, border: '1px solid #d1fae5', borderRadius: 7, overflowX: 'auto', background: '#fff' }}>
+      <table style={{ width: '100%', minWidth: 680, borderCollapse: 'collapse', fontSize: 11 }}>
+        <thead><tr style={{ background: '#ecfdf5' }}>{[['Producto', 'left'], ['Código', 'left'], ['Descripción', 'left'], ['Cant.', 'right'], ['P. unitario', 'right'], ['Total', 'right']].map(([label, align]) => <th key={label} style={{ padding: '8px 9px', textAlign: align, color: 'var(--text-3)', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.35 }}>{label}</th>)}</tr></thead>
+        <tbody>{products.map(product => <tr key={product.id} style={{ borderTop: '1px solid #ecfdf5' }}>
+          <td style={{ padding: '8px 9px', minWidth: 170 }}><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><img src={product.producto?.fotoUrl || PRODUCT_PLACEHOLDER_IMAGE} alt="" loading="lazy" onError={useProductPlaceholderOnError} style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 5, border: '1px solid var(--border)', flexShrink: 0 }} /><span style={{ fontWeight: 700, lineHeight: 1.25 }}>{product.nombre || 'Producto sin nombre'}</span></div></td>
+          <td style={{ padding: '8px 9px', fontFamily: "'DM Mono', monospace", color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{product.codigoInterno || '—'}</td>
+          <td style={{ padding: '8px 9px', color: 'var(--text-2)', minWidth: 200, whiteSpace: 'pre-wrap', lineHeight: 1.35 }}>{product.descripcion || '—'}</td>
+          <td style={{ padding: '8px 9px', textAlign: 'right', fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>{product.cantidad}</td>
+          <td style={{ padding: '8px 9px', textAlign: 'right', fontFamily: "'DM Mono', monospace", whiteSpace: 'nowrap' }}>{money(product.precio)}</td>
+          <td style={{ padding: '8px 9px', textAlign: 'right', fontFamily: "'DM Mono', monospace", fontWeight: 700, whiteSpace: 'nowrap' }}>{money(product.precio * product.cantidad)}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>
+  </section>
+}
+
 function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
   const { user } = useAuthStore()
   const convertirCliente = useCrmConvertirCliente()
@@ -249,6 +270,7 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
   const { data: catalogos } = useCrmCatalogos()
   const { data: detalle } = useCrmDetalle(item.id)
   const [detailTab, setDetailTab] = useState('resumen')
+  const ocOnline = detalle?.ordenCompraOnline
 
   const [form, setForm] = useState(() => ({
     estado:          normalizeEstado(item.etapaComercial || item.estado),
@@ -351,13 +373,17 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
         background: '#fff', borderRadius: 14, maxWidth: 700, width: '100%',
         maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 64px oklch(0 0 0/0.25)',
       }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-1)' }}>{recordTitle}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', fontWeight: 750, letterSpacing: 0.4 }}>Cliente</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-1)', marginTop: 2 }}>{recordTitle}</div>
             <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace", marginTop: 2 }}>#{item.ncotizacion || item.id} · registro CRM #{item.id}</div>
             {item.esHistorico && <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4, fontWeight: 600 }}>HISTÓRICO · OC Online</div>}
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-3)', padding: 0, width: 28, height: 28 }}>×</button>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+            <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', fontWeight: 750, letterSpacing: 0.4 }}>Ejecutivo</div><div style={{ fontSize: 12, color: 'var(--text-1)', fontWeight: 650, marginTop: 3 }}>{item.ejecutiva || 'Sin asignar'}</div></div>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-3)', padding: 0, width: 28, height: 28 }}>×</button>
+          </div>
         </div>
 
         {ordenLink?.orden && (
@@ -373,11 +399,12 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
         )}
 
         <div style={{ display: 'flex', gap: 4, padding: '10px 20px 0', borderBottom: '1px solid var(--border)' }}>
-          {[['resumen', 'Resumen'], ['editar', 'Editar y gestión']].map(([id, label]) => <button key={id} type="button" onClick={() => setDetailTab(id)} style={{ padding: '8px 11px', border: 'none', borderBottom: detailTab === id ? '2px solid var(--green-700)' : '2px solid transparent', background: 'transparent', color: detailTab === id ? 'var(--green-800)' : 'var(--text-3)', fontSize: 12, fontWeight: detailTab === id ? 750 : 500, cursor: 'pointer' }}>{label}</button>)}
+          {[['resumen', 'Resumen'], ['editar', 'Gestión y detalle']].map(([id, label]) => <button key={id} type="button" onClick={() => setDetailTab(id)} style={{ padding: '8px 11px', border: 'none', borderBottom: detailTab === id ? '2px solid var(--green-700)' : '2px solid transparent', background: 'transparent', color: detailTab === id ? 'var(--green-800)' : 'var(--text-3)', fontSize: 12, fontWeight: detailTab === id ? 750 : 500, cursor: 'pointer' }}>{label}</button>)}
         </div>
         {detailTab === 'resumen' && <CrmSummary item={item} detalle={detalle} onEdit={() => setDetailTab('editar')} />}
         {detailTab === 'editar' && <div style={{ padding: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <div style={{ gridColumn: '1 / -1', fontSize: 11, fontWeight: 750, textTransform: 'uppercase', letterSpacing: 0.55, color: 'var(--text-3)', paddingBottom: 3, borderBottom: '1px solid var(--border)' }}>Resumen comercial</div>
+          <CotizacionDetalle oc={ocOnline} />
+          <div style={{ gridColumn: '1 / -1', fontSize: 11, fontWeight: 750, textTransform: 'uppercase', letterSpacing: 0.55, color: 'var(--text-3)', paddingTop: 4, paddingBottom: 3, borderBottom: '1px solid var(--border)' }}>Gestión comercial</div>
           <Field label="Estado">
             <select value={form.estado} onChange={set('estado')} style={inputStyle}>
               {ESTADOS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
@@ -437,7 +464,7 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
             <input type="date" value={form.fechaProximo} onChange={set('fechaProximo')} style={inputStyle} />
           </Field>
 
-          <div style={{ gridColumn: '1 / -1', fontSize: 11, fontWeight: 750, textTransform: 'uppercase', letterSpacing: 0.55, color: 'var(--text-3)', paddingTop: 6, paddingBottom: 3, borderBottom: '1px solid var(--border)' }}>Contacto</div>
+          <div style={{ gridColumn: '1 / -1', fontSize: 11, fontWeight: 750, textTransform: 'uppercase', letterSpacing: 0.55, color: 'var(--text-3)', paddingTop: 6, paddingBottom: 3, borderBottom: '1px solid var(--border)' }}>Datos del cliente</div>
           <Field label="Contacto">
             <input value={form.nombre} onChange={set('nombre')} style={inputStyle} />
           </Field>
@@ -456,7 +483,7 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
             <input type="email" value={form.email} onChange={set('email')} style={inputStyle} />
           </Field>
 
-          <div style={{ gridColumn: '1 / -1', fontSize: 11, fontWeight: 750, textTransform: 'uppercase', letterSpacing: 0.55, color: 'var(--text-3)', paddingTop: 6, paddingBottom: 3, borderBottom: '1px solid var(--border)' }}>Seguimiento y notas</div>
+          <div style={{ gridColumn: '1 / -1', fontSize: 11, fontWeight: 750, textTransform: 'uppercase', letterSpacing: 0.55, color: 'var(--text-3)', paddingTop: 6, paddingBottom: 3, borderBottom: '1px solid var(--border)' }}>Gestión y seguimiento</div>
           <Field label="Acción / siguiente paso" full>
             <textarea value={form.accion} onChange={set('accion')} rows={2} style={{ ...inputStyle, resize: 'vertical' }} />
           </Field>
