@@ -2,7 +2,7 @@ import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { DndContext, DragOverlay, PointerSensor, pointerWithin, rectIntersection, useSensor, useSensors } from '@dnd-kit/core'
 import { useDroppable, useDraggable } from '@dnd-kit/core'
-import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
+import { Badge, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
 import { useCrm, useCrmEjecutivas, useCrmPatch, useCrmOrdenLink, useCrmConvertirCliente, useCrmPendientesHoy, useCrmMetricas, useCrmCreate, useCrmAsignarPendientes, useCrmCatalogos, useCrmDetalle, useCrmTransicion, useCrmGestionCreate } from '../../api/crm'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -41,6 +41,24 @@ function Field({ label, children, full }) {
   )
 }
 
+function MiniKpi({ label, value, detail, tone = 'neutral' }) {
+  const accent = tone === 'red' ? 'var(--red)' : tone === 'green' ? 'var(--green-700)' : tone === 'blue' ? 'var(--blue)' : 'var(--text-1)'
+  return (
+    <div style={{ minWidth: 150, flex: '1 1 150px', background: '#fff', border: '1px solid var(--border)', borderLeft: `3px solid ${accent}`, borderRadius: 9, padding: '9px 12px' }}>
+      <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700, color: 'var(--text-3)' }}>{label}</div>
+      <div style={{ fontSize: 20, lineHeight: 1.15, fontWeight: 750, color: 'var(--text-1)', marginTop: 2 }}>{value}</div>
+      {detail && <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3 }}>{detail}</div>}
+    </div>
+  )
+}
+
+function cardTitle(item) {
+  if (item.nombre) return item.nombre
+  if (item.rsocial) return item.rsocial
+  if (item.email) return item.email
+  return item.ncotizacion ? `Cotización #${item.ncotizacion}` : 'Registro sin contacto'
+}
+
 function ViewToggle({ view, setView }) {
   return (
     <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
@@ -62,58 +80,57 @@ function CrmCard({ item, isDragging }) {
   const fechaF = item.fecha ? new Date(item.fecha).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : null
   const proximo = item.fechaProximo ? new Date(item.fechaProximo).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) : null
   const vencido = item.fechaProximo && new Date(item.fechaProximo) < new Date()
+  const isHistoric = item.esHistorico || item.semaforo === 'HISTORICO'
+  const action = item.accion && item.accion !== item.resultado ? item.accion : null
 
   return (
     <div style={{
       background: '#fff',
       borderRadius: 10,
       border: '1px solid var(--border)',
-      padding: '10px 12px',
+      padding: '10px 11px',
       boxShadow: isDragging ? '0 8px 24px oklch(0 0 0/0.18)' : '0 1px 3px oklch(0 0 0/0.07)',
       cursor: isDragging ? 'grabbing' : 'grab',
       opacity: isDragging ? 0.92 : 1,
       transition: 'box-shadow 0.15s',
       userSelect: 'none',
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6, marginBottom: 6 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)', lineHeight: 1.3, flex: 1 }}>
-          {item.nombre || item.rsocial || '—'}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', lineHeight: 1.3, flex: 1 }}>
+          {cardTitle(item)}
         </div>
-        {item.prioridad && (
-          <Badge tone={prioridadTone(item.prioridad)} style={{ flexShrink: 0, fontSize: 10 }}>{item.prioridad}</Badge>
-        )}
+        {item.resultadoCierre && <Badge tone={item.resultadoCierre === 'GANADO' ? 'green' : item.resultadoCierre === 'PERDIDO' ? 'red' : 'gray'}>{item.resultadoCierre}</Badge>}
+        {!item.resultadoCierre && item.prioridad && <Badge tone={prioridadTone(item.prioridad)}>{item.prioridad}</Badge>}
       </div>
 
       {item.rsocial && item.rsocial !== item.nombre && (
-        <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 4 }}>{item.rsocial}</div>
+        <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.rsocial}</div>
       )}
 
       {item.ncotizacion && (
-        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: 'var(--green-700)', fontWeight: 600, marginBottom: 5 }}>
+        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: 'var(--green-700)', fontWeight: 700, marginTop: 6 }}>
           #{item.ncotizacion}
         </div>
       )}
 
-      {item.accion && (
-        <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 5, lineHeight: 1.4, borderLeft: '2px solid var(--border)', paddingLeft: 6 }}>
-          {item.accion.length > 80 ? item.accion.slice(0, 80) + '…' : item.accion}
+      {action && (
+        <div style={{ fontSize: 10, color: 'var(--text-2)', marginTop: 5, lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {action}
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 5 }}>
-        {item.canalVenta && <Badge tone="gray" style={{ fontSize: 9 }}>{item.canalVenta}</Badge>}
-        {item.tipoVenta && <Badge tone="gray" style={{ fontSize: 9 }}>{item.tipoVenta.replaceAll('_', ' ')}</Badge>}
-        {item.semaforo && item.semaforo !== 'NORMAL' && (
-          <Badge tone={item.semaforo === 'HISTORICO' ? 'gray' : item.semaforo === 'AMARILLO' ? 'amber' : 'red'} style={{ fontSize: 9 }}>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 7 }}>
+        {!isHistoric && item.semaforo && item.semaforo !== 'NORMAL' && (
+          <Badge tone={item.semaforo === 'AMARILLO' ? 'amber' : 'red'}>
             {item.semaforo}{item.diasSinGestion != null ? ` · ${item.diasSinGestion}d` : ''}
           </Badge>
         )}
-        {item.resultadoCierre && <Badge tone={item.resultadoCierre === 'GANADO' ? 'green' : item.resultadoCierre === 'PERDIDO' ? 'red' : 'gray'} style={{ fontSize: 9 }}>{item.resultadoCierre.replaceAll('_', ' ')}</Badge>}
+        {isHistoric && <span style={{ fontSize: 9, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.35 }}>Histórico</span>}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 7, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
         <div style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>
-          {item.ejecutiva || '—'}
+          {item.ejecutiva || 'Sin asignar'}
         </div>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           {fechaF && <span style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>{fechaF}</span>}
@@ -241,6 +258,7 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
   }
 
   const hasValidRut = String(form.rut || '').trim().length > 0
+  const recordTitle = cardTitle(item)
 
   async function handleConvertir() {
     if (!hasValidRut) return
@@ -269,8 +287,9 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
       }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-1)' }}>Detalle registro CRM</div>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>#{item.id}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-1)' }}>{recordTitle}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace", marginTop: 2 }}>#{item.ncotizacion || item.id} · registro CRM #{item.id}</div>
+            {item.esHistorico && <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4, fontWeight: 600 }}>HISTÓRICO · OC Online</div>}
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-3)', padding: 0, width: 28, height: 28 }}>×</button>
         </div>
@@ -288,6 +307,7 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
         )}
 
         <div style={{ padding: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={{ gridColumn: '1 / -1', fontSize: 11, fontWeight: 750, textTransform: 'uppercase', letterSpacing: 0.55, color: 'var(--text-3)', paddingBottom: 3, borderBottom: '1px solid var(--border)' }}>Resumen comercial</div>
           <Field label="Estado">
             <select value={form.estado} onChange={set('estado')} style={inputStyle}>
               {ESTADOS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
@@ -347,6 +367,7 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
             <input type="date" value={form.fechaProximo} onChange={set('fechaProximo')} style={inputStyle} />
           </Field>
 
+          <div style={{ gridColumn: '1 / -1', fontSize: 11, fontWeight: 750, textTransform: 'uppercase', letterSpacing: 0.55, color: 'var(--text-3)', paddingTop: 6, paddingBottom: 3, borderBottom: '1px solid var(--border)' }}>Contacto</div>
           <Field label="Contacto">
             <input value={form.nombre} onChange={set('nombre')} style={inputStyle} />
           </Field>
@@ -365,6 +386,7 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
             <input type="email" value={form.email} onChange={set('email')} style={inputStyle} />
           </Field>
 
+          <div style={{ gridColumn: '1 / -1', fontSize: 11, fontWeight: 750, textTransform: 'uppercase', letterSpacing: 0.55, color: 'var(--text-3)', paddingTop: 6, paddingBottom: 3, borderBottom: '1px solid var(--border)' }}>Seguimiento y notas</div>
           <Field label="Acción / siguiente paso" full>
             <textarea value={form.accion} onChange={set('accion')} rows={2} style={{ ...inputStyle, resize: 'vertical' }} />
           </Field>
@@ -584,6 +606,7 @@ export default function CrmPage() {
   const user = useAuthStore(s => s.user)
   const queryClient = useQueryClient()
   const [view, setView]               = useState('pipeline')
+  const [portfolio, setPortfolio]     = useState('ACTIVOS')
   const [ejecutiva, setEjecutiva]     = useState('')
   const [prioridad, setPrioridad]     = useState('')
   const [canalVenta, setCanalVenta]   = useState('')
@@ -608,7 +631,10 @@ export default function CrmPage() {
 
   const { data: ejecutivas = [] } = useCrmEjecutivas()
   const { data: pendientesHoyData } = useCrmPendientesHoy()
-  const { data: metricas } = useCrmMetricas({ fechaDesde, fechaHasta })
+  const metricParams = { fechaDesde, fechaHasta }
+  if (portfolio === 'ACTIVOS') metricParams.historico = '0'
+  if (portfolio === 'HISTORICO') metricParams.historico = '1'
+  const { data: metricas } = useCrmMetricas(metricParams)
   const { data: catalogos } = useCrmCatalogos()
   const transicion = useCrmTransicion()
   const assignPending = useCrmAsignarPendientes()
@@ -631,6 +657,8 @@ export default function CrmPage() {
   if (debounced)  params.search     = debounced
   if (fechaDesde) params.fechaDesde = fechaDesde
   if (fechaHasta) params.fechaHasta = fechaHasta
+  if (portfolio === 'ACTIVOS') params.historico = '0'
+  if (portfolio === 'HISTORICO') params.historico = '1'
 
   const { data: result = { items: [], total: 0, limit: 500 }, isLoading } = useCrm(params)
   const items = useMemo(() => result.items ?? [], [result.items])
@@ -650,7 +678,6 @@ export default function CrmPage() {
 
   const altaPrioridad = metricas?.prioridadAlta ?? items.filter(c => c.prioridad?.toLowerCase() === 'alta').length
   const tasaCierreVal = metricas?.tasaCierre != null ? `${Math.round(metricas.tasaCierre)}%` : '—'
-  const tiempoPipeVal = metricas?.tiempoPromedioEnPipeline != null ? `${Math.round(metricas.tiempoPromedioEnPipeline)} días` : '—'
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
@@ -722,15 +749,15 @@ export default function CrmPage() {
       />
       {creating && <NuevoLeadModal onClose={() => setCreating(false)} />}
 
-      <div className="kpi-strip">
-        <KpiCard label="Total registros"   value={total.toLocaleString('es-CL')} icon="fileText"      sublabel="Seguimientos CRM" />
-        <KpiCard label="Tasa de Cierre"     value={tasaCierreVal}                  icon="checkCircle"   tone="green" sublabel={`Ganadas / cierres clasificados · ${metricas?.porResultado?.SIN_CLASIFICAR || 0} cierres por clasificar`} />
-        <KpiCard label="Antigüedad abiertos" value={tiempoPipeVal}                 icon="clock"   tone="blue"  sublabel="Promedio desde su creación" />
-        <KpiCard label="Prioridad Alta"     value={altaPrioridad}                  icon="alertTriangle" tone="red" sublabel="Total según período" />
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+        <MiniKpi label={portfolio === 'HISTORICO' ? 'Histórico' : 'En cartera'} value={total.toLocaleString('es-CL')} detail={portfolio === 'ACTIVOS' ? 'Registros operativos' : 'Registros importados'} />
+        <MiniKpi label="Tasa de cierre" value={tasaCierreVal} detail={`${metricas?.porResultado?.SIN_CLASIFICAR || 0} sin clasificar`} tone="green" />
+        {portfolio !== 'HISTORICO' && <MiniKpi label="Pendientes" value={agendaResumen.total.toLocaleString('es-CL')} detail={`${agendaResumen.vencidas.toLocaleString('es-CL')} atrasados`} tone={agendaResumen.vencidas ? 'red' : 'blue'} />}
+        {altaPrioridad > 0 && <MiniKpi label="Prioridad alta" value={altaPrioridad.toLocaleString('es-CL')} detail="Requieren atención" tone="red" />}
       </div>
 
       {/* Agenda de pendientes */}
-      {totalPendientes > 0 && (
+      {portfolio !== 'HISTORICO' && totalPendientes > 0 && (
         <div style={{
           background: 'oklch(0.985 0.003 240)',
           border: '1px solid var(--border)',
@@ -816,6 +843,11 @@ export default function CrmPage() {
           boxShadow: 'var(--shadow-sm)', padding: '12px 16px', marginBottom: 16,
           display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
         }}>
+          <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
+            {[['ACTIVOS', 'Cartera'], ['HISTORICO', 'Histórico'], ['TODOS', 'Todo']].map(([id, label]) => (
+              <button key={id} type="button" onClick={() => setPortfolio(id)} style={{ padding: '5px 9px', fontSize: 11, fontWeight: portfolio === id ? 700 : 500, cursor: 'pointer', border: 'none', borderRight: id !== 'TODOS' ? '1px solid var(--border)' : 'none', background: portfolio === id ? 'var(--green-700)' : 'transparent', color: portfolio === id ? '#fff' : 'var(--text-2)' }}>{label}</button>
+            ))}
+          </div>
           <select value={ejecutiva} onChange={e => setEjecutiva(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
             <option value="">Todas las ejecutivas</option>
             {ejecutivas.map(e => <option key={e.ejecutiva} value={e.ejecutiva}>{e.ejecutiva} ({e.total})</option>)}

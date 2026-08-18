@@ -97,7 +97,7 @@ export default async function crmRoutes(fastify) {
     f.get('/', {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],
     }, async (request) => {
-      const { ejecutiva, estado, etapa, resultadoCierre, canalVenta, tipoVenta, semaforo, prioridad, search, page = '1', fechaDesde, fechaHasta } = request.query
+      const { ejecutiva, estado, etapa, resultadoCierre, canalVenta, tipoVenta, semaforo, prioridad, search, page = '1', fechaDesde, fechaHasta, historico } = request.query
       const LIMIT = 500
       const offset = (parseInt(page) - 1) * LIMIT
 
@@ -108,6 +108,8 @@ export default async function crmRoutes(fastify) {
       if (resultadoCierre) where.resultadoCierre = String(resultadoCierre).toUpperCase()
       if (canalVenta) where.canalVenta = String(canalVenta).toUpperCase()
       if (tipoVenta) where.tipoVenta = String(tipoVenta).toUpperCase()
+      if (historico === '1') where.esHistorico = true
+      if (historico === '0') where.esHistorico = false
       if (estado !== undefined && estado !== '') {
         const normalizedEstado = normalizeEstado(estado)
         if (normalizedEstado !== undefined) where.estado = normalizedEstado
@@ -267,10 +269,12 @@ export default async function crmRoutes(fastify) {
     f.get('/metricas', {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],
     }, async (request) => {
-      const { fechaDesde, fechaHasta } = request.query
+      const { fechaDesde, fechaHasta, historico } = request.query
 
       // Visibilidad por rol: admin ve todo; vendedor solo sus métricas.
       const where = applyScopeByRole({}, request.user)
+      if (historico === '1') where.esHistorico = true
+      if (historico === '0') where.esHistorico = false
       if (fechaDesde || fechaHasta) {
         where.fecha = {}
         if (fechaDesde) where.fecha.gte = new Date(fechaDesde)

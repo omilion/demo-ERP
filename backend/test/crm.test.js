@@ -66,6 +66,22 @@ describe('CRM estado routes', () => {
     })
   })
 
+  it('filters the operational and historical CRM portfolios explicitly', async () => {
+    const prisma = {
+      crmRegistro: {
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+      },
+      $queryRaw: vi.fn(),
+    }
+    const handlers = await buildCrmHandlers(prisma)
+    await handlers['GET /']({ query: { historico: '0' }, user: { role: 'admin' } })
+    expect(prisma.crmRegistro.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { esHistorico: false } }))
+
+    await handlers['GET /']({ query: { historico: '1' }, user: { role: 'admin' } })
+    expect(prisma.crmRegistro.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { esHistorico: true } }))
+  })
+
   it('updates estado as text instead of number', async () => {
     const updated = { id: 10, estado: '2' }
     const prisma = {
