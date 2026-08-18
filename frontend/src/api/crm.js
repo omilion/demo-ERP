@@ -9,10 +9,10 @@ export const useCrm = (params = {}) =>
     staleTime: 60_000,
   })
 
-export const useCrmEjecutivas = () =>
+export const useCrmEjecutivas = (params = {}) =>
   useQuery({
-    queryKey: ['crm', 'ejecutivas'],
-    queryFn: () => api.get('/crm/ejecutivas').then(r => r.data),
+    queryKey: ['crm', 'ejecutivas', params],
+    queryFn: () => api.get('/crm/ejecutivas', { params }).then(r => r.data),
     staleTime: 300_000,
   })
 

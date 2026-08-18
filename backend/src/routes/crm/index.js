@@ -134,6 +134,11 @@ export default async function crmRoutes(fastify) {
           orderBy: { fecha: 'desc' },
           skip: offset,
           take: LIMIT,
+          include: {
+            ordenCompraOnline: {
+              select: { id: true, nCompra: true, total: true, estadoCompra: true },
+            },
+          },
         }),
         f.prisma.crmRegistro.count({ where }),
       ])
@@ -381,6 +386,14 @@ export default async function crmRoutes(fastify) {
         include: {
           cliente: { select: { id: true, rut: true, nombre: true } },
           orden: { select: { id: true, nInterno: true, tipo: true, estado: true, estadoPago: true, estadoEntrega: true, facturado: true } },
+          ordenCompraOnline: {
+            select: {
+              id: true, nCompra: true, fechaHora: true, fechaCotizacion: true,
+              total: true, estadoCompra: true, tipoDocumento: true, canal: true,
+              codigoVendedor: true, obsCliente: true,
+              items: { select: { id: true, codigoInterno: true, nombre: true, descripcion: true, cantidad: true, precio: true } },
+            },
+          },
           gestiones: { orderBy: { realizadaAt: 'desc' }, take: 100 },
           estadosHistorial: { orderBy: { createdAt: 'desc' }, take: 100 },
         },
@@ -565,13 +578,22 @@ export default async function crmRoutes(fastify) {
     // GET /api/crm/ejecutivas — unique list (unified with active users)
     f.get('/ejecutivas', {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],
-    }, async () => {
-      const crmRows = await f.prisma.$queryRaw`
-        SELECT ejecutiva, COUNT(*)::int AS total
-        FROM ventas.crm_registros
-        WHERE ejecutiva IS NOT NULL AND ejecutiva <> ''
-        GROUP BY ejecutiva
-      `
+    }, async (request) => {
+      const where = { ejecutiva: { not: null } }
+      if (request.query?.historico === '1') where.esHistorico = true
+      if (request.query?.historico === '0') where.esHistorico = false
+      const crmRows = await f.prisma.crmRegistro.groupBy({
+        by: ['ejecutiva'],
+        where,
+        _count: { _all: true },
+      })
+      const totalsByName = new Map()
+      for (const row of crmRows) {
+        const name = String(row.ejecutiva || '').trim()
+        if (!name) continue
+        const key = name.toLocaleLowerCase('es-CL')
+        totalsByName.set(key, (totalsByName.get(key) || 0) + row._count._all)
+      }
 
       const users = await f.prisma.user.findMany({
         where: {
@@ -588,15 +610,15 @@ export default async function crmRoutes(fastify) {
         if (u.nombre && u.nombre.trim()) {
           const name = u.nombre.trim()
           namesSet.add(name.toLowerCase())
-          result.push({ ejecutiva: name, vendedorId: u.id, source: 'user' })
+          result.push({ ejecutiva: name, vendedorId: u.id, source: 'user', total: totalsByName.get(name.toLocaleLowerCase('es-CL')) || 0 })
         }
       }
 
       for (const r of crmRows) {
-        const name = r.ejecutiva.trim()
+        const name = String(r.ejecutiva || '').trim()
         if (name && !namesSet.has(name.toLowerCase())) {
           namesSet.add(name.toLowerCase())
-          result.push({ ejecutiva: name, source: 'crm' })
+          result.push({ ejecutiva: name, source: 'crm', total: totalsByName.get(name.toLocaleLowerCase('es-CL')) || 0 })
         }
       }
 

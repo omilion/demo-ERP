@@ -82,6 +82,29 @@ describe('CRM estado routes', () => {
     expect(prisma.crmRegistro.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { esHistorico: true } }))
   })
 
+  it('returns real executive totals for the selected portfolio', async () => {
+    const prisma = {
+      crmRegistro: {
+        groupBy: vi.fn().mockResolvedValue([
+          { ejecutiva: 'Ana', _count: { _all: 4 } },
+          { ejecutiva: 'Histórica', _count: { _all: 7 } },
+        ]),
+      },
+      user: { findMany: vi.fn().mockResolvedValue([{ id: 11, nombre: 'Ana' }, { id: 12, nombre: 'Pedro' }]) },
+    }
+    const handlers = await buildCrmHandlers(prisma)
+    const response = await handlers['GET /ejecutivas']({ query: { historico: '1' } })
+
+    expect(prisma.crmRegistro.groupBy).toHaveBeenCalledWith({
+      by: ['ejecutiva'], where: { ejecutiva: { not: null }, esHistorico: true }, _count: { _all: true },
+    })
+    expect(response).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ejecutiva: 'Ana', vendedorId: 11, total: 4 }),
+      expect.objectContaining({ ejecutiva: 'Pedro', vendedorId: 12, total: 0 }),
+      expect.objectContaining({ ejecutiva: 'Histórica', total: 7 }),
+    ]))
+  })
+
   it('updates estado as text instead of number', async () => {
     const updated = { id: 10, estado: '2' }
     const prisma = {

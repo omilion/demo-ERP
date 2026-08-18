@@ -59,6 +59,11 @@ function cardTitle(item) {
   return item.ncotizacion ? `Cotización #${item.ncotizacion}` : 'Registro sin contacto'
 }
 
+function money(value) {
+  const amount = Number(value || 0)
+  return amount ? amount.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }) : 'Monto no informado'
+}
+
 function ViewToggle({ view, setView }) {
   return (
     <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
@@ -82,6 +87,7 @@ function CrmCard({ item, isDragging }) {
   const vencido = item.fechaProximo && new Date(item.fechaProximo) < new Date()
   const isHistoric = item.esHistorico || item.semaforo === 'HISTORICO'
   const action = item.accion && item.accion !== item.resultado ? item.accion : null
+  const ocOnline = item.ordenCompraOnline
 
   return (
     <div style={{
@@ -110,6 +116,13 @@ function CrmCard({ item, isDragging }) {
       {item.ncotizacion && (
         <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: 'var(--green-700)', fontWeight: 700, marginTop: 6 }}>
           #{item.ncotizacion}
+        </div>
+      )}
+
+      {ocOnline && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 5, padding: '5px 7px', borderRadius: 6, background: '#f0fdf4', color: 'var(--green-800)' }}>
+          <span style={{ fontSize: 10, fontWeight: 700 }}>Cotizado</span>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, fontWeight: 700 }}>{money(ocOnline.total)}</span>
         </div>
       )}
 
@@ -176,6 +189,47 @@ function DraggableCard({ item, onOpen }) {
 }
 
 // ── Detail modal ───────────────────────────────────────────────────────────────
+function DetailValue({ label, value }) {
+  return <div><div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 0.35 }}>{label}</div><div style={{ fontSize: 13, color: 'var(--text-1)', marginTop: 3 }}>{value || '—'}</div></div>
+}
+
+function CrmSummary({ item, detalle, onEdit }) {
+  const oc = detalle?.ordenCompraOnline
+  const products = oc?.items || []
+  const latest = detalle?.gestiones?.[0]
+  return (
+    <div style={{ padding: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 18 }}>
+        <div><div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-3)', fontWeight: 750, letterSpacing: 0.5 }}>Resumen del registro</div><div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 3 }}>{item.ejecutiva || 'Sin ejecutiva asignada'} · {ESTADOS.find(e => e.id === normalizeEstado(item.etapaComercial || item.estado))?.label}</div></div>
+        <Btn variant="secondary" size="sm" onClick={onEdit}>Editar y gestionar</Btn>
+      </div>
+
+      {oc && <section style={{ border: '1px solid #bbf7d0', background: '#f0fdf4', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+          <div><div style={{ fontSize: 11, color: 'var(--green-800)', textTransform: 'uppercase', fontWeight: 750, letterSpacing: 0.45 }}>Lo cotizado al cliente</div><div style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, fontSize: 14, color: 'var(--green-900)', marginTop: 3 }}>OC Online #{oc.nCompra}</div></div>
+          <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10, color: 'var(--text-3)' }}>TOTAL COTIZADO</div><div style={{ fontSize: 18, fontWeight: 750, color: 'var(--green-900)' }}>{money(oc.total)}</div></div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, marginTop: 14, paddingTop: 12, borderTop: '1px solid #bbf7d0' }}>
+          <DetailValue label="Estado original" value={oc.estadoCompra} />
+          <DetailValue label="Fecha cotización" value={(oc.fechaCotizacion || oc.fechaHora) ? new Date(oc.fechaCotizacion || oc.fechaHora).toLocaleDateString('es-CL') : null} />
+          <DetailValue label="Productos" value={`${products.length} ítem${products.length === 1 ? '' : 's'}`} />
+        </div>
+        <div style={{ marginTop: 14, border: '1px solid #d1fae5', borderRadius: 7, overflow: 'hidden', background: '#fff' }}>
+          {products.length ? products.map((product, index) => <div key={product.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, padding: '8px 10px', borderBottom: index < products.length - 1 ? '1px solid #ecfdf5' : 'none', fontSize: 12 }}><div><div style={{ fontWeight: 650 }}>{product.nombre || product.descripcion || 'Producto sin nombre'}</div><div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>{product.codigoInterno || 'Sin código'} · {product.cantidad} unidad{product.cantidad === 1 ? '' : 'es'}</div></div><div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-2)', alignSelf: 'center' }}>{money(product.precio * product.cantidad)}</div></div>) : <div style={{ padding: 10, fontSize: 12, color: 'var(--text-3)' }}>La OC fue importada sin detalle de ítems.</div>}
+        </div>
+        <Link to={`/ordenes-compra/${oc.id}`} style={{ display: 'inline-block', marginTop: 11, fontSize: 12, fontWeight: 700, color: 'var(--green-800)' }}>Abrir OC Online completa →</Link>
+      </section>}
+
+      <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+        <DetailValue label="Contacto" value={item.nombre || item.rsocial} />
+        <DetailValue label="Correo" value={item.email} />
+        <DetailValue label="Próximo contacto" value={item.fechaProximo ? new Date(item.fechaProximo).toLocaleDateString('es-CL') : null} />
+        <DetailValue label="Última gestión" value={latest ? `${latest.tipo}: ${latest.resultado}` : (item.resultado || item.accion)} />
+      </section>
+    </div>
+  )
+}
+
 function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
   const { user } = useAuthStore()
   const convertirCliente = useCrmConvertirCliente()
@@ -183,6 +237,7 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
   const crearGestion = useCrmGestionCreate()
   const { data: catalogos } = useCrmCatalogos()
   const { data: detalle } = useCrmDetalle(item.id)
+  const [detailTab, setDetailTab] = useState('resumen')
 
   const [form, setForm] = useState(() => ({
     estado:          normalizeEstado(item.etapaComercial || item.estado),
@@ -306,7 +361,11 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
           </div>
         )}
 
-        <div style={{ padding: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'flex', gap: 4, padding: '10px 20px 0', borderBottom: '1px solid var(--border)' }}>
+          {[['resumen', 'Resumen'], ['editar', 'Editar y gestión']].map(([id, label]) => <button key={id} type="button" onClick={() => setDetailTab(id)} style={{ padding: '8px 11px', border: 'none', borderBottom: detailTab === id ? '2px solid var(--green-700)' : '2px solid transparent', background: 'transparent', color: detailTab === id ? 'var(--green-800)' : 'var(--text-3)', fontSize: 12, fontWeight: detailTab === id ? 750 : 500, cursor: 'pointer' }}>{label}</button>)}
+        </div>
+        {detailTab === 'resumen' && <CrmSummary item={item} detalle={detalle} onEdit={() => setDetailTab('editar')} />}
+        {detailTab === 'editar' && <div style={{ padding: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div style={{ gridColumn: '1 / -1', fontSize: 11, fontWeight: 750, textTransform: 'uppercase', letterSpacing: 0.55, color: 'var(--text-3)', paddingBottom: 3, borderBottom: '1px solid var(--border)' }}>Resumen comercial</div>
           <Field label="Estado">
             <select value={form.estado} onChange={set('estado')} style={inputStyle}>
@@ -409,10 +468,10 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
             <strong style={{ fontSize: 13 }}>Historial reciente</strong>
             {[...(detalle?.gestiones || []).map(row => ({ fecha: row.realizadaAt, texto: `${row.tipo}: ${row.resultado}` })), ...(detalle?.estadosHistorial || []).map(row => ({ fecha: row.createdAt, texto: `${row.estadoAnterior || 'Inicio'} → ${row.estadoNuevo}${row.resultadoCierre ? ` (${row.resultadoCierre})` : ''}` }))].sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 15).map((row, index) => <div key={`${row.fecha}-${index}`} style={{ fontSize: 11, padding: '5px 0', borderBottom: '1px solid var(--border)' }}><span style={{ color: 'var(--text-3)', marginRight: 8 }}>{new Date(row.fecha).toLocaleString('es-CL')}</span>{row.texto}</div>)}
           </div>}
-        </div>
+        </div>}
 
         <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          {form.estado === 'CERRADO' && (
+          {detailTab === 'editar' && form.estado === 'CERRADO' && (
             <Btn
               variant="secondary"
               size="sm"
@@ -423,10 +482,10 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
               {convertirCliente.isPending ? 'Convirtiendo...' : 'Convertir a Cliente'}
             </Btn>
           )}
-          <Btn variant="secondary" size="sm" onClick={onClose}>Cancelar</Btn>
-          <Btn variant="primary" size="sm" onClick={save} disabled={patch.isPending || transicion.isPending}>
+          <Btn variant="secondary" size="sm" onClick={onClose}>{detailTab === 'editar' ? 'Cancelar' : 'Cerrar'}</Btn>
+          {detailTab === 'editar' && <Btn variant="primary" size="sm" onClick={save} disabled={patch.isPending || transicion.isPending}>
             {patch.isPending ? 'Guardando…' : 'Guardar'}
-          </Btn>
+          </Btn>}
         </div>
       </div>
     </div>
@@ -629,7 +688,8 @@ export default function CrmPage() {
     return () => clearTimeout(ref.current)
   }, [search])
 
-  const { data: ejecutivas = [] } = useCrmEjecutivas()
+  const ejecutivasParams = portfolio === 'ACTIVOS' ? { historico: '0' } : portfolio === 'HISTORICO' ? { historico: '1' } : {}
+  const { data: ejecutivas = [] } = useCrmEjecutivas(ejecutivasParams)
   const { data: pendientesHoyData } = useCrmPendientesHoy()
   const metricParams = { fechaDesde, fechaHasta }
   if (portfolio === 'ACTIVOS') metricParams.historico = '0'
@@ -843,11 +903,6 @@ export default function CrmPage() {
           boxShadow: 'var(--shadow-sm)', padding: '12px 16px', marginBottom: 16,
           display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
         }}>
-          <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
-            {[['ACTIVOS', 'Cartera'], ['HISTORICO', 'Histórico'], ['TODOS', 'Todo']].map(([id, label]) => (
-              <button key={id} type="button" onClick={() => setPortfolio(id)} style={{ padding: '5px 9px', fontSize: 11, fontWeight: portfolio === id ? 700 : 500, cursor: 'pointer', border: 'none', borderRight: id !== 'TODOS' ? '1px solid var(--border)' : 'none', background: portfolio === id ? 'var(--green-700)' : 'transparent', color: portfolio === id ? '#fff' : 'var(--text-2)' }}>{label}</button>
-            ))}
-          </div>
           <select value={ejecutiva} onChange={e => setEjecutiva(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
             <option value="">Todas las ejecutivas</option>
             {ejecutivas.map(e => <option key={e.ejecutiva} value={e.ejecutiva}>{e.ejecutiva} ({e.total})</option>)}
@@ -876,6 +931,11 @@ export default function CrmPage() {
           )}
           <div style={{ flex: 1, minWidth: 160 }}>
             <SearchBar placeholder="Contacto, organismo, RUT, cotización..." value={search} onChange={setSearch} />
+          </div>
+          <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden', marginLeft: 'auto' }}>
+            {[['ACTIVOS', 'Cartera'], ['HISTORICO', 'Histórico'], ['TODOS', 'Todo']].map(([id, label]) => (
+              <button key={id} type="button" onClick={() => setPortfolio(id)} style={{ padding: '5px 9px', fontSize: 11, fontWeight: portfolio === id ? 700 : 500, cursor: 'pointer', border: 'none', borderRight: id !== 'TODOS' ? '1px solid var(--border)' : 'none', background: portfolio === id ? 'var(--green-700)' : 'transparent', color: portfolio === id ? '#fff' : 'var(--text-2)' }}>{label}</button>
+            ))}
           </div>
         </div>
       )}
