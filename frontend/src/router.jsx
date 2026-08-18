@@ -36,6 +36,7 @@ import DescuentosPage from './pages/descuentos/DescuentosPage'
 import ProveedoresPage from './pages/proveedores/ProveedoresPage'
 import ProveedorDetallePage from './pages/proveedores/ProveedorDetallePage'
 import CrmPage from './pages/crm/CrmPage'
+import CrmGestionDetallePage from './pages/crm/CrmGestionDetallePage'
 import ConfigPage from './pages/config/ConfigPage'
 import DespachosPage from './pages/despachos/DespachosPage'
 import GuiaPrintPage from './pages/despachos/GuiaPrintPage'
@@ -132,6 +133,7 @@ export const router = createBrowserRouter([
       { path: 'proveedores', element: protect(<ProveedoresPage />, { module: 'proveedores' }) },
       { path: 'proveedores/:id', element: protect(<ProveedorDetallePage />, { module: 'proveedores' }) },
       { path: 'crm', element: protect(<CrmPage />, { module: 'ventas' }) },
+      { path: 'crm/:id/gestion', element: protect(<CrmGestionDetallePage />, { module: 'ventas' }) },
       { path: 'config',        element: <ProtectedRoute allowedRoles={['admin']}><ConfigPage /></ProtectedRoute> },
       { path: 'matriz-ventas', element: <Navigate to="/ventas" replace /> },
       { path: 'despachos', element: protect(<DespachosPage />, { module: 'despacho' }) },

@@ -4,7 +4,7 @@ import { DndContext, DragOverlay, PointerSensor, pointerWithin, rectIntersection
 import { useDroppable, useDraggable } from '@dnd-kit/core'
 import { Badge, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
 import { useCrm, useCrmEjecutivas, useCrmPatch, useCrmOrdenLink, useCrmConvertirCliente, useCrmPendientesHoy, useCrmMetricas, useCrmCreate, useCrmAsignarPendientes, useCrmCatalogos, useCrmDetalle, useCrmTransicion, useCrmGestionCreate } from '../../api/crm'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/auth'
 import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
@@ -263,6 +263,7 @@ function CotizacionDetalle({ oc }) {
 }
 
 function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const convertirCliente = useCrmConvertirCliente()
   const transicion = useCrmTransicion()
@@ -398,10 +399,7 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 4, padding: '10px 20px 0', borderBottom: '1px solid var(--border)' }}>
-          {[['resumen', 'Resumen'], ['editar', 'Gestión y detalle']].map(([id, label]) => <button key={id} type="button" onClick={() => setDetailTab(id)} style={{ padding: '8px 11px', border: 'none', borderBottom: detailTab === id ? '2px solid var(--green-700)' : '2px solid transparent', background: 'transparent', color: detailTab === id ? 'var(--green-800)' : 'var(--text-3)', fontSize: 12, fontWeight: detailTab === id ? 750 : 500, cursor: 'pointer' }}>{label}</button>)}
-        </div>
-        {detailTab === 'resumen' && <CrmSummary item={item} detalle={detalle} onEdit={() => setDetailTab('editar')} />}
+        <CrmSummary item={item} detalle={detalle} onEdit={() => navigate(`/crm/${item.id}/gestion`)} />
         {detailTab === 'editar' && <div style={{ padding: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <CotizacionDetalle oc={ocOnline} />
           <div style={{ gridColumn: '1 / -1', fontSize: 11, fontWeight: 750, textTransform: 'uppercase', letterSpacing: 0.55, color: 'var(--text-3)', paddingTop: 4, paddingBottom: 3, borderBottom: '1px solid var(--border)' }}>Gestión comercial</div>
