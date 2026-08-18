@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast, confirmDialog } from '../../store/notif'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs } from '../../components/shared'
@@ -12,6 +12,9 @@ import api from '../../api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import { useResumenTransito } from '../../api/importaciones'
+import ImportacionesPage from '../importaciones/ImportacionesPage'
+import OrdenesCompraProveedoresPage from '../ordenes-compra-proveedores/OrdenesCompraProveedoresPage'
 
 const estadoInventarioOptions = ['', 'Inventariado', 'Externo', 'Transitorio']
 const estadoOperativoOptions = ['', 'Disponible', 'Stock crítico', 'Sin stock', 'Incompleto', 'Descontinuado', 'Transitorio', 'En transito', 'Reserva']
@@ -100,6 +103,15 @@ export default function BodegaPage() {
     })
   }
 
+  const { data: transitoData = { items: [] } } = useResumenTransito()
+  const transitoMap = useMemo(() => {
+    const map = new Map()
+    for (const item of transitoData.items || []) {
+      map.set(item.productoId, item)
+    }
+    return map
+  }, [transitoData])
+
   const cols = [
     { key: 'fotoUrl', label: 'Foto', render: v => v
       ? <img src={v} alt="" loading="lazy" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} onError={useProductPlaceholderOnError} />
@@ -113,7 +125,20 @@ export default function BodegaPage() {
     { key: 'porcDesc', label: 'Desc.', align: 'right', render: v => `${Number(v || 0).toLocaleString('es-CL')}%` },
     { key: 'precioLista', label: 'Precio costo', align: 'right', render: v => mono(money(v)) },
     { key: 'stockCritico', label: 'Stock crit.', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
-    { key: 'stock', label: 'Stock', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
+    { key: 'stock', label: 'Stock', align: 'right', render: (v, row) => {
+      const transitItem = transitoMap.get(row.id)
+      const enTransito = transitItem?.totalEnTransito || 0
+      return (
+        <div>
+          <div>{mono(Number(v || 0).toLocaleString('es-CL'))}</div>
+          {enTransito > 0 && (
+            <span style={{ fontSize: 10, color: 'var(--blue)', fontWeight: 600, display: 'inline-block' }} title={`En camino: ${enTransito} unidades`}>
+              +{enTransito} trán.
+            </span>
+          )}
+        </div>
+      )
+    }},
     { key: 'proveedor', label: 'Proveedor', render: v => v || '-' },
     { key: 'estadoInventario', label: 'Estado inventario', required: true, render: v => v || '-' },
     { key: 'estadoOperacional', label: 'Estado operativo', required: true, render: v => <Badge tone={estadoTone(v)}>{v === 'Reserva' ? 'Reservado' : (v || 'Sin evaluar')}</Badge> },
@@ -142,10 +167,6 @@ export default function BodegaPage() {
 
   const toolbarExtra = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
-      <Tabs tabs={[
-        { id: 'inventario', label: 'Bodega Inventario' },
-        { id: 'taller', label: 'Bodega Taller' },
-      ]} active={tab} onChange={t => { setTab(t); setSearch('') }} style={{ marginBottom: 0 }} />
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <select value={filter} onChange={e => setFilter(e.target.value)} style={selectStyle}>
           <option value="all">Todos los estados</option>
@@ -194,11 +215,18 @@ export default function BodegaPage() {
     </div>
   )
 
+  const bodegaTabs = [
+    { id: 'inventario', label: 'Bodega Inventario' },
+    { id: 'taller', label: 'Bodega Taller' },
+    { id: 'importaciones', label: 'Importaciones (En Tránsito)' },
+    { id: 'compras', label: 'Sugerencia de OC / Compras' },
+  ]
+
   return (
     <main className="page page-wide">
       <PageHeader
-        title="Bodega"
-        subtitle="Control de stock e inventario"
+        title="Bodega e Inventario"
+        subtitle="Control de existencias físicas, importaciones en tránsito y compras por ritmo de ventas"
         breadcrumb={['Inicio', 'Bodega']}
         actions={<>
           <Btn variant="secondary" icon="download" size="sm"
@@ -209,37 +237,49 @@ export default function BodegaPage() {
         </>}
       />
 
-      <div className="kpi-strip">
-        <KpiCard label="Total productos" value={kpiStats.total ?? totalEnBodega} icon="package" sublabel={`${bodegaParam} · limpiar filtro estado`} onClick={resetEstadoFilters} />
-        <KpiCard label="Stock crítico" value={criticos} icon="alertTriangle" tone="amber" sublabel="Stock bajo mínimo" onClick={() => { setFilter('critico'); setEstadoOperativo('') }} />
-        <KpiCard label="Sin stock" value={sinStock} icon="x" tone="red" sublabel="Requiere reposición" onClick={() => { setFilter('sin-stock'); setEstadoOperativo('') }} />
-        <KpiCard label="Valor inventario" value={valorInventarioLabel} icon="dollarSign" sublabel="Costo/lista valorizado" onClick={resetEstadoFilters} />
+      <div style={{ marginBottom: 16 }}>
+        <Tabs tabs={bodegaTabs} active={tab} onChange={t => { setTab(t); setSearch('') }} />
       </div>
 
-      <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
-        {totalEnBodega > LIMIT && !debouncedSearch && (
-          <div style={{ padding: '8px 16px', background: 'var(--amber-bg, #fffbeb)', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text-2)' }}>
-            Mostrando los primeros {LIMIT.toLocaleString('es-CL')} de {totalEnBodega.toLocaleString('es-CL')} productos. Use filtros para acotar.
+      {tab === 'importaciones' ? (
+        <ImportacionesPage embedded />
+      ) : tab === 'compras' ? (
+        <OrdenesCompraProveedoresPage embedded />
+      ) : (
+        <>
+          <div className="kpi-strip">
+            <KpiCard label="Total productos" value={kpiStats.total ?? totalEnBodega} icon="package" sublabel={`${bodegaParam} · limpiar filtro estado`} onClick={resetEstadoFilters} />
+            <KpiCard label="Stock crítico" value={criticos} icon="alertTriangle" tone="amber" sublabel="Stock bajo mínimo" onClick={() => { setFilter('critico'); setEstadoOperativo('') }} />
+            <KpiCard label="Sin stock" value={sinStock} icon="x" tone="red" sublabel="Requiere reposición" onClick={() => { setFilter('sin-stock'); setEstadoOperativo('') }} />
+            <KpiCard label="Valor inventario" value={valorInventarioLabel} icon="dollarSign" sublabel="Costo/lista valorizado" onClick={resetEstadoFilters} />
           </div>
-        )}
-        {isLoading
-          ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando productos...</div>
-          : <Table
-              key={tab}
-              columns={cols}
-              rows={productos}
-              emptyMessage="No hay productos con ese criterio"
-              onRowDoubleClick={canWriteCatalogo ? row => navigate('/bodega/' + row.id + '/editar') : undefined}
-              keyboard
-              autoFocus
-              stickyHeader
-              ariaLabel="Productos de bodega"
-              getRowKey={row => row.id}
-              columnPrefsKey={`bodega-${tab}`}
-              toolbarExtra={toolbarExtra}
-            />
-        }
-      </div>
+
+          <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
+            {totalEnBodega > LIMIT && !debouncedSearch && (
+              <div style={{ padding: '8px 16px', background: 'var(--amber-bg, #fffbeb)', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text-2)' }}>
+                Mostrando los primeros {LIMIT.toLocaleString('es-CL')} de {totalEnBodega.toLocaleString('es-CL')} productos. Use filtros para acotar.
+              </div>
+            )}
+            {isLoading
+              ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando productos...</div>
+              : <Table
+                  key={tab}
+                  columns={cols}
+                  rows={productos}
+                  emptyMessage="No hay productos con ese criterio"
+                  onRowDoubleClick={canWriteCatalogo ? row => navigate('/bodega/' + row.id + '/editar') : undefined}
+                  keyboard
+                  autoFocus
+                  stickyHeader
+                  ariaLabel="Productos de bodega"
+                  getRowKey={row => row.id}
+                  columnPrefsKey={`bodega-${tab}`}
+                  toolbarExtra={toolbarExtra}
+                />
+            }
+          </div>
+        </>
+      )}
 
       {importing && <ImportModal canWriteBodega={canWriteBodega} onClose={() => setImporting(false)} onDone={() => qc.invalidateQueries({ queryKey: ['productos'] })} />}
     </main>

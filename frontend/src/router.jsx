@@ -68,6 +68,8 @@ import EmitirLiquidacionPage from './pages/facturacion/EmitirLiquidacionPage'
 import EmitirExportacionPage from './pages/facturacion/EmitirExportacionPage'
 import DocumentosRecibidosPage from './pages/facturacion/DocumentosRecibidosPage'
 import CosteoPage from './pages/costeo/CosteoPage'
+import ImportacionesPage from './pages/importaciones/ImportacionesPage'
+import OrdenesCompraProveedoresPage from './pages/ordenes-compra-proveedores/OrdenesCompraProveedoresPage'
 
 
 const ALL = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
@@ -96,6 +98,8 @@ export const router = createBrowserRouter([
       { path: 'bodega', element: protect(<BodegaPage />, { module: 'bodega' }) },
       { path: 'bodega/nuevo', element: protect(<BodegaFormPage />, { module: 'bodega', permission: 'write' }) },
       { path: 'bodega/:id/editar', element: protect(<BodegaFormPage />, { module: 'bodega', permission: 'write' }) },
+      { path: 'importaciones', element: protect(<ImportacionesPage />, { module: 'bodega' }) },
+      { path: 'ordenes-compra-proveedores', element: protect(<OrdenesCompraProveedoresPage />, { module: 'bodega' }) },
       { path: 'taller', element: protect(<TallerPage />, { module: 'taller' }) },
       { path: 'taller/nueva', element: protect(<TallerFormPage />, { module: 'taller', permission: 'write' }) },
       { path: 'taller/:id', element: protect(<TallerFormPage />, { module: 'taller' }) },

@@ -24,6 +24,8 @@ const NAV_GROUPS = [
   ] },
   { label: 'Bodega', items: [
     { label: 'Inventario', route: '/bodega', module: 'bodega' },
+    { label: 'Importaciones (Tránsito)', route: '/importaciones', module: 'bodega' },
+    { label: 'Órdenes de Compra Proveedores', route: '/ordenes-compra-proveedores', module: 'bodega' },
     { label: 'Consulta Precios', route: '/consulta-precios', module: 'catalogo' },
     { label: 'Ingreso Mercaderia', route: '/stock-ingresos', module: 'bodega' },
     { label: 'Bodega Taller', route: '/bodega-taller', module: 'taller' },
