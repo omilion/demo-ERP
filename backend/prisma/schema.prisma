@@ -1129,6 +1129,7 @@ model Odt {
   fechaTermino           DateTime?          @map("fecha_termino")
   ordenId                Int?               @map("orden_id")
   sucursalId             Int?               @map("sucursal_id")
+  legacyNInterno         Int?               @unique @map("legacy_n_interno")
   estado                 String             @default("Pendiente")
   prioridad              String             @default("normal")
   emergencia             Boolean            @default(false)
