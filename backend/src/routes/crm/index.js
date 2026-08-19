@@ -4,6 +4,7 @@ import {
   CRM_RESULTADOS,
   CRM_TIPOS_VENTA,
   crmCatalogos,
+  isCrmFlowComercial,
   normalizeEtapa,
 } from '../../domain/crm/constants.js'
 import { addSemaforo, createCrmGestion, elapsedDays, transitionCrm } from '../../domain/crm/service.js'
@@ -34,6 +35,21 @@ async function ensureCrmAccess(prisma, id, user) {
 function handleDomainError(error, reply) {
   if (!error?.statusCode) throw error
   return reply.code(error.statusCode).send({ error: error.message })
+}
+
+// La cabecera importada de una OC puede contener un total antiguo o incompleto.
+// Cuando hay detalle, la fuente de verdad comercial es la suma de sus líneas.
+function totalCotizado(ordenCompraOnline) {
+  const items = ordenCompraOnline?.items
+  if (Array.isArray(items) && items.length) {
+    return items.reduce((total, item) => {
+      const cantidad = Number(item.cantidad)
+      const precio = Number(item.precio)
+      return total + (Number.isFinite(cantidad) ? cantidad : 0) * (Number.isFinite(precio) ? precio : 0)
+    }, 0)
+  }
+  const stored = Number(ordenCompraOnline?.total)
+  return Number.isFinite(stored) ? stored : 0
 }
 
 function startAndEndOfToday() {
@@ -93,6 +109,113 @@ export default async function crmRoutes(fastify) {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],
     }, async () => crmCatalogos())
 
+    // La ficha comercial se guarda como cotizacion CRM. No crea una Orden ni
+    // entra a Matriz de Ventas: esa conversion ocurre al aprobar la oportunidad.
+    f.post('/cotizaciones', {
+      preHandler: [f.authenticate, f.rbac('ventas', 'write')],
+    }, async (request, reply) => {
+      const b = request.body || {}
+      const tipo = String(b.tipo || '').trim()
+      const esCotizacionSimple = String(b.crmQuoteMode || '').toUpperCase() === 'PROSPECCION_DIRECTA'
+      const canalVenta = esCotizacionSimple ? 'PROSPECCION_DIRECTA' : tipo === 'LicitaciÃ³n' ? 'LICITACION' : null
+      const tipoVenta = esCotizacionSimple ? 'COTIZACION_SIMPLE' : canalVenta === 'LICITACION' ? 'LICITACION' : null
+      const clienteId = Number(b.clienteId)
+      const rawItems = Array.isArray(b.items) ? b.items : []
+      if (!canalVenta) return reply.code(400).send({ error: 'Selecciona una cotizacion CRM valida' })
+      if (!Number.isInteger(clienteId) || clienteId <= 0) return reply.code(400).send({ error: 'Selecciona un cliente' })
+      if (!rawItems.length) return reply.code(400).send({ error: 'Agrega al menos un producto' })
+      if (tipo === 'LicitaciÃ³n' && (!String(b.licitacion || '').trim() || !b.licitacionFecha)) return reply.code(400).send({ error: 'Licitacion requiere ID y fecha' })
+      if (!/^\S+@\S+\.\S+$/.test(String(b.emailContactoDespacho || '').trim())) return reply.code(400).send({ error: 'Ingresa el correo del contacto de despacho' })
+      const productIds = [...new Set(rawItems.map(item => Number(item.productoId)).filter(Number.isInteger))]
+      if (productIds.length !== rawItems.length) return reply.code(400).send({ error: 'Cada item debe corresponder a un producto del catalogo' })
+
+      const result = await f.prisma.$transaction(async tx => {
+        const [cliente, productos] = await Promise.all([
+          tx.cliente.findUnique({ where: { id: clienteId }, select: { id: true, activo: true, rut: true, nombre: true, email: true, telefono: true } }),
+          tx.producto.findMany({ where: { id: { in: productIds } }, select: { id: true, activo: true, codigoInterno: true, nombre: true, descripcion: true } }),
+        ])
+        if (!cliente) throw Object.assign(new Error('Cliente no encontrado'), { statusCode: 404 })
+        if (!cliente.activo) throw Object.assign(new Error('Cliente inactivo no puede cotizar'), { statusCode: 409 })
+        if (productos.length !== productIds.length || productos.some(producto => !producto.activo)) throw Object.assign(new Error('Hay productos inexistentes o inactivos'), { statusCode: 400 })
+        const byId = new Map(productos.map(producto => [producto.id, producto]))
+        const items = rawItems.map((item, index) => {
+          const producto = byId.get(Number(item.productoId))
+          const cantidad = Number(item.cantidad)
+          const precioUnitario = Number(item.precioUnitario)
+          if (!Number.isInteger(cantidad) || cantidad < 1 || !Number.isFinite(precioUnitario) || precioUnitario < 0) {
+            throw Object.assign(new Error(`Item ${index + 1} tiene cantidad o precio invalido`), { statusCode: 400 })
+          }
+          return {
+            productoId: producto.id,
+            codigoInterno: String(item.codigoInterno || producto.codigoInterno || '').trim() || null,
+            nombre: String(item.nombre || producto.nombre || '').trim() || null,
+            descripcion: String(item.descripcion || producto.descripcion || '').trim() || null,
+            cantidad,
+            precioUnitario,
+          }
+        })
+        const now = new Date()
+        const vendedorId = request.user.role === 'admin' && Number.isInteger(Number(b.vendedorId)) ? Number(b.vendedorId) : request.user.id
+        const vendedor = await tx.user.findFirst({ where: { id: vendedorId, activo: true }, select: { id: true, nombre: true } })
+        if (!vendedor) throw Object.assign(new Error('Vendedor no valido'), { statusCode: 400 })
+        const lead = await tx.crmRegistro.create({
+          data: {
+            ncotizacion: null,
+            nombre: cliente.nombre || null,
+            rsocial: cliente.nombre || null,
+            rut: cliente.rut || null,
+            email: cliente.email || null,
+            telefono: cliente.telefono || null,
+            prioridad: String(b.prioridad || 'Media'),
+            accion: String(b.observaciones || '').trim() || 'Cotizacion creada desde CRM',
+            comentarios: String(b.observaciones || '').trim() || null,
+            fecha: now,
+            fechaCotizacion: now,
+            estado: '0',
+            etapaComercial: CRM_ETAPAS.COTIZACION_ENVIADA,
+            canalVenta,
+            tipoVenta,
+            estadoCambiadoAt: now,
+            ultimaGestionAt: now,
+            clienteId: cliente.id,
+            vendedorId: vendedor.id,
+            ejecutiva: vendedor.nombre,
+            asignadoAt: now,
+            asignacionOrigen: 'cotizacion_crm',
+            usuario: request.user.nombre || request.user.email || null,
+          },
+        })
+        const cotizacion = await tx.crmCotizacion.create({
+          data: {
+            crmId: lead.id, tipo: esCotizacionSimple ? 'Venta Directa' : tipo, clienteSucursalId: b.clienteSucursalId ? Number(b.clienteSucursalId) : null, vendedorId: vendedor.id,
+            licitacion: String(b.licitacion || '').trim() || null,
+            licitacionFecha: b.licitacionFecha ? new Date(b.licitacionFecha) : null,
+            licitacionPlazo: String(b.licitacionPlazo || '').trim() || null,
+            licitacionReferencia: String(b.licitacionReferencia || '').trim() || null,
+            licitacionOC: String(b.licitacionOC || '').trim() || null,
+            observaciones: String(b.observaciones || '').trim() || null,
+            descuentoPct: Number(b.descuentoPct) || 0,
+            enviosParciales: !!b.enviosParciales, montoDespacho: Number(b.montoDespacho) || 0,
+            fechaPlazo: b.fechaPlazo ? new Date(b.fechaPlazo) : null,
+            plazoEntregaDias: b.plazoEntregaDias === '' || b.plazoEntregaDias == null ? null : Number(b.plazoEntregaDias),
+            plazoEntregaTipo: String(b.plazoEntregaTipo || '').trim() || null,
+            direccionDespacho: String(b.direccionDespacho || '').trim() || null,
+            direccionDespachoExtra: String(b.direccionDespachoExtra || '').trim() || null,
+            contactoDespacho: String(b.contactoDespacho || '').trim() || null,
+            telefonoContactoDespacho: String(b.telefonoContactoDespacho || '').trim() || null,
+            emailContactoDespacho: String(b.emailContactoDespacho || '').trim() || null,
+            regionDespacho: String(b.regionDespacho || '').trim() || null,
+            comunaDespacho: String(b.comunaDespacho || '').trim() || null,
+            items: { create: items },
+          }, include: { items: true },
+        })
+        await tx.crmRegistro.update({ where: { id: lead.id }, data: { ncotizacion: `CRM-${lead.id}` } })
+        await tx.crmAsignacionHistorial.create({ data: { crmId: lead.id, vendedorId: vendedor.id, origen: 'cotizacion_crm', asignadoPorId: Number(request.user.id) || null } })
+        return { lead: { ...lead, ncotizacion: `CRM-${lead.id}` }, cotizacion }
+      })
+      return reply.code(201).send(result)
+    })
+
     // GET /api/crm?ejecutiva=...&estado=...&prioridad=...&search=...&page=1
     f.get('/', {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],
@@ -136,14 +259,21 @@ export default async function crmRoutes(fastify) {
           take: LIMIT,
           include: {
             ordenCompraOnline: {
-              select: { id: true, nCompra: true, total: true, estadoCompra: true },
+              select: {
+                id: true, nCompra: true, total: true, estadoCompra: true,
+                items: { select: { cantidad: true, precio: true } },
+              },
             },
           },
         }),
         f.prisma.crmRegistro.count({ where }),
       ])
 
-      const enriched = addSemaforo(items)
+      const enriched = addSemaforo(items).map(item => {
+        if (!item.ordenCompraOnline) return item
+        const { items: ocItems, ...ordenCompraOnline } = item.ordenCompraOnline
+        return { ...item, ordenCompraOnline: { ...ordenCompraOnline, totalCalculado: totalCotizado({ ...ordenCompraOnline, items: ocItems }) } }
+      })
       const filtered = semaforo ? enriched.filter(item => item.semaforo === String(semaforo).toUpperCase()) : enriched
       return { items: filtered, total: semaforo ? filtered.length : total, limit: LIMIT }
     })
@@ -165,10 +295,11 @@ export default async function crmRoutes(fastify) {
         const vendedor = await selectRoundRobinSeller(tx)
         if (!vendedor) return { status: 409, error: 'No hay vendedores disponibles: todos alcanzaron el maximo de 10 leads diarios o no existen vendedores activos' }
         const now = new Date()
-        const canalVenta = String(b.canalVenta || 'OTRO').trim().toUpperCase()
-        const tipoVenta = String(b.tipoVenta || 'OTRA').trim().toUpperCase()
+        const canalVenta = String(b.canalVenta || 'WEB').trim().toUpperCase()
+        const tipoVenta = String(b.tipoVenta || 'VENTA_WEB').trim().toUpperCase()
         if (!CRM_CANALES.includes(canalVenta)) return { status: 400, error: 'Canal de venta invalido' }
         if (!CRM_TIPOS_VENTA.includes(tipoVenta)) return { status: 400, error: 'Tipo de venta invalido' }
+        if (!isCrmFlowComercial(canalVenta, tipoVenta)) return { status: 400, error: 'Canal y tipo de venta no corresponden al mismo flujo comercial' }
         const etapaComercial = b.etapaComercial
           ? normalizeEtapa(b.etapaComercial)
           : (String(b.ncotizacion || '').trim() ? CRM_ETAPAS.COTIZACION_ENVIADA : CRM_ETAPAS.PENDIENTE_CLASIFICACION)
@@ -386,6 +517,7 @@ export default async function crmRoutes(fastify) {
         include: {
           cliente: { select: { id: true, rut: true, nombre: true } },
           orden: { select: { id: true, nInterno: true, tipo: true, estado: true, estadoPago: true, estadoEntrega: true, facturado: true } },
+          cotizacionComercial: { include: { items: true } },
           ordenCompraOnline: {
             select: {
               id: true, nCompra: true, fechaHora: true, fechaCotizacion: true,
@@ -405,7 +537,7 @@ export default async function crmRoutes(fastify) {
         : []
       const productByCode = new Map(products.map(product => [product.codigoInterno, product]))
       const ordenCompraOnline = item?.ordenCompraOnline
-        ? { ...item.ordenCompraOnline, items: ocItems.map(row => ({ ...row, producto: productByCode.get(row.codigoInterno) || null })) }
+        ? { ...item.ordenCompraOnline, totalCalculado: totalCotizado(item.ordenCompraOnline), items: ocItems.map(row => ({ ...row, producto: productByCode.get(row.codigoInterno) || null })) }
         : null
       return { ...item, ...addSemaforo([item])[0], ordenCompraOnline }
     })
@@ -430,9 +562,16 @@ export default async function crmRoutes(fastify) {
 
       const data = {}
       let existing = null
+      if (b.canalVenta !== undefined || b.tipoVenta !== undefined) {
+        existing = await f.prisma.crmRegistro.findUnique({
+          where: { id: parseInt(id) },
+          select: { id: true, canalVenta: true, tipoVenta: true, vendedorId: true },
+        })
+        if (!existing) return reply.status(404).send({ error: 'Registro CRM no encontrado' })
+      }
       // Asignación de vendedor: solo el admin puede asignar/reasignar el dueño.
       if (isAdmin && b.vendedorId !== undefined) {
-        existing = await f.prisma.crmRegistro.findUnique({ where: { id: parseInt(id) } })
+        existing = existing || await f.prisma.crmRegistro.findUnique({ where: { id: parseInt(id) } })
         if (!existing) return reply.status(404).send({ error: 'Registro CRM no encontrado' })
         data.vendedorId = b.vendedorId === null || b.vendedorId === '' ? null : parseInt(b.vendedorId, 10)
         data.asignadoAt = new Date()
@@ -453,12 +592,12 @@ export default async function crmRoutes(fastify) {
       if (b.prioridad !== undefined) data.prioridad = b.prioridad || null
       if (b.canalVenta !== undefined) {
         const value = String(b.canalVenta || '').toUpperCase()
-        if (value && !CRM_CANALES.includes(value)) return reply.status(400).send({ error: 'Canal de venta invalido' })
+        if (value && !CRM_CANALES.includes(value) && value !== existing?.canalVenta) return reply.status(400).send({ error: 'Canal de venta invalido para nuevas oportunidades' })
         data.canalVenta = value || null
       }
       if (b.tipoVenta !== undefined) {
         const value = String(b.tipoVenta || '').toUpperCase()
-        if (value && !CRM_TIPOS_VENTA.includes(value)) return reply.status(400).send({ error: 'Tipo de venta invalido' })
+        if (value && !CRM_TIPOS_VENTA.includes(value) && value !== existing?.tipoVenta) return reply.status(400).send({ error: 'Tipo de venta invalido para nuevas oportunidades' })
         data.tipoVenta = value || null
       }
       if (b.subestadoEspera !== undefined) data.subestadoEspera = b.subestadoEspera || null
@@ -565,21 +704,24 @@ export default async function crmRoutes(fastify) {
       return reply.code(201).send({ clienteId: created.id, creado: true })
     })
 
-    // GET /api/crm/:id/orden — buscar orden v2 por nInterno = ncotizacion
+    // GET /api/crm/:id/orden — la orden ya vinculada (ordenId), o buscar por
+    // coincidencia de folio (nInterno = ncotizacion) si aun no hay vinculo.
+    const ORDEN_SELECT = { id: true, nInterno: true, tipo: true, estado: true, estadoPago: true, estadoEntrega: true, createdAt: true, clienteId: true }
     f.get('/:id/orden', {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],
     }, async (request) => {
       const id = parseInt(request.params.id)
       if (!await ensureCrmAccess(f.prisma, id, request.user)) return { orden: null }
-      const c = await f.prisma.crmRegistro.findUnique({ where: { id }, select: { ncotizacion: true } })
-      if (!c?.ncotizacion) return { orden: null }
-      const raw = String(c.ncotizacion).trim()
+      const c = await f.prisma.crmRegistro.findUnique({ where: { id }, select: { ncotizacion: true, ordenId: true } })
+      if (!c) return { orden: null }
+      if (c.ordenId) {
+        const linked = await f.prisma.orden.findUnique({ where: { id: c.ordenId }, select: ORDEN_SELECT })
+        if (linked) return { orden: linked }
+      }
+      const raw = String(c.ncotizacion || '').trim()
       if (!/^\d{1,9}$/.test(raw)) return { orden: null }
       const ni = parseInt(raw, 10)
-      const orden = await f.prisma.orden.findFirst({
-        where: { nInterno: ni },
-        select: { id: true, nInterno: true, tipo: true, estado: true, estadoPago: true, estadoEntrega: true, createdAt: true, clienteId: true },
-      })
+      const orden = await f.prisma.orden.findFirst({ where: { nInterno: ni }, select: ORDEN_SELECT })
       if (orden) await f.prisma.crmRegistro.update({ where: { id }, data: { ordenId: orden.id, clienteId: orden.clienteId || undefined } })
       return { orden }
     })

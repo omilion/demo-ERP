@@ -26,6 +26,18 @@ export const useUpdateOrdenCompra = () => {
   })
 }
 
+export const useUpdateOrdenCompraItems = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, items }) => api.put(`/ordenes-compra/${id}/items`, { items }).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['ordenes-compra'] })
+      qc.invalidateQueries({ queryKey: ['ordenes-compra', vars.id] })
+      qc.invalidateQueries({ queryKey: ['crm'] })
+    },
+  })
+}
+
 export const useProcesarOrdenCompraVenta = () => {
   const qc = useQueryClient()
   return useMutation({

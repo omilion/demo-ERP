@@ -9,12 +9,15 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/auth'
 import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
 
+// bg: tono muy sutil para el fondo de las cards. colBg: tono un poco mas
+// marcado para el contenedor de la columna, mismo matiz, para que cada
+// etapa se distinga de un vistazo sin ser estridente.
 const ESTADOS = [
-  { id: 'PENDIENTE_CLASIFICACION', label: 'Por clasificar', tone: 'gray', color: '#64748b', bg: '#f8fafc' },
-  { id: 'COTIZACION_ENVIADA', label: 'Cotización enviada', tone: 'amber', color: '#f59e0b', bg: '#fffbeb' },
-  { id: 'SEGUIMIENTO', label: 'Seguimiento', tone: 'blue', color: '#3b82f6', bg: '#eff6ff' },
-  { id: 'VENTA_APROBADA', label: 'Venta aprobada', tone: 'purple', color: '#8b5cf6', bg: '#f5f3ff' },
-  { id: 'CERRADO', label: 'Cerrado', tone: 'green', color: '#16a34a', bg: '#f0fdf4' },
+  { id: 'PENDIENTE_CLASIFICACION', label: 'Por clasificar', tone: 'gray', color: '#64748b', bg: '#f8fafc', colBg: '#f1f5f9' },
+  { id: 'COTIZACION_ENVIADA', label: 'Cotización enviada', tone: 'amber', color: '#f59e0b', bg: '#fffbeb', colBg: '#fef3c7' },
+  { id: 'SEGUIMIENTO', label: 'Seguimiento', tone: 'blue', color: '#3b82f6', bg: '#eff6ff', colBg: '#dbeafe' },
+  { id: 'VENTA_APROBADA', label: 'Venta aprobada', tone: 'purple', color: '#8b5cf6', bg: '#f5f3ff', colBg: '#ede9fe' },
+  { id: 'CERRADO', label: 'Cerrado', tone: 'green', color: '#16a34a', bg: '#f0fdf4', colBg: '#dcfce7' },
 ]
 
 function prioridadTone(p) {
@@ -42,14 +45,38 @@ function Field({ label, children, full }) {
   )
 }
 
-function MiniKpi({ label, value, detail, tone = 'neutral' }) {
+function StatCell({ label, value, detail, tone = 'neutral' }) {
   const accent = tone === 'red' ? 'var(--red)' : tone === 'green' ? 'var(--green-700)' : tone === 'blue' ? 'var(--blue)' : 'var(--text-1)'
   return (
-    <div style={{ minWidth: 150, flex: '1 1 150px', background: '#fff', border: '1px solid var(--border)', borderLeft: `3px solid ${accent}`, borderRadius: 9, padding: '9px 12px' }}>
-      <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700, color: 'var(--text-3)' }}>{label}</div>
-      <div style={{ fontSize: 20, lineHeight: 1.15, fontWeight: 750, color: 'var(--text-1)', marginTop: 2 }}>{value}</div>
-      {detail && <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3 }}>{detail}</div>}
+    <div style={{ padding: '7px 14px', minWidth: 108 }}>
+      <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 700, color: 'var(--text-3)' }}>{label}</div>
+      <div style={{ fontSize: 16, lineHeight: 1.15, fontWeight: 750, color: accent, marginTop: 1 }}>{value}</div>
+      {detail && <div style={{ fontSize: 9, color: 'var(--text-3)', marginTop: 1 }}>{detail}</div>}
     </div>
+  )
+}
+
+function FilterBadge({ children, tone = 'neutral', active, onClick }) {
+  const tones = {
+    red:  { bg: 'var(--red-bg)',  text: 'var(--red)' },
+    amber:{ bg: 'var(--amber-bg)', text: 'oklch(0.48 0.14 68)' },
+    gray: { bg: 'oklch(0.93 0.003 220)', text: 'var(--text-2)' },
+  }
+  const t = tones[tone] || tones.gray
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        background: active ? t.text : t.bg,
+        color: active ? '#fff' : t.text,
+        border: active ? `1px solid ${t.text}` : '1px solid transparent',
+        borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 600,
+        fontFamily: "'DM Mono', monospace", cursor: 'pointer', whiteSpace: 'nowrap',
+      }}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -61,13 +88,15 @@ function cardTitle(item) {
 }
 
 function money(value) {
-  const amount = Number(value || 0)
-  return amount ? amount.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }) : 'Monto no informado'
+  const amount = Number(value)
+  return Number.isFinite(amount) && amount !== 0
+    ? amount.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })
+    : 'Monto no informado'
 }
 
-function ViewToggle({ view, setView }) {
+function ViewToggle({ view, setView, style }) {
   return (
-    <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden', ...style }}>
       {[['pipeline', 'Pipeline'], ['table', 'Tabla']].map(([v, label]) => (
         <button key={v} onClick={() => setView(v)} style={{
           padding: '5px 12px', fontSize: 12, fontWeight: view === v ? 700 : 400,
@@ -89,10 +118,11 @@ function CrmCard({ item, isDragging }) {
   const isHistoric = item.esHistorico || item.semaforo === 'HISTORICO'
   const action = item.accion && item.accion !== item.resultado ? item.accion : null
   const ocOnline = item.ordenCompraOnline
+  const estado = ESTADOS.find(e => e.id === normalizeEstado(item.etapaComercial || item.estado))
 
   return (
     <div style={{
-      background: '#fff',
+      background: estado?.bg || '#fff',
       borderRadius: 10,
       border: '1px solid var(--border)',
       padding: '10px 11px',
@@ -114,16 +144,10 @@ function CrmCard({ item, isDragging }) {
         <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.rsocial}</div>
       )}
 
-      {item.ncotizacion && (
-        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: 'var(--green-700)', fontWeight: 700, marginTop: 6 }}>
-          #{item.ncotizacion}
-        </div>
-      )}
-
       {ocOnline && (
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 5, padding: '5px 7px', borderRadius: 6, background: '#f0fdf4', color: 'var(--green-800)' }}>
           <span style={{ fontSize: 10, fontWeight: 700 }}>Cotizado</span>
-          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, fontWeight: 700 }}>{money(ocOnline.total)}</span>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13.5, fontWeight: 700 }}>{money(ocOnline.totalCalculado ?? ocOnline.total)}</span>
         </div>
       )}
 
@@ -142,9 +166,16 @@ function CrmCard({ item, isDragging }) {
         {isHistoric && <span style={{ fontSize: 9, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.35 }}>Histórico</span>}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 7, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
-        <div style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>
-          {item.ejecutiva || 'Sin asignar'}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 7, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 600 }}>
+            {item.ejecutiva || 'Sin asignar'}
+          </div>
+          {item.ncotizacion && (
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: 'var(--green-700)', fontWeight: 700, marginTop: 1 }}>
+              #{item.ncotizacion}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           {fechaF && <span style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>{fechaF}</span>}
@@ -197,7 +228,9 @@ function DetailValue({ label, value }) {
 function CrmSummary({ item, detalle, onEdit }) {
   const oc = detalle?.ordenCompraOnline
   const products = oc?.items || []
-  const totalCotizado = Number(oc?.total || 0) || products.reduce((sum, product) => sum + Number(product.precio || 0) * Number(product.cantidad || 0), 0)
+  const totalCotizado = products.length
+    ? products.reduce((sum, product) => sum + Number(product.precio || 0) * Number(product.cantidad || 0), 0)
+    : Number(oc?.totalCalculado ?? oc?.total ?? 0)
   const latest = detalle?.gestiones?.[0]
   return (
     <div style={{ padding: 20 }}>
@@ -290,8 +323,8 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
     accion:          item.accion || '',
     resultado:       item.resultado || '',
     comentarios:     item.comentarios || '',
-    canalVenta:      item.canalVenta || 'OTRO',
-    tipoVenta:       item.tipoVenta || 'OTRA',
+    canalVenta:      item.canalVenta || 'WEB',
+    tipoVenta:       item.tipoVenta || 'VENTA_WEB',
     resultadoCierre: item.resultadoCierre === 'SIN_CLASIFICAR' ? '' : (item.resultadoCierre || ''),
     motivoPerdida:   item.motivoPerdida || '',
     motivoPerdidaDetalle: item.motivoPerdidaDetalle || '',
@@ -420,12 +453,12 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
 
           <Field label="Canal de venta">
             <select value={form.canalVenta} onChange={set('canalVenta')} style={inputStyle}>
-              {(catalogos?.canales || ['WEB', 'SALA', 'LICITACION', 'OTRO']).map(value => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}
+              {Array.from(new Set([...(catalogos?.canales || ['WEB', 'LICITACION']), form.canalVenta].filter(Boolean))).map(value => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}
             </select>
           </Field>
           <Field label="Tipo de venta">
             <select value={form.tipoVenta} onChange={set('tipoVenta')} style={inputStyle}>
-              {(catalogos?.tiposVenta || ['COMPRA_AGIL', 'PUBLICA', 'PRIVADA', 'OTRA']).map(value => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}
+              {Array.from(new Set([...(catalogos?.tiposVenta || ['VENTA_WEB', 'LICITACION']), form.tipoVenta].filter(Boolean))).map(value => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}
             </select>
           </Field>
 
@@ -530,23 +563,24 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
 }
 
 // ── Kanban column ──────────────────────────────────────────────────────────────
-function KanbanColumn({ estado, items, isOver, onOpen }) {
+function KanbanColumn({ estado, items, isOver, onOpen, fullscreen }) {
   const { setNodeRef } = useDroppable({ id: String(estado.id) })
   return (
     <div ref={setNodeRef} style={{
       width: '100%', minWidth: 0,
-      background: isOver ? estado.bg : 'var(--surface)',
+      background: estado.colBg,
       borderRadius: 12,
       border: `1.5px solid ${isOver ? estado.color : 'var(--border)'}`,
       transition: 'border-color 0.15s, background 0.15s',
       display: 'flex', flexDirection: 'column',
-      minHeight: 400,
+      ...(fullscreen ? { height: '100%', minHeight: 0 } : { minHeight: 400 }),
     }}>
       {/* Column header */}
       <div style={{
         padding: '12px 14px 10px',
         borderBottom: `2px solid ${estado.color}`,
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        flexShrink: 0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: estado.color }} />
@@ -562,7 +596,7 @@ function KanbanColumn({ estado, items, isOver, onOpen }) {
       </div>
 
       {/* Cards */}
-      <div style={{ flex: 1, padding: '10px 10px 10px', overflowY: 'auto', maxHeight: 'calc(100vh - 340px)' }}>
+      <div style={{ flex: 1, minHeight: 0, padding: '10px 10px 10px', overflowY: 'auto', maxHeight: fullscreen ? 'none' : 'calc(100vh - 340px)' }}>
         {items.length === 0 && (
           <div style={{
             height: 80, border: '2px dashed var(--border)', borderRadius: 8,
@@ -579,7 +613,7 @@ function KanbanColumn({ estado, items, isOver, onOpen }) {
 }
 
 // ── Table view ─────────────────────────────────────────────────────────────────
-function TableView({ items, total, limit, onOpen, view, setView, ejecutiva, setEjecutiva, ejecutivas, prioridad, setPrioridad, fechaDesde, setFechaDesde, fechaHasta, setFechaHasta, search, setSearch }) {
+function TableView({ items, total, limit, onOpen }) {
   const cols = [
     {
       key: 'fecha', label: 'Fecha',
@@ -616,44 +650,9 @@ function TableView({ items, total, limit, onOpen, view, setView, ejecutiva, setE
     },
   ]
 
-  const toolbarExtra = (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
-      <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
-        <button onClick={() => setView('pipeline')} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', background: view === 'pipeline' ? 'var(--green-900)' : '#fff', color: view === 'pipeline' ? '#fff' : 'var(--text-2)', border: 'none' }}>Pipeline</button>
-        <button onClick={() => setView('table')} style={{ padding: '6px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', background: view === 'table' ? 'var(--green-900)' : '#fff', color: view === 'table' ? '#fff' : 'var(--text-2)', border: 'none' }}>Tabla</button>
-      </div>
-      <select value={ejecutiva} onChange={e => setEjecutiva(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
-        <option value="">Ejecutiva</option>
-        {ejecutivas.map(e => <option key={e.ejecutiva} value={e.ejecutiva}>{e.ejecutiva} ({e.total})</option>)}
-      </select>
-      <select value={prioridad} onChange={e => setPrioridad(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
-        <option value="">Prioridad</option>
-        <option value="Alta">Alta</option>
-        <option value="Media">Media</option>
-        <option value="Baja">Baja</option>
-      </select>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Desde</span>
-        <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }} />
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Hasta</span>
-        <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }} />
-      </div>
-      {(fechaDesde || fechaHasta) && (
-        <button onClick={() => { setFechaDesde(''); setFechaHasta('') }} style={{ fontSize: 11, color: 'var(--red)', background: 'none', border: '1px solid var(--red)', borderRadius: 5, padding: '3px 8px', cursor: 'pointer' }}>
-          Limpiar fechas ✕
-        </button>
-      )}
-      <div style={{ flex: 1, minWidth: 160 }}>
-        <SearchBar placeholder="Contacto, organismo, RUT, cotización..." value={search} onChange={setSearch} />
-      </div>
-    </div>
-  )
-
   return (
     <>
-      <Table columns={cols} rows={items} onRowClick={onOpen} emptyMessage="Sin registros para este filtro" ariaLabel="Registros CRM" getRowKey={row => row.id} toolbarExtra={toolbarExtra} />
+      <Table columns={cols} rows={items} onRowClick={onOpen} emptyMessage="Sin registros para este filtro" ariaLabel="Registros CRM" getRowKey={row => row.id} />
       {total > limit && (
         <div style={{ padding: '10px 20px', textAlign: 'center', fontSize: 12, color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>
           Mostrando {limit} de {total.toLocaleString('es-CL')} registros. Usa los filtros para acotar.
@@ -665,7 +664,7 @@ function TableView({ items, total, limit, onOpen, view, setView, ejecutiva, setE
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 function NuevoLeadModal({ onClose }) {
-  const [form, setForm] = useState({ nombre: '', rsocial: '', rut: '', email: '', telefono: '', prioridad: 'Media', canalVenta: 'OTRO', tipoVenta: 'OTRA', comentarios: '' })
+  const [form, setForm] = useState({ nombre: '', rsocial: '', rut: '', email: '', telefono: '', prioridad: 'Media', canalVenta: 'WEB', tipoVenta: 'VENTA_WEB', comentarios: '' })
   const { data: catalogos } = useCrmCatalogos()
   const create = useCrmCreate()
   const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
@@ -687,8 +686,8 @@ function NuevoLeadModal({ onClose }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             {[['nombre', 'Nombre contacto'], ['rsocial', 'Razon social'], ['rut', 'RUT'], ['email', 'Correo'], ['telefono', 'Telefono']].map(([key, label]) => <label key={key} style={{ fontSize: 11, fontWeight: 600 }}>{label}<input type={key === 'email' ? 'email' : 'text'} value={form[key]} onChange={event => set(key, event.target.value)} style={{ ...fieldStyle, display: 'block', marginTop: 5 }} /></label>)}
             <label style={{ fontSize: 11, fontWeight: 600 }}>Prioridad<select value={form.prioridad} onChange={event => set('prioridad', event.target.value)} style={{ ...fieldStyle, display: 'block', marginTop: 5 }}><option>Alta</option><option>Media</option><option>Baja</option></select></label>
-            <label style={{ fontSize: 11, fontWeight: 600 }}>Canal<select value={form.canalVenta} onChange={event => set('canalVenta', event.target.value)} style={{ ...fieldStyle, display: 'block', marginTop: 5 }}>{(catalogos?.canales || ['WEB', 'SALA', 'LICITACION', 'OTRO']).map(value => <option key={value}>{value}</option>)}</select></label>
-            <label style={{ fontSize: 11, fontWeight: 600 }}>Tipo de venta<select value={form.tipoVenta} onChange={event => set('tipoVenta', event.target.value)} style={{ ...fieldStyle, display: 'block', marginTop: 5 }}>{(catalogos?.tiposVenta || ['COMPRA_AGIL', 'PUBLICA', 'PRIVADA', 'OTRA']).map(value => <option key={value}>{value.replaceAll('_', ' ')}</option>)}</select></label>
+            <label style={{ fontSize: 11, fontWeight: 600 }}>Canal<select value={form.canalVenta} onChange={event => { const canalVenta = event.target.value; const flujo = (catalogos?.flujosComerciales || []).find(item => item.canal === canalVenta); setForm(current => ({ ...current, canalVenta, tipoVenta: flujo?.tipoVenta || (canalVenta === 'WEB' ? 'VENTA_WEB' : canalVenta) })) }} style={{ ...fieldStyle, display: 'block', marginTop: 5 }}>{(catalogos?.canales || ['WEB', 'LICITACION']).map(value => <option key={value}>{value.replaceAll('_', ' ')}</option>)}</select></label>
+            <label style={{ fontSize: 11, fontWeight: 600 }}>Flujo de cotizacion<div style={{ ...fieldStyle, display: 'block', marginTop: 5, background: 'var(--bg)', color: 'var(--text-2)' }}>{form.tipoVenta.replaceAll('_', ' ')}</div></label>
           </div>
           <label style={{ display: 'block', fontSize: 11, fontWeight: 600, marginTop: 12 }}>Comentarios<textarea value={form.comentarios} onChange={event => set('comentarios', event.target.value)} rows={3} style={{ ...fieldStyle, display: 'block', marginTop: 5, resize: 'vertical' }} /></label>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn variant="primary" onClick={save} disabled={create.isPending}>{create.isPending ? 'Asignando...' : 'Crear y asignar'}</Btn></div>
@@ -702,6 +701,7 @@ export default function CrmPage() {
   const user = useAuthStore(s => s.user)
   const queryClient = useQueryClient()
   const [view, setView]               = useState('pipeline')
+  const [newOpportunityMenu, setNewOpportunityMenu] = useState(false)
   const [portfolio, setPortfolio]     = useState('ACTIVOS')
   const [ejecutiva, setEjecutiva]     = useState('')
   const [prioridad, setPrioridad]     = useState('')
@@ -715,8 +715,8 @@ export default function CrmPage() {
   const [activeId, setActiveId]       = useState(null)
   const [overId, setOverId]           = useState(null)
   const [selected, setSelected]       = useState(null)
-  const [creating, setCreating]       = useState(false)
-  const [agendaOpen, setAgendaOpen]   = useState(false)
+  const [pendienteFiltro, setPendienteFiltro] = useState(null) // null | 'ATRASADOS' | 'HOY' | 'SIN_ASIGNAR'
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const ref = useRef(null)
 
   useEffect(() => {
@@ -724,6 +724,18 @@ export default function CrmPage() {
     ref.current = setTimeout(() => setDebounced(search), 350)
     return () => clearTimeout(ref.current)
   }, [search])
+
+  useEffect(() => {
+    if (!isFullscreen) return undefined
+    const previousOverflow = document.body.style.overflow
+    const handleKeyDown = event => { if (event.key === 'Escape') setIsFullscreen(false) }
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isFullscreen])
 
   const ejecutivasParams = portfolio === 'ACTIVOS' ? { historico: '0' } : portfolio === 'HISTORICO' ? { historico: '1' } : {}
   const { data: ejecutivas = [] } = useCrmEjecutivas(ejecutivasParams)
@@ -761,15 +773,22 @@ export default function CrmPage() {
   const items = useMemo(() => result.items ?? [], [result.items])
   const total = result.total ?? 0
 
+  const filteredItems = useMemo(() => {
+    if (!pendienteFiltro) return items
+    if (pendienteFiltro === 'SIN_ASIGNAR') return items.filter(i => !i.vendedorId)
+    const ids = new Set((pendienteFiltro === 'ATRASADOS' ? pendientesHoyData?.vencidas : pendientesHoyData?.hoy)?.map(l => l.id) || [])
+    return items.filter(i => ids.has(i.id))
+  }, [items, pendienteFiltro, pendientesHoyData])
+
   const byEstado = useMemo(() => {
     const map = {}
     ESTADOS.forEach(e => { map[e.id] = [] })
-    items.forEach(i => {
+    filteredItems.forEach(i => {
       const col = map[normalizeEstado(i.etapaComercial || i.estado)]
       if (col) col.push(i)
     })
     return map
-  }, [items])
+  }, [filteredItems])
 
   const activeItem = activeId != null ? items.find(i => String(i.id) === String(activeId)) : null
 
@@ -835,107 +854,82 @@ export default function CrmPage() {
     <main className="page page-wide">
       <PageHeader
         title="CRM — Pipeline de Ventas"
-        subtitle={`${total.toLocaleString('es-CL')} registros de seguimiento`}
         breadcrumb={['Inicio', 'Ventas', 'CRM']}
         actions={<>
-          <Btn variant="primary" icon="plus" size="sm" onClick={() => setCreating(true)}>Nuevo lead</Btn>
+          <div style={{ position: 'relative' }}>
+            <Btn variant="primary" icon="plus" size="sm" onClick={() => setNewOpportunityMenu(open => !open)}>Nueva oportunidad</Btn>
+            {newOpportunityMenu && <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 50, minWidth: 270, padding: 7, background: '#fff', border: '1px solid var(--border)', borderRadius: 9, boxShadow: 'var(--shadow-md)' }}>
+              <div style={{ padding: '5px 8px 7px', fontSize: 11, color: 'var(--text-3)', fontWeight: 750, textTransform: 'uppercase', letterSpacing: .35 }}>Crear cotizacion</div>
+              <Link to="/crm/nueva/licitacion" onClick={() => setNewOpportunityMenu(false)} style={{ display: 'block', padding: '10px 11px', borderRadius: 7, color: 'var(--text-1)', textDecoration: 'none' }}><div style={{ fontSize: 13, fontWeight: 750 }}>Licitacion</div><div style={{ marginTop: 2, fontSize: 11, color: 'var(--text-3)' }}>Bases, plazos, items y adjudicacion.</div></Link>
+              <Link to="/crm/nueva/cotizacion-simple" onClick={() => setNewOpportunityMenu(false)} style={{ display: 'block', padding: '10px 11px', borderRadius: 7, color: 'var(--text-1)', textDecoration: 'none' }}><div style={{ fontSize: 13, fontWeight: 750 }}>Cotización simple</div><div style={{ marginTop: 2, fontSize: 11, color: 'var(--text-3)' }}>Prospección directa con la ficha comercial completa.</div></Link>
+            </div>}
+          </div>
           {user?.role === 'admin' && <Btn variant="secondary" icon="users" size="sm" onClick={runAssignPending} disabled={assignPending.isPending}>Asignar pendientes</Btn>}
-          <ViewToggle view={view} setView={setView} />
+          <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
+            {[['ACTIVOS', 'Cartera'], ['HISTORICO', 'Histórico'], ['TODOS', 'Todo']].map(([id, label]) => (
+              <button key={id} type="button" onClick={() => setPortfolio(id)} style={{ padding: '5px 9px', fontSize: 11, fontWeight: portfolio === id ? 700 : 500, cursor: 'pointer', border: 'none', borderRight: id !== 'TODOS' ? '1px solid var(--border)' : 'none', background: portfolio === id ? 'var(--green-700)' : 'transparent', color: portfolio === id ? '#fff' : 'var(--text-2)' }}>{label}</button>
+            ))}
+          </div>
           <Btn variant="secondary" icon="download" size="sm">Exportar</Btn>
         </>}
       />
-      {creating && <NuevoLeadModal onClose={() => setCreating(false)} />}
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-        <MiniKpi label={portfolio === 'HISTORICO' ? 'Histórico' : 'En cartera'} value={total.toLocaleString('es-CL')} detail={portfolio === 'ACTIVOS' ? 'Registros operativos' : 'Registros importados'} />
-        <MiniKpi label="Tasa de cierre" value={tasaCierreVal} detail={`${metricas?.porResultado?.SIN_CLASIFICAR || 0} sin clasificar`} tone="green" />
-        {portfolio !== 'HISTORICO' && <MiniKpi label="Pendientes" value={agendaResumen.total.toLocaleString('es-CL')} detail={`${agendaResumen.vencidas.toLocaleString('es-CL')} atrasados`} tone={agendaResumen.vencidas ? 'red' : 'blue'} />}
-        {altaPrioridad > 0 && <MiniKpi label="Prioridad alta" value={altaPrioridad.toLocaleString('es-CL')} detail="Requieren atención" tone="red" />}
+      {/* KPIs + agenda de pendientes: un solo contenedor a dos columnas, misma altura */}
+      <div style={{ display: 'flex', alignItems: 'stretch', background: '#fff', border: '1px solid var(--border)', borderRadius: 12, marginBottom: 16, overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+        <div style={{ display: 'flex', alignItems: 'stretch' }}>
+          <StatCell label={portfolio === 'HISTORICO' ? 'Histórico' : 'En cartera'} value={total.toLocaleString('es-CL')} detail={portfolio === 'ACTIVOS' ? 'Registros operativos' : 'Registros importados'} />
+          <div style={{ width: 1, background: 'var(--border)' }} />
+          <StatCell label="Tasa de cierre" value={tasaCierreVal} detail={`${metricas?.porResultado?.SIN_CLASIFICAR || 0} sin clasificar`} tone="green" />
+          {altaPrioridad > 0 && <>
+            <div style={{ width: 1, background: 'var(--border)' }} />
+            <StatCell label="Prioridad alta" value={altaPrioridad.toLocaleString('es-CL')} detail="Requieren atención" tone="red" />
+          </>}
+        </div>
+
+        {portfolio !== 'HISTORICO' && totalPendientes > 0 && (
+          <>
+            <div style={{ width: 1, background: 'var(--border)' }} />
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'oklch(0.985 0.003 240)', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="clock" size={16} style={{ color: 'var(--amber-600)' }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)', whiteSpace: 'nowrap' }}>
+                  {user?.role === 'admin' ? 'Pendientes del equipo' : 'Mis pendientes'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <FilterBadge tone="red" active={pendienteFiltro === 'ATRASADOS'} onClick={() => setPendienteFiltro(f => f === 'ATRASADOS' ? null : 'ATRASADOS')}>
+                  {agendaResumen.vencidas.toLocaleString('es-CL')} atrasados
+                </FilterBadge>
+                <FilterBadge tone="amber" active={pendienteFiltro === 'HOY'} onClick={() => setPendienteFiltro(f => f === 'HOY' ? null : 'HOY')}>
+                  {agendaResumen.hoy.toLocaleString('es-CL')} para hoy
+                </FilterBadge>
+                {user?.role === 'admin' && agendaResumen.sinAsignar > 0 && (
+                  <FilterBadge tone="gray" active={pendienteFiltro === 'SIN_ASIGNAR'} onClick={() => setPendienteFiltro(f => f === 'SIN_ASIGNAR' ? null : 'SIN_ASIGNAR')}>
+                    {agendaResumen.sinAsignar.toLocaleString('es-CL')} sin asignar
+                  </FilterBadge>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPendienteFiltro(f => f === 'ATRASADOS' ? null : 'ATRASADOS')}
+                  style={{
+                    border: pendienteFiltro === 'ATRASADOS' ? '1px solid var(--text-1)' : '1px solid var(--border)',
+                    borderRadius: 6,
+                    background: pendienteFiltro === 'ATRASADOS' ? 'var(--text-1)' : '#fff',
+                    color: pendienteFiltro === 'ATRASADOS' ? '#fff' : 'var(--text-2)',
+                    padding: '5px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {pendienteFiltro === 'ATRASADOS' ? 'Quitar filtro' : 'Mostrar 10 más antiguos'}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Agenda de pendientes */}
-      {portfolio !== 'HISTORICO' && totalPendientes > 0 && (
-        <div style={{
-          background: 'oklch(0.985 0.003 240)',
-          border: '1px solid var(--border)',
-          borderRadius: 12,
-          padding: '12px 16px',
-          marginBottom: 16,
-          boxShadow: 'var(--shadow-sm)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <Icon name="clock" size={16} style={{ color: 'var(--amber-600)' }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>
-                {user?.role === 'admin' ? 'Pendientes del equipo' : 'Mis pendientes'}
-              </span>
-              <Badge tone="red">{agendaResumen.vencidas.toLocaleString('es-CL')} atrasados</Badge>
-              <Badge tone="amber">{agendaResumen.hoy.toLocaleString('es-CL')} para hoy</Badge>
-              {user?.role === 'admin' && agendaResumen.sinAsignar > 0 && (
-                <Badge tone="gray">{agendaResumen.sinAsignar.toLocaleString('es-CL')} sin asignar</Badge>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => setAgendaOpen(open => !open)}
-              style={{ border: '1px solid var(--border)', borderRadius: 6, background: '#fff', padding: '5px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: 'var(--text-2)' }}
-            >
-              {agendaOpen ? 'Ocultar muestra' : 'Mostrar 10 más antiguos'}
-            </button>
-          </div>
-          {agendaOpen && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10, maxHeight: 220, overflowY: 'auto' }}>
-            {pendientesHoyData.vencidas.map(lead => (
-              <div
-                key={lead.id}
-                onClick={() => setSelected(lead)}
-                style={{
-                  background: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  borderRadius: 8,
-                  padding: '6px 10px',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                  color: '#b91c1c',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6
-                }}
-              >
-                <span style={{ fontWeight: 700 }}>Atrasado:</span>
-                <span>{lead.nombre || lead.rsocial}</span>
-                <span style={{ fontSize: 10, fontFamily: "'DM Mono', monospace" }}>({new Date(lead.fechaProximo).toLocaleDateString('es-CL')})</span>
-                {user?.role === 'admin' && <span style={{ fontSize: 10 }}>· {lead.vendedorId ? (lead.ejecutiva || 'Asignado') : 'Sin asignar'}</span>}
-              </div>
-            ))}
-            {pendientesHoyData.hoy.map(lead => (
-              <div
-                key={lead.id}
-                onClick={() => setSelected(lead)}
-                style={{
-                  background: '#fffbeb',
-                  border: '1px solid #fde68a',
-                  borderRadius: 8,
-                  padding: '6px 10px',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                  color: '#b45309',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6
-                }}
-              >
-                <span style={{ fontWeight: 700 }}>Hoy:</span>
-                <span>{lead.nombre || lead.rsocial}</span>
-                {user?.role === 'admin' && <span style={{ fontSize: 10 }}>· {lead.vendedorId ? (lead.ejecutiva || 'Asignado') : 'Sin asignar'}</span>}
-              </div>
-            ))}
-          </div>}
-        </div>
-      )}
-
-      {/* Filters */}
-      {view === 'pipeline' && (
-        <div style={{
+      <div className={isFullscreen ? 'crm-shell-fullscreen' : undefined}>
+      {/* Filters — misma barra para Pipeline y Tabla */}
+      <div style={{
           background: '#fff', borderRadius: 12, border: '1px solid var(--border)',
           boxShadow: 'var(--shadow-sm)', padding: '12px 16px', marginBottom: 16,
           display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
@@ -967,15 +961,19 @@ export default function CrmPage() {
             </button>
           )}
           <div style={{ flex: 1, minWidth: 160 }}>
-            <SearchBar placeholder="Contacto, organismo, RUT, cotización..." value={search} onChange={setSearch} />
+            <SearchBar placeholder="Contacto, organismo, RUT, cotización..." value={search} onChange={setSearch} style={{ height: 30, width: '100%' }} />
           </div>
-          <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden', marginLeft: 'auto' }}>
-            {[['ACTIVOS', 'Cartera'], ['HISTORICO', 'Histórico'], ['TODOS', 'Todo']].map(([id, label]) => (
-              <button key={id} type="button" onClick={() => setPortfolio(id)} style={{ padding: '5px 9px', fontSize: 11, fontWeight: portfolio === id ? 700 : 500, cursor: 'pointer', border: 'none', borderRight: id !== 'TODOS' ? '1px solid var(--border)' : 'none', background: portfolio === id ? 'var(--green-700)' : 'transparent', color: portfolio === id ? '#fff' : 'var(--text-2)' }}>{label}</button>
-            ))}
-          </div>
+          <button
+            type="button"
+            onClick={() => setIsFullscreen(v => !v)}
+            title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+            aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Ver CRM en pantalla completa'}
+            style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, border: '1px solid var(--border)', borderRadius: 7, background: '#fff', color: 'var(--text-2)', cursor: 'pointer' }}
+          >
+            <Icon name={isFullscreen ? 'minimize' : 'maximize'} size={14} />
+          </button>
+          <ViewToggle view={view} setView={setView} />
         </div>
-      )}
 
       {/* Pipeline view */}
       {view === 'pipeline' && (
@@ -992,7 +990,11 @@ export default function CrmPage() {
           {isLoading ? (
             <div style={{ padding: '80px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando pipeline…</div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ESTADOS.length}, minmax(260px, 1fr))`, gap: 12, alignItems: 'flex-start', paddingBottom: 16, overflowX: 'auto' }}>
+            <div style={{
+              display: 'grid', gridTemplateColumns: `repeat(${ESTADOS.length}, minmax(260px, 1fr))`, gap: 12,
+              alignItems: isFullscreen ? 'stretch' : 'flex-start', paddingBottom: 16, overflowX: 'auto',
+              ...(isFullscreen ? { flex: 1, minHeight: 0 } : {}),
+            }}>
               {ESTADOS.map(estado => (
                 <KanbanColumn
                   key={estado.id}
@@ -1000,6 +1002,7 @@ export default function CrmPage() {
                   items={byEstado[estado.id] ?? []}
                   isOver={overId === String(estado.id)}
                   onOpen={setSelected}
+                  fullscreen={isFullscreen}
                 />
               ))}
             </div>
@@ -1013,31 +1016,22 @@ export default function CrmPage() {
 
       {/* Table view */}
       {view === 'table' && (
-        <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
+        <div style={{
+          background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden',
+          ...(isFullscreen ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } : {}),
+        }}>
           {isLoading
             ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
             : <TableView
-                items={items}
-                total={total}
+                items={filteredItems}
+                total={pendienteFiltro ? filteredItems.length : total}
                 limit={result.limit}
                 onOpen={setSelected}
-                view={view}
-                setView={setView}
-                ejecutiva={ejecutiva}
-                setEjecutiva={setEjecutiva}
-                ejecutivas={ejecutivas}
-                prioridad={prioridad}
-                setPrioridad={setPrioridad}
-                fechaDesde={fechaDesde}
-                setFechaDesde={setFechaDesde}
-                fechaHasta={fechaHasta}
-                setFechaHasta={setFechaHasta}
-                search={search}
-                setSearch={setSearch}
               />
           }
         </div>
       )}
+      </div>
 
       {selected && (
         <CrmDetailModal

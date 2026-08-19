@@ -17,6 +17,7 @@ import { useDescuentos, useEvaluarDescuentos, useSolicitarDescuento, useSolicitu
 import { can, canAny } from '../../utils/permissions'
 import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
 import { plazoDiasFromLicitacion, sanitizeOrdenCompra, sanitizePlazoDias } from '../../utils/licitacionFields'
+import api from '../../api/client'
 
 const DOCUMENTOS_VENTA = ['Factura Plast', 'Factura Laura', 'Boleta Electronica', 'NC Plast', 'NC Laura', 'NC Inter Plast', 'ND Plast', 'ND Laura']
 
@@ -1003,11 +1004,13 @@ function SearchableSelect({ value, onChange, options, disabled, placeholder }) {
   )
 }
 
-export default function VentasFormPage() {
+export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQuoteMode = null }) {
   const navigate = useNavigate()
   const { id } = useParams()
   const [searchParams] = useSearchParams()
+  const [savingCrmQuote, setSavingCrmQuote] = useState(false)
   const isEdit = !!id
+  const isSimpleCrmQuote = crmMode && crmQuoteMode === 'PROSPECCION_DIRECTA'
   const user = useAuthStore(s => s.user)
   const canDeleteVentas = can(user, 'ventas', 'delete')
   const canPasarTaller = canAny(user, [['taller', 'write'], ['ventas', 'write']])
@@ -1037,7 +1040,7 @@ export default function VentasFormPage() {
   }
 
   const { data, set } = useForm({
-    clienteId: '', clienteSucursalId: '', tipo: searchParams.get('tipo') || TIPO_DEFAULT, estado: 'Activa',
+    clienteId: '', clienteSucursalId: '', tipo: forceTipo || searchParams.get('tipo') || TIPO_DEFAULT, estado: 'Activa',
     estadoPago: 'No pagada', estadoEntrega: 'Pendiente entrega',
     abono: '', guias: '', facturado: '', descuentoPct: '', licitacion: searchParams.get('oc') || '', observaciones: searchParams.get('obs') || '',
     licitacionFecha: '', licitacionPlazo: '', licitacionReferencia: '', licitacionOC: '',
@@ -1157,7 +1160,7 @@ export default function VentasFormPage() {
     })
   }
 
-  const saving = createVenta.isPending || updateVenta.isPending
+  const saving = createVenta.isPending || updateVenta.isPending || savingCrmQuote
 
   function handleSave() {
     const shouldSendItems = !isEdit || !itemsLocked
@@ -1211,6 +1214,7 @@ export default function VentasFormPage() {
       marketplaceCanal: data.tipo === 'Marketplace' ? data.marketplaceCanal || null : null,
       marketplaceComisionPct: data.tipo === 'Marketplace' && data.marketplaceComisionPct !== '' ? Number(data.marketplaceComisionPct) : null,
       marketplaceComisionMonto: data.tipo === 'Marketplace' && data.marketplaceComisionMonto !== '' ? Number(data.marketplaceComisionMonto) : null,
+      crmId: searchParams.get('crmId') ? Number(searchParams.get('crmId')) : undefined,
     }
     if (data.tipo === 'Licitación') {
       payload.licitacionFecha = data.licitacionFecha || undefined
@@ -1229,6 +1233,18 @@ export default function VentasFormPage() {
     }
     if (activeSelectedDiscountRule?.autorizacionId) {
       payload.descuentoAutorizacionId = Number(activeSelectedDiscountRule.autorizacionId)
+    }
+
+    if (crmMode && !isEdit) {
+      setSavingCrmQuote(true)
+      api.post('/crm/cotizaciones', { ...payload, crmQuoteMode, items: normalizedItems })
+        .then(({ data: created }) => {
+          toast.success('Cotizacion guardada en CRM. Aun no existe una venta en Matriz.')
+          navigate(`/crm/${created.lead.id}/gestion`)
+        })
+        .catch(err => toast.error(err.response?.data?.error || 'Error al guardar la cotizacion CRM'))
+        .finally(() => setSavingCrmQuote(false))
+      return
     }
 
     if (isEdit) {
@@ -1292,19 +1308,20 @@ export default function VentasFormPage() {
 
   return (
     <FormPage
-      title={isEdit ? 'Editar Venta' : 'Nueva Venta'}
-      subtitle={isEdit ? `Editando venta #${id}` : 'Crear nueva orden de venta'}
+      title={isEdit ? 'Editar Venta' : crmMode ? (isSimpleCrmQuote ? 'Cotización simple CRM' : `Cotización CRM · ${forceTipo}`) : 'Nueva Venta'}
+      subtitle={isEdit ? `Editando venta #${id}` : crmMode ? (isSimpleCrmQuote ? 'Prospección directa: se crea una venta solo al aprobarla.' : 'Ficha comercial completa vinculada al CRM.') : 'Crear nueva orden de venta'}
       breadcrumb={['Inicio', 'Ventas', isEdit ? 'Editar Venta' : 'Nueva Venta']}
       onSave={handleSave}
       saving={saving}
-      saveLabel={isEdit ? 'Guardar' : 'Crear Venta'}
+      saveLabel={isEdit ? 'Guardar' : crmMode ? 'Guardar cotización' : 'Crear Venta'}
     >
       <FormDivider label="Tipo de Venta" />
       <FormField label="Tipo de Venta">
         <Select
           value={data.tipo}
           onChange={v => set('tipo', v)}
-          options={TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS]}
+          options={crmMode ? [{ value: forceTipo, label: isSimpleCrmQuote ? 'Cotización simple · Prospección directa' : forceTipo }] : (TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS])}
+          disabled={crmMode}
           style={{ 
             backgroundColor: '#fffbeb', // Soft yellow background
             borderColor: '#fcd34d',     // Warm golden border

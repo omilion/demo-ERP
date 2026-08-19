@@ -92,6 +92,24 @@ function validateUpdate(body = {}) {
   return { data }
 }
 
+function validateItems(items) {
+  if (!Array.isArray(items) || !items.length) return { error: 'La OC debe tener al menos un producto' }
+  const data = []
+  for (const [index, raw] of items.entries()) {
+    const cantidad = Number(raw?.cantidad)
+    const precio = Number(raw?.precio)
+    if (!Number.isInteger(cantidad) || cantidad <= 0) return { error: `Cantidad inválida en producto ${index + 1}` }
+    if (!Number.isFinite(precio) || precio < 0) return { error: `Precio inválido en producto ${index + 1}` }
+    const nombre = cleanOptionalText(raw?.nombre)
+    if (!nombre) return { error: `Indica el nombre del producto ${index + 1}` }
+    data.push({
+      codigoInterno: cleanOptionalText(raw?.codigoInterno), nombre,
+      descripcion: cleanOptionalText(raw?.descripcion), cantidad, precio,
+    })
+  }
+  return { data }
+}
+
 function buildVentaWebObservacion(oc) {
   return [
     `Procesada desde OC online ${oc.nCompra || oc.id}`,
@@ -175,6 +193,26 @@ export default async function ordenesCompraRoutes(fastify) {
       if (e.code === 'P2025') return reply.code(404).send({ error: 'OC no encontrada' })
       throw e
     }
+  })
+
+  // Reemplaza las líneas de una OC y recalcula su total de manera atómica.
+  fastify.put('/:id/items', {
+    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+  }, async (request, reply) => {
+    const id = parseId(request.params.id)
+    if (!id) return reply.code(400).send({ error: 'ID inválido' })
+    const validated = validateItems(request.body?.items)
+    if (validated.error) return reply.code(400).send({ error: validated.error })
+    const total = validated.data.reduce((sum, item) => sum + item.cantidad * item.precio, 0)
+    const result = await fastify.prisma.$transaction(async tx => {
+      const current = await tx.ordenCompraOnline.findFirst({ where: scopedWhere(request.user, { id }), select: { id: true } })
+      if (!current) return null
+      await tx.ordenCompraOnlineItem.deleteMany({ where: { ordenCompraId: id } })
+      await tx.ordenCompraOnlineItem.createMany({ data: validated.data.map(item => ({ ordenCompraId: id, ...item })) })
+      return tx.ordenCompraOnline.update({ where: { id }, data: { total }, include: { items: true } })
+    })
+    if (!result) return reply.code(404).send({ error: 'OC no encontrada' })
+    return result
   })
 
   fastify.post('/:id/procesar-venta', {
