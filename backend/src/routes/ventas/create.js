@@ -58,6 +58,9 @@ const Schema = z.object({
   marketplaceComisionMonto: z.number().min(0).optional().nullable(),
   // Vendedor asignado: solo lo respeta un admin; un vendedor siempre se autoasigna.
   vendedorId: z.number().int().positive().optional().nullable(),
+  // Cuando la venta nace desde CRM, este vinculo es explicito: no se infiere
+  // desde un folio ni crea una orden vacia al cerrar la oportunidad.
+  crmId: z.number().int().positive().optional().nullable(),
 })
 
 export default async function createVenta(fastify) {
@@ -94,6 +97,7 @@ export default async function createVenta(fastify) {
       comunaDespacho,
       ciudadDespacho,
       vendedorId,
+      crmId,
       ...rest
     } = parsed.data
     const normalizedLicitacionPlazo = normalizeLicitacionPlazo(licitacionPlazo)
@@ -107,6 +111,18 @@ export default async function createVenta(fastify) {
     const cliente = await fastify.prisma.cliente.findUnique({ where: { id: rest.clienteId }, select: { id: true, activo: true, rut: true } })
     if (!cliente) return reply.code(404).send({ error: 'Cliente no encontrado' })
     if (!cliente.activo) return reply.code(409).send({ error: 'Cliente inactivo no puede generar ventas' })
+    if (crmId) {
+      const crm = await fastify.prisma.crmRegistro.findUnique({
+        where: { id: crmId },
+        select: { id: true, esHistorico: true, ordenId: true, vendedorId: true, canalVenta: true },
+      })
+      if (!crm) return reply.code(404).send({ error: 'Oportunidad CRM no encontrada' })
+      if (crm.esHistorico) return reply.code(409).send({ error: 'No se puede crear una venta ERP desde un registro CRM historico' })
+      if (crm.ordenId) return reply.code(409).send({ error: 'La oportunidad CRM ya tiene una orden vinculada' })
+      if (request.user.role !== 'admin' && crm.vendedorId !== request.user.id) return reply.code(403).send({ error: 'No tienes acceso a esta oportunidad CRM' })
+      const expectedChannel = { 'Venta Web': 'WEB', 'Convenio Marco': 'CONVENIO_MARCO', 'Licitación': 'LICITACION' }[rest.tipo]
+      if (!expectedChannel || crm.canalVenta !== expectedChannel) return reply.code(400).send({ error: 'El tipo de venta no corresponde al canal de la oportunidad CRM' })
+    }
 
     // Resolver vendedor asignado: solo un admin puede asignar a otro vendedor; el
     // resto (vendedor) siempre se autoasigna su propia venta.
@@ -232,6 +248,19 @@ export default async function createVenta(fastify) {
         include: { items: true },
       })
       await linkCrmToOrder(tx, created)
+      if (crmId) {
+        await tx.crmRegistro.update({
+          where: { id: crmId },
+          data: {
+            ordenId: created.id,
+            clienteId: rest.clienteId,
+            etapaComercial: 'COTIZACION_ENVIADA',
+            estado: '0',
+            fechaCotizacion: new Date(),
+            estadoCambiadoAt: new Date(),
+          },
+        })
+      }
 
       if (rest.tipo === 'Licitación') {
         const licId = rest.licitacion || 'S/N'

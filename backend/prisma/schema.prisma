@@ -944,6 +944,7 @@ model CrmRegistro {
   cliente                Cliente?             @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   orden                  Orden?               @relation(fields: [ordenId], references: [id], onDelete: SetNull)
   ordenCompraOnline      OrdenCompraOnline?   @relation("CrmOcOnlineSource", fields: [ordenCompraOnlineId], references: [id], onDelete: SetNull)
+  cotizacionComercial    CrmCotizacion?       @relation("CrmRegistroCotizacion")
   gestiones              CrmGestion[]
   estadosHistorial       CrmEstadoHistorial[]
 
@@ -956,6 +957,60 @@ model CrmRegistro {
   @@index([origenDato])
   @@index([esHistorico])
   @@map("crm_registros")
+  @@schema("ventas")
+}
+
+// Cotizacion comercial creada desde CRM. Es deliberadamente independiente de
+// Orden: una Orden entra a Matriz solo cuando la oportunidad es aprobada.
+model CrmCotizacion {
+  id                     Int                  @id @default(autoincrement())
+  crmId                  Int                  @unique @map("crm_id")
+  tipo                   String
+  clienteSucursalId      Int?                 @map("cliente_sucursal_id")
+  vendedorId             Int?                 @map("vendedor_id")
+  licitacion             String?
+  licitacionFecha        DateTime?            @map("licitacion_fecha")
+  licitacionPlazo        String?              @map("licitacion_plazo")
+  licitacionReferencia   String?              @map("licitacion_referencia")
+  licitacionOC           String?              @map("licitacion_oc")
+  observaciones          String?
+  descuentoPct           Float                @default(0) @map("descuento_pct")
+  enviosParciales        Boolean              @default(false) @map("envios_parciales")
+  montoDespacho          Float                @default(0) @map("monto_despacho")
+  fechaPlazo             DateTime?            @map("fecha_plazo")
+  plazoEntregaDias       Int?                 @map("plazo_entrega_dias")
+  plazoEntregaTipo       String?              @map("plazo_entrega_tipo")
+  direccionDespacho      String?              @map("direccion_despacho")
+  direccionDespachoExtra String?              @map("direccion_despacho_extra")
+  contactoDespacho       String?              @map("contacto_despacho")
+  telefonoContactoDespacho String?            @map("telefono_contacto_despacho")
+  emailContactoDespacho  String?              @map("email_contacto_despacho")
+  regionDespacho         String?              @map("region_despacho")
+  comunaDespacho         String?              @map("comuna_despacho")
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+  crm                    CrmRegistro          @relation("CrmRegistroCotizacion", fields: [crmId], references: [id], onDelete: Cascade)
+  items                  CrmCotizacionItem[]
+
+  @@index([tipo])
+  @@map("crm_cotizaciones")
+  @@schema("ventas")
+}
+
+model CrmCotizacionItem {
+  id              Int             @id @default(autoincrement())
+  cotizacionId    Int             @map("cotizacion_id")
+  productoId      Int             @map("producto_id")
+  codigoInterno   String?         @map("codigo_interno")
+  nombre          String?
+  descripcion     String?
+  cantidad        Int
+  precioUnitario  Float           @map("precio_unitario")
+  cotizacion      CrmCotizacion   @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+
+  @@index([cotizacionId])
+  @@index([productoId])
+  @@map("crm_cotizacion_items")
   @@schema("ventas")
 }
 

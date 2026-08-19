@@ -9,6 +9,8 @@ import {
   normalizeEtapa,
   normalizeResultado,
 } from './constants.js'
+import { applyVentaStockDeltas, buildStockDeltasFromItems, isVentaDirectaStockTipo } from '../../routes/ventas/stock.js'
+import { autoNotifyTaller } from '../../routes/pasar-taller/service.js'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -41,6 +43,139 @@ function validationError(message, statusCode = 400) {
   const error = new Error(message)
   error.statusCode = statusCode
   return error
+}
+
+const CANAL_TO_TIPO_ORDEN = { WEB: 'Venta Web', SALA: 'Venta Sala', LICITACION: 'Licitación' }
+
+function tipoOrdenForCanal(canalVenta) {
+  return CANAL_TO_TIPO_ORDEN[String(canalVenta || '').toUpperCase()] || 'Normal'
+}
+
+// Reutilizado por POST /:id/convertir-cliente y por el cierre GANADO: mismo
+// criterio de match (RUT exacto, case-insensitive) y de creacion.
+export async function resolveOrCreateClienteForCrm(tx, crm) {
+  const cleanRut = String(crm.rut || '').trim()
+  if (!cleanRut) throw validationError('La venta requiere el RUT del cliente antes de poder cerrarse como ganada')
+  const existing = await tx.cliente.findFirst({ where: { rut: { equals: cleanRut, mode: 'insensitive' } } })
+  if (existing) return existing.id
+  const clientName = String(crm.rsocial || crm.nombre || '').trim()
+  if (!clientName) throw validationError('La venta requiere nombre o razón social del cliente antes de poder cerrarse como ganada')
+  const created = await tx.cliente.create({
+    data: {
+      rut: cleanRut,
+      nombre: clientName,
+      email: crm.email ? String(crm.email).trim() : null,
+      telefono: crm.telefono ? String(crm.telefono).trim() : null,
+      activo: true,
+    },
+  })
+  return created.id
+}
+
+// Garantiza que una oportunidad GANADA quede conectada a una Orden real del ERP.
+// Nunca crea una orden vacia: la orden debe nacer desde su flujo comercial.
+export async function ensureOrdenForGanado(tx, crm, actor = {}, now = new Date()) {
+  if (crm.ordenId) return { ordenId: crm.ordenId, clienteId: crm.clienteId ?? null }
+
+  const folio = String(crm.ncotizacion || '').trim()
+  if (/^\d{1,9}$/.test(folio)) {
+    const matched = await tx.orden.findFirst({ where: { nInterno: parseInt(folio, 10) }, select: { id: true, clienteId: true } })
+    if (matched) return { ordenId: matched.id, clienteId: matched.clienteId ?? crm.clienteId ?? null }
+  }
+
+  throw validationError('No se puede cerrar como GANADA sin una orden ERP vinculada. Crea o vincula la venta desde el flujo correspondiente antes de cerrar la oportunidad.', 409)
+
+}
+
+// Convierte una cotizacion CRM en Orden solo al aprobarla. La cotizacion y sus
+// items existen antes, pero la Matriz de Ventas solo ve la Orden resultante.
+async function createOrdenFromCrmCotizacion(tx, crm, actor = {}) {
+  const cotizacion = await tx.crmCotizacion.findUnique({ where: { crmId: crm.id }, include: { items: true } })
+  if (!cotizacion) return null
+  if (crm.ordenId) return { id: crm.ordenId, clienteId: crm.clienteId }
+  if (!crm.clienteId) throw validationError('La cotizacion CRM no tiene cliente vinculado')
+  if (!cotizacion.items.length) throw validationError('La cotizacion CRM no tiene productos')
+  const cliente = await tx.cliente.findUnique({ where: { id: crm.clienteId }, select: { id: true, activo: true, rut: true } })
+  if (!cliente?.activo) throw validationError('El cliente debe estar activo para aprobar la venta', 409)
+  const productIds = cotizacion.items.map(item => item.productoId)
+  const productos = await tx.producto.findMany({ where: { id: { in: productIds } }, select: { id: true, activo: true, codigoInterno: true, nombre: true, descripcion: true } })
+  if (productos.length !== productIds.length || productos.some(producto => !producto.activo)) throw validationError('La cotizacion contiene productos inexistentes o inactivos')
+  const productById = new Map(productos.map(producto => [producto.id, producto]))
+  const items = cotizacion.items.map(item => ({
+    productoId: item.productoId,
+    codigoInterno: item.codigoInterno || productById.get(item.productoId).codigoInterno,
+    nombre: item.nombre || productById.get(item.productoId).nombre,
+    descripcion: item.descripcion || productById.get(item.productoId).descripcion,
+    cantidad: item.cantidad,
+    precioUnitario: item.precioUnitario,
+  }))
+  const tipo = cotizacion.tipo
+  if (!['LicitaciÃ³n', 'Venta Directa'].includes(tipo)) throw validationError('Tipo de cotizacion CRM no soportado')
+  if (tipo === 'LicitaciÃ³n' && (!cotizacion.licitacion || !cotizacion.licitacionFecha)) throw validationError('La licitacion requiere ID y fecha para aprobarla')
+
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('ventas.orden.n_interno'))`
+  const max = await tx.orden.aggregate({ _max: { nInterno: true } })
+  const vendedorId = cotizacion.vendedorId || crm.vendedorId || Number(actor.id)
+  if (!vendedorId) throw validationError('La cotizacion requiere un ejecutivo asignado')
+  const orden = await tx.orden.create({
+    data: {
+      nInterno: (max._max.nInterno || 0) + 1,
+      tipo,
+      clienteId: cliente.id,
+      clienteSucursalId: cotizacion.clienteSucursalId,
+      rutCliente: cliente.rut || crm.rut || null,
+      userId: vendedorId,
+      sucursalId: actor.sucursalId || null,
+      creadorNombre: actor.nombre || actor.email || crm.ejecutiva || 'CRM',
+      licitacion: cotizacion.licitacion || null,
+      observaciones: cotizacion.observaciones || null,
+      descuentoPct: cotizacion.descuentoPct || 0,
+      enviosParciales: cotizacion.enviosParciales,
+      montoDespacho: cotizacion.montoDespacho || 0,
+      fechaPlazo: cotizacion.fechaPlazo,
+      plazoEntregaDias: cotizacion.plazoEntregaDias,
+      plazoEntregaTipo: cotizacion.plazoEntregaTipo,
+      direccionDespacho: cotizacion.direccionDespacho,
+      direccionDespachoExtra: cotizacion.direccionDespachoExtra,
+      contactoDespacho: cotizacion.contactoDespacho,
+      telefonoContactoDespacho: cotizacion.telefonoContactoDespacho,
+      emailContactoDespacho: cotizacion.emailContactoDespacho,
+      regionDespacho: cotizacion.regionDespacho,
+      comunaDespacho: cotizacion.comunaDespacho,
+      items: { create: items },
+    },
+  })
+  // Al aprobar una cotización simple se convierte en Venta Directa y debe
+  // ejecutar los mismos efectos operacionales de una venta creada en Nueva Venta.
+  await autoNotifyTaller(tx, orden.id, actor)
+  const stock = await applyVentaStockDeltas(tx, {
+    deltas: isVentaDirectaStockTipo(orden.tipo) ? buildStockDeltasFromItems(items, 1) : new Map(),
+    ordenId: orden.id,
+    nInterno: orden.nInterno,
+    tipo: orden.tipo,
+    userId: actor.id,
+    user: actor,
+    motivo: `Venta directa ${orden.nInterno || orden.id}`,
+  })
+  if (stock.error) throw validationError(stock.error, stock.status || 400)
+  if (tipo === 'LicitaciÃ³n') {
+    const existing = await tx.cotizacionLicitacion.findFirst({ where: { idLicitacion: cotizacion.licitacion } })
+    const data = {
+      fecha: cotizacion.licitacionFecha,
+      rutCliente: cliente.rut || crm.rut || '', estado: 'Pendiente',
+      plazo: cotizacion.licitacionPlazo || '', referencia: cotizacion.licitacionReferencia || '', ordenCompra: cotizacion.licitacionOC || '',
+      ordenId: orden.id, sucursalId: cotizacion.clienteSucursalId || null, usuario: actor.nombre || actor.email || 'CRM',
+      fechaPlazo: cotizacion.fechaPlazo, plazoEntregaDias: cotizacion.plazoEntregaDias, plazoEntregaTipo: cotizacion.plazoEntregaTipo,
+      enviosParciales: cotizacion.enviosParciales, montoDespacho: cotizacion.montoDespacho || 0,
+    }
+    if (existing) {
+      await tx.cotizacionLicitacionItem.deleteMany({ where: { cotizacionId: existing.id } })
+      await tx.cotizacionLicitacion.update({ where: { id: existing.id }, data: { ...data, items: { create: items.map(item => ({ codigoInterno: item.codigoInterno, nombre: item.nombre, descripcion: item.descripcion, cantidad: item.cantidad, precio: item.precioUnitario, cantAdjudicados: 0 })) } } })
+    } else {
+      await tx.cotizacionLicitacion.create({ data: { idLicitacion: cotizacion.licitacion, ...data, items: { create: items.map(item => ({ codigoInterno: item.codigoInterno, nombre: item.nombre, descripcion: item.descripcion, cantidad: item.cantidad, precio: item.precioUnitario, cantAdjudicados: 0 })) } } })
+    }
+  }
+  return orden
 }
 
 export function validateTransition(current, payload, { isAdmin = false } = {}) {
@@ -97,6 +232,11 @@ export async function transitionCrm(prisma, crmId, payload, actor = {}, options 
       estadoCambiadoAt: now,
     }
     if (validation.targetStage === CRM_ETAPAS.VENTA_APROBADA) {
+      const orden = await createOrdenFromCrmCotizacion(tx, current, actor)
+      if (orden) {
+        data.ordenId = orden.id
+        data.clienteId = orden.clienteId
+      }
       data.ventaAprobadaAt = current.ventaAprobadaAt || now
       data.confirmacionTipo = String(payload.confirmacionTipo).toUpperCase()
       data.confirmacionReferencia = String(payload.confirmacionReferencia || '').trim() || null
@@ -106,6 +246,13 @@ export async function transitionCrm(prisma, crmId, payload, actor = {}, options 
       data.cerradoAt = now
       data.motivoPerdida = validation.resultado === CRM_RESULTADOS.PERDIDO ? String(payload.motivoPerdida).toUpperCase() : null
       data.motivoPerdidaDetalle = validation.resultado === CRM_RESULTADOS.PERDIDO ? validation.detalle || null : null
+      // Los registros historicos (import legacy) ya reflejan un desenlace pasado:
+      // clasificarlos como GANADO no debe generar una Orden nueva en el ERP vivo.
+      if (validation.resultado === CRM_RESULTADOS.GANADO && !current.esHistorico) {
+        const linked = await ensureOrdenForGanado(tx, current, actor, now)
+        data.ordenId = linked.ordenId
+        if (linked.clienteId) data.clienteId = linked.clienteId
+      }
     } else if (reopening) {
       // El resultado vigente se limpia; el cierre anterior permanece en CrmEstadoHistorial.
       data.resultadoCierre = null
