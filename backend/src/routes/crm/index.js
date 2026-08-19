@@ -52,6 +52,16 @@ function totalCotizado(ordenCompraOnline) {
   return Number.isFinite(stored) ? stored : 0
 }
 
+const ORIGENES_CRM = Object.freeze({
+  OC_ONLINE: ['OC_ONLINE_LEGACY'],
+  LICITACION: ['LICITACION_LEGACY', 'CRM_LICITACION'],
+  COTIZACION_SIMPLE: ['CRM_COTIZACION_SIMPLE'],
+})
+
+function origenesParaFiltro(value) {
+  return ORIGENES_CRM[String(value || '').toUpperCase()] || []
+}
+
 function startAndEndOfToday() {
   const start = new Date()
   start.setHours(0, 0, 0, 0)
@@ -175,6 +185,7 @@ export default async function crmRoutes(fastify) {
             etapaComercial: CRM_ETAPAS.COTIZACION_ENVIADA,
             canalVenta,
             tipoVenta,
+            origenDato: esCotizacionSimple ? 'CRM_COTIZACION_SIMPLE' : 'CRM_LICITACION',
             estadoCambiadoAt: now,
             ultimaGestionAt: now,
             clienteId: cliente.id,
@@ -220,17 +231,21 @@ export default async function crmRoutes(fastify) {
     f.get('/', {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],
     }, async (request) => {
-      const { ejecutiva, estado, etapa, resultadoCierre, canalVenta, tipoVenta, semaforo, prioridad, search, page = '1', fechaDesde, fechaHasta, historico } = request.query
+      const { ejecutiva, estado, etapa, resultadoCierre, canalVenta, tipoVenta, origen, semaforo, prioridad, search, page = '1', fechaDesde, fechaHasta, historico } = request.query
       const LIMIT = 500
       const offset = (parseInt(page) - 1) * LIMIT
 
       const where = applyScopeByRole({}, request.user)
-      if (ejecutiva) where.ejecutiva = { contains: ejecutiva, mode: 'insensitive' }
+      if (ejecutiva) where.ejecutiva = { equals: String(ejecutiva).trim(), mode: 'insensitive' }
       if (prioridad) where.prioridad = prioridad
       if (etapa) where.etapaComercial = String(etapa).toUpperCase()
       if (resultadoCierre) where.resultadoCierre = String(resultadoCierre).toUpperCase()
       if (canalVenta) where.canalVenta = String(canalVenta).toUpperCase()
       if (tipoVenta) where.tipoVenta = String(tipoVenta).toUpperCase()
+      if (origen) {
+        const origenes = origenesParaFiltro(origen)
+        if (origenes.length) where.origenDato = { in: origenes }
+      }
       if (historico === '1') where.esHistorico = true
       if (historico === '0') where.esHistorico = false
       if (estado !== undefined && estado !== '') {
@@ -518,6 +533,13 @@ export default async function crmRoutes(fastify) {
           cliente: { select: { id: true, rut: true, nombre: true } },
           orden: { select: { id: true, nInterno: true, tipo: true, estado: true, estadoPago: true, estadoEntrega: true, facturado: true } },
           cotizacionComercial: { include: { items: true } },
+          cotizacionLicitacion: {
+            select: {
+              id: true, idLicitacion: true, fecha: true, estado: true, usuario: true,
+              rutCliente: true, obs: true, plazo: true, ordenCompra: true, ordenId: true,
+              items: { select: { id: true, codigoInterno: true, nombre: true, descripcion: true, cantidad: true, precio: true } },
+            },
+          },
           ordenCompraOnline: {
             select: {
               id: true, nCompra: true, fechaHora: true, fechaCotizacion: true,
@@ -531,7 +553,8 @@ export default async function crmRoutes(fastify) {
         },
       })
       const ocItems = item?.ordenCompraOnline?.items || []
-      const codes = [...new Set(ocItems.map(row => String(row.codigoInterno || '').trim()).filter(Boolean))]
+      const licitacionItems = item?.cotizacionLicitacion?.items || []
+      const codes = [...new Set([...ocItems, ...licitacionItems].map(row => String(row.codigoInterno || '').trim()).filter(Boolean))]
       const products = codes.length
         ? await f.prisma.producto.findMany({ where: { codigoInterno: { in: codes } }, select: { codigoInterno: true, fotoUrl: true } })
         : []
@@ -539,7 +562,10 @@ export default async function crmRoutes(fastify) {
       const ordenCompraOnline = item?.ordenCompraOnline
         ? { ...item.ordenCompraOnline, totalCalculado: totalCotizado(item.ordenCompraOnline), items: ocItems.map(row => ({ ...row, producto: productByCode.get(row.codigoInterno) || null })) }
         : null
-      return { ...item, ...addSemaforo([item])[0], ordenCompraOnline }
+      const cotizacionLicitacion = item?.cotizacionLicitacion
+        ? { ...item.cotizacionLicitacion, items: licitacionItems.map(row => ({ ...row, producto: productByCode.get(row.codigoInterno) || null })) }
+        : null
+      return { ...item, ...addSemaforo([item])[0], ordenCompraOnline, cotizacionLicitacion }
     })
 
     // PATCH /api/crm/:id
@@ -730,20 +756,46 @@ export default async function crmRoutes(fastify) {
     f.get('/ejecutivas', {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],
     }, async (request) => {
-      const where = { ejecutiva: { not: null } }
-      if (request.query?.historico === '1') where.esHistorico = true
-      if (request.query?.historico === '0') where.esHistorico = false
-      const crmRows = await f.prisma.crmRegistro.groupBy({
-        by: ['ejecutiva'],
+      const query = request.query || {}
+      const where = applyScopeByRole({ ejecutiva: { not: null } }, request.user)
+      if (query.historico === '1') where.esHistorico = true
+      if (query.historico === '0') where.esHistorico = false
+      if (query.prioridad) where.prioridad = query.prioridad
+      if (query.canalVenta) where.canalVenta = String(query.canalVenta).toUpperCase()
+      if (query.tipoVenta) where.tipoVenta = String(query.tipoVenta).toUpperCase()
+      if (query.origen) {
+        const origenes = origenesParaFiltro(query.origen)
+        if (origenes.length) where.origenDato = { in: origenes }
+      }
+      if (query.fechaDesde || query.fechaHasta) {
+        where.fecha = {}
+        if (query.fechaDesde) where.fecha.gte = new Date(query.fechaDesde)
+        if (query.fechaHasta) where.fecha.lte = new Date(`${query.fechaHasta}T23:59:59`)
+      }
+      if (query.search) {
+        where.OR = [
+          { nombre: { contains: query.search, mode: 'insensitive' } },
+          { rsocial: { contains: query.search, mode: 'insensitive' } },
+          { rut: { contains: query.search, mode: 'insensitive' } },
+          { comentarios: { contains: query.search, mode: 'insensitive' } },
+        ]
+      }
+      const crmRows = await f.prisma.crmRegistro.findMany({
         where,
-        _count: { _all: true },
+        select: {
+          ejecutiva: true, vendedorId: true, esHistorico: true, etapaComercial: true,
+          estado: true, ultimaGestionAt: true, fechaCotizacion: true, fecha: true, createdAt: true,
+        },
       })
+      const rows = query.semaforo
+        ? addSemaforo(crmRows).filter(row => row.semaforo === String(query.semaforo).toUpperCase())
+        : crmRows
       const totalsByName = new Map()
-      for (const row of crmRows) {
+      for (const row of rows) {
         const name = String(row.ejecutiva || '').trim()
         if (!name) continue
         const key = name.toLocaleLowerCase('es-CL')
-        totalsByName.set(key, (totalsByName.get(key) || 0) + row._count._all)
+        totalsByName.set(key, (totalsByName.get(key) || 0) + 1)
       }
 
       const users = await f.prisma.user.findMany({
@@ -765,7 +817,7 @@ export default async function crmRoutes(fastify) {
         }
       }
 
-      for (const r of crmRows) {
+      for (const r of rows) {
         const name = String(r.ejecutiva || '').trim()
         if (name && !namesSet.has(name.toLowerCase())) {
           namesSet.add(name.toLowerCase())

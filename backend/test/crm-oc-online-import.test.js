@@ -76,6 +76,6 @@ describe('importación CRM desde OC Online legacy', () => {
   })
 
   it('does not create overdue alerts for historical rows', () => {
-    expect(semaforoForCrm({ esHistorico: true, fecha: new Date('2025-01-01') })).toEqual({ semaforo: 'HISTORICO', diasSinGestion: null })
+    expect(semaforoForCrm({ esHistorico: true, fecha: new Date('2025-01-01') })).toEqual({ semaforo: null, diasSinGestion: null })
   })
 })

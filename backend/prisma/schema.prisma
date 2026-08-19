@@ -641,6 +641,7 @@ model CotizacionLicitacion {
   enviosParciales      Boolean                    @default(false) @map("envios_parciales")
   montoDespacho        Float                      @default(0) @map("monto_despacho")
   items                CotizacionLicitacionItem[]
+  oportunidadCrm       CrmRegistro?               @relation("CrmLicitacionSource")
   descuentoSolicitud   DescuentoSolicitud?        @relation("CotizacionDescuentoSolicitud", fields: [descuentoSolicitudId], references: [id], onDelete: SetNull)
 
   @@index([idLicitacion])
@@ -936,6 +937,7 @@ model CrmRegistro {
   clienteId              Int?                 @map("cliente_id")
   ordenId                Int?                 @map("orden_id")
   ordenCompraOnlineId    Int?                 @unique @map("orden_compra_online_id")
+  cotizacionLicitacionId Int?                @unique @map("cotizacion_licitacion_id")
   origenDato             String?              @map("origen_dato")
   codigoVendedorLegacy   String?              @map("codigo_vendedor_legacy")
   esHistorico            Boolean              @default(false) @map("es_historico")
@@ -944,6 +946,7 @@ model CrmRegistro {
   cliente                Cliente?             @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   orden                  Orden?               @relation(fields: [ordenId], references: [id], onDelete: SetNull)
   ordenCompraOnline      OrdenCompraOnline?   @relation("CrmOcOnlineSource", fields: [ordenCompraOnlineId], references: [id], onDelete: SetNull)
+  cotizacionLicitacion   CotizacionLicitacion? @relation("CrmLicitacionSource", fields: [cotizacionLicitacionId], references: [id], onDelete: SetNull)
   cotizacionComercial    CrmCotizacion?       @relation("CrmRegistroCotizacion")
   gestiones              CrmGestion[]
   estadosHistorial       CrmEstadoHistorial[]

@@ -85,19 +85,19 @@ describe('CRM estado routes', () => {
   it('returns real executive totals for the selected portfolio', async () => {
     const prisma = {
       crmRegistro: {
-        groupBy: vi.fn().mockResolvedValue([
-          { ejecutiva: 'Ana', _count: { _all: 4 } },
-          { ejecutiva: 'Histórica', _count: { _all: 7 } },
+        findMany: vi.fn().mockResolvedValue([
+          ...Array.from({ length: 4 }, () => ({ ejecutiva: 'Ana', esHistorico: true })),
+          ...Array.from({ length: 7 }, () => ({ ejecutiva: 'Histórica', esHistorico: true })),
         ]),
       },
       user: { findMany: vi.fn().mockResolvedValue([{ id: 11, nombre: 'Ana' }, { id: 12, nombre: 'Pedro' }]) },
     }
     const handlers = await buildCrmHandlers(prisma)
-    const response = await handlers['GET /ejecutivas']({ query: { historico: '1' } })
+    const response = await handlers['GET /ejecutivas']({ query: { historico: '1' }, user: { role: 'admin' } })
 
-    expect(prisma.crmRegistro.groupBy).toHaveBeenCalledWith({
-      by: ['ejecutiva'], where: { ejecutiva: { not: null }, esHistorico: true }, _count: { _all: true },
-    })
+    expect(prisma.crmRegistro.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { ejecutiva: { not: null }, esHistorico: true },
+    }))
     expect(response).toEqual(expect.arrayContaining([
       expect.objectContaining({ ejecutiva: 'Ana', vendedorId: 11, total: 4 }),
       expect.objectContaining({ ejecutiva: 'Pedro', vendedorId: 12, total: 0 }),

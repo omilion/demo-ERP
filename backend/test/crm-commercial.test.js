@@ -6,9 +6,12 @@ describe('CRM comercial', () => {
   it('calcula límites del semáforo en días hábiles', () => {
     const monday = new Date('2026-08-03T12:00:00-04:00')
     expect(businessDaysBetween(monday, new Date('2026-08-10T12:00:00-04:00'))).toBe(5)
-    expect(semaforoForCrm({ ultimaGestionAt: monday }, new Date('2026-08-10T12:00:00-04:00'))).toEqual({ semaforo: 'AMARILLO', diasSinGestion: 5 })
-    expect(semaforoForCrm({ ultimaGestionAt: monday }, new Date('2026-08-17T12:00:00-04:00'))).toEqual({ semaforo: 'ROJO', diasSinGestion: 10 })
-    expect(semaforoForCrm({ ultimaGestionAt: monday }, new Date('2026-08-18T12:00:00-04:00'))).toEqual({ semaforo: 'VENCIDO', diasSinGestion: 11 })
+    const leadActivo = { ultimaGestionAt: monday, vendedorId: 7, etapaComercial: 'SEGUIMIENTO' }
+    expect(semaforoForCrm(leadActivo, new Date('2026-08-10T12:00:00-04:00'))).toEqual({ semaforo: 'AMARILLO', diasSinGestion: 5 })
+    expect(semaforoForCrm(leadActivo, new Date('2026-08-17T12:00:00-04:00'))).toEqual({ semaforo: 'ROJO', diasSinGestion: 10 })
+    expect(semaforoForCrm(leadActivo, new Date('2026-08-18T12:00:00-04:00'))).toEqual({ semaforo: 'ROJO', diasSinGestion: 11 })
+    expect(semaforoForCrm({ ultimaGestionAt: monday, etapaComercial: 'CERRADO', vendedorId: 7 })).toEqual({ semaforo: null, diasSinGestion: null })
+    expect(semaforoForCrm({ ultimaGestionAt: monday, etapaComercial: 'SEGUIMIENTO' })).toEqual({ semaforo: null, diasSinGestion: null })
   })
 
   it('exige resultado y motivo estructurado al perder', () => {

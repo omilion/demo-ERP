@@ -84,7 +84,16 @@ function cardTitle(item) {
   if (item.nombre) return item.nombre
   if (item.rsocial) return item.rsocial
   if (item.email) return item.email
+  if (item.rut) return `RUT ${item.rut}`
   return item.ncotizacion ? `Cotización #${item.ncotizacion}` : 'Registro sin contacto'
+}
+
+function originBadge(item) {
+  const origin = String(item.origenDato || '').toUpperCase()
+  if (origin === 'OC_ONLINE_LEGACY') return { label: 'OC ONLINE', tone: 'blue' }
+  if (origin === 'LICITACION_LEGACY' || origin === 'CRM_LICITACION' || item.canalVenta === 'LICITACION') return { label: 'LICITACIÓN', tone: 'purple' }
+  if (origin === 'CRM_COTIZACION_SIMPLE') return { label: 'COT. SIMPLE', tone: 'green' }
+  return null
 }
 
 function money(value) {
@@ -118,6 +127,7 @@ function CrmCard({ item, isDragging }) {
   const isHistoric = item.esHistorico || item.semaforo === 'HISTORICO'
   const action = item.accion && item.accion !== item.resultado ? item.accion : null
   const ocOnline = item.ordenCompraOnline
+  const origin = originBadge(item)
   const estado = ESTADOS.find(e => e.id === normalizeEstado(item.etapaComercial || item.estado))
 
   return (
@@ -158,6 +168,7 @@ function CrmCard({ item, isDragging }) {
       )}
 
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 7 }}>
+        {origin && <Badge tone={origin.tone}>{origin.label}</Badge>}
         {!isHistoric && item.semaforo && item.semaforo !== 'NORMAL' && (
           <Badge tone={item.semaforo === 'AMARILLO' ? 'amber' : 'red'}>
             {item.semaforo}{item.diasSinGestion != null ? ` · ${item.diasSinGestion}d` : ''}
@@ -707,6 +718,7 @@ export default function CrmPage() {
   const [prioridad, setPrioridad]     = useState('')
   const [canalVenta, setCanalVenta]   = useState('')
   const [tipoVenta, setTipoVenta]     = useState('')
+  const [origen, setOrigen]           = useState('')
   const [semaforo, setSemaforo]       = useState('')
   const [search, setSearch]           = useState('')
   const [debounced, setDebounced]     = useState('')
@@ -737,8 +749,6 @@ export default function CrmPage() {
     }
   }, [isFullscreen])
 
-  const ejecutivasParams = portfolio === 'ACTIVOS' ? { historico: '0' } : portfolio === 'HISTORICO' ? { historico: '1' } : {}
-  const { data: ejecutivas = [] } = useCrmEjecutivas(ejecutivasParams)
   const { data: pendientesHoyData } = useCrmPendientesHoy()
   const metricParams = { fechaDesde, fechaHasta }
   if (portfolio === 'ACTIVOS') metricParams.historico = '0'
@@ -762,12 +772,18 @@ export default function CrmPage() {
   if (prioridad)  params.prioridad  = prioridad
   if (canalVenta) params.canalVenta = canalVenta
   if (tipoVenta) params.tipoVenta = tipoVenta
+  if (origen) params.origen = origen
   if (semaforo) params.semaforo = semaforo
   if (debounced)  params.search     = debounced
   if (fechaDesde) params.fechaDesde = fechaDesde
   if (fechaHasta) params.fechaHasta = fechaHasta
   if (portfolio === 'ACTIVOS') params.historico = '0'
   if (portfolio === 'HISTORICO') params.historico = '1'
+
+  // Las cantidades del selector deben responder a los mismos filtros de la
+  // grilla. Se omite solo la propia ejecutiva para no esconder alternativas.
+  const { ejecutiva: _ejecutivaSeleccionada, ...ejecutivasParams } = params
+  const { data: ejecutivas = [] } = useCrmEjecutivas(ejecutivasParams)
 
   const { data: result = { items: [], total: 0, limit: 500 }, isLoading } = useCrm(params)
   const items = useMemo(() => result.items ?? [], [result.items])
@@ -936,7 +952,7 @@ export default function CrmPage() {
         }}>
           <select value={ejecutiva} onChange={e => setEjecutiva(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
             <option value="">Todas las ejecutivas</option>
-            {ejecutivas.map(e => <option key={e.ejecutiva} value={e.ejecutiva}>{e.ejecutiva} ({e.total})</option>)}
+            {ejecutivas.filter(e => e.total > 0).map(e => <option key={e.ejecutiva} value={e.ejecutiva}>{e.ejecutiva} ({e.total})</option>)}
           </select>
           <select value={prioridad} onChange={e => setPrioridad(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
             <option value="">Toda prioridad</option>
@@ -946,7 +962,8 @@ export default function CrmPage() {
           </select>
           <select value={canalVenta} onChange={e => setCanalVenta(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todos los canales</option>{(catalogos?.canales || []).map(value => <option key={value}>{value}</option>)}</select>
           <select value={tipoVenta} onChange={e => setTipoVenta(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todos los tipos</option>{(catalogos?.tiposVenta || []).map(value => <option key={value}>{value.replaceAll('_', ' ')}</option>)}</select>
-          <select value={semaforo} onChange={e => setSemaforo(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todo semáforo</option><option>NORMAL</option><option>AMARILLO</option><option>ROJO</option><option>VENCIDO</option><option>HISTORICO</option></select>
+          <select value={origen} onChange={e => setOrigen(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todos los orígenes</option>{(catalogos?.origenes || []).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select>
+          <select value={semaforo} onChange={e => setSemaforo(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todo semáforo</option><option value="NORMAL">Al día</option><option value="AMARILLO">Requiere seguimiento</option><option value="ROJO">Atrasado</option></select>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Desde</span>
             <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }} />
