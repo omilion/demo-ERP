@@ -32,10 +32,14 @@ export function businessDaysBetween(fromValue, toValue = new Date()) {
 }
 
 export function semaforoForCrm(crm, now = new Date()) {
-  if (crm.esHistorico) return { semaforo: 'HISTORICO', diasSinGestion: null }
+  // El semáforo es una herramienta de gestión, no una etiqueta para datos
+  // importados. Solo corre en oportunidades activas con responsable vigente.
+  if (crm.esHistorico || crm.etapaComercial === CRM_ETAPAS.CERRADO || crm.estado === '3' || !crm.vendedorId) {
+    return { semaforo: null, diasSinGestion: null }
+  }
   const base = crm.ultimaGestionAt || crm.fechaCotizacion || crm.fecha || crm.createdAt
   const diasSinGestion = base ? businessDaysBetween(base, now) : 0
-  const semaforo = diasSinGestion > 10 ? 'VENCIDO' : diasSinGestion === 10 ? 'ROJO' : diasSinGestion >= 5 ? 'AMARILLO' : 'NORMAL'
+  const semaforo = diasSinGestion >= 10 ? 'ROJO' : diasSinGestion >= 5 ? 'AMARILLO' : 'NORMAL'
   return { semaforo, diasSinGestion }
 }
 

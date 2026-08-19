@@ -22,6 +22,15 @@ export const CRM_FLUJOS_COMERCIALES = Object.freeze([
   { canal: 'PROSPECCION_DIRECTA', tipoVenta: 'COTIZACION_SIMPLE', etiqueta: 'Cotizacion simple', origen: 'CRM' },
 ])
 
+// El canal describe la naturaleza comercial; el origen identifica de dónde
+// provino la oportunidad. No se deben mezclar: OC Online y Licitación son
+// fuentes distintas aunque ambas luego sean gestionadas en el mismo pipeline.
+export const CRM_ORIGENES = Object.freeze([
+  { id: 'OC_ONLINE', label: 'OC Online' },
+  { id: 'LICITACION', label: 'Licitación' },
+  { id: 'COTIZACION_SIMPLE', label: 'Cotización simple' },
+])
+
 export function isCrmFlowComercial(canalVenta, tipoVenta) {
   return CRM_FLUJOS_COMERCIALES.some(flujo => flujo.canal === canalVenta && flujo.tipoVenta === tipoVenta)
 }
@@ -73,6 +82,7 @@ export function crmCatalogos() {
     resultados: Object.values(CRM_RESULTADOS),
     canales: CRM_CANALES,
     tiposVenta: CRM_TIPOS_VENTA,
+    origenes: CRM_ORIGENES,
     flujosComerciales: CRM_FLUJOS_COMERCIALES,
     motivosPerdida: CRM_MOTIVOS_PERDIDA,
     confirmaciones: CRM_CONFIRMACIONES,

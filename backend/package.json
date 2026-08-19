@@ -30,6 +30,8 @@
     "crm:backfill:apply": "node scripts/crm-comercial-backfill.mjs --apply",
     "crm:import-oc": "node scripts/crm-import-oc-online.mjs --cutoff=2025-01-01",
     "crm:import-oc:apply": "node scripts/crm-import-oc-online.mjs --cutoff=2025-01-01 --apply --confirm=IMPORTAR_OC_2025",
+    "crm:sync-licitaciones": "node scripts/sync-crm-licitaciones.mjs",
+    "crm:sync-licitaciones:apply": "node scripts/sync-crm-licitaciones.mjs --apply --confirm=SYNC_CRM_LICITACIONES",
     "job:gmail-receptor": "node scripts/poll-gmail-receptor.mjs"
   },
   "keywords": [],
