@@ -114,8 +114,8 @@ async function createOrdenFromCrmCotizacion(tx, crm, actor = {}) {
     precioUnitario: item.precioUnitario,
   }))
   const tipo = cotizacion.tipo
-  if (!['LicitaciÃ³n', 'Venta Directa'].includes(tipo)) throw validationError('Tipo de cotizacion CRM no soportado')
-  if (tipo === 'LicitaciÃ³n' && (!cotizacion.licitacion || !cotizacion.licitacionFecha)) throw validationError('La licitacion requiere ID y fecha para aprobarla')
+  if (!['Licitación', 'Venta Directa'].includes(tipo)) throw validationError('Tipo de cotizacion CRM no soportado')
+  if (tipo === 'Licitación' && (!cotizacion.licitacion || !cotizacion.licitacionFecha)) throw validationError('La licitacion requiere ID y fecha para aprobarla')
 
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('ventas.orden.n_interno'))`
   const max = await tx.orden.aggregate({ _max: { nInterno: true } })
@@ -162,7 +162,7 @@ async function createOrdenFromCrmCotizacion(tx, crm, actor = {}) {
     motivo: `Venta directa ${orden.nInterno || orden.id}`,
   })
   if (stock.error) throw validationError(stock.error, stock.status || 400)
-  if (tipo === 'LicitaciÃ³n') {
+  if (tipo === 'Licitación') {
     const existing = await tx.cotizacionLicitacion.findFirst({ where: { idLicitacion: cotizacion.licitacion } })
     const data = {
       fecha: cotizacion.licitacionFecha,
