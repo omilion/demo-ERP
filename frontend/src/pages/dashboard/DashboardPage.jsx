@@ -200,6 +200,8 @@ function buildQuickAccess({ show, canReadCatalogo, canWriteVentas, canReadProvee
   const n = v => isLoading ? '...' : (v ?? 0).toLocaleString('es-CL')
   const invCritico = (inv.critico ?? 0) + (inv.sinStock ?? 0)
   const talCritico = (tal.critico ?? 0) + (tal.sinStock ?? 0)
+  const talleres = stats?.talleres ?? []
+  const porTipo = tipo => talleres.find(t => t.tipo === tipo) ?? {}
 
   return [
     show.bodega && { label: 'Mantención Bodega Inventario y Web', icon: 'warehouse', tone: 'red', route: '/bodega' },
@@ -213,12 +215,12 @@ function buildQuickAccess({ show, canReadCatalogo, canWriteVentas, canReadProvee
     canWriteVentas && { label: 'Venta por Sala', icon: 'shoppingCart', tone: 'cyan', route: '/ventas/nueva' },
     show.taller && { label: 'OT Taller Pendientes', icon: 'wrench', tone: 'cyan', badge: n(stats?.odts?.pendientes), route: '/taller?pendiente=si' },
     show.taller && { label: 'OT Taller Prioritarias', icon: 'wrench', tone: 'red', badge: n(stats?.odts?.urgentes), route: '/taller?prioridad=urgente' },
-    show.taller && { label: 'OT Taller Espumas Pendientes', icon: 'wrench', tone: 'cyan', route: '/taller?tipo=Espumas&pendiente=si' },
-    show.taller && { label: 'OT Taller Espumas Prioritarias', icon: 'wrench', tone: 'red', route: '/taller?tipo=Espumas&prioridad=urgente' },
-    show.taller && { label: 'OT Taller Confecciones Pendientes', icon: 'wrench', tone: 'cyan', route: '/taller?tipo=Confecciones&pendiente=si' },
-    show.taller && { label: 'OT Taller Confecciones Prioritarias', icon: 'wrench', tone: 'red', route: '/taller?tipo=Confecciones&prioridad=urgente' },
-    show.taller && { label: 'OT Taller Madera Pendientes', icon: 'wrench', tone: 'cyan', route: '/taller?tipo=Madera&pendiente=si' },
-    show.taller && { label: 'OT Taller Madera Prioritarias', icon: 'wrench', tone: 'red', route: '/taller?tipo=Madera&prioridad=urgente' },
+    show.taller && { label: 'OT Taller Espumas Pendientes', icon: 'wrench', tone: 'cyan', badge: n(porTipo('Espumas').activas), route: '/taller?tipo=Espumas&pendiente=si' },
+    show.taller && { label: 'OT Taller Espumas Prioritarias', icon: 'wrench', tone: 'red', badge: n(porTipo('Espumas').urgentes), route: '/taller?tipo=Espumas&prioridad=urgente' },
+    show.taller && { label: 'OT Taller Confecciones Pendientes', icon: 'wrench', tone: 'cyan', badge: n(porTipo('Confecciones').activas), route: '/taller?tipo=Confecciones&pendiente=si' },
+    show.taller && { label: 'OT Taller Confecciones Prioritarias', icon: 'wrench', tone: 'red', badge: n(porTipo('Confecciones').urgentes), route: '/taller?tipo=Confecciones&prioridad=urgente' },
+    show.taller && { label: 'OT Taller Madera Pendientes', icon: 'wrench', tone: 'cyan', badge: n(porTipo('Madera').activas), route: '/taller?tipo=Madera&pendiente=si' },
+    show.taller && { label: 'OT Taller Madera Prioritarias', icon: 'wrench', tone: 'red', badge: n(porTipo('Madera').urgentes), route: '/taller?tipo=Madera&prioridad=urgente' },
     show.cobranza && { label: 'Cobranza', icon: 'dollarSign', tone: 'amber', route: '/cobranza' },
     canReadCaja && { label: 'Movimientos de caja', icon: 'creditCard', tone: 'amber', route: '/caja' },
     canReadProveedores && { label: 'Pagos a proveedores', icon: 'briefcase', tone: 'amber', route: '/pagos-proveedores' },
