@@ -117,7 +117,7 @@ Sin esos usuarios no se puede asignar cartera, no se puede repartir la limpieza,
 **Venta web directa y cotización web son dos flujos distintos.**
 
 - La **venta web** es automática, no la gestiona ningún vendedor, y por lo tanto **no se asigna** a nadie del equipo comercial.
-- La **cotización web** sí se asigna. Hoy la lleva Cynthia, que atiende clientes privados.
+- La **cotización web** sí se asigna. Hoy la lleva Cinthia Palacios, que atiende clientes privados.
 
 ### Acuerdos
 
