@@ -42,8 +42,15 @@ try {
   }
   const existentesIds = new Set(existentes.map(row => row.cotizacionLicitacionId))
   const pendientes = licitaciones.filter(row => !existentesIds.has(row.id))
+  const ordenesIds = [...new Set(pendientes.map(row => row.ordenId).filter(Number.isInteger))]
+  const ordenesVigentes = new Set()
+  for (let index = 0; index < ordenesIds.length; index += 500) {
+    const rows = await prisma.orden.findMany({ where: { id: { in: ordenesIds.slice(index, index + 500) } }, select: { id: true } })
+    rows.forEach(row => ordenesVigentes.add(row.id))
+  }
   const toCreate = []
   let sinClienteUnico = 0
+  let ordenesLegacyNoVigentes = 0
 
   for (const licitacion of pendientes) {
     const candidates = clientesPorRut.get(normalizeRut(licitacion.rutCliente)) || []
@@ -52,7 +59,12 @@ try {
     const cliente = candidates.length === 1 ? candidates[0] : null
     if (!cliente) sinClienteUnico++
     const data = buildLegacyLicitacionCrmData(licitacion, cliente)
-    if (data) toCreate.push(data)
+    if (!data) continue
+    if (data.ordenId && !ordenesVigentes.has(data.ordenId)) {
+      data.ordenId = null
+      ordenesLegacyNoVigentes++
+    }
+    toCreate.push(data)
   }
 
   const porEtapa = Object.fromEntries(['PENDIENTE_CLASIFICACION', 'COTIZACION_ENVIADA', 'SEGUIMIENTO', 'VENTA_APROBADA', 'CERRADO'].map(etapa => [etapa, 0]))
@@ -62,6 +74,7 @@ try {
   console.log(`A crear: ${toCreate.length}`)
   console.log('Por etapa:', porEtapa)
   console.log(`Sin cliente unívoco por RUT: ${sinClienteUnico}`)
+  console.log(`Orden legacy no vigente (no se enlaza al CRM): ${ordenesLegacyNoVigentes}`)
   console.log('Muestra:', toCreate.slice(0, 3).map(row => ({ ncotizacion: row.ncotizacion, etapa: row.etapaComercial, ejecutiva: row.ejecutiva, clienteId: row.clienteId })))
 
   if (!APPLY) {
