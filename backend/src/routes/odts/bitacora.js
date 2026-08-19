@@ -22,7 +22,7 @@ export default async function bitacoraRoutes(fastify) {
     if (isNaN(odtId)) return reply.code(400).send({ error: 'ID invalido' })
     const sucursalId = getUserSucursalId(request.user)
     const odt = await fastify.prisma.odt.findFirst({
-      where: { id: odtId, ...(sucursalId ? { sucursalId } : {}) },
+      where: { id: odtId, ...(sucursalId ? { OR: [{ sucursalId }, { sucursalId: null }] } : {}) },
       select: { id: true },
     })
     if (!odt) return reply.code(404).send({ error: 'ODT no encontrada' })
@@ -72,7 +72,7 @@ export default async function bitacoraRoutes(fastify) {
     const sucursalId = getUserSucursalId(request.user)
     try {
       if (sucursalId) {
-        const odt = await fastify.prisma.odt.findFirst({ where: { id: odtId, sucursalId }, select: { id: true } })
+        const odt = await fastify.prisma.odt.findFirst({ where: { id: odtId, OR: [{ sucursalId }, { sucursalId: null }] }, select: { id: true } })
         if (!odt) return reply.code(404).send({ error: 'ODT no encontrada' })
       }
       const entry = await fastify.prisma.bitacoraTaller.findFirst({
