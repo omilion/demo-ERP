@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useId, useState } from 'react'
 import { Icon, Btn } from '../shared'
 
 // ── FormPanel (slide-in from right) ──────────────────────────────────────────
@@ -115,6 +115,57 @@ export const Select = ({ value, onChange, options, error, disabled, style, ...pr
     {options.map(o => typeof o === 'string' ? <option key={o} value={o}>{o}</option> : <option key={o.value} value={o.value}>{o.label}</option>)}
   </select>
 )
+
+export const RadioGroup = ({ value, onChange, options, disabled = false, name, ariaLabel }) => {
+  const generatedName = useId()
+  const groupName = name || generatedName
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}
+    >
+      {options.map(option => {
+        const normalized = typeof option === 'string' ? { value: option, label: option } : option
+        const selected = String(value ?? '') === String(normalized.value)
+
+        return (
+          <label
+            key={normalized.value}
+            style={{
+              display: 'flex',
+              flex: '1 1 120px',
+              alignItems: 'center',
+              gap: 8,
+              minHeight: 38,
+              padding: '8px 11px',
+              border: `1px solid ${selected ? 'var(--green-600)' : 'var(--border)'}`,
+              borderRadius: 8,
+              background: selected ? 'var(--green-50)' : '#fff',
+              color: disabled ? 'var(--text-3)' : 'var(--text-1)',
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              fontSize: 13,
+              fontWeight: selected ? 600 : 500,
+              opacity: disabled ? 0.6 : 1,
+            }}
+          >
+            <input
+              type="radio"
+              name={groupName}
+              value={normalized.value}
+              checked={selected}
+              onChange={() => onChange(normalized.value)}
+              disabled={disabled}
+              style={{ width: 16, height: 16, margin: 0, accentColor: 'var(--green-600)', cursor: 'inherit' }}
+            />
+            <span>{normalized.label}</span>
+          </label>
+        )
+      })}
+    </div>
+  )
+}
 
 export const Textarea = ({ value, onChange, placeholder, rows = 3, error }) => (
   <textarea value={value ?? ''} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={rows}

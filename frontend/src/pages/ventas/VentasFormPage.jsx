@@ -2,7 +2,7 @@ import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
-import { FormField, FormDivider, Input, Select, Textarea, useForm } from '../../components/forms/index'
+import { FormField, FormDivider, Input, RadioGroup, Select, Textarea, useForm } from '../../components/forms/index'
 import { Badge, Btn, Icon } from '../../components/shared'
 import { useVenta, useCreateVenta, useUpdateVenta, useAnularVenta, useActivarVenta, useVentaCargos, useAddCargo, useDeleteCargo, useUpdateItemEntregados } from '../../api/ventas'
 import { useAuthStore } from '../../store/auth'
@@ -1457,7 +1457,13 @@ export default function VentasFormPage() {
           <Input type="number" min="0" max="3650" value={data.plazoEntregaDias || ''} onChange={v => { set('plazoEntregaDias', v); set('fechaPlazo', calculateDeliveryDateIso(v, data.plazoEntregaTipo)) }} placeholder="Ej: 15" />
         </FormField>
         <FormField label="Tipo de días" required>
-          <Select value={data.plazoEntregaTipo || 'corridos'} onChange={v => { set('plazoEntregaTipo', v); set('fechaPlazo', calculateDeliveryDateIso(data.plazoEntregaDias, v)) }} options={[{ value: 'habiles', label: 'Días hábiles' }, { value: 'corridos', label: 'Días corridos' }]} />
+          <RadioGroup
+            name="plazoEntregaTipo"
+            ariaLabel="Tipo de días para la entrega"
+            value={data.plazoEntregaTipo || 'corridos'}
+            onChange={v => { set('plazoEntregaTipo', v); set('fechaPlazo', calculateDeliveryDateIso(data.plazoEntregaDias, v)) }}
+            options={[{ value: 'habiles', label: 'Días hábiles' }, { value: 'corridos', label: 'Días corridos' }]}
+          />
         </FormField>
         <FormField label="Fecha tope calculada">
           <Input type="date" value={data.fechaPlazo || ''} onChange={v => set('fechaPlazo', v)} />
