@@ -73,6 +73,45 @@ const NAV_GROUPS = [
   ] },
 ]
 
+function useSmartNavigate() {
+  const navigate = useNavigate()
+  const clickTimerRef = useRef(null)
+  const lastRouteRef = useRef(null)
+
+  const handleNav = (route, onAfter, e) => {
+    if (e && (e.ctrlKey || e.metaKey || e.button === 1)) {
+      window.open(route, '_blank')
+      if (onAfter) onAfter()
+      return
+    }
+
+    if (clickTimerRef.current && lastRouteRef.current === route) {
+      clearTimeout(clickTimerRef.current)
+      clickTimerRef.current = null
+      lastRouteRef.current = null
+      window.open(route, '_blank')
+      if (onAfter) onAfter()
+    } else {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+      lastRouteRef.current = route
+      clickTimerRef.current = setTimeout(() => {
+        clickTimerRef.current = null
+        lastRouteRef.current = null
+        navigate(route)
+        if (onAfter) onAfter()
+      }, 220)
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+    }
+  }, [])
+
+  return handleNav
+}
+
 function canUseNavItem(user, item) {
   if (item.roles) return hasRole(user, item.roles)
   if (item.requirements) return canAny(user, item.requirements)
@@ -83,6 +122,7 @@ const DropdownGroup = ({ group, currentPath }) => {
   const [open, setOpen] = useState(false)
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
   const navigate = useNavigate()
+  const handleNav = useSmartNavigate()
   const ref = useRef()
   const menuRef = useRef()
   const closeTimer = useRef()
@@ -148,7 +188,7 @@ const DropdownGroup = ({ group, currentPath }) => {
             overflow: 'hidden', animation: 'dropIn 0.15s ease',
           }}>
             {group.items.map((item, i) => (
-              <button key={item.route} onClick={() => { navigate(item.route); setOpen(false) }} style={{
+              <button key={item.route} onClick={e => handleNav(item.route, () => setOpen(false), e)} style={{
                 display: 'flex', alignItems: 'center', gap: 10, width: '100%',
                 padding: '9px 16px', fontSize: 13,
                 fontWeight: item.highlight ? 700 : item.route === currentPath ? 600 : 400,
@@ -245,6 +285,7 @@ function NotificacionesBell() {
 export function TopBar() {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
+  const handleNav = useSmartNavigate()
   const location = useLocation()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userRef = useRef()
@@ -272,12 +313,12 @@ export function TopBar() {
   return (
     <header style={{ background: 'var(--green-900)', position: 'sticky', top: 0, zIndex: 100, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
       <div className="topbar-inner">
-        <div onClick={() => navigate('/dashboard')} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
+        <div onClick={e => handleNav('/dashboard', null, e)} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
           <img src={plastimarLogo} alt="Plastimar Sisgestion 3.0" className="topbar-brand-logo" style={{ display: 'block', width: 132, height: 'auto' }} />
         </div>
 
         <nav className="topbar-nav">
-          <button onClick={() => navigate('/dashboard/operativo')} style={{
+          <button onClick={e => handleNav('/dashboard/operativo', null, e)} style={{
             padding: '6px 12px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
             color: dashboardActive ? '#fff' : 'rgba(255,255,255,0.78)',
             fontWeight: dashboardActive ? 600 : 400,

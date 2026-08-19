@@ -19,3 +19,9 @@ tmp/
 .worktrees/
 backend/data/facturacion/*.p12
 backend/data/facturacion/*.pfx
+
+# Claude Code (config local por maquina)
+.claude/
+
+# Uploads en runtime (se sirven desde UPLOADS_DIR en el VPS)
+backend/uploads/
