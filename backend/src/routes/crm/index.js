@@ -231,12 +231,13 @@ export default async function crmRoutes(fastify) {
     f.get('/', {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],
     }, async (request) => {
-      const { ejecutiva, estado, etapa, resultadoCierre, canalVenta, tipoVenta, origen, semaforo, prioridad, search, page = '1', fechaDesde, fechaHasta, historico } = request.query
+      const { ejecutiva, vendedorId, estado, etapa, resultadoCierre, canalVenta, tipoVenta, origen, semaforo, prioridad, search, page = '1', fechaDesde, fechaHasta, historico } = request.query
       const LIMIT = 500
       const offset = (parseInt(page) - 1) * LIMIT
 
       const where = applyScopeByRole({}, request.user)
-      if (ejecutiva) where.ejecutiva = { equals: String(ejecutiva).trim(), mode: 'insensitive' }
+      if (vendedorId) where.vendedorId = Number(vendedorId)
+      else if (ejecutiva) where.ejecutiva = { equals: String(ejecutiva).trim(), mode: 'insensitive' }
       if (prioridad) where.prioridad = prioridad
       if (etapa) where.etapaComercial = String(etapa).toUpperCase()
       if (resultadoCierre) where.resultadoCierre = String(resultadoCierre).toUpperCase()
@@ -790,12 +791,24 @@ export default async function crmRoutes(fastify) {
       const rows = query.semaforo
         ? addSemaforo(crmRows).filter(row => row.semaforo === String(query.semaforo).toUpperCase())
         : crmRows
-      const totalsByName = new Map()
+
+      // Agrupa por vendedorId (fuente de verdad) para no duplicar al mismo
+      // vendedor cuando el texto legacy `ejecutiva` tiene variantes (login vs
+      // nombre completo, mayusculas, etc). Filas sin vendedorId se agrupan
+      // por el texto crudo como fallback.
+      const totalsByVendedorId = new Map()
+      const totalsByName = new Map() // key -> { label, total }
       for (const row of rows) {
+        if (row.vendedorId) {
+          totalsByVendedorId.set(row.vendedorId, (totalsByVendedorId.get(row.vendedorId) || 0) + 1)
+          continue
+        }
         const name = String(row.ejecutiva || '').trim()
         if (!name) continue
         const key = name.toLocaleLowerCase('es-CL')
-        totalsByName.set(key, (totalsByName.get(key) || 0) + 1)
+        const entry = totalsByName.get(key) || { label: name, total: 0 }
+        entry.total += 1
+        totalsByName.set(key, entry)
       }
 
       const users = await f.prisma.user.findMany({
@@ -806,26 +819,18 @@ export default async function crmRoutes(fastify) {
         select: { id: true, nombre: true }
       })
 
-      const namesSet = new Set()
       const result = []
-
       for (const u of users) {
-        if (u.nombre && u.nombre.trim()) {
-          const name = u.nombre.trim()
-          namesSet.add(name.toLowerCase())
-          result.push({ ejecutiva: name, vendedorId: u.id, source: 'user', total: totalsByName.get(name.toLocaleLowerCase('es-CL')) || 0 })
-        }
+        if (!u.nombre || !u.nombre.trim()) continue
+        result.push({ ejecutiva: u.nombre.trim(), vendedorId: u.id, source: 'user', total: totalsByVendedorId.get(u.id) || 0 })
       }
 
-      for (const r of rows) {
-        const name = String(r.ejecutiva || '').trim()
-        if (name && !namesSet.has(name.toLowerCase())) {
-          namesSet.add(name.toLowerCase())
-          result.push({ ejecutiva: name, source: 'crm', total: totalsByName.get(name.toLocaleLowerCase('es-CL')) || 0 })
-        }
+      // Fallback: registros sin vendedorId asignado (texto legacy huerfano)
+      for (const { label, total } of totalsByName.values()) {
+        result.push({ ejecutiva: label, vendedorId: null, source: 'crm', total })
       }
 
-      result.sort((a, b) => a.ejecutiva.localeCompare(b.ejecutiva))
+      result.sort((a, b) => b.total - a.total)
       return result
     })
   })

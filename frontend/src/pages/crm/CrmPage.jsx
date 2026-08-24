@@ -768,7 +768,8 @@ export default function CrmPage() {
   }
 
   const params = {}
-  if (ejecutiva)  params.ejecutiva  = ejecutiva
+  if (ejecutiva?.startsWith('u:')) params.vendedorId = ejecutiva.slice(2)
+  else if (ejecutiva?.startsWith('n:')) params.ejecutiva = ejecutiva.slice(2)
   if (prioridad)  params.prioridad  = prioridad
   if (canalVenta) params.canalVenta = canalVenta
   if (tipoVenta) params.tipoVenta = tipoVenta
@@ -952,7 +953,7 @@ export default function CrmPage() {
         }}>
           <select value={ejecutiva} onChange={e => setEjecutiva(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
             <option value="">Todas las ejecutivas</option>
-            {ejecutivas.filter(e => e.total > 0).map(e => <option key={e.ejecutiva} value={e.ejecutiva}>{e.ejecutiva} ({e.total})</option>)}
+            {ejecutivas.filter(e => e.total > 0).map(e => <option key={e.vendedorId ?? `n:${e.ejecutiva}`} value={e.vendedorId ? `u:${e.vendedorId}` : `n:${e.ejecutiva}`}>{e.ejecutiva} ({e.total})</option>)}
           </select>
           <select value={prioridad} onChange={e => setPrioridad(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
             <option value="">Toda prioridad</option>

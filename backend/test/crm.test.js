@@ -82,12 +82,16 @@ describe('CRM estado routes', () => {
     expect(prisma.crmRegistro.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { esHistorico: true } }))
   })
 
-  it('returns real executive totals for the selected portfolio', async () => {
+  it('returns real executive totals for the selected portfolio, grouped by vendedorId not raw text', async () => {
     const prisma = {
       crmRegistro: {
+        // Simula el caso real post-canonicalizacion: la misma vendedora "Ana"
+        // tiene filas con texto legacy distinto (login vs nombre completo)
+        // pero ya comparten vendedorId=11. No deben duplicarse en el resultado.
         findMany: vi.fn().mockResolvedValue([
-          ...Array.from({ length: 4 }, () => ({ ejecutiva: 'Ana', esHistorico: true })),
-          ...Array.from({ length: 7 }, () => ({ ejecutiva: 'Histórica', esHistorico: true })),
+          ...Array.from({ length: 4 }, () => ({ ejecutiva: 'ana', vendedorId: 11, esHistorico: true })),
+          ...Array.from({ length: 3 }, () => ({ ejecutiva: 'Ana Torrealba', vendedorId: 11, esHistorico: true })),
+          ...Array.from({ length: 7 }, () => ({ ejecutiva: 'Histórica', vendedorId: null, esHistorico: true })),
         ]),
       },
       user: { findMany: vi.fn().mockResolvedValue([{ id: 11, nombre: 'Ana' }, { id: 12, nombre: 'Pedro' }]) },
@@ -98,10 +102,12 @@ describe('CRM estado routes', () => {
     expect(prisma.crmRegistro.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { ejecutiva: { not: null }, esHistorico: true },
     }))
+    // Ana aparece UNA sola vez con el total combinado (4+3), no dos filas separadas.
+    expect(response.filter(r => r.vendedorId === 11)).toHaveLength(1)
     expect(response).toEqual(expect.arrayContaining([
-      expect.objectContaining({ ejecutiva: 'Ana', vendedorId: 11, total: 4 }),
+      expect.objectContaining({ ejecutiva: 'Ana', vendedorId: 11, total: 7 }),
       expect.objectContaining({ ejecutiva: 'Pedro', vendedorId: 12, total: 0 }),
-      expect.objectContaining({ ejecutiva: 'Histórica', total: 7 }),
+      expect.objectContaining({ ejecutiva: 'Histórica', vendedorId: null, total: 7 }),
     ]))
   })
 
