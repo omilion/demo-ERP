@@ -39,7 +39,7 @@ export default function UsuariosPage() {
   const [estadoFilter, setEstadoFilter] = useState('all')
 
   const filtered = usuarios.filter(u => {
-    const haystack = [u.nombre, u.email, u.rut, u.codigoVendedor, u.sucursalNombre, u.role].filter(Boolean).join(' ').toLowerCase()
+    const haystack = [u.nombre, u.email, u.rut, u.codigoVendedor, u.cargo, u.sucursalNombre, u.role].filter(Boolean).join(' ').toLowerCase()
     const matchesSearch = !search.trim() || haystack.includes(search.trim().toLowerCase())
     const matchesRole = !roleFilter || u.role === roleFilter
     const matchesEstado = estadoFilter === 'all' || (estadoFilter === 'activo' ? u.activo : !u.activo)
@@ -52,6 +52,7 @@ export default function UsuariosPage() {
     { key: 'role', label: 'Nivel', render: v => <Badge tone={v === 'admin' ? 'blue' : 'gray'}>{v}</Badge> },
     { key: 'sucursalNombre', label: 'Sucursal', render: v => v || '-' },
     { key: 'codigoVendedor', label: 'Cod Vendedor', render: v => mono(v) },
+    { key: 'cargo', label: 'Cargo' },
     { key: 'rut', label: 'RUT', render: v => mono(v) },
     { key: 'permisoDescuentos', label: 'Descuentos', render: v => v ? <Badge tone="green">Si</Badge> : <Badge tone="gray">No</Badge> },
     { key: 'permisosExtra', label: 'Permisos', render: v => {
@@ -127,6 +128,7 @@ function CreateUsuarioModal({ sucursales, onClose }) {
     role: 'vendedor',
     rut: '',
     codigoVendedor: '',
+    cargo: '',
     sucursalId: '',
     permisoDescuentos: false,
     activo: true,
@@ -161,6 +163,7 @@ function EditUsuarioModal({ user, sucursales, onClose }) {
     role: user.role || 'vendedor',
     rut: user.rut || '',
     codigoVendedor: user.codigoVendedor || '',
+    cargo: user.cargo || '',
     sucursalId: user.sucursalId != null ? String(user.sucursalId) : '',
     permisoDescuentos: Boolean(user.permisoDescuentos),
     password: '',
@@ -264,6 +267,7 @@ function UserFields({ form, setForm, sucursales, showPassword = false, passwordH
       {!showPassword && <Field label="Nueva password" hint={passwordHint}><input type="password" value={form.password} onChange={e => set('password', e.target.value)} style={inputStyle} /></Field>}
       <Field label="RUT"><input value={form.rut} onChange={e => set('rut', e.target.value)} style={inputStyle} /></Field>
       <Field label="Codigo vendedor"><input value={form.codigoVendedor} onChange={e => set('codigoVendedor', e.target.value)} style={inputStyle} /></Field>
+      <Field label="Cargo"><input value={form.cargo} onChange={e => set('cargo', e.target.value)} placeholder="Ej: Ejecutiva Mercado Publico" style={inputStyle} /></Field>
       <Field label="Sucursal">
         <select value={form.sucursalId} onChange={e => set('sucursalId', e.target.value)} style={inputStyle}>
           <option value="">Sin sucursal</option>

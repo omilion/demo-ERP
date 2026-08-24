@@ -17,6 +17,7 @@ model User {
   nombre               String
   rut                  String?
   codigoVendedor       String?         @unique @map("codigo_vendedor")
+  cargo                String?
   permisoDescuentos    Boolean         @default(false) @map("permiso_descuentos")
   permisosExtra        Json?           @map("permisos_extra")
   sucursalId           Int?            @map("sucursal_id")
