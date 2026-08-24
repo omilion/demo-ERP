@@ -137,11 +137,13 @@ export default async function notificacionesRoutes(fastify) {
       const leads = await prisma.crmRegistro.findMany({ where: crmWhere, orderBy: { ultimaGestionAt: 'asc' }, take: 100 })
       for (const lead of leads) {
         const { semaforo, diasSinGestion } = semaforoForCrm(lead, ahora)
-        if (semaforo === 'NORMAL') continue
+        // semaforo null = la oportunidad no se puntúa (histórica, cerrada o sin
+        // responsable asignado). No corresponde alertar sobre ella.
+        if (!semaforo || semaforo === 'NORMAL') continue
         items.push({
           tipo: 'crm_sin_gestion',
           severidad: semaforo === 'AMARILLO' ? 'media' : 'alta',
-          titulo: `${semaforo === 'VENCIDO' ? 'Gestión CRM vencida' : `Alerta CRM ${semaforo.toLowerCase()}`}: ${lead.nombre || lead.rsocial || `#${lead.id}`}`,
+          titulo: `${semaforo === 'ROJO' ? 'Gestión CRM atrasada' : 'Alerta CRM'}: ${lead.nombre || lead.rsocial || `#${lead.id}`}`,
           detalle: `${diasSinGestion} día(s) hábiles sin gestión · ${lead.etapaComercial || 'Etapa legacy'}`,
           fecha: lead.ultimaGestionAt || lead.fechaCotizacion || lead.fecha || lead.createdAt,
           link: '/crm',

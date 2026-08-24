@@ -62,7 +62,7 @@ export default async function dashboardStats(fastify) {
       p.orden.count({ where: mergeWhere({ estadoEntrega: 'Pendiente entrega', eliminada: false, estado: 'Activa' }, ordenOperacionalWhere) }),
       p.odt.count({ where: { ...odtScope, estado: 'Pendiente' } }),
       p.odt.count({ where: { ...odtScope, estado: 'En proceso' } }),
-      p.odt.count({ where: { ...odtScope, OR: [{ prioridad: { equals: 'Alta', mode: 'insensitive' } }, { estado: 'Prioritaria' }] } }),
+      p.odt.count({ where: { ...odtScope, estado: { in: ['Pendiente', 'En proceso'] }, OR: [{ prioridad: { equals: 'Alta', mode: 'insensitive' } }, { estado: 'Prioritaria' }] } }),
       p.odt.count({ where: tallerWhere('espuma', { ...odtScope, estado: { in: ['Pendiente', 'En proceso'] } }) }),
       p.odt.count({ where: tallerWhere('confe', { ...odtScope, estado: { in: ['Pendiente', 'En proceso'] } }) }),
       p.odt.count({ where: tallerWhere('madera', { ...odtScope, estado: { in: ['Pendiente', 'En proceso'] } }) }),

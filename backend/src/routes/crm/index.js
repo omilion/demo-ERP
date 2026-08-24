@@ -127,14 +127,14 @@ export default async function crmRoutes(fastify) {
       const b = request.body || {}
       const tipo = String(b.tipo || '').trim()
       const esCotizacionSimple = String(b.crmQuoteMode || '').toUpperCase() === 'PROSPECCION_DIRECTA'
-      const canalVenta = esCotizacionSimple ? 'PROSPECCION_DIRECTA' : tipo === 'LicitaciÃ³n' ? 'LICITACION' : null
+      const canalVenta = esCotizacionSimple ? 'PROSPECCION_DIRECTA' : tipo === 'Licitación' ? 'LICITACION' : null
       const tipoVenta = esCotizacionSimple ? 'COTIZACION_SIMPLE' : canalVenta === 'LICITACION' ? 'LICITACION' : null
       const clienteId = Number(b.clienteId)
       const rawItems = Array.isArray(b.items) ? b.items : []
       if (!canalVenta) return reply.code(400).send({ error: 'Selecciona una cotizacion CRM valida' })
       if (!Number.isInteger(clienteId) || clienteId <= 0) return reply.code(400).send({ error: 'Selecciona un cliente' })
       if (!rawItems.length) return reply.code(400).send({ error: 'Agrega al menos un producto' })
-      if (tipo === 'LicitaciÃ³n' && (!String(b.licitacion || '').trim() || !b.licitacionFecha)) return reply.code(400).send({ error: 'Licitacion requiere ID y fecha' })
+      if (tipo === 'Licitación' && (!String(b.licitacion || '').trim() || !b.licitacionFecha)) return reply.code(400).send({ error: 'Licitacion requiere ID y fecha' })
       if (!/^\S+@\S+\.\S+$/.test(String(b.emailContactoDespacho || '').trim())) return reply.code(400).send({ error: 'Ingresa el correo del contacto de despacho' })
       const productIds = [...new Set(rawItems.map(item => Number(item.productoId)).filter(Number.isInteger))]
       if (productIds.length !== rawItems.length) return reply.code(400).send({ error: 'Cada item debe corresponder a un producto del catalogo' })
