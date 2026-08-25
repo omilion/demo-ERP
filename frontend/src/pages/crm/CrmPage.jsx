@@ -127,6 +127,9 @@ function CrmCard({ item, isDragging }) {
   const isHistoric = item.esHistorico || item.semaforo === 'HISTORICO'
   const action = item.accion && item.accion !== item.resultado ? item.accion : null
   const ocOnline = item.ordenCompraOnline
+  // El servidor ya resolvio de que origen sale el monto (OC online, licitacion
+  // o cotizacion propia del CRM); la tarjeta solo lo pinta.
+  const monto = Number(item.montoCotizado ?? ocOnline?.totalCalculado ?? ocOnline?.total ?? 0)
   const origin = originBadge(item)
   const estado = ESTADOS.find(e => e.id === normalizeEstado(item.etapaComercial || item.estado))
 
@@ -154,10 +157,10 @@ function CrmCard({ item, isDragging }) {
         <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.rsocial}</div>
       )}
 
-      {ocOnline && (
+      {monto > 0 && (
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 5, padding: '5px 7px', borderRadius: 6, background: '#f0fdf4', color: 'var(--green-800)' }}>
           <span style={{ fontSize: 10, fontWeight: 700 }}>Cotizado</span>
-          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13.5, fontWeight: 700 }}>{money(ocOnline.totalCalculado ?? ocOnline.total)}</span>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13.5, fontWeight: 700 }}>{money(monto)}</span>
         </div>
       )}
 
@@ -239,9 +242,14 @@ function DetailValue({ label, value }) {
 function CrmSummary({ item, detalle, onEdit }) {
   const oc = detalle?.ordenCompraOnline
   const products = oc?.items || []
-  const totalCotizado = products.length
-    ? products.reduce((sum, product) => sum + Number(product.precio || 0) * Number(product.cantidad || 0), 0)
-    : Number(oc?.totalCalculado ?? oc?.total ?? 0)
+  // Igual que en la tarjeta: el monto lo resuelve el servidor segun el origen de
+  // la oportunidad, y solo se recalcula aca si el detalle todavia no lo trae.
+  const totalCotizado = Number(
+    detalle?.montoCotizado
+      ?? (products.length
+        ? products.reduce((sum, product) => sum + Number(product.precio || 0) * Number(product.cantidad || 0), 0)
+        : Number(oc?.totalCalculado ?? oc?.total ?? 0))
+  )
   const latest = detalle?.gestiones?.[0]
   return (
     <div style={{ padding: 20 }}>

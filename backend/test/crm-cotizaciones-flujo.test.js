@@ -141,6 +141,22 @@ describeDb('CRM: nueva oportunidad crea cotizacion y entra al pipeline', () => {
     for (const id of creados) expect(ids).toContain(id)
   })
 
+  // El tablero mostraba monto solo para lo importado de la web: una cotizacion
+  // nacida en el CRM aparecia en cero aunque tuviera sus items guardados.
+  it('el tablero y el detalle muestran el monto de la cotizacion propia', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/crm?search=' + encodeURIComponent(marca), headers: auth() })
+    const filas = res.json().items.filter(i => creados.includes(i.id))
+    expect(filas.length).toBeGreaterThan(0)
+    for (const fila of filas) {
+      expect(fila.ordenCompraOnline ?? null).toBeNull()   // no viene de la web
+      expect(fila.montoCotizado).toBe(2 * 15000)          // y aun asi tiene monto
+    }
+
+    const detalle = await app.inject({ method: 'GET', url: `/api/crm/${filas[0].id}`, headers: auth() })
+    expect(detalle.statusCode).toBe(200)
+    expect(detalle.json().montoCotizado).toBe(2 * 15000)
+  })
+
   it('la licitacion exige ID y fecha antes de guardarse', async () => {
     const res = await app.inject({
       method: 'POST',

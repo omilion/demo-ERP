@@ -37,19 +37,38 @@ function handleDomainError(error, reply) {
   return reply.code(error.statusCode).send({ error: error.message })
 }
 
+function sumarLineas(items, campoPrecio) {
+  if (!Array.isArray(items) || !items.length) return null
+  return items.reduce((total, item) => {
+    const cantidad = Number(item.cantidad)
+    const precio = Number(item[campoPrecio])
+    return total + (Number.isFinite(cantidad) ? cantidad : 0) * (Number.isFinite(precio) ? precio : 0)
+  }, 0)
+}
+
 // La cabecera importada de una OC puede contener un total antiguo o incompleto.
 // Cuando hay detalle, la fuente de verdad comercial es la suma de sus líneas.
 function totalCotizado(ordenCompraOnline) {
-  const items = ordenCompraOnline?.items
-  if (Array.isArray(items) && items.length) {
-    return items.reduce((total, item) => {
-      const cantidad = Number(item.cantidad)
-      const precio = Number(item.precio)
-      return total + (Number.isFinite(cantidad) ? cantidad : 0) * (Number.isFinite(precio) ? precio : 0)
-    }, 0)
-  }
+  const porLineas = sumarLineas(ordenCompraOnline?.items, 'precio')
+  if (porLineas !== null) return porLineas
   const stored = Number(ordenCompraOnline?.total)
   return Number.isFinite(stored) ? stored : 0
+}
+
+// Monto de la oportunidad, venga de donde venga.
+//
+// Una oportunidad tiene una sola fuente segun su origen: la OC online para lo
+// importado de la web, la cotizacion de licitacion para lo importado de
+// licitaciones, o la cotizacion comercial para lo que nace en el CRM. El tablero
+// mostraba monto solo para la primera, asi que las licitaciones y las
+// cotizaciones nuevas aparecian en cero.
+function montoCotizado(registro) {
+  const propia = sumarLineas(registro?.cotizacionComercial?.items, 'precioUnitario')
+  if (propia !== null) return propia
+  if (registro?.ordenCompraOnline) return totalCotizado(registro.ordenCompraOnline)
+  const licitacion = sumarLineas(registro?.cotizacionLicitacion?.items, 'precio')
+  if (licitacion !== null) return licitacion
+  return 0
 }
 
 const ORIGENES_CRM = Object.freeze({
@@ -280,15 +299,34 @@ export default async function crmRoutes(fastify) {
                 items: { select: { cantidad: true, precio: true } },
               },
             },
+            cotizacionLicitacion: {
+              select: {
+                id: true, idLicitacion: true, estado: true,
+                items: { select: { cantidad: true, precio: true } },
+              },
+            },
+            cotizacionComercial: {
+              select: {
+                id: true, tipo: true, licitacion: true,
+                items: { select: { cantidad: true, precioUnitario: true } },
+              },
+            },
           },
         }),
         f.prisma.crmRegistro.count({ where }),
       ])
 
       const enriched = addSemaforo(items).map(item => {
-        if (!item.ordenCompraOnline) return item
+        // El monto se resuelve aca, del lado del servidor, para que la tarjeta no
+        // tenga que saber de que origen viene cada oportunidad.
+        const monto = montoCotizado(item)
+        if (!item.ordenCompraOnline) return { ...item, montoCotizado: monto }
         const { items: ocItems, ...ordenCompraOnline } = item.ordenCompraOnline
-        return { ...item, ordenCompraOnline: { ...ordenCompraOnline, totalCalculado: totalCotizado({ ...ordenCompraOnline, items: ocItems }) } }
+        return {
+          ...item,
+          montoCotizado: monto,
+          ordenCompraOnline: { ...ordenCompraOnline, totalCalculado: totalCotizado({ ...ordenCompraOnline, items: ocItems }) },
+        }
       })
       const filtered = semaforo ? enriched.filter(item => item.semaforo === String(semaforo).toUpperCase()) : enriched
       return { items: filtered, total: semaforo ? filtered.length : total, limit: LIMIT }
@@ -566,7 +604,7 @@ export default async function crmRoutes(fastify) {
       const cotizacionLicitacion = item?.cotizacionLicitacion
         ? { ...item.cotizacionLicitacion, items: licitacionItems.map(row => ({ ...row, producto: productByCode.get(row.codigoInterno) || null })) }
         : null
-      return { ...item, ...addSemaforo([item])[0], ordenCompraOnline, cotizacionLicitacion }
+      return { ...item, ...addSemaforo([item])[0], montoCotizado: montoCotizado(item), ordenCompraOnline, cotizacionLicitacion }
     })
 
     // PATCH /api/crm/:id
