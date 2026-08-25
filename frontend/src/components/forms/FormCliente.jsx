@@ -74,7 +74,7 @@ export function FormCliente({ initial, onClose, onSaved }) {
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 const fmtM = n => (Math.abs(n || 0) / 1_000_000).toFixed(1) + 'M'
 
-const TIPO_TONE = { Institucional: 'blue', Municipal: 'neutral', Gobierno: 'neutral', Distribuidor: 'amber', Empresa: 'gray' }
+const TIPO_TONE = { Institucional: 'blue', Municipal: 'neutral', Gobierno: 'neutral', Distribuidor: 'amber', Empresa: 'gray', 'Persona natural': 'green' }
 const PAGO_TONE = { Pagada: 'green', Parcial: 'amber', 'No pagada': 'red' }
 const ENTREGA_TONE = { Entregada: 'green', 'En despacho': 'blue', Parcial: 'amber', 'Pendiente entrega': 'red' }
 const ODT_TONE = { Prioritaria: 'red', 'En proceso': 'blue', Pendiente: 'amber', Terminada: 'green' }
