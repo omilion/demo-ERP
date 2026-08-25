@@ -106,11 +106,26 @@ function resolverComuna(valor) {
   return null
 }
 
+// Formas en que el legacy escribio las regiones chilenas: "V Region de
+// Valparaiso", "Region del Biobio", "Antofagasta.". Se limpian los adornos y se
+// reintenta contra el catalogo. Solo cuenta si el resultado calza: una region
+// extranjera ("Mendoza", "Nayarit") no se toca, porque el cliente no esta en Chile.
+function limpiarAdornosRegion(valor) {
+  return norm(valor)
+    .replace(/^[ivxlc]+\s+/, '')              // numeral romano al inicio
+    .replace(/^region\s+(de\s+la\s+|del\s+|de\s+)?/, '')
+    .replace(/\s+region$/, '')
+    .replace(/[.,;]+$/, '')
+    .trim()
+}
+
 function resolverRegion(valor) {
   if (!valor || !valor.trim()) return null
   if (BASURA.test(valor.trim())) return { region: null, via: 'basura' }
   const directo = regionCanon.get(norm(valor))
   if (directo) return { region: directo, via: 'canonica' }
+  const limpio = regionCanon.get(limpiarAdornosRegion(valor))
+  if (limpio) return { region: limpio, via: 'adornos' }
   return null
 }
 

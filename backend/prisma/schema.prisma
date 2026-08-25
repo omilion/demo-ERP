@@ -180,6 +180,7 @@ model Cliente {
   conflictivoDetalle String?           @map("conflictivo_detalle")
   sucursales         ClienteSucursal[]
   oportunidadesCrm   CrmRegistro[]
+  ordenes            Orden[]
 
   @@map("clientes")
   @@schema("clientes")
@@ -543,10 +544,15 @@ model Orden {
   despachoAjustes          DespachoAjusteHistorial[]
   notasCreditoInternas     NotaCreditoInterna[]
   oportunidadesCrm         CrmRegistro[]
+  // La base ya tenia el foreign key con RESTRICT: un cliente con ventas no se
+  // puede borrar. Se declara igual para no alterar ese comportamiento; las bajas
+  // de cliente se hacen con el flag `activo`, no borrando la fila.
+  cliente                  Cliente?                  @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   clienteSucursal          ClienteSucursal?          @relation(fields: [clienteSucursalId], references: [id], onDelete: SetNull)
   descuentoSolicitud       DescuentoSolicitud?       @relation("OrdenDescuentoSolicitud", fields: [descuentoSolicitudId], references: [id], onDelete: SetNull)
 
   @@index([nInterno])
+  @@index([clienteId])
   @@index([clienteSucursalId])
   @@index([rutCliente])
   @@map("ordenes")
