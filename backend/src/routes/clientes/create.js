@@ -10,7 +10,6 @@ const Schema = z.object({
   nombre: z.string().trim().min(1),
   email: z.string().email().optional(),
   telefono: z.string().optional(),
-  ciudad: z.string().optional(),
   tipo: z.enum(['Empresa', 'Institucional', 'Municipal', 'Gobierno', 'Distribuidor']).optional(),
   razonSocial: z.string().optional(),
   giro: z.string().optional(),

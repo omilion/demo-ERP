@@ -5,7 +5,6 @@ const SucursalSchema = z.object({
   direccion: z.string().optional().nullable(),
   region: z.string().optional().nullable(),
   comuna: z.string().optional().nullable(),
-  ciudad: z.string().optional().nullable(),
   pais: z.string().optional().nullable(),
   contacto: z.string().optional().nullable(),
   email: z.string().email().optional().nullable(),

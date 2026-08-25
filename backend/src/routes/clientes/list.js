@@ -4,7 +4,7 @@ export default async function listClientes(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('clientes', 'read')],
   }, async (request, reply) => {
-    const { search, tipo, region, ciudad, email, segmento, conDeuda, estado, activo } = request.query
+    const { search, tipo, region, email, segmento, conDeuda, estado, activo } = request.query
     const pagination = parsePagination(request.query, { defaultLimit: 500, maxLimit: 500 })
     if (!pagination) return reply.code(400).send({ error: 'Paginacion invalida' })
 
@@ -15,7 +15,6 @@ export default async function listClientes(fastify) {
     else where.activo = true
     if (tipo) where.tipo = tipo
     if (region) where.region = { contains: region, mode: 'insensitive' }
-    if (ciudad) where.ciudad = { contains: ciudad, mode: 'insensitive' }
     if (email) where.email = { contains: email, mode: 'insensitive' }
     if (segmento) where.segmento = segmento
     if (search) where.OR = [
@@ -27,7 +26,6 @@ export default async function listClientes(fastify) {
       { direccion: { contains: search, mode: 'insensitive' } },
       { region: { contains: search, mode: 'insensitive' } },
       { comuna: { contains: search, mode: 'insensitive' } },
-      { ciudad: { contains: search, mode: 'insensitive' } },
     ]
 
     // Compute all saldos in one SQL query

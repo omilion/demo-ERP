@@ -21,7 +21,6 @@ export default function ClientesPage() {
   const [pageState, setPageState] = useState({ key: '', page: 1 })
   const [tipoFilter, setTipoFilter] = useState('all')
   const [region, setRegion] = useState('')
-  const [ciudad, setCiudad] = useState('')
   const [email, setEmail] = useState('')
   const [segmento, setSegmento] = useState('')
   const [conDeuda, setConDeuda] = useState(false)
@@ -40,7 +39,6 @@ export default function ClientesPage() {
   if (debouncedSearch) filterParams.search = debouncedSearch
   if (tipoFilter !== 'all') filterParams.tipo = tipoFilter
   if (region) filterParams.region = region
-  if (ciudad) filterParams.ciudad = ciudad
   if (email) filterParams.email = email
   if (segmento) filterParams.segmento = segmento
   if (conDeuda) filterParams.conDeuda = 'true'
@@ -90,7 +88,6 @@ export default function ClientesPage() {
     { key: 'direccion', label: 'Direccion', wrap: true, render: v => <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{v || '—'}</span> },
     { key: 'region', label: 'Region' },
     { key: 'comuna', label: 'Comuna' },
-    { key: 'ciudad', label: 'Ciudad' },
     { key: 'pais', label: 'País', render: v => v || 'Chile' },
     { key: 'tipo', label: 'Tipo', render: v => {
       const tone = { Institucional: 'blue', Municipal: 'neutral', Gobierno: 'neutral', Distribuidor: 'amber', Empresa: 'gray' }[v] || 'gray'
@@ -135,7 +132,6 @@ export default function ClientesPage() {
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <input value={region} onChange={e => setRegion(e.target.value)} placeholder="Región" style={miniInput} />
-        <input value={ciudad} onChange={e => setCiudad(e.target.value)} placeholder="Ciudad" style={miniInput} />
         <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" style={{ ...miniInput, width: 180 }} />
         <select value={segmento} onChange={e => setSegmento(e.target.value)} style={{ ...miniInput, cursor: 'pointer' }}>
           <option value="">Segmento</option>
@@ -152,8 +148,8 @@ export default function ClientesPage() {
           <input type="checkbox" checked={conDeuda} onChange={e => setConDeuda(e.target.checked)} />
           Solo con deuda
         </label>
-        {(region || ciudad || email || segmento || conDeuda || estadoCliente !== 'activos') && (
-          <button onClick={() => { setRegion(''); setCiudad(''); setEmail(''); setSegmento(''); setConDeuda(false); setEstadoCliente('activos') }} style={{ padding: '5px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Limpiar</button>
+        {(region || email || segmento || conDeuda || estadoCliente !== 'activos') && (
+          <button onClick={() => { setRegion(''); setEmail(''); setSegmento(''); setConDeuda(false); setEstadoCliente('activos') }} style={{ padding: '5px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Limpiar</button>
         )}
       </div>
     </div>
