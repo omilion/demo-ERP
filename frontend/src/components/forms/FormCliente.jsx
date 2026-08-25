@@ -28,14 +28,13 @@ export function FormCliente({ initial, onClose, onSaved }) {
     direccion: initial.direccion || '',
     region: initial.region || '',
     comuna: initial.comuna || '',
-    ciudad: initial.ciudad || '',
     pais: initial.pais || 'Chile',
     email: initial.email || '',
     tel: initial.telefono || initial.tel || '',
     credito: initial.limiteCredito != null ? String(initial.limiteCredito) : '',
   } : {
     rut: '', nombre: '', razonSocial: '', giro: '', tipo: 'Empresa',
-    direccion: '', region: '', comuna: '', ciudad: '', pais: 'Chile',
+    direccion: '', region: '', comuna: '', pais: 'Chile',
     email: '', tel: '', credito: '',
   })
 
@@ -55,7 +54,6 @@ export function FormCliente({ initial, onClose, onSaved }) {
       direccion: data.direccion || undefined,
       region: data.region || undefined,
       comuna: data.comuna || undefined,
-      ciudad: data.ciudad || undefined,
       pais: data.pais || undefined,
       email: data.email || undefined,
       telefono: data.tel || undefined,
@@ -118,7 +116,7 @@ export function FormCliente({ initial, onClose, onSaved }) {
       <FormField label="Dirección (Sucursal Principal)">
         <Input value={data.direccion} onChange={v => set('direccion', v)} placeholder="Calle, número, depto/oficina" />
       </FormField>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
         <FormField label="País">
           <Select value={data.pais} onChange={v => { set('pais', v); if (v !== 'Chile') { set('region', ''); set('comuna', '') } }} options={withCurrentValue(PAISES_LATAM, data.pais)} />
         </FormField>
@@ -131,9 +129,6 @@ export function FormCliente({ initial, onClose, onSaved }) {
           {data.pais === 'Chile'
             ? <Select value={data.comuna} onChange={v => set('comuna', v)} options={['', ...withCurrentValue(COMUNAS_POR_REGION[data.region] || [], data.comuna)]} disabled={!data.region} />
             : <Input value={data.comuna} onChange={v => set('comuna', v)} placeholder="Comuna / distrito" />}
-        </FormField>
-        <FormField label="Ciudad">
-          <Input value={data.ciudad} onChange={v => set('ciudad', v)} placeholder="Ej: Santiago" />
         </FormField>
       </div>
 
