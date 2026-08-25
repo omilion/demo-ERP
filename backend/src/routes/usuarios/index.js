@@ -16,6 +16,7 @@ const userSelect = {
   nombre: true,
   rut: true,
   codigoVendedor: true,
+  cargo: true,
   permisoDescuentos: true,
   permisosExtra: true,
   sucursalId: true,
@@ -143,6 +144,7 @@ export default async function usuariosRoutes(fastify) {
     if (!ROLES.has(role)) return reply.code(400).send({ error: 'role invalido' })
     const rut = cleanText(b.rut)
     const codigoVendedor = cleanText(b.codigoVendedor)
+    const cargo = cleanText(b.cargo)
     const parsedSucursal = parseOptionalId(b.sucursalId, 'sucursalId')
     if (parsedSucursal.error) return reply.code(400).send({ error: parsedSucursal.error })
     const sucursalError = await validateSucursal(fastify.prisma, parsedSucursal.value)
@@ -162,6 +164,7 @@ export default async function usuariosRoutes(fastify) {
           nombre,
           rut,
           codigoVendedor,
+          cargo,
           permisoDescuentos: Boolean(b.permisoDescuentos),
           permisosExtra: permisos.value,
           sucursalId: parsedSucursal.value,
@@ -198,6 +201,7 @@ export default async function usuariosRoutes(fastify) {
     }
     if (b.rut !== undefined) data.rut = cleanText(b.rut)
     if (b.codigoVendedor !== undefined) data.codigoVendedor = cleanText(b.codigoVendedor)
+    if (b.cargo !== undefined) data.cargo = cleanText(b.cargo)
     if (b.permisoDescuentos !== undefined) data.permisoDescuentos = Boolean(b.permisoDescuentos)
     if (b.activo !== undefined) data.activo = Boolean(b.activo)
     if (b.permisosExtra !== undefined) {
