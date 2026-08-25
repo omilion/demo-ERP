@@ -19,6 +19,7 @@ const Schema = z.object({
   direccion: z.string().optional(),
   region: z.string().optional(),
   comuna: z.string().optional(),
+  pais: z.string().optional(),
   segmento: z.string().optional(),
   diasInactivoAlerta: z.number().int().min(0).optional(),
   limiteCredito: z.number().min(0).optional(),

@@ -4,6 +4,15 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, Input, Select, useForm } from '../../components/forms/index'
 import { useCliente, useCreateCliente, useUpdateCliente, useCreateClienteSucursal, useUpdateClienteSucursal } from '../../api/clientes'
+import { PAISES_LATAM, REGIONES_CHILE, COMUNAS_POR_REGION } from '../../data/geoLatam'
+
+// Si el valor guardado no calza con ninguna opcion del desplegable (dato legacy
+// sin normalizar, o de un pais sin division en el catalogo), se agrega como
+// opcion extra al final para no perderlo silenciosamente al editar.
+function withCurrentValue(options, current) {
+  if (!current || options.includes(current)) return options
+  return [...options, current]
+}
 
 export default function ClientesFormPage() {
   const navigate = useNavigate()
@@ -14,7 +23,7 @@ export default function ClientesFormPage() {
 
   const { data, set, errors, validate } = useForm({
     rut: '', nombre: '', razonSocial: '', giro: '', tipo: 'Empresa',
-    direccion: '', region: '', comuna: '', ciudad: '',
+    direccion: '', region: '', comuna: '', ciudad: '', pais: 'Chile',
     email: '', telefono: '', segmento: 'C',
     limiteCredito: '', diasInactivoAlerta: '',
   })
@@ -30,6 +39,7 @@ export default function ClientesFormPage() {
       set('region', found.region || '')
       set('comuna', found.comuna || '')
       set('ciudad', found.ciudad || '')
+      set('pais', found.pais || 'Chile')
       set('email', found.email || '')
       set('telefono', found.telefono || '')
       set('segmento', found.segmento || 'C')
@@ -56,6 +66,7 @@ export default function ClientesFormPage() {
       region: data.region || undefined,
       comuna: data.comuna || undefined,
       ciudad: data.ciudad || undefined,
+      pais: data.pais || undefined,
       email: data.email || undefined,
       telefono: data.telefono || undefined,
       segmento: data.segmento || undefined,
@@ -114,12 +125,19 @@ export default function ClientesFormPage() {
       <FormField label="Dirección">
         <Input value={data.direccion} onChange={v => set('direccion', v)} placeholder="Calle 123, Of. 4" />
       </FormField>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14 }}>
+        <FormField label="País">
+          <Select value={data.pais} onChange={v => { set('pais', v); if (v !== 'Chile') { set('region', ''); set('comuna', '') } }} options={withCurrentValue(PAISES_LATAM, data.pais)} />
+        </FormField>
         <FormField label="Región">
-          <Input value={data.region} onChange={v => set('region', v)} placeholder="Valparaíso" />
+          {data.pais === 'Chile'
+            ? <Select value={data.region} onChange={v => { set('region', v); set('comuna', '') }} options={['', ...withCurrentValue(REGIONES_CHILE, data.region)]} />
+            : <Input value={data.region} onChange={v => set('region', v)} placeholder="Región / provincia" />}
         </FormField>
         <FormField label="Comuna">
-          <Input value={data.comuna} onChange={v => set('comuna', v)} placeholder="Viña del Mar" />
+          {data.pais === 'Chile'
+            ? <Select value={data.comuna} onChange={v => set('comuna', v)} options={['', ...withCurrentValue(COMUNAS_POR_REGION[data.region] || [], data.comuna)]} disabled={!data.region} />
+            : <Input value={data.comuna} onChange={v => set('comuna', v)} placeholder="Comuna / distrito" />}
         </FormField>
         <FormField label="Ciudad">
           <Input value={data.ciudad} onChange={v => set('ciudad', v)} placeholder="Viña del Mar" />
@@ -161,7 +179,7 @@ export default function ClientesFormPage() {
 }
 
 function SucursalesCliente({ cliente }) {
-  const [form, setForm] = useState({ nombre: '', direccion: '', region: '', comuna: '', ciudad: '', contacto: '', telefono: '', email: '', isPrincipal: false })
+  const [form, setForm] = useState({ nombre: '', direccion: '', region: '', comuna: '', ciudad: '', pais: 'Chile', contacto: '', telefono: '', email: '', isPrincipal: false })
   const [editingId, setEditingId] = useState(null)
   const createSucursal = useCreateClienteSucursal()
   const updateSucursal = useUpdateClienteSucursal()
@@ -176,6 +194,7 @@ function SucursalesCliente({ cliente }) {
       region: s.region || '',
       comuna: s.comuna || '',
       ciudad: s.ciudad || '',
+      pais: s.pais || 'Chile',
       contacto: s.contacto || '',
       telefono: s.telefono || '',
       email: s.email || '',
@@ -185,7 +204,7 @@ function SucursalesCliente({ cliente }) {
 
   function reset() {
     setEditingId(null)
-    setForm({ nombre: '', direccion: '', region: '', comuna: '', ciudad: '', contacto: '', telefono: '', email: '', isPrincipal: false })
+    setForm({ nombre: '', direccion: '', region: '', comuna: '', ciudad: '', pais: 'Chile', contacto: '', telefono: '', email: '', isPrincipal: false })
   }
 
   function save() {
@@ -214,11 +233,22 @@ function SucursalesCliente({ cliente }) {
             </button>
           ))}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
         <FormField label="Nombre"><Input value={form.nombre} onChange={v => field('nombre', v)} placeholder="Casa matriz, sede norte..." /></FormField>
         <FormField label="Direccion"><Input value={form.direccion} onChange={v => field('direccion', v)} placeholder="Calle y numero" /></FormField>
-        <FormField label="Region"><Input value={form.region} onChange={v => field('region', v)} /></FormField>
-        <FormField label="Comuna"><Input value={form.comuna} onChange={v => field('comuna', v)} /></FormField>
+        <FormField label="País">
+          <Select value={form.pais} onChange={v => { field('pais', v); if (v !== 'Chile') { field('region', ''); field('comuna', '') } }} options={withCurrentValue(PAISES_LATAM, form.pais)} />
+        </FormField>
+        <FormField label="Región">
+          {form.pais === 'Chile'
+            ? <Select value={form.region} onChange={v => { field('region', v); field('comuna', '') }} options={['', ...withCurrentValue(REGIONES_CHILE, form.region)]} />
+            : <Input value={form.region} onChange={v => field('region', v)} />}
+        </FormField>
+        <FormField label="Comuna">
+          {form.pais === 'Chile'
+            ? <Select value={form.comuna} onChange={v => field('comuna', v)} options={['', ...withCurrentValue(COMUNAS_POR_REGION[form.region] || [], form.comuna)]} disabled={!form.region} />
+            : <Input value={form.comuna} onChange={v => field('comuna', v)} />}
+        </FormField>
         <FormField label="Ciudad"><Input value={form.ciudad} onChange={v => field('ciudad', v)} /></FormField>
         <FormField label="Contacto"><Input value={form.contacto} onChange={v => field('contacto', v)} /></FormField>
         <FormField label="Telefono"><Input value={form.telefono} onChange={v => field('telefono', v)} /></FormField>

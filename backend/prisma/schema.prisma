@@ -168,6 +168,7 @@ model Cliente {
   region             String?
   comuna             String?
   ciudad             String?
+  pais               String?           @default("Chile")
   tipo               String?
   razonSocial        String?           @map("razon_social")
   limiteCredito      Float?            @map("limite_credito")
@@ -191,6 +192,7 @@ model ClienteSucursal {
   region      String?
   comuna      String?
   ciudad      String?
+  pais        String?  @default("Chile")
   contacto    String?
   email       String?
   telefono    String?

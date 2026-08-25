@@ -91,6 +91,7 @@ export default function ClientesPage() {
     { key: 'region', label: 'Region' },
     { key: 'comuna', label: 'Comuna' },
     { key: 'ciudad', label: 'Ciudad' },
+    { key: 'pais', label: 'País', render: v => v || 'Chile' },
     { key: 'tipo', label: 'Tipo', render: v => {
       const tone = { Institucional: 'blue', Municipal: 'neutral', Gobierno: 'neutral', Distribuidor: 'amber', Empresa: 'gray' }[v] || 'gray'
       return <Badge tone={tone}>{v}</Badge>

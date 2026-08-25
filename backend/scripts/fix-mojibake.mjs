@@ -35,6 +35,7 @@ const TARGETS = [
   { table: 'catalogo.categorias', cols: ['nombre'] },
   { table: 'catalogo.subcategorias', cols: ['nombre'] },
   { table: 'clientes.clientes', cols: ['razon_social', 'nombre', 'direccion', 'comuna', 'region', 'giro'] },
+  { table: 'clientes.cliente_sucursales', cols: ['nombre', 'direccion', 'region', 'comuna', 'ciudad', 'contacto'] },
   { table: 'catalogo.proveedores', cols: ['nombre', 'razon_social', 'direccion', 'giro', 'region', 'comuna'] },
   { table: 'ventas.ordenes', cols: ['observaciones', 'creador_nombre', 'licitacion'] },
   { table: 'ventas.orden_items', cols: ['nombre', 'descripcion'] },
