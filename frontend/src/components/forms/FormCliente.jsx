@@ -148,20 +148,26 @@ function TabDatos({ c }) {
 }
 
 // ── Tab: Ventas ────────────────────────────────────────────────────────────────
-function TabVentas({ ventas, onVentaClick }) {
+function TabVentas({ ventas, resumen, onVentaClick }) {
   if (!ventas?.length) {
     return <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Sin ventas registradas</div>
   }
 
-  const totalVentas = ventas.reduce((s, v) => s + (v.total || 0), 0)
-  const noPagadas = ventas.filter(v => v.estadoPago === 'No pagada').length
+  const cantidad = resumen?.total ?? ventas.length
+  const totalVentas = resumen?.montoTotal ?? ventas.reduce((s, v) => s + (v.total || 0), 0)
+  const noPagadas = resumen?.noPagadas ?? ventas.filter(v => v.estadoPago === 'No pagada').length
 
   return (
     <>
+      {cantidad > ventas.length && (
+        <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 10, textAlign: 'center' }}>
+          Mostrando las {ventas.length} ventas más recientes de {cantidad}.
+        </div>
+      )}
       {/* KPIs mini */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 14 }}>
         {[
-          { label: 'Total ventas', value: ventas.length, tone: null },
+          { label: 'Total ventas', value: cantidad, tone: null },
           { label: 'Monto total', value: '$' + fmtM(totalVentas), tone: null },
           { label: 'No pagadas', value: noPagadas, tone: noPagadas > 0 ? 'red' : 'neutral' },
         ].map(({ label, value, tone }, i) => (
@@ -203,12 +209,17 @@ function TabVentas({ ventas, onVentaClick }) {
 }
 
 // ── Tab: Taller ────────────────────────────────────────────────────────────────
-function TabTaller({ odts, onOdtClick }) {
+function TabTaller({ odts, total, onOdtClick }) {
   if (!odts?.length) {
     return <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Sin órdenes de trabajo asociadas</div>
   }
   return (
     <div>
+      {total > odts.length && (
+        <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 10, textAlign: 'center' }}>
+          Mostrando las {odts.length} órdenes más recientes de {total}.
+        </div>
+      )}
       {odts.map(odt => (
         <div key={odt.id} onClick={() => onOdtClick && onOdtClick(odt)} style={{
           border: '1px solid var(--border)', borderRadius: 10, padding: '11px 14px', marginBottom: 8,
@@ -254,6 +265,10 @@ export function ViewClientePanel({ cliente, onClose, onEdit, canWrite = true }) 
   const c = full || cliente
   const ventas = full?.ventas ?? []
   const odts = full?.odts ?? []
+  // Los KPIs salen del resumen que calcula el servidor sobre la tabla completa,
+  // no de estas listas, que vienen acotadas para no cargar miles de filas.
+  const ventasResumen = full?.ventasResumen ?? null
+  const odtsTotal = full?.odtsTotal ?? odts.length
 
   return (
     <ViewPanel
@@ -278,6 +293,7 @@ export function ViewClientePanel({ cliente, onClose, onEdit, canWrite = true }) 
       {tab === 'ventas' && (
         <TabVentas
           ventas={ventas}
+          resumen={ventasResumen}
           onVentaClick={id => { navigate(ventaPath(id, user)); onClose() }}
         />
       )}
@@ -285,6 +301,7 @@ export function ViewClientePanel({ cliente, onClose, onEdit, canWrite = true }) 
       {tab === 'taller' && (
         <TabTaller
           odts={odts}
+          total={odtsTotal}
           onOdtClick={odt => { navigate(odtPath(odt.id, user)); onClose() }}
         />
       )}

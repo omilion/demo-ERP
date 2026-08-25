@@ -1,4 +1,4 @@
-import { computeSaldo } from './helpers.js'
+import { computeSaldo, computeVentasResumen } from './helpers.js'
 import { can } from '../../middleware/rbac.js'
 import { computeTotal } from '../ventas/helpers.js'
 
@@ -12,7 +12,7 @@ export default async function getCliente(fastify) {
     const includeInactivos = request.query?.includeInactivos === 'true'
     const canReadVentas = can(request.user?.role, 'ventas', 'read', request.user?.permisosExtra)
     const canReadTaller = can(request.user?.role, 'taller', 'read', request.user?.permisosExtra)
-    const [c, saldo, ventas] = await Promise.all([
+    const [c, saldo, ventas, ventasResumen] = await Promise.all([
       fastify.prisma.cliente.findFirst({ where: { id, ...(includeInactivos ? {} : { activo: true }) } }),
       computeSaldo(fastify.prisma, id),
       canReadVentas ? fastify.prisma.orden.findMany({
@@ -21,6 +21,7 @@ export default async function getCliente(fastify) {
         orderBy: { createdAt: 'desc' },
         take: 50,
       }) : Promise.resolve([]),
+      canReadVentas ? computeVentasResumen(fastify.prisma, id) : Promise.resolve({ total: 0, noPagadas: 0, montoTotal: 0 }),
     ])
     if (!c) return reply.code(404).send({ error: 'Cliente no encontrado' })
     const sucursales = await fastify.prisma.clienteSucursal.findMany({
@@ -37,20 +38,24 @@ export default async function getCliente(fastify) {
       total: computeTotal(o.items, o.descuentoPct, o.cargos, o.descuentoMonto),
     }))
 
-    // Fetch ODTs linked to any of this client's ventas
+    // ODTs de cualquier venta del cliente. Antes se derivaban de `ventas`, que
+    // viene acotada a las ultimas 50: un cliente con muchas ventas perdia las
+    // ODT de todo lo anterior. Se piden los ids completos, que es una consulta
+    // barata porque solo trae la columna id.
     const ordenIds = canReadTaller
-      ? (canReadVentas
-          ? ventas.map(o => o.id)
-          : (await fastify.prisma.orden.findMany({ where: { clienteId: id }, select: { id: true } })).map(o => o.id))
+      ? (await fastify.prisma.orden.findMany({ where: { clienteId: id }, select: { id: true } })).map(o => o.id)
       : []
-    const odts = canReadTaller && ordenIds.length > 0
-      ? await fastify.prisma.odt.findMany({
-          where: { ordenId: { in: ordenIds } },
-          orderBy: { createdAt: 'desc' },
-          take: 30,
-        })
-      : []
+    const [odts, odtsTotal] = ordenIds.length > 0
+      ? await Promise.all([
+          fastify.prisma.odt.findMany({
+            where: { ordenId: { in: ordenIds } },
+            orderBy: { createdAt: 'desc' },
+            take: 30,
+          }),
+          fastify.prisma.odt.count({ where: { ordenId: { in: ordenIds } } }),
+        ])
+      : [[], 0]
 
-    return { ...c, saldo, sucursales, ventas: ventasEnriched, odts }
+    return { ...c, saldo, sucursales, ventas: ventasEnriched, ventasResumen, odts, odtsTotal }
   })
 }
