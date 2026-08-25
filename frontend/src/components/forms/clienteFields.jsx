@@ -9,7 +9,7 @@ import { FormField, FormDivider, Input, Select } from './index'
 import { PAISES_LATAM, REGIONES_CHILE, COMUNAS_POR_REGION } from '../../data/geoLatam'
 
 // eslint-disable-next-line react-refresh/only-export-components
-export const TIPOS_CLIENTE = ['Empresa', 'Institucional', 'Municipal', 'Gobierno', 'Distribuidor']
+export const TIPOS_CLIENTE = ['Persona natural', 'Empresa', 'Institucional', 'Municipal', 'Gobierno', 'Distribuidor']
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const CLIENTE_RULES = { nombre: { required: true }, rut: { required: true } }

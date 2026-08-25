@@ -58,7 +58,7 @@ export default function ClientesPage() {
 
   if (isLoading && !result.items?.length) return <main className="page page-wide"><p>Cargando...</p></main>
 
-  const tipos = ['Empresa', 'Institucional', 'Municipal', 'Gobierno', 'Distribuidor']
+  const tipos = ['Persona natural', 'Empresa', 'Institucional', 'Municipal', 'Gobierno', 'Distribuidor']
   const fmt = n => '$' + Number(n).toLocaleString('es-CL')
   const getErrorMessage = err => err?.response?.data?.error || err?.message || 'No se pudo completar la accion'
 
@@ -90,7 +90,7 @@ export default function ClientesPage() {
     { key: 'comuna', label: 'Comuna' },
     { key: 'pais', label: 'País', render: v => v || 'Chile' },
     { key: 'tipo', label: 'Tipo', render: v => {
-      const tone = { Institucional: 'blue', Municipal: 'neutral', Gobierno: 'neutral', Distribuidor: 'amber', Empresa: 'gray' }[v] || 'gray'
+      const tone = { Institucional: 'blue', Municipal: 'neutral', Gobierno: 'neutral', Distribuidor: 'amber', Empresa: 'gray', 'Persona natural': 'green' }[v] || 'gray'
       return <Badge tone={tone}>{v}</Badge>
     }},
     { key: 'activo', label: 'Estado', render: v => <Badge tone={v === false ? 'red' : 'green'}>{v === false ? 'Inactivo' : 'Activo'}</Badge> },
