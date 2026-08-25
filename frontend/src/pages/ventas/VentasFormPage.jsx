@@ -1,7 +1,6 @@
 import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { FormPage } from '../../components/forms/FormPage'
 import { FormField, FormDivider, Input, RadioGroup, Select, Textarea, useForm } from '../../components/forms/index'
 import { Badge, Btn, Icon } from '../../components/shared'
 import { useVenta, useCreateVenta, useUpdateVenta, useAnularVenta, useActivarVenta, useVentaCargos, useAddCargo, useDeleteCargo, useUpdateItemEntregados } from '../../api/ventas'
@@ -13,7 +12,7 @@ import { useRegiones, useComunas } from '../../api/locations'
 import { useUsuarios } from '../../api/usuarios'
 import { useMultas, useCreateMulta, useDeleteMulta } from '../../api/multas'
 import { useCrearDocumentoVenta } from '../../api/caja'
-import { useDescuentos, useEvaluarDescuentos, useSolicitarDescuento, useSolicitudesDescuento } from '../../api/descuentos'
+import { useEvaluarDescuentos, useSolicitarDescuento, useSolicitudesDescuento } from '../../api/descuentos'
 import { can, canAny } from '../../utils/permissions'
 import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
 import { plazoDiasFromLicitacion, sanitizeOrdenCompra, sanitizePlazoDias } from '../../utils/licitacionFields'
@@ -42,18 +41,13 @@ function isConvenioMarco(tipo) {
   return normalizeText(tipo) === 'convenio marco'
 }
 
-function isNormalDiscountTipo(tipo) {
-  const text = normalizeText(tipo)
-  return text === 'normal' || text === 'venta sala' || text === 'venta web' || text === 'venta directa' || text === 'marketplace'
-}
-
 function defaultPrecioUnitario(producto, tipoVenta) {
   if (!isConvenioMarco(tipoVenta)) return Number(producto.consultaPrecios?.precioNormalSalaVentaIva ?? producto.precioLista ?? 0)
   const precioMarco = Number(producto.consultaPrecios?.precioConvMarco ?? producto.precioMarco ?? producto.precioLista ?? 0)
   return precioMarco > 0 ? Math.round(precioMarco * 1.19) : 0
 }
 
-function ProductoSearch({ onAdd, tipoVenta, disabled = false }) {
+function ProductoSearch({ onAdd, tipoVenta, disabled = false, onFocus }) {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
   const ref = useRef()
@@ -86,7 +80,10 @@ function ProductoSearch({ onAdd, tipoVenta, disabled = false }) {
           ref={inputRef}
           value={q}
           onChange={e => { setQ(e.target.value); setOpen(!disabled) }}
-          onFocus={() => !disabled && q.length >= 2 && setOpen(true)}
+          onFocus={() => {
+            onFocus?.()
+            if (!disabled && q.length >= 2) setOpen(true)
+          }}
           disabled={disabled}
           placeholder="Buscar producto por codigo, nombre o ID Marco... (minimo 2 caracteres)"
           style={{ width: '100%', padding: '8px 10px 8px 32px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: disabled ? 'var(--bg)' : '#fff', color: disabled ? 'var(--text-3)' : 'inherit', boxSizing: 'border-box', cursor: disabled ? 'not-allowed' : 'text' }}
@@ -230,6 +227,107 @@ function ItemsTable({ items, onChange, locked = false, isLicitacion = false }) {
   )
 }
 
+function VentaWorkspace({ title, stateLabel = 'Borrador sin guardar', typeControl, total, onSave, onCancel, saving, saveLabel, sidebar, children }) {
+  return (
+    <main className="page page-wide venta-workspace">
+      <section className="venta-workspace-shell">
+        <header className="venta-workspace-header">
+          <div>
+            <h1 className="venta-workspace-title">{title}</h1>
+            <div className="venta-workspace-state">{stateLabel}</div>
+          </div>
+          <div className="venta-workspace-header-actions">
+            <div className="venta-workspace-total"><span>TOTAL</span><strong>${Number(total || 0).toLocaleString('es-CL')}</strong></div>
+            <Btn variant="secondary" onClick={onCancel} disabled={saving}>Cancelar</Btn>
+            <Btn variant="primary" icon={saving ? 'refreshCw' : 'check'} onClick={onSave} disabled={saving}>
+              {saving ? 'Guardando…' : saveLabel}
+            </Btn>
+          </div>
+        </header>
+
+        <div className="venta-workspace-grid">
+          <aside className="venta-workspace-sidebar">
+            <div className="venta-workspace-sidebar-fixed">
+              <div className="venta-workspace-side-card">
+                <div className="venta-workspace-side-label">Tipo de venta</div>
+                {typeControl}
+              </div>
+              {sidebar}
+            </div>
+          </aside>
+          <div className="venta-workspace-content">{children}</div>
+        </div>
+      </section>
+    </main>
+  )
+}
+
+function WorkspaceDataRow({ label, children, value }) {
+  return (
+    <div className="venta-workspace-client-row">
+      <span>{label}</span>
+      <div className="venta-workspace-client-value">{children || value || '—'}</div>
+    </div>
+  )
+}
+
+function VentaClienteWorkspaceCard({ cliente, sucursal, clienteOptions, sucursalOptions, clienteId, sucursalId, onClienteChange, onSucursalChange, onNewCliente }) {
+  const direccion = sucursal?.direccion || cliente?.direccion
+  const region = sucursal?.region || cliente?.region
+  const comuna = sucursal?.comuna || cliente?.comuna
+  const telefono = sucursal?.telefono || cliente?.telefono
+
+  return (
+    <section className="venta-workspace-client-card">
+      <div className="venta-workspace-client-heading">
+        <span>Cliente</span>
+        <button type="button" className="venta-workspace-new-client" onClick={onNewCliente}>
+          <Icon name="plus" size={14} /> Nuevo cliente
+        </button>
+      </div>
+      <div className="venta-workspace-client-grid">
+        <div>
+          <WorkspaceDataRow label="Nombre">
+            <SearchableSelect
+              value={clienteId}
+              onChange={value => onClienteChange(value)}
+              options={clienteOptions}
+              placeholder="Buscar cliente por nombre o RUT..."
+            />
+          </WorkspaceDataRow>
+          <WorkspaceDataRow label="RUT" value={cliente?.rut} />
+          <WorkspaceDataRow label="Dirección">
+            <Select
+              value={sucursalId}
+              onChange={onSucursalChange}
+              options={sucursalOptions}
+              disabled={!clienteId || !sucursalOptions.slice(1).length}
+            />
+          </WorkspaceDataRow>
+          <WorkspaceDataRow label="Región" value={region} />
+          <WorkspaceDataRow label="Teléfono" value={telefono} />
+        </div>
+        <div>
+          <WorkspaceDataRow label="Razón social" value={cliente?.razonSocial} />
+          <WorkspaceDataRow label="Giro" value={cliente?.giro} />
+          <WorkspaceDataRow label="Comuna" value={comuna} />
+          <WorkspaceDataRow label="Email" value={cliente?.email} />
+          {direccion && <div className="venta-workspace-client-address">Dirección seleccionada: {direccion}</div>}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function VentaWorkspaceSection({ title, children, sectionRef }) {
+  return (
+    <section ref={sectionRef} className="venta-workspace-section">
+      <h2 className="venta-workspace-section-title">{title}</h2>
+      <div className="venta-workspace-section-body">{children}</div>
+    </section>
+  )
+}
+
 function requiredNumber(value) {
   if (value === null || value === undefined || String(value).trim() === '') return NaN
   return Number(value)
@@ -353,22 +451,6 @@ function normalizeEvaluacionDescuentos(result) {
   })
 }
 
-function legacyDiscountRules(catalogo, tipoVenta) {
-  const catalogKey = isConvenioMarco(tipoVenta) ? 'marco' : isNormalDiscountTipo(tipoVenta) ? 'normales' : null
-  if (!catalogKey) return []
-  return (catalogo?.[catalogKey] || []).map(item => ({
-    id: `legacy-${catalogKey}-${item.id ?? item.valor}`,
-    codigo: 'LEGACY',
-    nombre: `Catalogo autorizado ${item.valor}%`,
-    descripcion: catalogKey === 'marco' ? 'Porcentaje autorizado para Convenio Marco' : 'Porcentaje autorizado para venta normal',
-    valor: Number(item.valor),
-    tipoDescuento: 'porcentaje',
-    requiereAprobacion: false,
-    disponible: true,
-    origen: 'legacy',
-  }))
-}
-
 function buildVentaDiscountPayload({ venta, items, subtotal, cargosTotal, totalBase }) {
   return {
     origen: 'venta',
@@ -404,7 +486,7 @@ function buildVentaDiscountKey({ venta, items, cargosTotal }) {
   })
 }
 
-function DescuentosDisponiblesPanel({ venta, items, subtotal, cargosTotal, totalBase, catalogo, selectedRule, onSelect, disabled = false }) {
+function DescuentosDisponiblesPanel({ venta, items, subtotal, cargosTotal, totalBase, selectedRule, onSelect, disabled = false }) {
   const evaluar = useEvaluarDescuentos()
   const solicitar = useSolicitarDescuento()
   const solicitudesQuery = useSolicitudesDescuento(items.length > 0)
@@ -415,9 +497,7 @@ function DescuentosDisponiblesPanel({ venta, items, subtotal, cargosTotal, total
   const hasContext = items.length > 0 && totalBase > 0
   const payload = buildVentaDiscountPayload({ venta, items, subtotal, cargosTotal, totalBase })
   const evaluatedRules = normalizeEvaluacionDescuentos(evaluacion)
-  const legacyRules = legacyDiscountRules(catalogo, venta.tipo)
-  const rules = evaluatedRules.length ? evaluatedRules : legacyRules
-  const usingLegacy = !evaluatedRules.length && legacyRules.length > 0
+  const rules = evaluatedRules
   const solicitudes = Array.isArray(solicitudesQuery.data) ? solicitudesQuery.data : []
 
   function findSolicitud(rule, estados) {
@@ -451,7 +531,7 @@ function DescuentosDisponiblesPanel({ venta, items, subtotal, cargosTotal, total
       onSuccess: data => setEvaluacion(data),
       onError: err => {
         setEvaluacion(null)
-        setError(discountApiError(err, 'No fue posible evaluar reglas. Se muestra el catalogo autorizado si aplica.'))
+        setError(discountApiError(err, 'No fue posible evaluar las reglas de descuento.'))
       },
     })
   }
@@ -543,12 +623,7 @@ function DescuentosDisponiblesPanel({ venta, items, subtotal, cargosTotal, total
             {message}
           </div>
         )}
-        {hasContext && usingLegacy && (
-          <div style={{ ...discountNotice, background: 'var(--bg)', color: 'var(--text-3)' }}>
-            Mostrando catalogo autorizado como respaldo.
-          </div>
-        )}
-        {hasContext && rules.length === 0 && !evaluar.isPending && <div style={discountEmpty}>Sin reglas disponibles para esta venta.</div>}
+        {hasContext && rules.length === 0 && !evaluar.isPending && <div style={discountEmpty}>No hay reglas de descuento vigentes para esta venta. Sin regla no se puede aplicar descuento.</div>}
         {hasContext && rules.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
             {rules.map(rule => {
@@ -1022,7 +1097,6 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   const updateVenta = useUpdateVenta()
   const anularVenta = useAnularVenta()
   const activarVenta = useActivarVenta()
-  const { data: descuentosCatalogo } = useDescuentos()
 
   async function handleAnular() {
     if (!await confirmDialog({ title: 'Confirmar', detail: `¿Anular venta #${id}? Quedará marcada como Nula y eliminada.`, tone: 'danger' })) return
@@ -1067,6 +1141,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   const [selectedDiscountRule, setSelectedDiscountRule] = useState(null)
   const [initializedId, setInitializedId] = useState(null)
   const [showNewCliente, setShowNewCliente] = useState(false)
+  const productsSectionRef = useRef(null)
 
   useEffect(() => {
     if (found && initializedId !== found.id) {
@@ -1158,6 +1233,23 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       if (existing >= 0) return prev.map((item, idx) => idx === existing ? { ...item, cantidad: Number(item.cantidad) + 1 } : item)
       return [...prev, { productoId: p.id, nombre: p.nombre, descripcion: p.descripcion || '', codigoInterno: p.codigoInterno || '', fotoUrl: p.fotoUrl || null, cantidad: 1, precioUnitario: defaultPrecioUnitario(p, data.tipo) }]
     })
+  }
+
+  async function handleTipoChange(nextTipo) {
+    if (nextTipo === data.tipo) return
+    const hasCommercialData = items.length > 0 || data.descuentoPct !== '' || data.licitacion || data.marketplaceCanal
+    if (hasCommercialData) {
+      const confirmed = await confirmDialog({
+        title: 'Cambiar tipo de venta',
+        detail: 'Se conservaran los productos, pero debes revisar precios, descuentos y los datos especificos antes de guardar.',
+        tone: 'warning',
+        confirmLabel: 'Cambiar tipo',
+      })
+      if (!confirmed) return
+    }
+    set('tipo', nextTipo)
+    setSelectedDiscountRule(null)
+    set('descuentoPct', '')
   }
 
   const saving = createVenta.isPending || updateVenta.isPending || savingCrmQuote
@@ -1284,42 +1376,82 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
     ...sucursalesCliente.map(s => ({ value: String(s.id), label: `${s.nombre}${s.comuna ? ` - ${s.comuna}` : ''}` })),
   ]
   const selectedSucursal = sucursalesCliente.find(s => String(s.id) === data.clienteSucursalId)
+  const selectedCliente = clientesData.find(c => String(c.id) === String(data.clienteId)) || found?.cliente
+  const fechaFicha = isEdit && (found?.fecha || found?.createdAt)
+    ? new Date(found.fecha || found.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
+    : new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
   // Los catálogos históricos pueden contener porcentajes repetidos por
   // importaciones antiguas. Un select no debe renderizar opciones duplicadas:
   // además del warning de React, el usuario no podría distinguirlas.
-  const normalDiscountValues = [...new Set((descuentosCatalogo?.normales || []).map(d => String(d.valor)))]
-  const marcoDiscountValues = [...new Set((descuentosCatalogo?.marco || []).map(d => String(d.valor)))]
-  const normalDiscountOptions = [
-    { value: '', label: 'Sin descuento' },
-    ...normalDiscountValues.map(v => ({ value: v, label: `${v}%` })),
-    ...(data.descuentoPct !== '' && isNormalDiscountTipo(data.tipo) && !normalDiscountValues.includes(String(data.descuentoPct))
-      ? [{ value: String(data.descuentoPct), label: `${data.descuentoPct}% (valor actual)` }]
-      : []),
-  ]
-  const marcoDiscountOptions = [
-    { value: '', label: 'Sin descuento' },
-    ...marcoDiscountValues.map(v => ({ value: v, label: `${v}%` })),
-    ...(data.descuentoPct !== '' && isConvenioMarco(data.tipo) && !marcoDiscountValues.includes(String(data.descuentoPct))
-      ? [{ value: String(data.descuentoPct), label: `${data.descuentoPct}% (valor actual)` }]
-      : []),
-  ]
 
   if (isEdit && isLoading) return <main style={{ padding: 24 }}><p>Cargando...</p></main>
 
   return (
-    <FormPage
+    <VentaWorkspace
+      stateLabel={isEdit ? 'Edicion en curso: se mantienen las reglas de trazabilidad de la venta.' : crmMode ? 'Cotizacion CRM: no crea una venta en Matriz hasta su aprobacion.' : 'Borrador sin guardar'}
       title={isEdit ? 'Editar Venta' : crmMode ? (isSimpleCrmQuote ? 'Cotización simple CRM' : `Cotización CRM · ${forceTipo}`) : 'Nueva Venta'}
       subtitle={isEdit ? `Editando venta #${id}` : crmMode ? (isSimpleCrmQuote ? 'Prospección directa: se crea una venta solo al aprobarla.' : 'Ficha comercial completa vinculada al CRM.') : 'Crear nueva orden de venta'}
       breadcrumb={['Inicio', 'Ventas', isEdit ? 'Editar Venta' : 'Nueva Venta']}
       onSave={handleSave}
       saving={saving}
+      total={totalCalculado}
+      onCancel={() => navigate(isEdit ? `/ventas/${id}` : crmMode ? '/crm' : '/ventas')}
+      typeControl={(
+        <Select
+          value={data.tipo}
+          onChange={handleTipoChange}
+          options={crmMode ? [{ value: forceTipo, label: isSimpleCrmQuote ? 'Cotizacion simple CRM' : forceTipo }] : (TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS])}
+          disabled={crmMode}
+          aria-label="Tipo de venta"
+          style={{ backgroundColor: '#fffbeb', borderColor: '#fcd34d', fontWeight: 700, color: '#78350f' }}
+        />
+      )}
+      sidebar={(
+        <>
+          <div className="venta-workspace-side-card venta-workspace-meta-card">
+            <div><strong>Ejecutivo(a):</strong> {!isEdit && isAdmin ? (
+              <Select
+                value={data.vendedorId || ''}
+                onChange={v => set('vendedorId', v)}
+                options={[
+                  { value: '', label: `Venta del Admin (${user.nombre})` },
+                  ...vendedores.filter(v => v.id !== user.id).map(v => ({ value: String(v.id), label: v.nombre + (v.codigoVendedor ? ` · ${v.codigoVendedor}` : '') })),
+                ]}
+              />
+            ) : (found?.creadorNombre || user?.nombre || 'Sin vendedor')}</div>
+            <div><strong>Fecha:</strong> {fechaFicha}</div>
+          </div>
+          <div className="venta-workspace-side-card">
+            <div className="venta-workspace-side-label">Agregar producto</div>
+            <ProductoSearch
+              onAdd={addProducto}
+              tipoVenta={data.tipo}
+              disabled={itemsLocked}
+              onFocus={() => productsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            />
+            <div className="venta-workspace-side-help">Busca por codigo, nombre o ID Marco. Revisa productos y total antes de guardar.</div>
+          </div>
+        </>
+      )}
       saveLabel={isEdit ? 'Guardar' : crmMode ? 'Guardar cotización' : 'Crear Venta'}
     >
-      <FormDivider label="Tipo de Venta" />
+      <VentaClienteWorkspaceCard
+        cliente={selectedCliente}
+        sucursal={selectedSucursal}
+        clienteOptions={clienteOptions}
+        sucursalOptions={sucursalOptions}
+        clienteId={data.clienteId}
+        sucursalId={data.clienteSucursalId}
+        onClienteChange={value => { set('clienteId', value); set('clienteSucursalId', '') }}
+        onSucursalChange={value => set('clienteSucursalId', value)}
+        onNewCliente={() => setShowNewCliente(true)}
+      />
+      <div className="venta-workspace-legacy-control">
+        <FormDivider label="Tipo de Venta" />
       <FormField label="Tipo de Venta">
         <Select
           value={data.tipo}
-          onChange={v => set('tipo', v)}
+          onChange={handleTipoChange}
           options={crmMode ? [{ value: forceTipo, label: isSimpleCrmQuote ? 'Cotización simple · Prospección directa' : forceTipo }] : (TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS])}
           disabled={crmMode}
           style={{ 
@@ -1333,8 +1465,10 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
           }}
         />
       </FormField>
+      </div>
 
       {/* Selector de vendedor: solo visible para admin al crear. El vendedor se autoasigna. */}
+      <div className="venta-workspace-legacy-control">
       {!isEdit && isAdmin && (
         <FormField label="Vendedor asignado" hint="Asigna la venta a un vendedor, o usa 'Venta del Admin'">
           <Select
@@ -1349,9 +1483,9 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         </FormField>
       )}
 
+      </div>
       {data.tipo === 'Licitación' && (
-        <>
-          <FormDivider label="Detalles de la Licitación" />
+        <VentaWorkspaceSection title="Detalles de la Licitación">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <FormField label="ID Licitación (Requerido)" hint="Ej: 61602954-LE15-1">
               <Input value={data.licitacion || ''} onChange={v => set('licitacion', v)} placeholder="Codigo de seguimiento" />
@@ -1381,20 +1515,18 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
               <Input value={data.licitacionOC || ''} onChange={v => set('licitacionOC', sanitizeOrdenCompra(v, { live: true }))} maxLength={80} title="Solo letras, números y guiones" placeholder="Ej: 12345-67-SE16" />
             </FormField>
           </div>
-        </>
+        </VentaWorkspaceSection>
       )}
 
       {isConvenioMarco(data.tipo) && (
-        <>
-          <FormDivider label="Detalles del Convenio Marco" />
+        <VentaWorkspaceSection title="Detalles del Convenio Marco">
           <FormField label="N OC Convenio Marco (Requerido)" hint="Obligatorio y no duplicable">
             <Input value={data.licitacion || ''} onChange={v => set('licitacion', sanitizeOrdenCompra(v, { live: true }))} placeholder="Numero OC" />
           </FormField>
-        </>
+        </VentaWorkspaceSection>
       )}
 
-      {data.tipo === 'Marketplace' && <>
-        <FormDivider label="Venta Marketplace y comisión" />
+      {data.tipo === 'Marketplace' && <VentaWorkspaceSection title="Venta Marketplace y comisión">
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 14 }}>
           <FormField label="Canal Marketplace" required>
             <Select
@@ -1416,8 +1548,9 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: 'var(--bg)', fontSize: 13 }}>
           Abono neto estimado: <strong>${Math.max(0, totalCalculado - (Number(data.marketplaceComisionMonto) || Math.round(totalCalculado * Number(data.marketplaceComisionPct || 0) / 100))).toLocaleString('es-CL')}</strong>
         </div>
-      </>}
+      </VentaWorkspaceSection>}
 
+      <div className="venta-workspace-legacy-control">
       <FormDivider label="Cliente" />
       <FormField label="Cliente / Organismo">
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -1468,7 +1601,8 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         </div>
       )}
 
-      <FormDivider label="Información de Despacho" />
+      </div>
+      <VentaWorkspaceSection title="Información de Despacho">
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
         <FormField label="Días para entrega" required>
           <Input type="number" min="0" max="3650" value={data.plazoEntregaDias || ''} onChange={v => { set('plazoEntregaDias', v); set('fechaPlazo', calculateDeliveryDateIso(v, data.plazoEntregaTipo)) }} placeholder="Ej: 15" />
@@ -1544,7 +1678,8 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         </div>
       )}
 
-      <FormDivider label="Estados de la Orden" />
+      </VentaWorkspaceSection>
+      <VentaWorkspaceSection title="Estados de la Orden">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
         <FormField label="Estado de la orden">
           <Select value={data.estado} onChange={v => set('estado', v)} options={['Activa', 'Cerrada', 'Nula', 'Completada', 'En proceso']} />
@@ -1556,15 +1691,18 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
           <Select value={data.estadoEntrega} onChange={v => set('estadoEntrega', v)} options={['Pendiente entrega', 'Entregada', 'En despacho', 'Parcial']} />
         </FormField>
       </div>
+      </VentaWorkspaceSection>
 
-      <FormDivider label={isEdit ? `Productos (${items.length})` : 'Agregar productos'} />
+      <VentaWorkspaceSection sectionRef={productsSectionRef} title={isEdit ? `Productos (${items.length})` : 'Agregar productos'}>
       {itemsLocked && (
         <div style={{ marginBottom: 12, padding: '10px 12px', border: '1px solid var(--amber)', borderRadius: 8, background: '#fff8e6', color: 'var(--text-2)', fontSize: 13, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
           <Icon name="lock" size={15} color="var(--amber)" />
           <span>Los productos de esta venta no se pueden modificar porque ya registran entregas, pagos o documentos. Para mantener la trazabilidad, solo puedes actualizar campos administrativos.</span>
         </div>
       )}
-      <ProductoSearch onAdd={addProducto} tipoVenta={data.tipo} disabled={itemsLocked} />
+      <div className="venta-workspace-legacy-control">
+        <ProductoSearch onAdd={addProducto} tipoVenta={data.tipo} disabled={itemsLocked} />
+      </div>
       <div style={{ marginTop: 12 }}>
         <ItemsTable items={items} onChange={setItems} locked={itemsLocked} isLicitacion={data.tipo === 'Licitación'} />
       </div>
@@ -1586,7 +1724,6 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
           subtotal={subtotal}
           cargosTotal={cargosTotal}
           totalBase={totalBase}
-          catalogo={descuentosCatalogo}
           selectedRule={activeSelectedDiscountRule}
           disabled={financialLocked}
           onSelect={rule => {
@@ -1595,18 +1732,14 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
           }}
         />
       )}
+      </VentaWorkspaceSection>
 
-      <FormDivider label="Seguimiento financiero" />
+      <VentaWorkspaceSection title="Seguimiento financiero">
       <div style={{ display: 'grid', gridTemplateColumns: isEdit ? '1fr 1fr 1fr 1fr' : '1fr', gap: 14 }}>
-        <FormField
-          label={isConvenioMarco(data.tipo) ? 'Descuento Convenio Marco' : isNormalDiscountTipo(data.tipo) ? 'Descuento normal' : 'Descuento %'}
-          hint={isConvenioMarco(data.tipo) || isNormalDiscountTipo(data.tipo) ? 'Catalogo de porcentajes autorizados' : 'Porcentaje global sobre subtotal'}
-        >
-          {isConvenioMarco(data.tipo)
-            ? <Select value={data.descuentoPct} onChange={v => { set('descuentoPct', v); setSelectedDiscountRule(null) }} options={marcoDiscountOptions} disabled={financialLocked} />
-            : isNormalDiscountTipo(data.tipo)
-              ? <Select value={data.descuentoPct} onChange={v => { set('descuentoPct', v); setSelectedDiscountRule(null) }} options={normalDiscountOptions} disabled={financialLocked} />
-              : <Input value={data.descuentoPct} onChange={v => { set('descuentoPct', v); setSelectedDiscountRule(null) }} type="number" placeholder="0" disabled={financialLocked} />}
+        {/* El porcentaje ya no sale de un catalogo de valores sueltos: se escribe
+            y una regla vigente tiene que respaldarlo, sea cual sea el tipo de venta. */}
+        <FormField label="Descuento %" hint="Debe estar respaldado por una regla vigente">
+          <Input value={data.descuentoPct} onChange={v => { set('descuentoPct', v); setSelectedDiscountRule(null) }} type="number" placeholder="0" disabled={financialLocked} />
         </FormField>
         {isEdit && <>
           <FormField label="Abono recibido">
@@ -1620,17 +1753,16 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
           </FormField>
         </>}
       </div>
+      </VentaWorkspaceSection>
 
       {isEdit && (
-        <>
-          <FormDivider label="Documentos de venta" />
+        <VentaWorkspaceSection title="Documentos de venta">
           <DocumentosVentaSection ordenId={Number(id)} pagos={found?.pagos || []} />
-        </>
+        </VentaWorkspaceSection>
       )}
 
       {isEdit && (
-        <>
-          <FormDivider label="Acciones" />
+        <VentaWorkspaceSection title="Acciones">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <button onClick={handleImprimir} style={actionBtn('var(--green-700)')}>
               <Icon name="printer" size={13} /> Imprimir nota
@@ -1651,34 +1783,32 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
               </button>
             )}
           </div>
-        </>
+        </VentaWorkspaceSection>
       )}
 
       {isEdit && found?.items?.length > 0 && (
-        <>
-          <FormDivider label="Entrega de productos" />
+        <VentaWorkspaceSection title="Entrega de productos">
           <EntregaSection items={found.items} />
-        </>
+        </VentaWorkspaceSection>
       )}
 
       {isEdit && (
-        <>
-          <FormDivider label="Cargos transporte" />
+        <VentaWorkspaceSection title="Cargos transporte">
           <CargosSection ordenId={Number(id)} locked={financialLocked} />
-        </>
+        </VentaWorkspaceSection>
       )}
 
       {isEdit && data.tipo === 'Licitación' && (
-        <>
-          <FormDivider label="Multas" />
+        <VentaWorkspaceSection title="Multas">
           <MultasSection ordenId={Number(id)} />
-        </>
+        </VentaWorkspaceSection>
       )}
 
-      <FormDivider label="Observaciones" />
+      <VentaWorkspaceSection title="Observaciones">
       <FormField label="Notas internas">
         <Textarea value={data.observaciones || ''} onChange={v => set('observaciones', v)} placeholder="Instrucciones especiales, condiciones de entrega, etc." rows={3} />
       </FormField>
+      </VentaWorkspaceSection>
 
       {showNewCliente && (
         <FormCliente 
@@ -1689,7 +1819,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
           }}
         />
       )}
-    </FormPage>
+    </VentaWorkspace>
   )
 }
 

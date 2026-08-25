@@ -4,7 +4,7 @@ import { getUserSucursalId } from '../caja/scope.js'
 import { applyVentaStockDeltas, buildReplacementStockDeltas } from './stock.js'
 import { validateConvenioMarcoOcForWrite } from './convenio-marco.js'
 import { canApplyDescuento } from './descuentos-permissions.js'
-import { getVentaDescuentoCatalogKind, validateVentaDescuentoCatalogForWrite } from './descuentos-catalog.js'
+import { validateDescuentoContraReglas } from './descuentos-guard.js'
 import { assertDiscountAuthorizationForDraft } from '../descuentos/rules-engine.js'
 import { autoNotifyTaller } from '../pasar-taller/service.js'
 import { calculateDeliveryDate, normalizeLicitacionPlazo, normalizeMarketplace, sanitizeCommercialIdentifier } from './operational-rules.js'
@@ -290,6 +290,7 @@ export default async function updateVenta(fastify) {
           throw err
         }
         const nextTipo = ordenData.tipo ?? lockedCurrent.tipo
+        const tipoChanged = nextTipo !== lockedCurrent.tipo
         const convenioOc = await validateConvenioMarcoOcForWrite(tx, {
           tipo: nextTipo,
           licitacion: ordenData.licitacion ?? lockedCurrent.licitacion,
@@ -319,8 +320,6 @@ export default async function updateVenta(fastify) {
             throw err
           }
         }
-        const currentCatalogKind = getVentaDescuentoCatalogKind(lockedCurrent.tipo)
-        const nextCatalogKind = getVentaDescuentoCatalogKind(nextTipo)
         const hasAuthorizedDiscount = Boolean(lockedCurrent.descuentoSolicitudId)
         const clearingAuthorizedDiscount = hasAuthorizedDiscount &&
           !descuentoAutorizacionId &&
@@ -364,16 +363,29 @@ export default async function updateVenta(fastify) {
           }
           Object.assign(ordenData, auth.descuentoData)
           appliedDiscountSolicitudId = auth.descuentoData.descuentoSolicitudId
-        } else if (nextCatalogKind && (lockedDiscountChanged || currentCatalogKind !== nextCatalogKind)) {
-          const descuentoCatalogo = await validateVentaDescuentoCatalogForWrite(tx, {
+        } else if (lockedDiscountChanged || tipoChanged) {
+          // Se revalida contra las reglas tanto si cambio el porcentaje como si
+          // cambio el tipo de venta: una regla puede aplicar a Venta Web y no a
+          // Licitacion, asi que el mismo descuento deja de estar respaldado.
+          const draftItems = itemsData || lockedCurrent.items.map(item => ({
+            productoId: item.productoId,
+            codigoInterno: item.codigoInterno,
+            nombre: item.nombre,
+            cantidad: item.cantidad,
+            precioUnitario: item.precioUnitario,
+          }))
+          const guard = await validateDescuentoContraReglas(tx, {
             tipo: nextTipo,
             descuentoPct: Object.prototype.hasOwnProperty.call(ordenData, 'descuentoPct')
               ? ordenData.descuentoPct
               : lockedCurrent.descuentoPct,
-          })
-          if (descuentoCatalogo.error) {
-            const err = new Error(descuentoCatalogo.error)
-            err.statusCode = descuentoCatalogo.statusCode || 400
+            clienteId: lockedCurrent.clienteId,
+            sucursalId: lockedCurrent.sucursalId,
+            items: draftItems,
+          }, request.user)
+          if (guard.error) {
+            const err = new Error(guard.error)
+            err.statusCode = guard.statusCode || 400
             throw err
           }
         }

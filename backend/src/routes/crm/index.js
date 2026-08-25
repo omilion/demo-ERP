@@ -8,6 +8,8 @@ import {
   normalizeEtapa,
 } from '../../domain/crm/constants.js'
 import { addSemaforo, createCrmGestion, elapsedDays, transitionCrm } from '../../domain/crm/service.js'
+import { canApplyDescuento, requiresDescuentoPermission } from '../ventas/descuentos-permissions.js'
+import { validateDescuentoContraReglas } from '../ventas/descuentos-guard.js'
 
 const CRM_ESTADOS = new Set(['0', '1', '2', '3'])
 
@@ -149,10 +151,15 @@ export default async function crmRoutes(fastify) {
       const canalVenta = esCotizacionSimple ? 'PROSPECCION_DIRECTA' : tipo === 'Licitación' ? 'LICITACION' : null
       const tipoVenta = esCotizacionSimple ? 'COTIZACION_SIMPLE' : canalVenta === 'LICITACION' ? 'LICITACION' : null
       const clienteId = Number(b.clienteId)
+      const descuentoPct = Number(b.descuentoPct || 0)
       const rawItems = Array.isArray(b.items) ? b.items : []
       if (!canalVenta) return reply.code(400).send({ error: 'Selecciona una cotizacion CRM valida' })
       if (!Number.isInteger(clienteId) || clienteId <= 0) return reply.code(400).send({ error: 'Selecciona un cliente' })
       if (!rawItems.length) return reply.code(400).send({ error: 'Agrega al menos un producto' })
+      if (!Number.isFinite(descuentoPct) || descuentoPct < 0 || descuentoPct > 100) return reply.code(400).send({ error: 'Descuento invalido' })
+      if (requiresDescuentoPermission(descuentoPct) && !canApplyDescuento(request.user)) {
+        return reply.code(403).send({ error: 'No tiene permiso para aplicar descuentos' })
+      }
       if (tipo === 'Licitación' && (!String(b.licitacion || '').trim() || !b.licitacionFecha)) return reply.code(400).send({ error: 'Licitacion requiere ID y fecha' })
       if (!/^\S+@\S+\.\S+$/.test(String(b.emailContactoDespacho || '').trim())) return reply.code(400).send({ error: 'Ingresa el correo del contacto de despacho' })
       const productIds = [...new Set(rawItems.map(item => Number(item.productoId)).filter(Number.isInteger))]
@@ -165,6 +172,13 @@ export default async function crmRoutes(fastify) {
         ])
         if (!cliente) throw Object.assign(new Error('Cliente no encontrado'), { statusCode: 404 })
         if (!cliente.activo) throw Object.assign(new Error('Cliente inactivo no puede cotizar'), { statusCode: 409 })
+        if (b.clienteSucursalId) {
+          const sucursal = await tx.clienteSucursal.findFirst({
+            where: { id: Number(b.clienteSucursalId), clienteId: cliente.id, activo: true },
+            select: { id: true },
+          })
+          if (!sucursal) throw Object.assign(new Error('Sucursal no pertenece al cliente'), { statusCode: 400 })
+        }
         if (productos.length !== productIds.length || productos.some(producto => !producto.activo)) throw Object.assign(new Error('Hay productos inexistentes o inactivos'), { statusCode: 400 })
         const byId = new Map(productos.map(producto => [producto.id, producto]))
         const items = rawItems.map((item, index) => {
@@ -183,6 +197,15 @@ export default async function crmRoutes(fastify) {
             precioUnitario,
           }
         })
+        // El descuento se valida recien aca: la guarda necesita los items ya
+        // resueltos para saber sobre que base aplicaria la regla.
+        const guard = await validateDescuentoContraReglas(tx, {
+          tipo: esCotizacionSimple ? 'Venta Web' : tipo,
+          descuentoPct,
+          clienteId: cliente.id,
+          items,
+        }, request.user)
+        if (guard.error) throw Object.assign(new Error(guard.error), { statusCode: guard.statusCode || 400 })
         const now = new Date()
         const vendedorId = request.user.role === 'admin' && Number.isInteger(Number(b.vendedorId)) ? Number(b.vendedorId) : request.user.id
         const vendedor = await tx.user.findFirst({ where: { id: vendedorId, activo: true }, select: { id: true, nombre: true } })
@@ -224,7 +247,7 @@ export default async function crmRoutes(fastify) {
             licitacionReferencia: String(b.licitacionReferencia || '').trim() || null,
             licitacionOC: String(b.licitacionOC || '').trim() || null,
             observaciones: String(b.observaciones || '').trim() || null,
-            descuentoPct: Number(b.descuentoPct) || 0,
+            descuentoPct,
             enviosParciales: !!b.enviosParciales, montoDespacho: Number(b.montoDespacho) || 0,
             fechaPlazo: b.fechaPlazo ? new Date(b.fechaPlazo) : null,
             plazoEntregaDias: b.plazoEntregaDias === '' || b.plazoEntregaDias == null ? null : Number(b.plazoEntregaDias),

@@ -723,17 +723,25 @@ describe('PUT /api/ventas/:id', () => {
 
   it('replaces items and returns recalculated total', async () => {
     const marker = `TEST-VENTA-ITEMS-${Date.now()}`
-    const created = { productos: [], ordenId: null, descuentoId: null }
+    const created = { productos: [], ordenId: null, reglaId: null }
     try {
       const [cliente, user] = await Promise.all([
         app.prisma.cliente.findFirst(),
         app.prisma.user.findFirst(),
       ])
-      const existingDescuento = await app.prisma.descuentoPorc.findFirst({ where: { valor: 10, activo: true } })
-      if (!existingDescuento) {
-        const descuento = await app.prisma.descuentoPorc.create({ data: { valor: 10 } })
-        created.descuentoId = descuento.id
-      }
+      // Con el catalogo eliminado, el 10% tiene que venir de una regla vigente.
+      created.reglaId = (await app.prisma.descuentoRegla.create({
+        data: {
+          codigo: `${marker}-regla`,
+          nombre: `${marker} regla`,
+          alcance: 'ventas',
+          prioridad: 900,
+          porcentajeMax: 10,
+          activo: true,
+          condiciones: { tiposVenta: ['Normal'], montoMinimo: 0 },
+          efecto: { porcentajeSugerido: 10, porcentajeAutoaprobado: 10 },
+        },
+      })).id
       const productos = [
         await app.prisma.producto.create({ data: { codigoInterno: `${marker}-A`, nombre: `${marker} A`, activo: true } }),
         await app.prisma.producto.create({ data: { codigoInterno: `${marker}-B`, nombre: `${marker} B`, activo: true } }),
@@ -779,8 +787,8 @@ describe('PUT /api/ventas/:id', () => {
       if (created.productos.length) {
         await app.prisma.producto.deleteMany({ where: { id: { in: created.productos } } }).catch(() => {})
       }
-      if (created.descuentoId) {
-        await app.prisma.descuentoPorc.delete({ where: { id: created.descuentoId } }).catch(() => {})
+      if (created.reglaId) {
+        await app.prisma.descuentoRegla.delete({ where: { id: created.reglaId } }).catch(() => {})
       }
     }
   })
@@ -1217,112 +1225,76 @@ describe('Venta directa stock, lifecycle and sucursal scope', () => {
     }
   })
 
-  it('aplica solo descuentos Convenio Marco autorizados y redondea el monto', async () => {
-    const marker = `TEST-VENTA-CM-DCTO-${Date.now()}`
+  // El catalogo de porcentajes autorizados se elimino: un descuento existe solo
+  // si una regla vigente lo respalda para ese borrador. Sin regla, se bloquea.
+  it('bloquea el descuento cuando ninguna regla vigente lo respalda', async () => {
+    const marker = `TEST-VENTA-DCTO-SIN-REGLA-${Date.now()}`
     const producto = await createInventariado(marker, 10)
     const created = { ordenIds: [], productoIds: [producto.id] }
-    let descuentoCatalogo
     try {
-      let valorCatalogo = 1.77
-      while (await app.prisma.descuentoPorcMarco.findFirst({ where: { valor: valorCatalogo, activo: true } })) {
-        valorCatalogo = Number((valorCatalogo + 0.01).toFixed(2))
+      for (const tipo of ['Venta Sala', 'Convenio Marco']) {
+        const res = await createVentaConTipo({
+          producto,
+          cantidad: 1,
+          precioUnitario: 333,
+          tipo,
+          licitacion: tipo === 'Convenio Marco' ? `${marker}-OC` : undefined,
+          descuentoPct: 7,
+          role: 'admin',
+        })
+        expect(res.res.statusCode).toBe(400)
+        expect(JSON.parse(res.res.body).error).toMatch(/regla de descuento vigente/i)
       }
-      descuentoCatalogo = await app.prisma.descuentoPorcMarco.create({ data: { valor: valorCatalogo } })
-
-      let valorNoCatalogo = 97.31
-      while (await app.prisma.descuentoPorcMarco.findFirst({ where: { valor: valorNoCatalogo, activo: true } })) {
-        valorNoCatalogo = Number((valorNoCatalogo + 0.01).toFixed(2))
-      }
-      const rechazado = await createVentaConTipo({
-        producto,
-        cantidad: 1,
-        precioUnitario: 333,
-        tipo: 'Convenio Marco',
-        licitacion: `${marker}-RECHAZO`,
-        descuentoPct: valorNoCatalogo,
-        role: 'admin',
-      })
-      expect(rechazado.res.statusCode).toBe(400)
-      expect(JSON.parse(rechazado.res.body).error).toMatch(/catalogo/)
-
-      const autorizado = await createVentaConTipo({
-        producto,
-        cantidad: 1,
-        precioUnitario: 333,
-        tipo: 'Convenio Marco',
-        licitacion: `${marker}-OK`,
-        descuentoPct: valorCatalogo,
-        role: 'admin',
-      })
-      expect(autorizado.res.statusCode).toBe(201)
-      const body = JSON.parse(autorizado.res.body)
-      created.ordenIds.push(body.id)
-      expect(body.total).toBe(327)
-      expect(body.descuentoPct).toBe(valorCatalogo)
     } finally {
       await cleanup(created)
-      if (descuentoCatalogo) {
-        await app.prisma.descuentoPorcMarco.delete({ where: { id: descuentoCatalogo.id } }).catch(() => {})
-      }
     }
   })
 
-  it('aplica solo descuentos normales autorizados y enteros en venta sala', async () => {
-    const marker = `TEST-VENTA-NORMAL-DCTO-${Date.now()}`
+  it('acepta el descuento que una regla autoriza y rechaza el que supera su maximo', async () => {
+    const marker = `TEST-VENTA-DCTO-REGLA-${Date.now()}`
     const producto = await createInventariado(marker, 10)
     const created = { ordenIds: [], productoIds: [producto.id] }
-    let descuentoCatalogo
+    let regla
     try {
-      let valorCatalogo = 7
-      while (await app.prisma.descuentoPorc.findFirst({ where: { valor: valorCatalogo, activo: true } })) {
-        valorCatalogo += 1
-      }
-      descuentoCatalogo = await app.prisma.descuentoPorc.create({ data: { valor: valorCatalogo } })
-
-      const decimal = await createVentaConTipo({
-        producto,
-        cantidad: 1,
-        precioUnitario: 333,
-        tipo: 'Venta Sala',
-        descuentoPct: 1.8,
-        role: 'admin',
+      regla = await app.prisma.descuentoRegla.create({
+        data: {
+          codigo: `${marker}-regla`,
+          nombre: `${marker} regla`,
+          alcance: 'ventas',
+          prioridad: 900,
+          porcentajeMax: 10,
+          activo: true,
+          condiciones: { tiposVenta: ['Venta Sala'], montoMinimo: 0 },
+          efecto: { porcentajeSugerido: 10, porcentajeAutoaprobado: 10 },
+        },
       })
-      expect(decimal.res.statusCode).toBe(400)
-      expect(JSON.parse(decimal.res.body).error).toMatch(/entero/)
 
-      let valorNoCatalogo = 80
-      while (await app.prisma.descuentoPorc.findFirst({ where: { valor: valorNoCatalogo, activo: true } })) {
-        valorNoCatalogo += 1
-      }
-      const rechazado = await createVentaConTipo({
-        producto,
-        cantidad: 1,
-        precioUnitario: 333,
-        tipo: 'Venta Sala',
-        descuentoPct: valorNoCatalogo,
-        role: 'admin',
-      })
-      expect(rechazado.res.statusCode).toBe(400)
-      expect(JSON.parse(rechazado.res.body).error).toMatch(/catalogo/)
-
+      // Dentro del maximo de la regla: se guarda.
       const autorizado = await createVentaConTipo({
-        producto,
-        cantidad: 1,
-        precioUnitario: 333,
-        tipo: 'Venta Sala',
-        descuentoPct: valorCatalogo,
-        role: 'admin',
+        producto, cantidad: 1, precioUnitario: 333, tipo: 'Venta Sala', descuentoPct: 7, role: 'admin',
       })
       expect(autorizado.res.statusCode).toBe(201)
       const body = JSON.parse(autorizado.res.body)
       created.ordenIds.push(body.id)
-      expect(body.total).toBe(333 - Math.round(333 * valorCatalogo / 100))
-      expect(body.descuentoPct).toBe(valorCatalogo)
+      expect(body.descuentoPct).toBe(7)
+      expect(body.total).toBe(333 - Math.round(333 * 7 / 100))
+
+      // Sobre el maximo: la regla aplica pero no lo cubre.
+      const excedido = await createVentaConTipo({
+        producto, cantidad: 1, precioUnitario: 333, tipo: 'Venta Sala', descuentoPct: 25, role: 'admin',
+      })
+      expect(excedido.res.statusCode).toBe(400)
+      expect(JSON.parse(excedido.res.body).error).toMatch(/porcentaje maximo/i)
+
+      // Otro tipo de venta que la regla no cubre: tampoco pasa.
+      const otroTipo = await createVentaConTipo({
+        producto, cantidad: 1, precioUnitario: 333, tipo: 'Convenio Marco', licitacion: `${marker}-OC`, descuentoPct: 7, role: 'admin',
+      })
+      expect(otroTipo.res.statusCode).toBe(400)
+      expect(JSON.parse(otroTipo.res.body).error).toMatch(/regla de descuento vigente/i)
     } finally {
       await cleanup(created)
-      if (descuentoCatalogo) {
-        await app.prisma.descuentoPorc.delete({ where: { id: descuentoCatalogo.id } }).catch(() => {})
-      }
+      if (regla) await app.prisma.descuentoRegla.delete({ where: { id: regla.id } }).catch(() => {})
     }
   })
 
