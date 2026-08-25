@@ -728,6 +728,7 @@ export default function CrmPage() {
   const [tipoVenta, setTipoVenta]     = useState('')
   const [origen, setOrigen]           = useState('')
   const [semaforo, setSemaforo]       = useState('')
+  const [estadoFiltro, setEstadoFiltro] = useState('')
   const [search, setSearch]           = useState('')
   const [debounced, setDebounced]     = useState('')
   const [fechaDesde, setFechaDesde]   = useState('')
@@ -799,11 +800,17 @@ export default function CrmPage() {
   const total = result.total ?? 0
 
   const filteredItems = useMemo(() => {
-    if (!pendienteFiltro) return items
-    if (pendienteFiltro === 'SIN_ASIGNAR') return items.filter(i => !i.vendedorId)
-    const ids = new Set((pendienteFiltro === 'ATRASADOS' ? pendientesHoyData?.vencidas : pendientesHoyData?.hoy)?.map(l => l.id) || [])
-    return items.filter(i => ids.has(i.id))
-  }, [items, pendienteFiltro, pendientesHoyData])
+    let list = items
+    if (pendienteFiltro === 'SIN_ASIGNAR') list = list.filter(i => !i.vendedorId)
+    else if (pendienteFiltro === 'ATRASADOS' || pendienteFiltro === 'HOY') {
+      const ids = new Set((pendienteFiltro === 'ATRASADOS' ? pendientesHoyData?.vencidas : pendientesHoyData?.hoy)?.map(l => l.id) || [])
+      list = list.filter(i => ids.has(i.id))
+    }
+    if (view === 'table' && estadoFiltro) {
+      list = list.filter(i => normalizeEstado(i.etapaComercial || i.estado) === estadoFiltro)
+    }
+    return list
+  }, [items, pendienteFiltro, pendientesHoyData, view, estadoFiltro])
 
   const byEstado = useMemo(() => {
     const map = {}
@@ -969,10 +976,19 @@ export default function CrmPage() {
             <option value="Media">Media</option>
             <option value="Baja">Baja</option>
           </select>
-          <select value={canalVenta} onChange={e => setCanalVenta(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todos los canales</option>{(catalogos?.canales || []).map(value => <option key={value}>{value}</option>)}</select>
-          <select value={tipoVenta} onChange={e => setTipoVenta(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todos los tipos</option>{(catalogos?.tiposVenta || []).map(value => <option key={value}>{value.replaceAll('_', ' ')}</option>)}</select>
-          <select value={origen} onChange={e => setOrigen(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todos los orígenes</option>{(catalogos?.origenes || []).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select>
-          <select value={semaforo} onChange={e => setSemaforo(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todo semáforo</option><option value="NORMAL">Al día</option><option value="AMARILLO">Requiere seguimiento</option><option value="ROJO">Atrasado</option></select>
+          <select value={tipoVenta} onChange={e => setTipoVenta(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}><option value="">Todos los tipos</option>{(catalogos?.tiposVenta || []).map(value => <option key={value}>{value.replaceAll('_', ' ')}</option>)}</select>
+          <select value={origen} onChange={e => setOrigen(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}><option value="">Todos los orígenes</option>{(catalogos?.origenes || []).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select>
+          <select value={semaforo} onChange={e => setSemaforo(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}><option value="">Todo semáforo</option><option value="NORMAL">Al día</option><option value="AMARILLO">Requiere seguimiento</option><option value="ROJO">Atrasado</option></select>
+          {view === 'table' && (
+            <select
+              value={estadoFiltro}
+              onChange={e => setEstadoFiltro(e.target.value)}
+              style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1.5px solid var(--green-600)', background: '#f0fdf4', color: 'var(--green-900)', fontWeight: 600 }}
+            >
+              <option value="">Todos los estados</option>
+              {ESTADOS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
+            </select>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Desde</span>
             <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }} />

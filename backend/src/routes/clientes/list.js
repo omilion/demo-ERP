@@ -17,16 +17,25 @@ export default async function listClientes(fastify) {
     if (region) where.region = { contains: region, mode: 'insensitive' }
     if (email) where.email = { contains: email, mode: 'insensitive' }
     if (segmento) where.segmento = segmento
-    if (search) where.OR = [
-      { nombre: { contains: search, mode: 'insensitive' } },
-      { razonSocial: { contains: search, mode: 'insensitive' } },
-      { rut: { contains: search } },
-      { email: { contains: search, mode: 'insensitive' } },
-      { telefono: { contains: search, mode: 'insensitive' } },
-      { direccion: { contains: search, mode: 'insensitive' } },
-      { region: { contains: search, mode: 'insensitive' } },
-      { comuna: { contains: search, mode: 'insensitive' } },
-    ]
+    if (search) {
+      const cleanSearch = search.trim()
+      const cleanRut = cleanSearch.replace(/[^a-zA-Z0-9]/g, '')
+      const orConditions = [
+        { nombre: { contains: cleanSearch, mode: 'insensitive' } },
+        { razonSocial: { contains: cleanSearch, mode: 'insensitive' } },
+        { rut: { contains: cleanSearch, mode: 'insensitive' } },
+        { email: { contains: cleanSearch, mode: 'insensitive' } },
+        { telefono: { contains: cleanSearch, mode: 'insensitive' } },
+        { direccion: { contains: cleanSearch, mode: 'insensitive' } },
+        { region: { contains: cleanSearch, mode: 'insensitive' } },
+        { comuna: { contains: cleanSearch, mode: 'insensitive' } },
+        { giro: { contains: cleanSearch, mode: 'insensitive' } },
+      ]
+      if (cleanRut && cleanRut !== cleanSearch && cleanRut.length >= 3) {
+        orConditions.push({ rut: { contains: cleanRut, mode: 'insensitive' } })
+      }
+      where.OR = orConditions
+    }
 
     // Compute all saldos in one SQL query
     const saldos = await fastify.prisma.$queryRaw`
@@ -51,12 +60,22 @@ export default async function listClientes(fastify) {
     const saldoMap = {}
     for (const row of saldos) saldoMap[Number(row.cliente_id)] = Number(row.saldo)
 
+    const deudorIds = Object.entries(saldoMap)
+      .filter(([, saldo]) => saldo > 0)
+      .map(([id]) => Number(id))
+    const totalDeudaSum = Object.values(saldoMap)
+      .filter(saldo => saldo > 0)
+      .reduce((sum, s) => sum + s, 0)
+
     if (conDeuda === 'true') {
-      const deudorIds = Object.entries(saldoMap)
-        .filter(([, saldo]) => saldo > 0)
-        .map(([id]) => Number(id))
       if (deudorIds.length === 0) {
-        return { items: [], total: 0, limit: pagination.limit, page: pagination.page }
+        return {
+          items: [],
+          total: 0,
+          limit: pagination.limit,
+          page: pagination.page,
+          stats: { totalDeudores: 0, totalDeuda: 0 },
+        }
       }
       where.id = { in: deudorIds }
     }
@@ -77,6 +96,10 @@ export default async function listClientes(fastify) {
       total,
       limit: pagination.limit,
       page: pagination.page,
+      stats: {
+        totalDeudores: deudorIds.length,
+        totalDeuda: totalDeudaSum,
+      },
     }
   })
 }

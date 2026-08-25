@@ -49,25 +49,18 @@ export function handleClienteUniqueError(error, reply) {
 }
 
 export async function ensureClienteIdentifiersAvailable(prisma, data = {}, reply, excludeId = null) {
-  const checks = []
-  if (data.rut) checks.push({ rut: data.rut })
-  if (data.email) checks.push({ email: { equals: data.email, mode: 'insensitive' } })
-  if (checks.length === 0) return true
+  if (!data.rut) return true
 
   const existing = await prisma.cliente.findFirst({
     where: {
-      OR: checks,
+      rut: data.rut,
       ...(excludeId ? { id: { not: excludeId } } : {}),
     },
-    select: { id: true, rut: true, email: true },
+    select: { id: true, rut: true },
   })
   if (!existing) return true
 
-  if (data.rut && existing.rut === data.rut) {
-    reply.code(409).send({ error: 'Ya existe un cliente con ese RUT' })
-    return false
-  }
-  reply.code(409).send({ error: 'Ya existe un cliente con ese email' })
+  reply.code(409).send({ error: 'Ya existe un cliente registrado con ese RUT' })
   return false
 }
 
