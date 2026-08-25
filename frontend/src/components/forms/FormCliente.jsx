@@ -6,6 +6,15 @@ import { Badge } from '../shared'
 import { useCliente, useCreateCliente, useUpdateCliente } from '../../api/clientes'
 import { useAuthStore } from '../../store/auth'
 import { odtPath, ventaPath } from '../../utils/permissions'
+import { PAISES_LATAM, REGIONES_CHILE, COMUNAS_POR_REGION } from '../../data/geoLatam'
+
+// Si el valor guardado no calza con ninguna opcion del desplegable (dato legacy
+// sin normalizar, o de un pais sin division en el catalogo), se agrega como
+// opcion extra al final para no perderlo silenciosamente al editar.
+function withCurrentValue(options, current) {
+  if (!current || options.includes(current)) return options
+  return [...options, current]
+}
 
 // ── FormCliente ────────────────────────────────────────────────────────────────
 export function FormCliente({ initial, onClose, onSaved }) {
@@ -20,12 +29,13 @@ export function FormCliente({ initial, onClose, onSaved }) {
     region: initial.region || '',
     comuna: initial.comuna || '',
     ciudad: initial.ciudad || '',
+    pais: initial.pais || 'Chile',
     email: initial.email || '',
     tel: initial.telefono || initial.tel || '',
     credito: initial.limiteCredito != null ? String(initial.limiteCredito) : '',
   } : {
     rut: '', nombre: '', razonSocial: '', giro: '', tipo: 'Empresa',
-    direccion: '', region: '', comuna: '', ciudad: '',
+    direccion: '', region: '', comuna: '', ciudad: '', pais: 'Chile',
     email: '', tel: '', credito: '',
   })
 
@@ -46,6 +56,7 @@ export function FormCliente({ initial, onClose, onSaved }) {
       region: data.region || undefined,
       comuna: data.comuna || undefined,
       ciudad: data.ciudad || undefined,
+      pais: data.pais || undefined,
       email: data.email || undefined,
       telefono: data.tel || undefined,
       limiteCredito: data.credito ? Number(data.credito) : undefined,
@@ -107,12 +118,19 @@ export function FormCliente({ initial, onClose, onSaved }) {
       <FormField label="Dirección (Sucursal Principal)">
         <Input value={data.direccion} onChange={v => set('direccion', v)} placeholder="Calle, número, depto/oficina" />
       </FormField>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.2fr', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14 }}>
+        <FormField label="País">
+          <Select value={data.pais} onChange={v => { set('pais', v); if (v !== 'Chile') { set('region', ''); set('comuna', '') } }} options={withCurrentValue(PAISES_LATAM, data.pais)} />
+        </FormField>
         <FormField label="Región">
-          <Input value={data.region} onChange={v => set('region', v)} placeholder="Ej: Metropolitana" />
+          {data.pais === 'Chile'
+            ? <Select value={data.region} onChange={v => { set('region', v); set('comuna', '') }} options={['', ...withCurrentValue(REGIONES_CHILE, data.region)]} />
+            : <Input value={data.region} onChange={v => set('region', v)} placeholder="Región / provincia" />}
         </FormField>
         <FormField label="Comuna">
-          <Input value={data.comuna} onChange={v => set('comuna', v)} placeholder="Ej: Santiago" />
+          {data.pais === 'Chile'
+            ? <Select value={data.comuna} onChange={v => set('comuna', v)} options={['', ...withCurrentValue(COMUNAS_POR_REGION[data.region] || [], data.comuna)]} disabled={!data.region} />
+            : <Input value={data.comuna} onChange={v => set('comuna', v)} placeholder="Comuna / distrito" />}
         </FormField>
         <FormField label="Ciudad">
           <Input value={data.ciudad} onChange={v => set('ciudad', v)} placeholder="Ej: Santiago" />
@@ -189,6 +207,7 @@ function TabDatos({ c }) {
       {c.region && <DetailRow label="Region" value={c.region} />}
       {c.comuna && <DetailRow label="Comuna" value={c.comuna} />}
       {c.ciudad && <DetailRow label="Ciudad" value={c.ciudad} />}
+      <DetailRow label="País" value={c.pais || 'Chile'} />
 
       <FormDivider label="Contacto" />
       {c.email
