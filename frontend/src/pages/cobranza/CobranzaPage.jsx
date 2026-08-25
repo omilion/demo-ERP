@@ -1,8 +1,8 @@
 import { toast } from '../../store/notif'
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs } from '../../components/shared'
-import { useVentas } from '../../api/ventas'
+import { useVenta, useVentas } from '../../api/ventas'
 import { useRegistrarPagoCobranza, useTurnoActivo } from '../../api/caja'
 import { useCobranzaHistorico, useCobranzaEjecutivas, useCobranzaMeses } from '../../api/cobranzaHistorico'
 import { downloadFromBackend } from '../../utils/csv'
@@ -68,6 +68,8 @@ function docSaldo(venta, doc) {
 
 export default function CobranzaPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const ventaIdParam = searchParams.get('ventaId')
   const user = useAuthStore(s => s.user)
   const canWriteCobranza = can(user, 'cobranza', 'write')
   const canRegisterPayment = canWriteCobranza && can(user, 'caja', 'read') && can(user, 'caja', 'write')
@@ -185,6 +187,20 @@ export default function CobranzaPage() {
       referencia: row.nInterno ? `Pago venta N interno ${row.nInterno}` : `Pago venta #${row.id}`,
     })
   }
+
+  // Deep-link desde Venta ("Cobrar") -> abre directo el modal de pago de esa venta.
+  const { data: ventaDeepLink } = useVenta(ventaIdParam ? Number(ventaIdParam) : null)
+  useEffect(() => {
+    if (!ventaIdParam || !ventaDeepLink) return
+    setSearchParams(params => { params.delete('ventaId'); return params }, { replace: true })
+    const saldo = Math.max(0, (ventaDeepLink.total || 0) - (ventaDeepLink.abono || 0))
+    if (saldo <= 0) {
+      toast.warning('Esa venta no tiene saldo pendiente')
+      return
+    }
+    const t = setTimeout(() => openPayment(ventaDeepLink), 0)
+    return () => clearTimeout(t)
+  }, [ventaIdParam, ventaDeepLink, setSearchParams])
 
   const submitPayment = () => {
     if (!paymentRow) return
@@ -376,7 +392,7 @@ export default function CobranzaPage() {
   const toolbarExtraActivo = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <SearchBar placeholder="Buscar cliente, RUT..." value={search} onChange={setSearch} style={{ width: 220 }} />
+        <SearchBar placeholder="Buscar cliente, RUT, N° interno..." value={search} onChange={setSearch} style={{ width: 220 }} />
         
         <select value={estadoTab} onChange={e => setEstadoTab(e.target.value)} style={miniInput}>
           {ESTADO_TABS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}

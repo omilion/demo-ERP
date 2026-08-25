@@ -77,7 +77,7 @@ function TabBtn({ active, onClick, children, badge }) {
 }
 
 // ── Tab: Detalle ───────────────────────────────────────────────────────────────
-function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespacho, canEmitirDte, onEmitirDte }) {
+function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespacho, canEmitirDte, onEmitirDte, canRegistrarPago, onCobrar }) {
   const items = v.items || []
   const total = v.total || 0
   const abono = v.abono || 0
@@ -202,6 +202,19 @@ function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespac
       {/* Acciones Rápidas */}
       <FormDivider label="Acciones rápidas" />
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        {canRegistrarPago && saldo > 0 && !v.eliminada && (
+          <button
+            onClick={onCobrar}
+            style={{
+              flex: '1 1 140px', padding: '10px 12px', fontSize: 12, fontWeight: 600,
+              color: '#fff', background: 'var(--green-700)', border: 'none', borderRadius: 8,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Icon name="dollarSign" size={14} />
+            Cobrar (saldo {fmt(saldo)})
+          </button>
+        )}
         <button
           onClick={handleCreateDespacho}
           style={{
@@ -714,7 +727,7 @@ function opBtnStyle(color) {
   }
 }
 
-function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmitirDte, canDelete, canManageInternalCreditNotes, internalCreditNoteBlocked, onCreateInternalCreditNote }) {
+function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmitirDte, canDelete, canManageInternalCreditNotes, internalCreditNoteBlocked, onCreateInternalCreditNote, canRegistrarPago, saldo, onCobrar }) {
   const navigate = useNavigate()
   const anularVenta = useAnularVenta()
   const activarVenta = useActivarVenta()
@@ -754,6 +767,11 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmit
   return (
     <div style={{ marginBottom: 14 }}>
       <FormDivider label="Operaciones disponibles" />
+      {canRegistrarPago && saldo > 0 && !v.eliminada && (
+        <button onClick={onCobrar} style={opBtnStyle('var(--green-700)')}>
+          <Icon name="dollarSign" size={14} /> Cobrar (saldo {fmt(saldo)})
+        </button>
+      )}
       <button onClick={() => navigate(`/taller?search=${v.nInterno || v.id}`)} style={opBtnStyle('var(--blue)')}>
         <Icon name="tool" size={14} /> Órdenes de Trabajo ({odtsCount})
       </button>
@@ -874,8 +892,10 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const documentosCount = pagos.filter(isReferencialPago).length
   const dtes = documentosDteQuery.data?.documentos || []
   const canWriteFacturacion = can(user, 'facturacion', 'write')
+  const canRegistrarPago = can(user, 'cobranza', 'write') && can(user, 'caja', 'read') && can(user, 'caja', 'write')
   const ventaYaEmitida = hasActiveSalesDte(dtes)
   const canManageInternalCreditNotes = canWrite || canWriteFacturacion
+  const onCobrar = () => navigate(`/cobranza?ventaId=${v.id}`)
   const fecha = v.createdAt
     ? new Date(v.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—'
@@ -970,6 +990,9 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                 canManageInternalCreditNotes={canManageInternalCreditNotes}
                 internalCreditNoteBlocked={ventaYaEmitida}
                 onCreateInternalCreditNote={() => setNotaInterna(true)}
+                canRegistrarPago={canRegistrarPago}
+                saldo={saldo}
+                onCobrar={onCobrar}
               />
               <DocumentosPagosList pagos={pagos} dtes={dtes} />
             </div>
@@ -1222,6 +1245,8 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
           handleCreateDespacho={handleCreateDespacho}
           canEmitirDte={canWriteFacturacion && !ventaYaEmitida}
           onEmitirDte={() => setEmitirDte(true)}
+          canRegistrarPago={canRegistrarPago}
+          onCobrar={onCobrar}
         />
       )}
       {tab === 'taller'     && <TabTaller odts={odts} onGoTaller={() => navigate('/taller')} />}
