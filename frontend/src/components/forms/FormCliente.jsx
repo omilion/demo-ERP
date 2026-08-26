@@ -1,88 +1,59 @@
 import { toast } from '../../store/notif'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FormPanel, ViewPanel, FormField, FormDivider, DetailRow, Input, Select, useForm } from './index'
+import { FormPanel, ViewPanel, FormDivider, DetailRow, useForm } from './index'
 import { Badge } from '../shared'
-import { useCliente, useCreateCliente, useUpdateCliente } from '../../api/clientes'
+import { useCliente, useCreateCliente, useUpdateCliente, useCreateClienteSucursal } from '../../api/clientes'
 import { useAuthStore } from '../../store/auth'
 import { odtPath, ventaPath } from '../../utils/permissions'
-import { PAISES_LATAM, REGIONES_CHILE, COMUNAS_POR_REGION } from '../../data/geoLatam'
-
-// Si el valor guardado no calza con ninguna opcion del desplegable (dato legacy
-// sin normalizar, o de un pais sin division en el catalogo), se agrega como
-// opcion extra al final para no perderlo silenciosamente al editar.
-function withCurrentValue(options, current) {
-  if (!current || options.includes(current)) return options
-  return [...options, current]
-}
+import { ClienteCampos, CLIENTE_RULES, clienteToForm, clienteFormToPayload } from './clienteFields'
+import { SucursalesCliente, sucursalToPayload } from './SucursalesCliente'
 
 // ── FormCliente ────────────────────────────────────────────────────────────────
+// Panel lateral usado desde Nueva Venta. Comparte la ficha con la pagina del
+// modulo Clientes; lo unico propio es el contenedor y que al guardar devuelve
+// el cliente a la venta en curso en vez de navegar a otra pantalla.
 export function FormCliente({ initial, onClose, onSaved }) {
   const isEdit = !!initial
-  const { data, set, errors, validate } = useForm(initial ? {
-    rut: initial.rut || '',
-    nombre: initial.nombre || '',
-    razonSocial: initial.razonSocial || '',
-    giro: initial.giro || '',
-    tipo: initial.tipo || 'Empresa',
-    direccion: initial.direccion || '',
-    region: initial.region || '',
-    comuna: initial.comuna || '',
-    pais: initial.pais || 'Chile',
-    email: initial.email || '',
-    tel: initial.telefono || initial.tel || '',
-    credito: initial.limiteCredito != null ? String(initial.limiteCredito) : '',
-  } : {
-    rut: '', nombre: '', razonSocial: '', giro: '', tipo: 'Empresa',
-    direccion: '', region: '', comuna: '', pais: 'Chile',
-    email: '', tel: '', credito: '',
-  })
+  const { data, set, errors, validate } = useForm(clienteToForm(initial))
+  // Sucursales agregadas antes de que el cliente exista: se crean despues de él,
+  // para que la venta pueda elegir direccion de entrega de inmediato.
+  const [sucursalesNuevas, setSucursalesNuevas] = useState([])
 
   const createMutation = useCreateCliente()
   const updateMutation = useUpdateCliente()
-  const saving = createMutation.isPending || updateMutation.isPending
+  const createSucursal = useCreateClienteSucursal()
+  const saving = createMutation.isPending || updateMutation.isPending || createSucursal.isPending
 
   const handleSave = () => {
-    if (!validate({ nombre: { required: true }, rut: { required: true } })) return
-
-    const payload = {
-      rut: data.rut,
-      nombre: data.nombre,
-      razonSocial: data.razonSocial || undefined,
-      giro: data.giro || undefined,
-      tipo: data.tipo || undefined,
-      direccion: data.direccion || undefined,
-      region: data.region || undefined,
-      comuna: data.comuna || undefined,
-      pais: data.pais || undefined,
-      email: data.email || undefined,
-      telefono: data.tel || undefined,
-      limiteCredito: data.credito ? Number(data.credito) : undefined,
-    }
+    if (!validate(CLIENTE_RULES)) return
+    const payload = clienteFormToPayload(data)
+    const onError = (err) => toast.error(err?.response?.data?.error || (isEdit ? 'Error al guardar' : 'Error al crear'))
 
     if (isEdit) {
-      updateMutation.mutate(
-        { id: initial.id, data: payload },
-        {
-          onSuccess: (saved) => {
-            onSaved && onSaved(saved)
-            onClose()
-          },
-          onError: (err) => toast.error(err?.response?.data?.error || 'Error al guardar'),
-        }
-      )
-    } else {
-      createMutation.mutate(
-        payload,
-        {
-          onSuccess: (saved) => {
-            onSaved && onSaved(saved)
-            onClose()
-          },
-          onError: (err) => toast.error(err?.response?.data?.error || 'Error al crear'),
-        }
-      )
+      updateMutation.mutate({ id: initial.id, data: payload }, {
+        onSuccess: (saved) => { onSaved && onSaved(saved); onClose() },
+        onError,
+      })
+      return
     }
+
+    createMutation.mutate(payload, {
+      onSuccess: async (creado) => {
+        const fallidas = []
+        for (const sucursal of sucursalesNuevas) {
+          try {
+            await createSucursal.mutateAsync({ clienteId: creado.id, data: sucursalToPayload(sucursal) })
+          } catch {
+            fallidas.push(sucursal.nombre)
+          }
+        }
+        if (fallidas.length) toast.error(`Cliente creado, pero no se pudieron agregar: ${fallidas.join(', ')}`)
+        onSaved && onSaved(creado)
+        onClose()
+      },
+      onError,
+    })
   }
 
   return (
@@ -91,61 +62,10 @@ export function FormCliente({ initial, onClose, onSaved }) {
       subtitle={isEdit ? initial.nombre : 'Registrar nuevo cliente en el sistema'}
       onClose={onClose} onSave={handleSave} saving={saving}
     >
-      <FormDivider label="Identificación" />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <FormField label="RUT / Identificador" required error={errors.rut}>
-          <Input value={data.rut} onChange={v => set('rut', v)} placeholder="76123456-7" error={errors.rut} />
-        </FormField>
-        <FormField label="Tipo de Cliente">
-          <Select value={data.tipo} onChange={v => set('tipo', v)} options={['Empresa', 'Institucional', 'Municipal', 'Gobierno', 'Distribuidor']} />
-        </FormField>
-      </div>
-      <FormField label="Nombre / Nombre Comercial" required error={errors.nombre}>
-        <Input value={data.nombre} onChange={v => set('nombre', v)} placeholder="Nombre o Razón social corta" error={errors.nombre} />
-      </FormField>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <FormField label="Razón Social (SII)">
-          <Input value={data.razonSocial} onChange={v => set('razonSocial', v)} placeholder="Razón social legal completa" />
-        </FormField>
-        <FormField label="Giro">
-          <Input value={data.giro} onChange={v => set('giro', v)} placeholder="Giro / Actividad" />
-        </FormField>
-      </div>
-
-      <FormDivider label="Dirección" />
-      <FormField label="Dirección (Sucursal Principal)">
-        <Input value={data.direccion} onChange={v => set('direccion', v)} placeholder="Calle, número, depto/oficina" />
-      </FormField>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
-        <FormField label="País">
-          <Select value={data.pais} onChange={v => { set('pais', v); if (v !== 'Chile') { set('region', ''); set('comuna', '') } }} options={withCurrentValue(PAISES_LATAM, data.pais)} />
-        </FormField>
-        <FormField label="Región">
-          {data.pais === 'Chile'
-            ? <Select value={data.region} onChange={v => { set('region', v); set('comuna', '') }} options={['', ...withCurrentValue(REGIONES_CHILE, data.region)]} />
-            : <Input value={data.region} onChange={v => set('region', v)} placeholder="Región / provincia" />}
-        </FormField>
-        <FormField label="Comuna">
-          {data.pais === 'Chile'
-            ? <Select value={data.comuna} onChange={v => set('comuna', v)} options={['', ...withCurrentValue(COMUNAS_POR_REGION[data.region] || [], data.comuna)]} disabled={!data.region} />
-            : <Input value={data.comuna} onChange={v => set('comuna', v)} placeholder="Comuna / distrito" />}
-        </FormField>
-      </div>
-
-      <FormDivider label="Contacto" />
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 14 }}>
-        <FormField label="Email">
-          <Input value={data.email} onChange={v => set('email', v)} type="email" placeholder="correo@empresa.cl" />
-        </FormField>
-        <FormField label="Teléfono">
-          <Input value={data.tel} onChange={v => set('tel', v)} placeholder="+56 9 1234 5678" />
-        </FormField>
-      </div>
-
-      <FormDivider label="Crédito" />
-      <FormField label="Límite de Crédito" hint="Dejar en 0 para sin límite">
-        <Input value={data.credito} onChange={v => set('credito', v)} type="number" prefix="$" placeholder="0" />
-      </FormField>
+      <ClienteCampos data={data} set={set} errors={errors} />
+      {isEdit
+        ? <SucursalesCliente cliente={initial} />
+        : <SucursalesCliente cliente={null} borradores={sucursalesNuevas} onBorradoresChange={setSucursalesNuevas} />}
     </FormPanel>
   )
 }
@@ -154,7 +74,7 @@ export function FormCliente({ initial, onClose, onSaved }) {
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 const fmtM = n => (Math.abs(n || 0) / 1_000_000).toFixed(1) + 'M'
 
-const TIPO_TONE = { Institucional: 'blue', Municipal: 'neutral', Gobierno: 'neutral', Distribuidor: 'amber', Empresa: 'gray' }
+const TIPO_TONE = { Institucional: 'blue', Municipal: 'neutral', Gobierno: 'neutral', Distribuidor: 'amber', Empresa: 'gray', 'Persona natural': 'green' }
 const PAGO_TONE = { Pagada: 'green', Parcial: 'amber', 'No pagada': 'red' }
 const ENTREGA_TONE = { Entregada: 'green', 'En despacho': 'blue', Parcial: 'amber', 'Pendiente entrega': 'red' }
 const ODT_TONE = { Prioritaria: 'red', 'En proceso': 'blue', Pendiente: 'amber', Terminada: 'green' }
@@ -201,7 +121,6 @@ function TabDatos({ c }) {
       {c.direccion && <DetailRow label="Direccion" value={c.direccion} />}
       {c.region && <DetailRow label="Region" value={c.region} />}
       {c.comuna && <DetailRow label="Comuna" value={c.comuna} />}
-      {c.ciudad && <DetailRow label="Ciudad" value={c.ciudad} />}
       <DetailRow label="País" value={c.pais || 'Chile'} />
 
       <FormDivider label="Contacto" />
@@ -229,20 +148,26 @@ function TabDatos({ c }) {
 }
 
 // ── Tab: Ventas ────────────────────────────────────────────────────────────────
-function TabVentas({ ventas, onVentaClick }) {
+function TabVentas({ ventas, resumen, onVentaClick }) {
   if (!ventas?.length) {
     return <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Sin ventas registradas</div>
   }
 
-  const totalVentas = ventas.reduce((s, v) => s + (v.total || 0), 0)
-  const noPagadas = ventas.filter(v => v.estadoPago === 'No pagada').length
+  const cantidad = resumen?.total ?? ventas.length
+  const totalVentas = resumen?.montoTotal ?? ventas.reduce((s, v) => s + (v.total || 0), 0)
+  const noPagadas = resumen?.noPagadas ?? ventas.filter(v => v.estadoPago === 'No pagada').length
 
   return (
     <>
+      {cantidad > ventas.length && (
+        <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 10, textAlign: 'center' }}>
+          Mostrando las {ventas.length} ventas más recientes de {cantidad}.
+        </div>
+      )}
       {/* KPIs mini */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 14 }}>
         {[
-          { label: 'Total ventas', value: ventas.length, tone: null },
+          { label: 'Total ventas', value: cantidad, tone: null },
           { label: 'Monto total', value: '$' + fmtM(totalVentas), tone: null },
           { label: 'No pagadas', value: noPagadas, tone: noPagadas > 0 ? 'red' : 'neutral' },
         ].map(({ label, value, tone }, i) => (
@@ -284,12 +209,17 @@ function TabVentas({ ventas, onVentaClick }) {
 }
 
 // ── Tab: Taller ────────────────────────────────────────────────────────────────
-function TabTaller({ odts, onOdtClick }) {
+function TabTaller({ odts, total, onOdtClick }) {
   if (!odts?.length) {
     return <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Sin órdenes de trabajo asociadas</div>
   }
   return (
     <div>
+      {total > odts.length && (
+        <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 10, textAlign: 'center' }}>
+          Mostrando las {odts.length} órdenes más recientes de {total}.
+        </div>
+      )}
       {odts.map(odt => (
         <div key={odt.id} onClick={() => onOdtClick && onOdtClick(odt)} style={{
           border: '1px solid var(--border)', borderRadius: 10, padding: '11px 14px', marginBottom: 8,
@@ -335,6 +265,10 @@ export function ViewClientePanel({ cliente, onClose, onEdit, canWrite = true }) 
   const c = full || cliente
   const ventas = full?.ventas ?? []
   const odts = full?.odts ?? []
+  // Los KPIs salen del resumen que calcula el servidor sobre la tabla completa,
+  // no de estas listas, que vienen acotadas para no cargar miles de filas.
+  const ventasResumen = full?.ventasResumen ?? null
+  const odtsTotal = full?.odtsTotal ?? odts.length
 
   return (
     <ViewPanel
@@ -359,6 +293,7 @@ export function ViewClientePanel({ cliente, onClose, onEdit, canWrite = true }) 
       {tab === 'ventas' && (
         <TabVentas
           ventas={ventas}
+          resumen={ventasResumen}
           onVentaClick={id => { navigate(ventaPath(id, user)); onClose() }}
         />
       )}
@@ -366,6 +301,7 @@ export function ViewClientePanel({ cliente, onClose, onEdit, canWrite = true }) 
       {tab === 'taller' && (
         <TabTaller
           odts={odts}
+          total={odtsTotal}
           onOdtClick={odt => { navigate(odtPath(odt.id, user)); onClose() }}
         />
       )}

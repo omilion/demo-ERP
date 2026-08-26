@@ -97,6 +97,7 @@ function originBadge(item) {
   const origin = String(item.origenDato || '').toUpperCase()
   if (origin === 'OC_ONLINE_LEGACY') return { label: 'OC ONLINE', tone: 'blue' }
   if (origin === 'LICITACION_LEGACY' || origin === 'CRM_LICITACION' || item.canalVenta === 'LICITACION') return { label: 'LICITACIÓN', tone: 'purple' }
+  if (origin === 'COMPRA_AGIL' || origin === 'CRM_COMPRA_AGIL' || item.canalVenta === 'COMPRA_AGIL' || item.tipoVenta === 'COMPRA_AGIL') return { label: 'COMPRA ÁGIL', tone: 'amber' }
   if (origin === 'CRM_COTIZACION_SIMPLE') return { label: 'COT. SIMPLE', tone: 'green' }
   return null
 }
@@ -132,6 +133,9 @@ function CrmCard({ item, isDragging }) {
   const isHistoric = item.esHistorico || item.semaforo === 'HISTORICO'
   const action = item.accion && item.accion !== item.resultado ? item.accion : null
   const ocOnline = item.ordenCompraOnline
+  // El servidor ya resolvio de que origen sale el monto (OC online, licitacion
+  // o cotizacion propia del CRM); la tarjeta solo lo pinta.
+  const monto = Number(item.montoCotizado ?? ocOnline?.totalCalculado ?? ocOnline?.total ?? 0)
   const origin = originBadge(item)
   const estado = ESTADOS.find(e => e.id === normalizeEstado(item.etapaComercial || item.estado))
 
@@ -159,10 +163,10 @@ function CrmCard({ item, isDragging }) {
         <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.rsocial}</div>
       )}
 
-      {ocOnline && (
+      {monto > 0 && (
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 5, padding: '5px 7px', borderRadius: 6, background: '#f0fdf4', color: 'var(--green-800)' }}>
           <span style={{ fontSize: 10, fontWeight: 700 }}>Cotizado</span>
-          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13.5, fontWeight: 700 }}>{money(ocOnline.totalCalculado ?? ocOnline.total)}</span>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13.5, fontWeight: 700 }}>{money(monto)}</span>
         </div>
       )}
 
@@ -244,9 +248,14 @@ function DetailValue({ label, value }) {
 function CrmSummary({ item, detalle, onEdit }) {
   const oc = detalle?.ordenCompraOnline
   const products = oc?.items || []
-  const totalCotizado = products.length
-    ? products.reduce((sum, product) => sum + Number(product.precio || 0) * Number(product.cantidad || 0), 0)
-    : Number(oc?.totalCalculado ?? oc?.total ?? 0)
+  // Igual que en la tarjeta: el monto lo resuelve el servidor segun el origen de
+  // la oportunidad, y solo se recalcula aca si el detalle todavia no lo trae.
+  const totalCotizado = Number(
+    detalle?.montoCotizado
+      ?? (products.length
+        ? products.reduce((sum, product) => sum + Number(product.precio || 0) * Number(product.cantidad || 0), 0)
+        : Number(oc?.totalCalculado ?? oc?.total ?? 0))
+  )
   const latest = detalle?.gestiones?.[0]
   return (
     <div style={{ padding: 20 }}>
@@ -725,6 +734,7 @@ export default function CrmPage() {
   const [tipoVenta, setTipoVenta]     = useState('')
   const [origen, setOrigen]           = useState('')
   const [semaforo, setSemaforo]       = useState('')
+  const [estadoFiltro, setEstadoFiltro] = useState('')
   const [search, setSearch]           = useState('')
   const [debounced, setDebounced]     = useState('')
   const [fechaDesde, setFechaDesde]   = useState('')
@@ -796,11 +806,17 @@ export default function CrmPage() {
   const total = result.total ?? 0
 
   const filteredItems = useMemo(() => {
-    if (!pendienteFiltro) return items
-    if (pendienteFiltro === 'SIN_ASIGNAR') return items.filter(i => !i.vendedorId)
-    const ids = new Set((pendienteFiltro === 'ATRASADOS' ? pendientesHoyData?.vencidas : pendientesHoyData?.hoy)?.map(l => l.id) || [])
-    return items.filter(i => ids.has(i.id))
-  }, [items, pendienteFiltro, pendientesHoyData])
+    let list = items
+    if (pendienteFiltro === 'SIN_ASIGNAR') list = list.filter(i => !i.vendedorId)
+    else if (pendienteFiltro === 'ATRASADOS' || pendienteFiltro === 'HOY') {
+      const ids = new Set((pendienteFiltro === 'ATRASADOS' ? pendientesHoyData?.vencidas : pendientesHoyData?.hoy)?.map(l => l.id) || [])
+      list = list.filter(i => ids.has(i.id))
+    }
+    if (view === 'table' && estadoFiltro) {
+      list = list.filter(i => normalizeEstado(i.etapaComercial || i.estado) === estadoFiltro)
+    }
+    return list
+  }, [items, pendienteFiltro, pendientesHoyData, view, estadoFiltro])
 
   const byEstado = useMemo(() => {
     const map = {}
@@ -966,10 +982,18 @@ export default function CrmPage() {
             <option value="Media">Media</option>
             <option value="Baja">Baja</option>
           </select>
-          <select value={canalVenta} onChange={e => setCanalVenta(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todos los canales</option>{(catalogos?.canales || []).map(value => <option key={value}>{value}</option>)}</select>
-          <select value={tipoVenta} onChange={e => setTipoVenta(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todos los tipos</option>{(catalogos?.tiposVenta || []).map(value => <option key={value}>{value.replaceAll('_', ' ')}</option>)}</select>
-          <select value={origen} onChange={e => setOrigen(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todos los orígenes</option>{(catalogos?.origenes || []).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select>
-          <select value={semaforo} onChange={e => setSemaforo(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }}><option value="">Todo semáforo</option><option value="NORMAL">Al día</option><option value="AMARILLO">Requiere seguimiento</option><option value="ROJO">Atrasado</option></select>
+          <select value={origen} onChange={e => setOrigen(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}><option value="">Todos los orígenes</option>{(catalogos?.origenes || []).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select>
+          <select value={semaforo} onChange={e => setSemaforo(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}><option value="">Todo semáforo</option><option value="NORMAL">Al día</option><option value="AMARILLO">Requiere seguimiento</option><option value="ROJO">Atrasado</option></select>
+          {view === 'table' && (
+            <select
+              value={estadoFiltro}
+              onChange={e => setEstadoFiltro(e.target.value)}
+              style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1.5px solid var(--green-600)', background: '#f0fdf4', color: 'var(--green-900)', fontWeight: 600 }}
+            >
+              <option value="">Todos los estados</option>
+              {ESTADOS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
+            </select>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Desde</span>
             <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }} />

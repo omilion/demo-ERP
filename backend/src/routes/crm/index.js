@@ -8,6 +8,8 @@ import {
   normalizeEtapa,
 } from '../../domain/crm/constants.js'
 import { addSemaforo, createCrmGestion, elapsedDays, transitionCrm } from '../../domain/crm/service.js'
+import { canApplyDescuento, requiresDescuentoPermission } from '../ventas/descuentos-permissions.js'
+import { validateDescuentoContraReglas } from '../ventas/descuentos-guard.js'
 
 const CRM_ESTADOS = new Set(['0', '1', '2', '3'])
 
@@ -55,24 +57,44 @@ function handleDomainError(error, reply) {
   return reply.code(error.statusCode).send({ error: error.message })
 }
 
+function sumarLineas(items, campoPrecio) {
+  if (!Array.isArray(items) || !items.length) return null
+  return items.reduce((total, item) => {
+    const cantidad = Number(item.cantidad)
+    const precio = Number(item[campoPrecio])
+    return total + (Number.isFinite(cantidad) ? cantidad : 0) * (Number.isFinite(precio) ? precio : 0)
+  }, 0)
+}
+
 // La cabecera importada de una OC puede contener un total antiguo o incompleto.
 // Cuando hay detalle, la fuente de verdad comercial es la suma de sus líneas.
 function totalCotizado(ordenCompraOnline) {
-  const items = ordenCompraOnline?.items
-  if (Array.isArray(items) && items.length) {
-    return items.reduce((total, item) => {
-      const cantidad = Number(item.cantidad)
-      const precio = Number(item.precio)
-      return total + (Number.isFinite(cantidad) ? cantidad : 0) * (Number.isFinite(precio) ? precio : 0)
-    }, 0)
-  }
+  const porLineas = sumarLineas(ordenCompraOnline?.items, 'precio')
+  if (porLineas !== null) return porLineas
   const stored = Number(ordenCompraOnline?.total)
   return Number.isFinite(stored) ? stored : 0
+}
+
+// Monto de la oportunidad, venga de donde venga.
+//
+// Una oportunidad tiene una sola fuente segun su origen: la OC online para lo
+// importado de la web, la cotizacion de licitacion para lo importado de
+// licitaciones, o la cotizacion comercial para lo que nace en el CRM. El tablero
+// mostraba monto solo para la primera, asi que las licitaciones y las
+// cotizaciones nuevas aparecian en cero.
+function montoCotizado(registro) {
+  const propia = sumarLineas(registro?.cotizacionComercial?.items, 'precioUnitario')
+  if (propia !== null) return propia
+  if (registro?.ordenCompraOnline) return totalCotizado(registro.ordenCompraOnline)
+  const licitacion = sumarLineas(registro?.cotizacionLicitacion?.items, 'precio')
+  if (licitacion !== null) return licitacion
+  return 0
 }
 
 const ORIGENES_CRM = Object.freeze({
   OC_ONLINE: ['OC_ONLINE_LEGACY'],
   LICITACION: ['LICITACION_LEGACY', 'CRM_LICITACION'],
+  COMPRA_AGIL: ['COMPRA_AGIL', 'CRM_COMPRA_AGIL'],
   COTIZACION_SIMPLE: ['CRM_COTIZACION_SIMPLE'],
 })
 
@@ -148,10 +170,15 @@ export default async function crmRoutes(fastify) {
       const canalVenta = esCotizacionSimple ? 'PROSPECCION_DIRECTA' : tipo === 'Licitación' ? 'LICITACION' : null
       const tipoVenta = esCotizacionSimple ? 'COTIZACION_SIMPLE' : canalVenta === 'LICITACION' ? 'LICITACION' : null
       const clienteId = Number(b.clienteId)
+      const descuentoPct = Number(b.descuentoPct || 0)
       const rawItems = Array.isArray(b.items) ? b.items : []
       if (!canalVenta) return reply.code(400).send({ error: 'Selecciona una cotizacion CRM valida' })
       if (!Number.isInteger(clienteId) || clienteId <= 0) return reply.code(400).send({ error: 'Selecciona un cliente' })
       if (!rawItems.length) return reply.code(400).send({ error: 'Agrega al menos un producto' })
+      if (!Number.isFinite(descuentoPct) || descuentoPct < 0 || descuentoPct > 100) return reply.code(400).send({ error: 'Descuento invalido' })
+      if (requiresDescuentoPermission(descuentoPct) && !canApplyDescuento(request.user)) {
+        return reply.code(403).send({ error: 'No tiene permiso para aplicar descuentos' })
+      }
       if (tipo === 'Licitación' && (!String(b.licitacion || '').trim() || !b.licitacionFecha)) return reply.code(400).send({ error: 'Licitacion requiere ID y fecha' })
       if (!/^\S+@\S+\.\S+$/.test(String(b.emailContactoDespacho || '').trim())) return reply.code(400).send({ error: 'Ingresa el correo del contacto de despacho' })
       const productIds = [...new Set(rawItems.map(item => Number(item.productoId)).filter(Number.isInteger))]
@@ -164,6 +191,13 @@ export default async function crmRoutes(fastify) {
         ])
         if (!cliente) throw Object.assign(new Error('Cliente no encontrado'), { statusCode: 404 })
         if (!cliente.activo) throw Object.assign(new Error('Cliente inactivo no puede cotizar'), { statusCode: 409 })
+        if (b.clienteSucursalId) {
+          const sucursal = await tx.clienteSucursal.findFirst({
+            where: { id: Number(b.clienteSucursalId), clienteId: cliente.id, activo: true },
+            select: { id: true },
+          })
+          if (!sucursal) throw Object.assign(new Error('Sucursal no pertenece al cliente'), { statusCode: 400 })
+        }
         if (productos.length !== productIds.length || productos.some(producto => !producto.activo)) throw Object.assign(new Error('Hay productos inexistentes o inactivos'), { statusCode: 400 })
         const byId = new Map(productos.map(producto => [producto.id, producto]))
         const items = rawItems.map((item, index) => {
@@ -182,6 +216,15 @@ export default async function crmRoutes(fastify) {
             precioUnitario,
           }
         })
+        // El descuento se valida recien aca: la guarda necesita los items ya
+        // resueltos para saber sobre que base aplicaria la regla.
+        const guard = await validateDescuentoContraReglas(tx, {
+          tipo: esCotizacionSimple ? 'Venta Web' : tipo,
+          descuentoPct,
+          clienteId: cliente.id,
+          items,
+        }, request.user)
+        if (guard.error) throw Object.assign(new Error(guard.error), { statusCode: guard.statusCode || 400 })
         const now = new Date()
         const vendedorId = request.user.role === 'admin' && Number.isInteger(Number(b.vendedorId)) ? Number(b.vendedorId) : request.user.id
         const vendedor = await tx.user.findFirst({ where: { id: vendedorId, activo: true }, select: { id: true, nombre: true } })
@@ -223,7 +266,7 @@ export default async function crmRoutes(fastify) {
             licitacionReferencia: String(b.licitacionReferencia || '').trim() || null,
             licitacionOC: String(b.licitacionOC || '').trim() || null,
             observaciones: String(b.observaciones || '').trim() || null,
-            descuentoPct: Number(b.descuentoPct) || 0,
+            descuentoPct,
             enviosParciales: !!b.enviosParciales, montoDespacho: Number(b.montoDespacho) || 0,
             fechaPlazo: b.fechaPlazo ? new Date(b.fechaPlazo) : null,
             plazoEntregaDias: b.plazoEntregaDias === '' || b.plazoEntregaDias == null ? null : Number(b.plazoEntregaDias),
@@ -298,15 +341,34 @@ export default async function crmRoutes(fastify) {
                 items: { select: { cantidad: true, precio: true } },
               },
             },
+            cotizacionLicitacion: {
+              select: {
+                id: true, idLicitacion: true, estado: true,
+                items: { select: { cantidad: true, precio: true } },
+              },
+            },
+            cotizacionComercial: {
+              select: {
+                id: true, tipo: true, licitacion: true,
+                items: { select: { cantidad: true, precioUnitario: true } },
+              },
+            },
           },
         }),
         f.prisma.crmRegistro.count({ where }),
       ])
 
       const enriched = addSemaforo(items).map(item => {
-        if (!item.ordenCompraOnline) return item
+        // El monto se resuelve aca, del lado del servidor, para que la tarjeta no
+        // tenga que saber de que origen viene cada oportunidad.
+        const monto = montoCotizado(item)
+        if (!item.ordenCompraOnline) return { ...item, montoCotizado: monto }
         const { items: ocItems, ...ordenCompraOnline } = item.ordenCompraOnline
-        return { ...item, ordenCompraOnline: { ...ordenCompraOnline, totalCalculado: totalCotizado({ ...ordenCompraOnline, items: ocItems }) } }
+        return {
+          ...item,
+          montoCotizado: monto,
+          ordenCompraOnline: { ...ordenCompraOnline, totalCalculado: totalCotizado({ ...ordenCompraOnline, items: ocItems }) },
+        }
       })
       const filtered = semaforo ? enriched.filter(item => item.semaforo === String(semaforo).toUpperCase()) : enriched
       return { items: filtered, total: semaforo ? filtered.length : total, limit: LIMIT }
@@ -584,7 +646,7 @@ export default async function crmRoutes(fastify) {
       const cotizacionLicitacion = item?.cotizacionLicitacion
         ? { ...item.cotizacionLicitacion, items: licitacionItems.map(row => ({ ...row, producto: productByCode.get(row.codigoInterno) || null })) }
         : null
-      return { ...item, ...addSemaforo([item])[0], ordenCompraOnline, cotizacionLicitacion }
+      return { ...item, ...addSemaforo([item])[0], montoCotizado: montoCotizado(item), ordenCompraOnline, cotizacionLicitacion }
     })
 
     // PATCH /api/crm/:id

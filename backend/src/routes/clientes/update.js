@@ -12,8 +12,7 @@ const Schema = z.object({
   nombre: z.string().trim().min(1).optional(),
   email: z.string().email().optional(),
   telefono: z.string().optional(),
-  ciudad: z.string().optional(),
-  tipo: z.enum(['Empresa', 'Institucional', 'Municipal', 'Gobierno', 'Distribuidor']).optional(),
+  tipo: z.enum(['Persona natural', 'Empresa', 'Institucional', 'Municipal', 'Gobierno', 'Distribuidor']).optional(),
   razonSocial: z.string().optional(),
   giro: z.string().optional(),
   direccion: z.string().optional(),
@@ -49,6 +48,12 @@ export default async function updateCliente(fastify) {
     if (parsed.data.activo !== undefined && !can(request.user?.role, 'clientes', 'delete', request.user?.permisosExtra)) {
       return reply.code(403).send({ error: 'Forbidden' })
     }
+    const isGerenciaOrAdmin = request.user?.role === 'admin' || request.user?.role === 'gerencia' || can(request.user?.role, 'gerencia', 'write', request.user?.permisosExtra)
+    if (!isGerenciaOrAdmin) {
+      delete parsed.data.limiteCredito
+      delete parsed.data.diasInactivoAlerta
+    }
+
     if (!await ensureClienteIdentifiersAvailable(fastify.prisma, parsed.data, reply, id)) return
     try {
       const c = await fastify.prisma.cliente.update({ where: { id }, data: parsed.data })

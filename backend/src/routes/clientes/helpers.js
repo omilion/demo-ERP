@@ -49,24 +49,60 @@ export function handleClienteUniqueError(error, reply) {
 }
 
 export async function ensureClienteIdentifiersAvailable(prisma, data = {}, reply, excludeId = null) {
-  const checks = []
-  if (data.rut) checks.push({ rut: data.rut })
-  if (data.email) checks.push({ email: { equals: data.email, mode: 'insensitive' } })
-  if (checks.length === 0) return true
+  if (!data.rut) return true
 
   const existing = await prisma.cliente.findFirst({
     where: {
-      OR: checks,
+      rut: data.rut,
       ...(excludeId ? { id: { not: excludeId } } : {}),
     },
-    select: { id: true, rut: true, email: true },
+    select: { id: true, rut: true },
   })
   if (!existing) return true
 
-  if (data.rut && existing.rut === data.rut) {
-    reply.code(409).send({ error: 'Ya existe un cliente con ese RUT' })
-    return false
-  }
-  reply.code(409).send({ error: 'Ya existe un cliente con ese email' })
+  reply.code(409).send({ error: 'Ya existe un cliente registrado con ese RUT' })
   return false
+}
+
+// Resumen real de las ventas del cliente.
+//
+// El panel mostraba estos numeros contando la lista que trae el detalle, que
+// viene acotada a las ultimas 50: un cliente con 5.157 ventas aparecia con 50 y
+// un monto proporcionalmente equivocado. Aca se calculan sobre la tabla completa.
+//
+// La formula replica computeTotal() de ventas/helpers.js: base = items + cargos,
+// y si hay descuento congelado en monto manda sobre el porcentaje.
+export async function computeVentasResumen(prisma, clienteId) {
+  const rows = await prisma.$queryRaw`
+    WITH base AS (
+      SELECT
+        o.id,
+        o.estado_pago,
+        COALESCE(t.subtotal, 0) + COALESCE(c.cargos, 0) AS bruto,
+        COALESCE(o.descuento_pct, 0) AS pct,
+        COALESCE(o.descuento_monto, 0) AS monto_desc
+      FROM ventas.ordenes o
+      LEFT JOIN (
+        SELECT orden_id, SUM(cantidad * precio_unitario) AS subtotal
+        FROM ventas.orden_items GROUP BY orden_id
+      ) t ON t.orden_id = o.id
+      LEFT JOIN (
+        SELECT orden_id, SUM(valor) AS cargos
+        FROM ventas.orden_cargos GROUP BY orden_id
+      ) c ON c.orden_id = o.id
+      WHERE o.cliente_id = ${clienteId}
+    )
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE estado_pago = 'No pagada')::int AS no_pagadas,
+      COALESCE(SUM(
+        CASE WHEN monto_desc > 0
+          THEN GREATEST(0, bruto - monto_desc)
+          ELSE bruto - ROUND(bruto * pct / 100.0)
+        END
+      ), 0)::float AS monto_total
+    FROM base
+  `
+  const r = rows[0] || {}
+  return { total: Number(r.total ?? 0), noPagadas: Number(r.no_pagadas ?? 0), montoTotal: Number(r.monto_total ?? 0) }
 }
