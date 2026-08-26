@@ -20,7 +20,7 @@ import api from '../../api/client'
 
 const DOCUMENTOS_VENTA = ['Factura Plast', 'Factura Laura', 'Boleta Electronica', 'NC Plast', 'NC Laura', 'NC Inter Plast', 'ND Plast', 'ND Laura']
 
-const TIPOS = ['Licitación', 'Convenio Marco', 'Marketplace', 'Venta Web', 'Venta Sala']
+const TIPOS = ['Licitación', 'Compra Ágil', 'Convenio Marco', 'Marketplace', 'Venta Web', 'Venta Sala']
 const MARKETPLACE_CANALES = ['París', 'Mercado Libre', 'Falabella']
 const TIPO_DEFAULT = 'Venta Sala'
 
@@ -140,7 +140,7 @@ function ItemsTable({ items, onChange, locked = false, isLicitacion = false }) {
 
   if (items.length === 0) return (
     <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13, border: '1px dashed var(--border)', borderRadius: 8 }}>
-      Busca y agrega productos con el buscador de arriba
+      Aún no hay productos en la lista. Agrégalos usando el buscador lateral.
     </div>
   )
 
@@ -227,7 +227,7 @@ function ItemsTable({ items, onChange, locked = false, isLicitacion = false }) {
   )
 }
 
-function VentaWorkspace({ title, stateLabel = 'Borrador sin guardar', typeControl, total, onSave, onCancel, saving, saveLabel, sidebar, children }) {
+function VentaWorkspace({ title, stateLabel = 'Borrador sin guardar', typeControl, total, onSave, onCancel, saving, saveLabel, sidebar, contentClassName = '', children }) {
   return (
     <main className="page page-wide venta-workspace">
       <section className="venta-workspace-shell">
@@ -255,7 +255,7 @@ function VentaWorkspace({ title, stateLabel = 'Borrador sin guardar', typeContro
               {sidebar}
             </div>
           </aside>
-          <div className="venta-workspace-content">{children}</div>
+          <div className={`venta-workspace-content ${contentClassName}`}>{children}</div>
         </div>
       </section>
     </main>
@@ -266,19 +266,19 @@ function WorkspaceDataRow({ label, children, value }) {
   return (
     <div className="venta-workspace-client-row">
       <span>{label}</span>
-      <div className="venta-workspace-client-value">{children || value || '—'}</div>
+      <div className={`venta-workspace-client-value${children ? ' venta-workspace-client-control' : ''}`}>{children || value || '—'}</div>
     </div>
   )
 }
 
-function VentaClienteWorkspaceCard({ cliente, sucursal, clienteOptions, sucursalOptions, clienteId, sucursalId, onClienteChange, onSucursalChange, onNewCliente }) {
+function VentaClienteWorkspaceCard({ cliente, sucursal, clienteOptions, sucursalOptions, clienteId, sucursalId, onClienteChange, onSucursalChange, onNewCliente, className = '' }) {
   const direccion = sucursal?.direccion || cliente?.direccion
   const region = sucursal?.region || cliente?.region
   const comuna = sucursal?.comuna || cliente?.comuna
   const telefono = sucursal?.telefono || cliente?.telefono
 
   return (
-    <section className="venta-workspace-client-card">
+    <section className={`venta-workspace-client-card ${className}`}>
       <div className="venta-workspace-client-heading">
         <span>Cliente</span>
         <button type="button" className="venta-workspace-new-client" onClick={onNewCliente}>
@@ -319,9 +319,9 @@ function VentaClienteWorkspaceCard({ cliente, sucursal, clienteOptions, sucursal
   )
 }
 
-function VentaWorkspaceSection({ title, children, sectionRef }) {
+function VentaWorkspaceSection({ title, children, sectionRef, className = '' }) {
   return (
-    <section ref={sectionRef} className="venta-workspace-section">
+    <section ref={sectionRef} className={`venta-workspace-section ${className}`}>
       <h2 className="venta-workspace-section-title">{title}</h2>
       <div className="venta-workspace-section-body">{children}</div>
     </section>
@@ -546,6 +546,10 @@ function DescuentosDisponiblesPanel({ venta, items, subtotal, cargosTotal, total
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasContext, venta.tipo, venta.clienteId, venta.clienteSucursalId, venta.licitacion, venta.descuentoPct, subtotal, cargosTotal, totalBase, items])
 
+  // La evaluación se ejecuta en segundo plano. El bloque solo se muestra
+  // cuando efectivamente hay una regla que el usuario pueda revisar.
+  if (!hasContext || rules.length === 0) return null
+
   function applyRule(rule) {
     if (disabled || rule.requiereAprobacion || rule.disponible === false) return
     if (rule.origen === 'legacy') {
@@ -612,7 +616,6 @@ function DescuentosDisponiblesPanel({ venta, items, subtotal, cargosTotal, total
         </Btn>
       </div>
       <div style={{ padding: 14 }}>
-        {!hasContext && <div style={discountEmpty}>Agrega productos para evaluar reglas.</div>}
         {hasContext && error && (
           <div style={{ ...discountNotice, background: 'var(--amber-bg)', color: 'var(--text-2)' }}>
             {error}
@@ -623,7 +626,6 @@ function DescuentosDisponiblesPanel({ venta, items, subtotal, cargosTotal, total
             {message}
           </div>
         )}
-        {hasContext && rules.length === 0 && !evaluar.isPending && <div style={discountEmpty}>No hay reglas de descuento vigentes para esta venta. Sin regla no se puede aplicar descuento.</div>}
         {hasContext && rules.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
             {rules.map(rule => {
@@ -1380,6 +1382,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   const fechaFicha = isEdit && (found?.fecha || found?.createdAt)
     ? new Date(found.fecha || found.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     : new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
+  const isLicitacionOrCompraAgil = data.tipo === 'Licitación' || data.tipo === 'Compra Ágil'
   // Los catálogos históricos pueden contener porcentajes repetidos por
   // importaciones antiguas. Un select no debe renderizar opciones duplicadas:
   // además del warning de React, el usuario no podría distinguirlas.
@@ -1388,6 +1391,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
 
   return (
     <VentaWorkspace
+      contentClassName={isLicitacionOrCompraAgil ? 'venta-workspace-public-flow' : 'venta-workspace-standard-flow'}
       stateLabel={isEdit ? 'Edicion en curso: se mantienen las reglas de trazabilidad de la venta.' : crmMode ? 'Cotizacion CRM: no crea una venta en Matriz hasta su aprobacion.' : 'Borrador sin guardar'}
       title={isEdit ? 'Editar Venta' : crmMode ? (isSimpleCrmQuote ? 'Cotización simple CRM' : `Cotización CRM · ${forceTipo}`) : 'Nueva Venta'}
       subtitle={isEdit ? `Editando venta #${id}` : crmMode ? (isSimpleCrmQuote ? 'Prospección directa: se crea una venta solo al aprobarla.' : 'Ficha comercial completa vinculada al CRM.') : 'Crear nueva orden de venta'}
@@ -1421,7 +1425,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
             ) : (found?.creadorNombre || user?.nombre || 'Sin vendedor')}</div>
             <div><strong>Fecha:</strong> {fechaFicha}</div>
           </div>
-          <div className="venta-workspace-side-card">
+          <div className="venta-workspace-side-card venta-workspace-product-tool">
             <div className="venta-workspace-side-label">Agregar producto</div>
             <ProductoSearch
               onAdd={addProducto}
@@ -1436,6 +1440,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       saveLabel={isEdit ? 'Guardar' : crmMode ? 'Guardar cotización' : 'Crear Venta'}
     >
       <VentaClienteWorkspaceCard
+        className="venta-workspace-client-section"
         cliente={selectedCliente}
         sucursal={selectedSucursal}
         clienteOptions={clienteOptions}
@@ -1484,8 +1489,8 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       )}
 
       </div>
-      {data.tipo === 'Licitación' && (
-        <VentaWorkspaceSection title="Detalles de la Licitación">
+      {isLicitacionOrCompraAgil && (
+        <VentaWorkspaceSection className="venta-workspace-public-details" title={data.tipo === 'Compra Ágil' ? 'Detalles de Compra Ágil' : 'Detalles de la Licitación'}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <FormField label="ID Licitación (Requerido)" hint="Ej: 61602954-LE15-1">
               <Input value={data.licitacion || ''} onChange={v => set('licitacion', v)} placeholder="Codigo de seguimiento" />
@@ -1519,14 +1524,14 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       )}
 
       {isConvenioMarco(data.tipo) && (
-        <VentaWorkspaceSection title="Detalles del Convenio Marco">
+        <VentaWorkspaceSection className="venta-workspace-special-details" title="Detalles del Convenio Marco">
           <FormField label="N OC Convenio Marco (Requerido)" hint="Obligatorio y no duplicable">
             <Input value={data.licitacion || ''} onChange={v => set('licitacion', sanitizeOrdenCompra(v, { live: true }))} placeholder="Numero OC" />
           </FormField>
         </VentaWorkspaceSection>
       )}
 
-      {data.tipo === 'Marketplace' && <VentaWorkspaceSection title="Venta Marketplace y comisión">
+      {data.tipo === 'Marketplace' && <VentaWorkspaceSection className="venta-workspace-special-details" title="Venta Marketplace y comisión">
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 14 }}>
           <FormField label="Canal Marketplace" required>
             <Select
@@ -1602,7 +1607,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       )}
 
       </div>
-      <VentaWorkspaceSection title="Información de Despacho">
+      <VentaWorkspaceSection className="venta-workspace-dispatch-section" title="Información de Despacho">
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
         <FormField label="Días para entrega" required>
           <Input type="number" min="0" max="3650" value={data.plazoEntregaDias || ''} onChange={v => { set('plazoEntregaDias', v); set('fechaPlazo', calculateDeliveryDateIso(v, data.plazoEntregaTipo)) }} placeholder="Ej: 15" />
@@ -1679,7 +1684,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       )}
 
       </VentaWorkspaceSection>
-      <VentaWorkspaceSection title="Estados de la Orden">
+      {isEdit && <VentaWorkspaceSection className="venta-workspace-edit-section" title="Estados de la Orden">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
         <FormField label="Estado de la orden">
           <Select value={data.estado} onChange={v => set('estado', v)} options={['Activa', 'Cerrada', 'Nula', 'Completada', 'En proceso']} />
@@ -1691,9 +1696,9 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
           <Select value={data.estadoEntrega} onChange={v => set('estadoEntrega', v)} options={['Pendiente entrega', 'Entregada', 'En despacho', 'Parcial']} />
         </FormField>
       </div>
-      </VentaWorkspaceSection>
+      </VentaWorkspaceSection>}
 
-      <VentaWorkspaceSection sectionRef={productsSectionRef} title={isEdit ? `Productos (${items.length})` : 'Agregar productos'}>
+      <VentaWorkspaceSection className="venta-workspace-products-section" sectionRef={productsSectionRef} title={isEdit ? `Productos (${items.length})` : 'Lista de productos'}>
       {itemsLocked && (
         <div style={{ marginBottom: 12, padding: '10px 12px', border: '1px solid var(--amber)', borderRadius: 8, background: '#fff8e6', color: 'var(--text-2)', fontSize: 13, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
           <Icon name="lock" size={15} color="var(--amber)" />
@@ -1734,7 +1739,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       )}
       </VentaWorkspaceSection>
 
-      <VentaWorkspaceSection title="Seguimiento financiero">
+      {isEdit && <VentaWorkspaceSection className="venta-workspace-edit-section" title="Seguimiento financiero">
       <div style={{ display: 'grid', gridTemplateColumns: isEdit ? '1fr 1fr 1fr 1fr' : '1fr', gap: 14 }}>
         {/* El porcentaje ya no sale de un catalogo de valores sueltos: se escribe
             y una regla vigente tiene que respaldarlo, sea cual sea el tipo de venta. */}
@@ -1753,7 +1758,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
           </FormField>
         </>}
       </div>
-      </VentaWorkspaceSection>
+      </VentaWorkspaceSection>}
 
       {isEdit && (
         <VentaWorkspaceSection title="Documentos de venta">
@@ -1804,7 +1809,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         </VentaWorkspaceSection>
       )}
 
-      <VentaWorkspaceSection title="Observaciones">
+      <VentaWorkspaceSection className="venta-workspace-observations-section" title="Observaciones">
       <FormField label="Notas internas">
         <Textarea value={data.observaciones || ''} onChange={v => set('observaciones', v)} placeholder="Instrucciones especiales, condiciones de entrega, etc." rows={3} />
       </FormField>
@@ -1829,16 +1834,6 @@ const actionBtn = (color) => ({
   borderRadius: 6, border: `1px solid ${color}`,
   background: '#fff', color, cursor: 'pointer',
 })
-
-const discountEmpty = {
-  padding: 14,
-  borderRadius: 8,
-  border: '1px dashed var(--border)',
-  background: 'var(--bg)',
-  color: 'var(--text-3)',
-  fontSize: 13,
-  textAlign: 'center',
-}
 
 const discountNotice = {
   padding: '8px 10px',

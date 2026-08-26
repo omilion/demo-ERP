@@ -92,6 +92,7 @@ function originBadge(item) {
   const origin = String(item.origenDato || '').toUpperCase()
   if (origin === 'OC_ONLINE_LEGACY') return { label: 'OC ONLINE', tone: 'blue' }
   if (origin === 'LICITACION_LEGACY' || origin === 'CRM_LICITACION' || item.canalVenta === 'LICITACION') return { label: 'LICITACIÓN', tone: 'purple' }
+  if (origin === 'COMPRA_AGIL' || origin === 'CRM_COMPRA_AGIL' || item.canalVenta === 'COMPRA_AGIL' || item.tipoVenta === 'COMPRA_AGIL') return { label: 'COMPRA ÁGIL', tone: 'amber' }
   if (origin === 'CRM_COTIZACION_SIMPLE') return { label: 'COT. SIMPLE', tone: 'green' }
   return null
 }
@@ -976,7 +977,6 @@ export default function CrmPage() {
             <option value="Media">Media</option>
             <option value="Baja">Baja</option>
           </select>
-          <select value={tipoVenta} onChange={e => setTipoVenta(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}><option value="">Todos los tipos</option>{(catalogos?.tiposVenta || []).map(value => <option key={value}>{value.replaceAll('_', ' ')}</option>)}</select>
           <select value={origen} onChange={e => setOrigen(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}><option value="">Todos los orígenes</option>{(catalogos?.origenes || []).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select>
           <select value={semaforo} onChange={e => setSemaforo(e.target.value)} style={{ padding: '5px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}><option value="">Todo semáforo</option><option value="NORMAL">Al día</option><option value="AMARILLO">Requiere seguimiento</option><option value="ROJO">Atrasado</option></select>
           {view === 'table' && (
