@@ -5,6 +5,7 @@ import { useDashboardStats } from '../../api/dashboard'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 import { useCrmPendientesHoy } from '../../api/crm'
+import { NotificacionesBell } from '../../components/NotificacionesBell'
 
 const TALLER_ICONS = { Espumas: 'layers', Confecciones: 'scissors', Madera: 'box', Externo: 'truck' }
 
@@ -331,7 +332,12 @@ export default function DashboardPage() {
             title={`¡Hola, ${user.nombre || 'Vendedor'}!`}
             subtitle="Tu panel personal"
             breadcrumb={['Inicio', 'Mi Panel']}
-            actions={<LiveDateTime />}
+            actions={
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <NotificacionesBell dark={false} />
+                <LiveDateTime />
+              </div>
+            }
           />
 
           <section style={{ marginTop: 16 }}>
