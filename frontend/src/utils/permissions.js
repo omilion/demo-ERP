@@ -10,6 +10,19 @@ export const ROLE_PERMISSIONS = {
     despacho: ['read'],
     taller: ['read'],
   },
+  // Igual que vendedor: la unica diferencia es visibilidad ampliada del CRM
+  // de todos los vendedores, resuelta server-side (backend/src/routes/crm/index.js),
+  // no un permiso de modulo distinto aqui.
+  coordinador_comercial: {
+    reportes: ['read'],
+    ventas: ['read', 'write'],
+    cotizaciones: ['read', 'write'],
+    licitaciones: ['read', 'write'],
+    clientes: ['read', 'write'],
+    catalogo: ['read'],
+    despacho: ['read'],
+    taller: ['read'],
+  },
   bodeguero: {
     reportes: ['read'],
     bodega: ['read', 'write'],

@@ -5,7 +5,7 @@ import { useDeleteUsuario, useUsuarios, useCreateUsuario, useUpdateUsuario, useU
 import { useSucursales } from '../../api/locations'
 import { useAuthStore } from '../../store/auth'
 
-const ROLES = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
+const ROLES = ['admin', 'vendedor', 'coordinador_comercial', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
 
 const MODULOS = [
   ['ventas', 'Ventas'],

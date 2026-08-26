@@ -26,4 +26,10 @@ describe('frontend permissions map', () => {
     expect(can(user('vendedor'), 'ventas', 'delete')).toBe(false)
     expect(can(user('vendedor', { ventas: ['delete'] }), 'ventas', 'delete')).toBe(true)
   })
+
+  it('keeps coordinador_comercial with the exact same module permissions as vendedor', () => {
+    for (const [modulo, permiso] of [['ventas', 'read'], ['ventas', 'write'], ['clientes', 'write'], ['catalogo', 'read'], ['rrhh', 'read']]) {
+      expect(can(user('coordinador_comercial'), modulo, permiso)).toBe(can(user('vendedor'), modulo, permiso))
+    }
+  })
 })

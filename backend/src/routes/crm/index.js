@@ -18,14 +18,32 @@ function normalizeEstado(value) {
   return CRM_ESTADOS.has(estado) ? estado : undefined
 }
 
-// Visibilidad por rol: el admin ve todos los registros; un vendedor (u otro rol)
-// ve SOLO los suyos (vendedorId = su id). Restricción de servidor, no del cliente.
-// Los registros legacy sin vendedorId (null) quedan visibles solo para admin.
+// coordinador_comercial es igual a vendedor en todo (backend/src/middleware/rbac.js),
+// salvo esta unica ampliacion: ve el CRM de todos los vendedores, igual que admin.
+// No gana poder de escritura sobre leads ajenos por esto (ver ensureCrmAccess).
+function hasCrmFullVisibility(user) {
+  return user?.role === 'admin' || user?.role === 'coordinador_comercial'
+}
+
+// Visibilidad por rol: admin y coordinador_comercial ven todos los registros;
+// un vendedor (u otro rol) ve SOLO los suyos (vendedorId = su id). Restriccion
+// de servidor, no del cliente. Los registros legacy sin vendedorId (null)
+// quedan visibles solo para quien tiene visibilidad completa.
 function applyScopeByRole(where, user) {
-  if (user?.role !== 'admin') where.vendedorId = user?.id ?? -1
+  if (!hasCrmFullVisibility(user)) where.vendedorId = user?.id ?? -1
   return where
 }
 
+// Para lectura (detalle, gestiones, orden vinculada): usa la visibilidad ampliada.
+async function ensureCrmVisible(prisma, id, user) {
+  const where = { id }
+  if (!hasCrmFullVisibility(user)) where.vendedorId = user?.id ?? -1
+  return prisma.crmRegistro.findFirst({ where, select: { id: true } })
+}
+
+// Para escritura (gestiones, transiciones, convertir a cliente): solo admin
+// puede actuar sobre leads ajenos. coordinador_comercial queda igual que
+// vendedor aqui — visibilidad ampliada no es poder de escritura ampliado.
 async function ensureCrmAccess(prisma, id, user) {
   const where = { id }
   if (user?.role !== 'admin') where.vendedorId = user?.id ?? -1
@@ -389,7 +407,7 @@ export default async function crmRoutes(fastify) {
         }),
         f.prisma.crmRegistro.count({ where: { ...where, fechaProximo: { lt: start } } }),
         f.prisma.crmRegistro.count({ where: { ...where, fechaProximo: { gte: start, lt: end } } }),
-        request.user?.role === 'admin'
+        hasCrmFullVisibility(request.user)
           ? f.prisma.crmRegistro.count({ where: { ...where, vendedorId: null } })
           : Promise.resolve(0),
       ])
@@ -527,7 +545,7 @@ export default async function crmRoutes(fastify) {
     }, async (request, reply) => {
       const id = parseInt(request.params.id, 10)
       if (!Number.isInteger(id) || id <= 0) return reply.code(400).send({ error: 'ID CRM invalido' })
-      if (!await ensureCrmAccess(f.prisma, id, request.user)) return reply.code(404).send({ error: 'Registro CRM no encontrado' })
+      if (!await ensureCrmVisible(f.prisma, id, request.user)) return reply.code(404).send({ error: 'Registro CRM no encontrado' })
       const item = await f.prisma.crmRegistro.findUnique({
         where: { id },
         include: {
@@ -658,7 +676,7 @@ export default async function crmRoutes(fastify) {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],
     }, async (request, reply) => {
       const id = parseInt(request.params.id, 10)
-      if (!await ensureCrmAccess(f.prisma, id, request.user)) return reply.code(404).send({ error: 'Registro CRM no encontrado' })
+      if (!await ensureCrmVisible(f.prisma, id, request.user)) return reply.code(404).send({ error: 'Registro CRM no encontrado' })
       return f.prisma.crmGestion.findMany({ where: { crmId: id }, orderBy: { realizadaAt: 'desc' }, take: 200 })
     })
 
@@ -738,7 +756,7 @@ export default async function crmRoutes(fastify) {
       preHandler: [f.authenticate, f.rbac('ventas', 'read')],
     }, async (request) => {
       const id = parseInt(request.params.id)
-      if (!await ensureCrmAccess(f.prisma, id, request.user)) return { orden: null }
+      if (!await ensureCrmVisible(f.prisma, id, request.user)) return { orden: null }
       const c = await f.prisma.crmRegistro.findUnique({ where: { id }, select: { ncotizacion: true, ordenId: true } })
       if (!c) return { orden: null }
       if (c.ordenId) {

@@ -48,6 +48,7 @@ model Session {
 enum Role {
   admin
   vendedor
+  coordinador_comercial
   bodeguero
   cajero
   taller

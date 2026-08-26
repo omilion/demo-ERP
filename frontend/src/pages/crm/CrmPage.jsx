@@ -8,6 +8,11 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/auth'
 import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
+import { hasRole } from '../../utils/permissions'
+
+// Coordinador comercial ve el CRM de todos los vendedores igual que admin
+// (backend/src/routes/crm/index.js), sin ganar sus poderes de escritura/reasignacion.
+const CRM_FULL_VISIBILITY_ROLES = ['admin', 'coordinador_comercial']
 
 // bg: tono muy sutil para el fondo de las cards. colBg: tono un poco mas
 // marcado para el contenedor de la columna, mismo matiz, para que cada
@@ -910,7 +915,7 @@ export default function CrmPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Icon name="clock" size={16} style={{ color: 'var(--amber-600)' }} />
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)', whiteSpace: 'nowrap' }}>
-                  {user?.role === 'admin' ? 'Pendientes del equipo' : 'Mis pendientes'}
+                  {hasRole(user, CRM_FULL_VISIBILITY_ROLES) ? 'Pendientes del equipo' : 'Mis pendientes'}
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -920,7 +925,7 @@ export default function CrmPage() {
                 <FilterBadge tone="amber" active={pendienteFiltro === 'HOY'} onClick={() => setPendienteFiltro(f => f === 'HOY' ? null : 'HOY')}>
                   {agendaResumen.hoy.toLocaleString('es-CL')} para hoy
                 </FilterBadge>
-                {user?.role === 'admin' && agendaResumen.sinAsignar > 0 && (
+                {hasRole(user, CRM_FULL_VISIBILITY_ROLES) && agendaResumen.sinAsignar > 0 && (
                   <FilterBadge tone="gray" active={pendienteFiltro === 'SIN_ASIGNAR'} onClick={() => setPendienteFiltro(f => f === 'SIN_ASIGNAR' ? null : 'SIN_ASIGNAR')}>
                     {agendaResumen.sinAsignar.toLocaleString('es-CL')} sin asignar
                   </FilterBadge>

@@ -14,7 +14,7 @@ Ruta: Menú **Admin → Usuarios** (`/usuarios`). Solo accesible para administra
 3. Define el rol, que determina a qué módulos accede.
 
 ## Campos importantes
-- **Rol:** admin, vendedor, bodeguero, cajero, taller, rrhh, solo_lectura. Cada rol ve solo los módulos que le corresponden.
+- **Rol:** admin, vendedor, coordinador_comercial, bodeguero, cajero, taller, rrhh, solo_lectura. Cada rol ve solo los módulos que le corresponden. `coordinador_comercial` es igual a vendedor salvo que ve el CRM de todos los vendedores (vendedor solo ve el suyo).
 - **Código de vendedor:** identifica al vendedor para comisiones y asignación de ventas.
 
 ## Preguntas frecuentes

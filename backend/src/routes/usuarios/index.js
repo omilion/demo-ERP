@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt'
 
-const ROLES = new Set(['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura'])
+const ROLES = new Set(['admin', 'vendedor', 'coordinador_comercial', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura'])
 const PERMISSIONS = new Set(['read', 'write', 'delete'])
 const MODULES = new Set([
   'ventas', 'cotizaciones', 'licitaciones', 'clientes',

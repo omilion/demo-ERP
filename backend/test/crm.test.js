@@ -262,3 +262,95 @@ describe('CRM estado routes', () => {
     expect(response.tiempoPromedioEnPipeline).toBeCloseTo(5, 1)
   })
 })
+
+// coordinador_comercial: igual a vendedor en todo salvo visibilidad ampliada
+// del CRM de todos los vendedores. Ver backend/src/middleware/rbac.js (mismos
+// permisos que vendedor) y backend/src/routes/crm/index.js (unica ampliacion).
+describe('CRM visibilidad de coordinador_comercial', () => {
+  it('ve el CRM de todos los vendedores igual que admin (sin filtrar por vendedorId)', async () => {
+    const prisma = {
+      crmRegistro: {
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+      },
+      $queryRaw: vi.fn(),
+    }
+    const handlers = await buildCrmHandlers(prisma)
+
+    await handlers['GET /']({ query: {}, user: { id: 5, role: 'coordinador_comercial' } })
+
+    expect(prisma.crmRegistro.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }))
+    expect(prisma.crmRegistro.count).toHaveBeenCalledWith({ where: {} })
+  })
+
+  it('un vendedor sigue viendo solo sus propios leads (sin cambios)', async () => {
+    const prisma = {
+      crmRegistro: {
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+      },
+      $queryRaw: vi.fn(),
+    }
+    const handlers = await buildCrmHandlers(prisma)
+
+    await handlers['GET /']({ query: {}, user: { id: 5, role: 'vendedor' } })
+
+    expect(prisma.crmRegistro.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { vendedorId: 5 } }))
+  })
+
+  it('puede abrir el detalle de un lead que no es suyo (solo lectura)', async () => {
+    const prisma = {
+      crmRegistro: {
+        findFirst: vi.fn().mockResolvedValue({ id: 10 }),
+        findUnique: vi.fn().mockResolvedValue({ id: 10, vendedorId: 99, gestiones: [], estadosHistorial: [] }),
+      },
+    }
+    const handlers = await buildCrmHandlers(prisma)
+    const reply = replyStub()
+
+    await handlers['GET /:id']({ params: { id: '10' }, user: { id: 5, role: 'coordinador_comercial' } }, reply)
+
+    expect(reply.statusCode).not.toBe(404)
+    expect(prisma.crmRegistro.findFirst).toHaveBeenCalledWith({ where: { id: 10 }, select: { id: true } })
+  })
+
+  it('NO puede editar (PATCH) un lead que no es suyo: mismo limite que vendedor', async () => {
+    const prisma = {
+      crmRegistro: {
+        findFirst: vi.fn().mockResolvedValue(null), // no es dueña -> sin acceso de escritura
+        update: vi.fn(),
+      },
+      $queryRaw: vi.fn(),
+    }
+    const handlers = await buildCrmHandlers(prisma)
+    const reply = replyStub()
+
+    await handlers['PATCH /:id']({
+      params: { id: '10' },
+      body: { prioridad: 'Alta' },
+      user: { id: 5, role: 'coordinador_comercial' },
+    }, reply)
+
+    expect(reply.statusCode).toBe(403)
+    expect(prisma.crmRegistro.findFirst).toHaveBeenCalledWith({ where: { id: 10, vendedorId: 5 }, select: { id: true } })
+    expect(prisma.crmRegistro.update).not.toHaveBeenCalled()
+  })
+
+  it('cuenta leads sin asignar en la agenda igual que admin (KPI de coordinacion)', async () => {
+    const prisma = {
+      crmRegistro: {
+        count: vi.fn()
+          .mockResolvedValueOnce(0)
+          .mockResolvedValueOnce(0)
+          .mockResolvedValueOnce(3),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    }
+    const handlers = await buildCrmHandlers(prisma)
+    const response = await handlers['GET /pendientes-hoy']({
+      user: { id: 5, role: 'coordinador_comercial' },
+    })
+
+    expect(response.resumen.sinAsignar).toBe(3)
+  })
+})

@@ -12,6 +12,18 @@ const PERMISSIONS = {
     despacho:     ['read'],
     taller:       ['read'],
   },
+  // Igual que vendedor: unico extra es visibilidad ampliada del CRM de todos
+  // los vendedores (backend/src/routes/crm/index.js), no un modulo/permiso nuevo aqui.
+  coordinador_comercial: {
+    reportes:     ['read'],
+    ventas:       ['read', 'write'],
+    cotizaciones: ['read', 'write'],
+    licitaciones: ['read', 'write'],
+    clientes:     ['read', 'write'],
+    catalogo:     ['read'],
+    despacho:     ['read'],
+    taller:       ['read'],
+  },
   bodeguero:    {
     reportes:    ['read'],
     bodega:      ['read', 'write'],

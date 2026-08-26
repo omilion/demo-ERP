@@ -73,7 +73,7 @@ import ImportacionesPage from './pages/importaciones/ImportacionesPage'
 import OrdenesCompraProveedoresPage from './pages/ordenes-compra-proveedores/OrdenesCompraProveedoresPage'
 
 
-const ALL = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
+const ALL = ['admin', 'vendedor', 'coordinador_comercial', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
 
 const protect = (element, props) => <ProtectedRoute {...props}>{element}</ProtectedRoute>
 
