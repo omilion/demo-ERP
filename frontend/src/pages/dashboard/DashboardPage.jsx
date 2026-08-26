@@ -313,10 +313,12 @@ export default function DashboardPage() {
     { label: 'Finanzas', tone: 'var(--amber)', items: quickAccess.filter(item => item.route.startsWith('/cobranza') || item.route.startsWith('/caja') || item.route.startsWith('/pagos-proveedores')) },
   ].filter(group => group.items.length)
 
-  const isVendedor = user?.role === 'vendedor'
-  const { data: pendientesCrm } = useCrmPendientesHoy(isVendedor)
+  // coordinador_comercial es igual a vendedor en todo (backend/src/middleware/rbac.js);
+  // comparte el mismo panel de ventas, solo cambia su visibilidad ampliada dentro del CRM.
+  const showSellerDashboard = user?.role === 'vendedor' || user?.role === 'coordinador_comercial'
+  const { data: pendientesCrm } = useCrmPendientesHoy(showSellerDashboard)
 
-  if (isVendedor) {
+  if (showSellerDashboard) {
     const totalCrmPendientes = (pendientesCrm?.hoy?.length || 0) + (pendientesCrm?.vencidas?.length || 0)
     const sellerQuickAccess = [
       { label: 'SISVENTA', icon: 'trendingUp', tone: 'blue', badge: totalCrmPendientes, route: '/crm' },
