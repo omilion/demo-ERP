@@ -53,11 +53,11 @@ El documento indica que Compra Ágil se gestiona sólo en SisGestión, pero la d
 | Dato | Valor | Qué cambia |
 |---|---|---|
 | Órdenes por tipo | Venta Web 6.119 · Venta sala 4.909 · Licitacion 2.648 · Convenio Marco 2.618 · Normal 60 | Grafías duplicadas: "Venta sala"/"Venta Sala" (4.909 vs 7) y "Licitacion"/"Licitación" (2.648 vs 5). Todo reporte por tipo las cuenta separado |
-| **Marketplace** | **0 ventas** | CU-05 pierde urgencia: el canal existe y nunca se usó |
+| **Marketplace** | **0 ventas clasificadas como tal**, pero ~196 con rastro del canal | Falabella 166 (138 bajo un mismo cliente, 11 bajo uno llamado "VENTA FALABELLA") y Mercado Libre 30, registradas como Venta sala o Venta Web. Los campos de comisión están vacíos en las 16.371 órdenes |
 | **Trato Directo** | **0 en código y 0 en datos** | Las ventas de esa modalidad están hoy dentro de los 2.618 de Convenio Marco, sin forma de separarlas después |
 | **Adjudicación parcial** | **221 casos reales** de 26.708 ítems adjudicados | Responde la decisión abierta: **sí se necesita**. Y confirma que es una regresión: `cotizacion_licitacion_items.cantAdjudicados` la modela, `crm_cotizacion_items` no |
 | Estados de venta | 15.813 con `estado_entrega = "Entregado"` | Ese valor no está en el enum de validación. Editar esas ventas devuelve 400 |
 
-**Corrección a CU-05:** el estado sigue siendo Parcial, pero la prioridad baja al último lugar. Sin operaciones registradas, cerrar sus reglas es trabajo sobre un canal inactivo.
+**Corrección a CU-05:** el canal **sí se usa**, y eso sube su prioridad en vez de bajarla. Hay del orden de 196 operaciones registradas fuera del tipo Marketplace, con el canal anotado en observaciones o incrustado en el nombre del cliente, y sin comisión registrada. El margen de esas ventas está sobrestimado en los reportes.
 
 > Medido con consultas de sólo lectura sobre la base productiva. Detalle transversal en [00_datos_y_esfuerzo.md](00_datos_y_esfuerzo.md).
