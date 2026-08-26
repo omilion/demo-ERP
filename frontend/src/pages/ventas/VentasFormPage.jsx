@@ -44,6 +44,15 @@ function isConvenioMarco(tipo) {
   return normalizeText(tipo) === 'convenio marco'
 }
 
+function formatExcerpt(text, maxWords = 20) {
+  if (!text) return '—'
+  const clean = String(text).trim()
+  if (!clean) return '—'
+  const words = clean.split(/\s+/)
+  if (words.length <= maxWords) return clean
+  return words.slice(0, maxWords).join(' ') + '…'
+}
+
 function defaultPrecioUnitario(producto, tipoVenta) {
   if (!isConvenioMarco(tipoVenta)) return Number(producto.consultaPrecios?.precioNormalSalaVentaIva ?? producto.precioLista ?? 0)
   const precioMarco = Number(producto.consultaPrecios?.precioConvMarco ?? producto.precioMarco ?? producto.precioLista ?? 0)
@@ -94,22 +103,35 @@ function ProductoSearch({ onAdd, tipoVenta, disabled = false, onFocus }) {
         />
       </div>
       {!disabled && open && q.length >= 2 && productos.length > 0 && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 200, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', maxHeight: 260, overflowY: 'auto' }}>
+        <div style={{
+          position: 'absolute',
+          top: 'calc(100% + 6px)',
+          left: 0,
+          minWidth: 460,
+          width: 'max(100%, 460px)',
+          zIndex: 1000,
+          background: '#fff',
+          border: '1px solid var(--border)',
+          borderRadius: 10,
+          boxShadow: '0 12px 32px rgba(0,0,0,0.18)',
+          maxHeight: 340,
+          overflowY: 'auto'
+        }}>
           {productos.slice(0, 15).map(p => (
             <button key={p.id} onClick={() => select(p)}
-              style={{ display: 'flex', width: '100%', padding: '9px 14px', gap: 10, textAlign: 'left', background: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer', borderLeft: 'none', borderRight: 'none', borderTop: 'none', alignItems: 'center' }}
+              style={{ display: 'flex', width: '100%', padding: '10px 14px', gap: 12, textAlign: 'left', background: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer', borderLeft: 'none', borderRight: 'none', borderTop: 'none', alignItems: 'center' }}
               onMouseEnter={e => e.currentTarget.style.background = 'var(--green-50)'}
               onMouseLeave={e => e.currentTarget.style.background = 'none'}
             >
               {p.fotoUrl
-                ? <img src={p.fotoUrl} alt="" loading="lazy" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)', flexShrink: 0 }} onError={useProductPlaceholderOnError} />
-                : <img src={PRODUCT_PLACEHOLDER_IMAGE} alt="" loading="lazy" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)', flexShrink: 0 }} onError={useProductPlaceholderOnError} />}
-              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: 'var(--text-3)', flexShrink: 0, paddingTop: 2, minWidth: 80 }}>{p.codigoInterno}</span>
+                ? <img src={p.fotoUrl} alt="" loading="lazy" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 5, border: '1px solid var(--border)', flexShrink: 0 }} onError={useProductPlaceholderOnError} />
+                : <img src={PRODUCT_PLACEHOLDER_IMAGE} alt="" loading="lazy" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 5, border: '1px solid var(--border)', flexShrink: 0 }} onError={useProductPlaceholderOnError} />}
+              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: 'var(--text-3)', flexShrink: 0, paddingTop: 2, minWidth: 90 }}>{p.codigoInterno}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
                   Stock: <strong style={{ color: p.stock > 0 ? 'var(--green-600)' : 'var(--red)' }}>{p.stock}</strong>
-                  {!p.precioLista && defaultPrecioUnitario(p, tipoVenta) > 0 && <span> - Lista: <strong>${defaultPrecioUnitario(p, tipoVenta).toLocaleString('es-CL')}</strong></span>}
+                  {!p.precioLista && defaultPrecioUnitario(p, tipoVenta) > 0 && <span> · Lista: <strong>${defaultPrecioUnitario(p, tipoVenta).toLocaleString('es-CL')}</strong></span>}
                   {p.precioLista > 0 && <span> · Lista: <strong>${p.precioLista.toLocaleString('es-CL')}</strong></span>}
                   {isConvenioMarco(tipoVenta) && defaultPrecioUnitario(p, tipoVenta) > 0 && <span> · Marco + IVA: <strong>${defaultPrecioUnitario(p, tipoVenta).toLocaleString('es-CL')}</strong></span>}
                 </div>
@@ -119,7 +141,7 @@ function ProductoSearch({ onAdd, tipoVenta, disabled = false, onFocus }) {
         </div>
       )}
       {!disabled && open && q.length >= 2 && productos.length === 0 && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 200, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: 'var(--text-3)' }}>
+        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, minWidth: 320, zIndex: 1000, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: 'var(--text-3)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
           Sin resultados para "{q}"
         </div>
       )}
@@ -152,7 +174,7 @@ function ItemsTable({ items, onChange, locked = false, isLicitacion = false }) {
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr style={{ background: 'var(--bg)' }}>
-            {[['Producto', 'left', ''], ['SKU', 'left', '120px'], ['Descripción', 'left', '220px'], ['Cant.', 'right', '80px'], ['P. Unit.', 'right', '130px'], ['Subtotal', 'right', '120px'], ['', 'center', '36px']].map(([h, align, w], i) => (
+            {[['Producto', 'left', ''], ['SKU', 'left', '120px'], ['Descripción', 'left', '240px'], ['Cant.', 'right', '80px'], ['P. Unit.', 'right', '130px'], ['Subtotal', 'right', '120px'], ['', 'center', '36px']].map(([h, align, w], i) => (
               <th key={i} style={{ padding: '8px ' + (i === 0 ? '12px' : '8px'), textAlign: align, fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.4, width: w || 'auto' }}>{h}</th>
             ))}
           </tr>
@@ -192,7 +214,9 @@ function ItemsTable({ items, onChange, locked = false, isLicitacion = false }) {
                     <textarea value={item.descripcion || ''} onChange={e => update(idx, 'descripcion', e.target.value)} placeholder="Descripción" rows={2}
                       style={{ width: '100%', padding: '5px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-2)', background: '#fff', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.3 }} />
                   ) : (
-                    <span style={{ fontSize: 12, color: 'var(--text-3)', whiteSpace: 'normal' }}>{item.descripcion || '—'}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.35, display: 'block' }} title={item.descripcion || ''}>
+                      {formatExcerpt(item.descripcion, 20)}
+                    </span>
                   )}
                 </td>
                 <td style={{ padding: '4px 8px', verticalAlign: 'top' }}>

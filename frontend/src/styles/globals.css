@@ -467,7 +467,7 @@ a { text-decoration: none; color: inherit; }
   left: clamp(12px, 1.4vw, 20px);
   width: 320px;
   max-height: calc(100vh - 52px - var(--venta-workspace-header-height) - 26px);
-  overflow-y: auto;
+  overflow-y: visible;
   z-index: 90;
   padding: 18px 16px;
   border-right: 1px solid var(--border);
