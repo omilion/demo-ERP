@@ -26,3 +26,16 @@ Gerencia ya tiene reportes, permisos administrativos, auditoría, descuentos con
 ## Criterio de aceptación
 
 Con un usuario de Ventas, Finanzas, Bodega y Gerencia, probar que cada uno ve sólo lo autorizado; que una excepción se crea, se asigna, se aprueba/rechaza y queda auditada con usuario y hora.
+
+---
+
+## Datos de producción (26-08-2026)
+
+| Dato | Valor | Qué cambia |
+|---|---|---|
+| Estados de venta | 3 campos independientes; 15.813 órdenes con un valor que la validación rechaza | Refuerza el bloqueo del flujo único con evidencia dura: no es sólo que los estados estén repartidos, es que validación y datos no coinciden |
+| Segmento de cliente | **16.645 de 16.645 en "C"** | Los reportes por segmento que pide el levantamiento no tienen de dónde salir |
+| Tipo de cliente | 97% clasificado el 26-08-2026 | Recién utilizable; hasta el día anterior estaba vacío en el 99,9% |
+| Oportunidades CRM | 33.934, sin ninguna gestión humana registrada | Los KPI de gestión comercial medirían una actividad que todavía no ocurre |
+
+> Medido con consultas de sólo lectura sobre la base productiva. Detalle transversal en [00_datos_y_esfuerzo.md](00_datos_y_esfuerzo.md).

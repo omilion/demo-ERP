@@ -24,3 +24,17 @@ Primero definir conciliación y modelo de compromiso de pago. Sin ello las alert
 ## Criterio de aceptación
 
 Registrar tres abonos, conciliarlos contra una cartola de prueba, crear una gestión con próximo compromiso y verificar alertas a 15, 5 y 0 días sin exponer cartera de otro vendedor.
+
+---
+
+## Datos de producción (26-08-2026)
+
+| Dato | Valor | Qué cambia |
+|---|---|---|
+| Órdenes con deuda | **864** | Volumen manejable para arrancar el modelo de compromiso de pago sin migración masiva |
+| Estados de pago reales | Pagada 15.504 · No pagada 849 · **Rechazada Webpay 17** · **Pendiente Webpay 1** | Los dos últimos **no están en el enum de validación**, igual que ocurre con el estado de entrega |
+| Estados permitidos sin uso | "Parcial" y "En despacho" | Existen en la validación y nunca se usaron: **el pago parcial que pide el levantamiento no se está registrando como tal** |
+
+El dato refuerza la prioridad que ya propone la ficha: definir el modelo de compromiso antes que las alertas. Automatizar avisos sobre un estado de pago que no distingue parcialidad produciría alertas equivocadas.
+
+> Medido con consultas de sólo lectura sobre la base productiva. Detalle transversal en [00_datos_y_esfuerzo.md](00_datos_y_esfuerzo.md).

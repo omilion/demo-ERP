@@ -19,3 +19,19 @@ RRHH, usuarios y permisos ya existen. El levantamiento pide convertirlos en un c
 ## Criterio de aceptación
 
 Cambiar el cargo de un trabajador y comprobar ajuste de acceso; cargar un contrato y vacaciones próximos a vencer; verificar alertas a RRHH/Gerencia sin revelar remuneraciones al personal operativo.
+
+---
+
+## Datos de producción (26-08-2026)
+
+| Dato | Valor | Qué cambia |
+|---|---|---|
+| Trabajadores | 37 (25 activos) | |
+| **Fichas vinculadas a un usuario** | **0** | El campo `usuario_id` existe y ninguna ficha lo usa |
+| Con fecha de término registrada | 2 | Las alertas de vencimiento de contrato tienen 2 casos de los cuales partir |
+
+**Corrección a "Usuarios y permisos por cargo — Parcial":** automatizar altas, bajas y cambios de cargo desde RRHH no es posible hoy, porque **ninguna ficha de trabajador está conectada a una cuenta del sistema**. Vincular las 25 fichas activas es el prerrequisito, y es trabajo de datos.
+
+Es el mismo bloqueo que apareció al crear los usuarios del área comercial.
+
+> Medido con consultas de sólo lectura sobre la base productiva. Detalle transversal en [00_datos_y_esfuerzo.md](00_datos_y_esfuerzo.md).

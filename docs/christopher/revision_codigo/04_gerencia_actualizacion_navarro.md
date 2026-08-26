@@ -24,3 +24,13 @@ Crear una transición de estado en servidor, no editable libremente por interfaz
 ## Criterio de aceptación
 
 Intentar cerrar una venta con pago incompleto, monto distinto, despacho pendiente o DTE ausente. El servidor debe rechazarla, explicar la causa, generar evidencia y permitir sólo al rol autorizado resolver la excepción.
+
+---
+
+## Datos de producción (26-08-2026)
+
+Las observaciones de esta actualización apuntan a reportes y control por ejecutiva. El dato relevante es que **la base todavía no los soporta**: `segmento` vale "C" para los 16.645 clientes, y el CRM no registra ninguna gestión humana sobre sus 33.934 oportunidades.
+
+Antes de construir los tableros hay que resolver de dónde salen esos datos. De lo contrario mostrarán ceros con el módulo funcionando correctamente, que es la peor forma de entregar un reporte.
+
+> Medido con consultas de sólo lectura sobre la base productiva. Detalle transversal en [00_datos_y_esfuerzo.md](00_datos_y_esfuerzo.md).

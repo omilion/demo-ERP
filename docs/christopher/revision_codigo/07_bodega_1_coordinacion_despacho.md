@@ -19,3 +19,16 @@ El ERP ya tiene ventas, despachos, guías, entregas parciales y estados operacio
 ## Criterio de aceptación
 
 Crear una venta con dos productos, producir sólo uno, emitir despacho parcial y mostrar en una misma consulta: taller responsable, ubicación, entregado, pendiente, guía y próximo paso.
+
+---
+
+## Datos de producción (26-08-2026)
+
+| Dato | Valor | Qué cambia |
+|---|---|---|
+| Órdenes marcadas "Entregado" | 15.813 de 16.371 | El tablero por estado que pide el levantamiento arrancaría con casi todo en una sola columna |
+| Estados de entrega en uso | Sólo 2 de los 4 permitidos | "En despacho" y "Parcial" nunca se usaron: las etapas intermedias del despacho no se están registrando |
+
+Antes de construir el tablero automático conviene entender por qué no se usan las etapas intermedias. Un tablero sobre estados que nadie mueve no reemplaza la coordinación manual, sólo la disfraza.
+
+> Medido con consultas de sólo lectura sobre la base productiva. Detalle transversal en [00_datos_y_esfuerzo.md](00_datos_y_esfuerzo.md).

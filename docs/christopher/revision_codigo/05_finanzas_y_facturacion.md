@@ -28,3 +28,18 @@ El ERP tiene una implementación DTE robusta: factura, boleta, guía, NC, ND, re
 ## Criterio de aceptación
 
 Ejecutar una venta con 21 ítems, emitir documento válido, generar guía, NC y ND referidas, y verificar que cada documento pueda rastrearse desde la venta y desde el folio tributario.
+
+---
+
+## Datos de producción (26-08-2026)
+
+| Dato | Valor | Qué cambia |
+|---|---|---|
+| DTE emitidos | **28 en total** | El módulo está en marcha blanca, no en operación |
+| Tipos emitidos | 33 (18) · 52 (3) · 61 (3) · 34 (1) | |
+| Estados | borrador 11 · aceptado 8 · rechazado 4 · emitido 2 | Hay rechazos del SII que conviene revisar antes de escalar el volumen |
+| **Ítems por documento** | **máximo 14; ninguno sobre 20** | **La regla de máximo 20 ítems no se puede validar con datos reales** |
+
+**Corrección a "Máximo 20 ítems — Parcial":** debería leerse como **no verificable hoy**. No hay evidencia de que la regla esté implementada ni de que se haya ejercido nunca. El criterio de aceptación de esta ficha —emitir una venta de 21 ítems— tiene que construir el caso, porque no existe en la base.
+
+> Medido con consultas de sólo lectura sobre la base productiva. Detalle transversal en [00_datos_y_esfuerzo.md](00_datos_y_esfuerzo.md).

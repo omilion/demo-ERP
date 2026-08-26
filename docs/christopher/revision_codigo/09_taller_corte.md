@@ -20,3 +20,17 @@ El Taller de Corte ya existe como módulo y se complementa con ODT, bitácora y 
 ## Criterio de aceptación
 
 Crear una OT con imagen, fecha y especificación; iniciar con operario, finalizarla y verificar bitácora automática, estado actualizado y aviso al siguiente proceso sin intervención manual externa.
+
+---
+
+## Datos de producción (26-08-2026)
+
+| Dato | Valor | Qué cambia |
+|---|---|---|
+| OT registradas | 5.772 | |
+| Estados | **Pendiente 5.123 (88,8%)** · Listo 647 · Asignada 2 | O las OT no se cierran en el sistema, o el estado no refleja lo que pasa en el taller |
+| Bitácora de taller | **3 registros** | Existe y el taller no la usa |
+
+**Corrección:** la ficha da la bitácora por base operativa existente. Con 3 registros para 5.772 OT, funcionalmente no está en uso. Antes de exigir inicio, fin y responsable automáticos conviene entender por qué hoy no se registra nada.
+
+> Medido con consultas de sólo lectura sobre la base productiva. Detalle transversal en [00_datos_y_esfuerzo.md](00_datos_y_esfuerzo.md).
