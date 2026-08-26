@@ -5,7 +5,7 @@ import { ESTADO_PAGO_VALUES, ESTADO_ENTREGA_VALUES } from './update.js'
 import { applyVentaStockDeltas, buildStockDeltasFromItems, isVentaDirectaStockTipo } from './stock.js'
 import { validateConvenioMarcoOcForWrite } from './convenio-marco.js'
 import { canApplyDescuento, requiresDescuentoPermission } from './descuentos-permissions.js'
-import { validateVentaDescuentoCatalogForWrite } from './descuentos-catalog.js'
+import { validateDescuentoContraReglas } from './descuentos-guard.js'
 import { assertDiscountAuthorizationForDraft } from '../descuentos/rules-engine.js'
 import { autoNotifyTaller } from '../pasar-taller/service.js'
 import { calculateDeliveryDate, normalizeLicitacionPlazo, normalizeMarketplace, sanitizeCommercialIdentifier } from './operational-rules.js'
@@ -202,13 +202,16 @@ export default async function createVenta(fastify) {
         }
         descuentoData = auth.descuentoData
       } else {
-        const descuentoCatalogo = await validateVentaDescuentoCatalogForWrite(tx, {
+        const guard = await validateDescuentoContraReglas(tx, {
           tipo: rest.tipo,
           descuentoPct: rest.descuentoPct,
-        })
-        if (descuentoCatalogo.error) {
-          const err = new Error(descuentoCatalogo.error)
-          err.statusCode = descuentoCatalogo.statusCode || 400
+          clienteId: rest.clienteId,
+          sucursalId: rest.sucursalId,
+          items: itemsData,
+        }, request.user)
+        if (guard.error) {
+          const err = new Error(guard.error)
+          err.statusCode = guard.statusCode || 400
           throw err
         }
       }

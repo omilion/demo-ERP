@@ -109,11 +109,6 @@ function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespac
               <Icon name="phone" size={11} color="var(--text-3)" /> {v.cliente.telefono}
             </span>
           )}
-          {v.cliente?.ciudad && (
-            <span style={{ fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Icon name="mapPin" size={11} color="var(--text-3)" /> {v.cliente.ciudad}
-            </span>
-          )}
         </div>
       </div>
 
@@ -1005,7 +1000,6 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                   const direccion = v.clienteSucursal?.direccion || v.cliente?.direccion
                   const comuna = v.clienteSucursal?.comuna || v.cliente?.comuna
                   const region = v.clienteSucursal?.region || v.cliente?.region
-                  const ciudad = v.clienteSucursal?.ciudad || v.cliente?.ciudad
                   const filas = [
                     ['Nombre', v.cliente?.nombre],
                     ['Razón Social', v.cliente?.razonSocial],
@@ -1014,7 +1008,6 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                     ['Dirección', direccion],
                     ['Comuna', comuna],
                     ['Región', region],
-                    ['Ciudad', ciudad],
                     ['Teléfono', v.cliente?.telefono],
                     ['Email', v.cliente?.email],
                   ].filter(([, valor]) => valor)

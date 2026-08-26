@@ -331,6 +331,377 @@ a { text-decoration: none; color: inherit; }
   white-space: nowrap;
 }
 
+.table-shell-resizing,
+.table-shell-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+.table-column-resizer {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  right: -6px;
+  width: 12px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.table-column-resizer::after {
+  content: '';
+  position: absolute;
+  top: 22%;
+  bottom: 22%;
+  left: 5px;
+  width: 2px;
+  border-radius: 999px;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.table-column-resizer:hover::after,
+.table-column-resizer:focus-visible::after {
+  background: var(--green-600);
+}
+
+.table-column-resizer:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+
+.venta-workspace {
+  max-width: 100%;
+  /* La animación global usa transform y rompe sticky en algunos navegadores. */
+  animation: none;
+}
+
+.venta-workspace-shell {
+  --venta-workspace-header-height: 96px;
+  overflow: visible;
+  padding-top: var(--venta-workspace-header-height);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.venta-workspace-header {
+  position: fixed;
+  top: 52px;
+  right: clamp(12px, 1.4vw, 20px);
+  left: clamp(12px, 1.4vw, 20px);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: var(--venta-workspace-header-height);
+  padding: 18px 22px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 3px 8px oklch(0 0 0 / 0.05);
+}
+
+.venta-workspace-title {
+  margin: 0;
+  color: var(--text-1);
+  font-size: 21px;
+  letter-spacing: -0.4px;
+}
+
+.venta-workspace-state {
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.venta-workspace-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.venta-workspace-total {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 4px 2px;
+  color: var(--text-2);
+  font-family: 'DM Mono', monospace;
+  white-space: nowrap;
+}
+
+.venta-workspace-total span {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.venta-workspace-total strong {
+  color: var(--text-1);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+}
+
+.venta-workspace-grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+}
+
+.venta-workspace-sidebar {
+  min-width: 0;
+  padding: 18px 16px;
+  border-right: 1px solid var(--border);
+  background: #fff;
+}
+
+.venta-workspace-sidebar-fixed {
+  position: fixed;
+  top: calc(52px + var(--venta-workspace-header-height) + 12px);
+  left: clamp(12px, 1.4vw, 20px);
+  width: 320px;
+  max-height: calc(100vh - 52px - var(--venta-workspace-header-height) - 26px);
+  overflow-y: auto;
+  z-index: 90;
+  padding: 18px 16px;
+  border-right: 1px solid var(--border);
+  background: #fff;
+}
+
+.venta-workspace-side-card {
+  margin-bottom: 14px;
+  padding: 14px;
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.venta-workspace-side-label {
+  margin-bottom: 9px;
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.15px;
+  text-transform: uppercase;
+}
+
+.venta-workspace-side-help {
+  margin-top: 8px;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.venta-workspace-product-tool,
+.venta-workspace-section.venta-workspace-products-section {
+  background: oklch(0.955 0.022 150);
+  border: 1px solid oklch(0.88 0.035 150);
+}
+
+.venta-workspace-product-tool .venta-workspace-side-label,
+.venta-workspace-products-section .venta-workspace-section-title {
+  color: var(--green-800);
+}
+
+.venta-workspace-meta-card {
+  display: grid;
+  gap: 9px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.venta-workspace-meta-card strong {
+  color: var(--text-1);
+}
+
+.venta-workspace-meta-card select {
+  width: 100%;
+  margin-top: 5px;
+}
+
+.venta-workspace-client-card {
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.venta-workspace-section {
+  order: 50;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.venta-workspace-section-title {
+  margin: 0 0 13px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-1);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.venta-workspace-section-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* Flujo de una venta nueva: el orden cambia por tipo sin duplicar formularios. */
+.venta-workspace-client-section { order: 0; }
+.venta-workspace-special-details { order: 5; }
+.venta-workspace-products-section { order: 10; }
+.venta-workspace-dispatch-section { order: 20; }
+.venta-workspace-observations-section { order: 30; }
+.venta-workspace-edit-section { order: 40; }
+
+.venta-workspace-public-flow .venta-workspace-public-details { order: 0; }
+.venta-workspace-public-flow .venta-workspace-products-section { order: 10; }
+.venta-workspace-public-flow .venta-workspace-client-section { order: 20; }
+.venta-workspace-public-flow .venta-workspace-dispatch-section { order: 30; }
+.venta-workspace-public-flow .venta-workspace-observations-section { order: 40; }
+.venta-workspace-public-flow .venta-workspace-edit-section { order: 50; }
+
+.venta-workspace-client-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.venta-workspace-new-client {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--green-600);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: #fff;
+  color: var(--green-700);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.venta-workspace-client-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 34px;
+}
+
+.venta-workspace-client-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 29px;
+  color: var(--text-1);
+  font-size: 12px;
+}
+
+.venta-workspace-client-row > span {
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+.venta-workspace-client-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.venta-workspace-client-value > div {
+  min-width: 0;
+}
+
+.venta-workspace-client-control {
+  overflow: visible;
+  white-space: normal;
+}
+
+.venta-workspace-client-control > div {
+  z-index: 10;
+}
+
+.venta-workspace-client-value select {
+  width: 100%;
+  max-width: 100%;
+}
+
+.venta-workspace-client-address {
+  margin: 4px 0 0 100px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.venta-workspace-content {
+  min-width: 0;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+}
+
+.venta-workspace-legacy-control {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .venta-workspace-header,
+  .venta-workspace-grid {
+    display: block;
+  }
+
+  .venta-workspace-header {
+    top: 52px;
+    right: 10px;
+    left: 10px;
+  }
+
+  .venta-workspace-header-actions {
+    margin-top: 14px;
+    justify-content: flex-start;
+  }
+
+  .venta-workspace-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .venta-workspace-sidebar-fixed {
+    position: static;
+    width: auto;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    border: 0;
+  }
+
+  .venta-workspace-content {
+    padding: 16px;
+  }
+
+  .venta-workspace-client-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 760px) {
   .topbar-inner {
     height: auto;

@@ -206,22 +206,11 @@ export const ActionRow = ({ icon, label, badge, badgeTone = 'neutral', onClick }
 }
 
 // ── PageHeader ────────────────────────────────────────────────────────────────
-export const PageHeader = ({ title, subtitle, breadcrumb, actions }) => (
-  <div style={{ marginBottom: 24 }}>
-    {breadcrumb && (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 12 }}>
-        {breadcrumb.map((b, i) => (
-          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            {i > 0 && <span style={{ color: 'var(--text-3)', fontSize: 12 }}>/</span>}
-            <span style={{ fontSize: 12, color: i === breadcrumb.length - 1 ? 'var(--text-2)' : 'var(--text-3)', fontWeight: i === breadcrumb.length - 1 ? 600 : 400 }}>{b}</span>
-          </span>
-        ))}
-      </div>
-    )}
+export const PageHeader = ({ title, actions }) => (
+  <div style={{ marginBottom: 16 }}>
     <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16 }}>
       <div>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-1)', letterSpacing: -0.5 }}>{title}</h1>
-        {subtitle && <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 3 }}>{subtitle}</p>}
       </div>
       {actions && <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>{actions}</div>}
     </div>
@@ -601,17 +590,6 @@ export const Table = ({
         >
           <Icon name="minus" size={13} />
         </button>
-        <input
-          className="table-zoom-range"
-          type="range"
-          min={TABLE_ZOOM_MIN * 100}
-          max={TABLE_ZOOM_MAX * 100}
-          step={TABLE_ZOOM_STEP * 100}
-          value={zoomPercent}
-          onChange={event => setTableZoom(Number(event.target.value) / 100)}
-          aria-label="Zoom de tabla"
-          title="Zoom de tabla"
-        />
         <button
           type="button"
           className="table-zoom-btn"

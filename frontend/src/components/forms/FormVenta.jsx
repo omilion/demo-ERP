@@ -28,14 +28,14 @@ export function FormVenta({ initial, onClose, onSaved }) {
       <FormDivider label="Venta" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <FormField label="Tipo de Venta" required>
-          <Select value={data.tipo} onChange={v => set('tipo', v)} options={['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala']} />
+          <Select value={data.tipo} onChange={v => set('tipo', v)} options={['Normal', 'Licitación', 'Compra Ágil', 'Convenio Marco', 'Venta Web', 'Venta Sala']} />
         </FormField>
         <FormField label="Total Venta" required error={errors.total}>
           <Input value={data.total} onChange={v => set('total', v)} placeholder="0" type="number" prefix="$" error={errors.total} />
         </FormField>
       </div>
-      {(data.tipo === 'Licitación' || data.tipo === 'Convenio Marco') && (
-        <FormField label="ID Licitación / Convenio" hint="Ej: 61602954-LE15-1">
+      {(data.tipo === 'Licitación' || data.tipo === 'Compra Ágil' || data.tipo === 'Convenio Marco') && (
+        <FormField label="ID Licitación / Compra Ágil / Convenio" hint="Ej: 61602954-LE15-1 o Cotización Mercado Público">
           <Input value={data.licitacion || ''} onChange={v => set('licitacion', v)} placeholder="ID Mercado Público" />
         </FormField>
       )}

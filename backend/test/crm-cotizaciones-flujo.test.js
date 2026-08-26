@@ -22,6 +22,7 @@ const describeDb = hasUsableDatabaseUrl() ? describe : describe.skip
 describeDb('CRM: nueva oportunidad crea cotizacion y entra al pipeline', () => {
   let app
   let token
+  let vendedorSinDescuentoToken
   let clienteId
   let productoId
   let vendedorId
@@ -37,6 +38,10 @@ describeDb('CRM: nueva oportunidad crea cotizacion y entra al pipeline', () => {
     vendedorId = vendedor.id
     token = app.jwt.sign({
       id: vendedor.id, role: 'admin', nombre: vendedor.nombre || 'Test', permisosExtra: null,
+      scope: 'erp', aud: 'plastimar:erp', tokenType: 'access',
+    })
+    vendedorSinDescuentoToken = app.jwt.sign({
+      id: vendedor.id, role: 'vendedor', nombre: vendedor.nombre || 'Test', permisosExtra: null,
       scope: 'erp', aud: 'plastimar:erp', tokenType: 'access',
     })
 
@@ -166,6 +171,18 @@ describeDb('CRM: nueva oportunidad crea cotizacion y entra al pipeline', () => {
     })
     expect(res.statusCode).toBe(400)
     expect(res.json().error).toMatch(/[Ll]icitacion requiere ID y fecha/)
+  })
+
+  it('rechaza descuentos enviados por un vendedor sin permiso', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/crm/cotizaciones',
+      headers: { authorization: `Bearer ${vendedorSinDescuentoToken}` },
+      payload: { ...fichaBase(), tipo: 'Venta Web', crmQuoteMode: 'PROSPECCION_DIRECTA', descuentoPct: 10 },
+    })
+
+    expect(res.statusCode).toBe(403)
+    expect(res.json().error).toMatch(/permiso para aplicar descuentos/)
   })
 
   it('un tipo que no es del CRM se rechaza', async () => {

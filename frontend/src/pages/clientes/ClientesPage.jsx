@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast, confirmDialog } from '../../store/notif'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../components/shared'
-import { ViewClientePanel } from '../../components/forms/FormCliente'
 import { useClienteActivo, useClientes } from '../../api/clientes'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
@@ -20,12 +19,9 @@ export default function ClientesPage() {
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch)
   const [pageState, setPageState] = useState({ key: '', page: 1 })
   const [tipoFilter, setTipoFilter] = useState('all')
-  const [region, setRegion] = useState('')
-  const [email, setEmail] = useState('')
   const [segmento, setSegmento] = useState('')
   const [conDeuda, setConDeuda] = useState(false)
   const [estadoCliente, setEstadoCliente] = useState('activos')
-  const [selected, setSelected] = useState(null)
   const debounceRef = useRef(null)
   const clienteActivo = useClienteActivo()
 
@@ -38,17 +34,16 @@ export default function ClientesPage() {
   const filterParams = {}
   if (debouncedSearch) filterParams.search = debouncedSearch
   if (tipoFilter !== 'all') filterParams.tipo = tipoFilter
-  if (region) filterParams.region = region
-  if (email) filterParams.email = email
   if (segmento) filterParams.segmento = segmento
   if (conDeuda) filterParams.conDeuda = 'true'
   if (estadoCliente === 'inactivos') filterParams.estado = 'inactivo'
   if (estadoCliente === 'todos') filterParams.estado = 'todos'
+
   const filterKey = JSON.stringify(filterParams)
   const page = pageState.key === filterKey ? pageState.page : 1
   const setPagerPage = nextPage => setPageState({ key: filterKey, page: nextPage })
   const params = { ...filterParams, page: String(page) }
-  const { data: result = { items: [], total: 0, limit: 500 }, isLoading } = useClientes(params)
+  const { data: result = { items: [], total: 0, limit: 500, stats: null }, isLoading } = useClientes(params)
 
   const clientes = result.items ?? []
   const totalClientes = result.total ?? clientes.length
@@ -62,6 +57,22 @@ export default function ClientesPage() {
   const fmt = n => '$' + Number(n).toLocaleString('es-CL')
   const getErrorMessage = err => err?.response?.data?.error || err?.message || 'No se pudo completar la accion'
 
+  const totalDeudores = result.stats?.totalDeudores ?? clientes.filter(c => c.saldo > 0).length
+  const totalDeudaGlobal = result.stats?.totalDeuda ?? clientes.reduce((s, c) => s + (c.saldo || 0), 0)
+
+  const hasActiveFilters = Boolean(
+    search || debouncedSearch || tipoFilter !== 'all' || segmento || conDeuda || estadoCliente !== 'activos'
+  )
+
+  function limpiarFiltros() {
+    setSearch('')
+    setDebouncedSearch('')
+    setTipoFilter('all')
+    setSegmento('')
+    setConDeuda(false)
+    setEstadoCliente('activos')
+  }
+
   async function handleClienteActivo(cliente, activo) {
     const accion = activo ? 'reactivar' : 'dar de baja'
     const detalle = activo
@@ -72,9 +83,6 @@ export default function ClientesPage() {
     clienteActivo.mutate(
       { id: cliente.id, activo, razon },
       {
-        onSuccess: updated => {
-          if (selected?.id === cliente.id) setSelected(updated)
-        },
         onError: err => toast.error(getErrorMessage(err)),
       }
     )
@@ -85,8 +93,8 @@ export default function ClientesPage() {
     { key: 'nombre', label: 'Cliente', wrap: true, render: v => <span style={{ fontWeight: 500, fontSize: 13 }}>{v}</span> },
     { key: 'email', label: 'Email', render: v => <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{v || '—'}</span> },
     { key: 'telefono', label: 'Fono', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--text-2)' }}>{v || '—'}</span> },
-    { key: 'direccion', label: 'Direccion', wrap: true, render: v => <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{v || '—'}</span> },
-    { key: 'region', label: 'Region' },
+    { key: 'direccion', label: 'Dirección', wrap: true, render: v => <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{v || '—'}</span> },
+    { key: 'region', label: 'Región' },
     { key: 'comuna', label: 'Comuna' },
     { key: 'pais', label: 'País', render: v => v || 'Chile' },
     { key: 'tipo', label: 'Tipo', render: v => {
@@ -98,7 +106,7 @@ export default function ClientesPage() {
     { key: 'saldo', label: 'Saldo deuda', align: 'right', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: v > 0 ? 700 : 400, color: v > 0 ? 'var(--red)' : 'var(--text-3)', fontSize: 12 }}>{v > 0 ? fmt(v) : '—'}</span> },
     { key: '_acc', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 4 }}>
-        <button onClick={e => { e.stopPropagation(); setSelected(row) }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}>Ver</button>
+        <button onClick={e => { e.stopPropagation(); navigate(`/clientes/${row.id}`) }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }}>Ver</button>
         {canReadVentas && <button onClick={e => { e.stopPropagation(); navigate('/matriz-ventas?rut=' + encodeURIComponent(row.rut || '')) }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--blue, #2563eb)', fontWeight: 500 }} title="Ver ventas históricas">Ventas</button>}
         {canWriteClientes && <button onClick={e => { e.stopPropagation(); navigate('/clientes/' + row.id + '/editar') }} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)', fontWeight: 500 }}>Editar</button>}
         {canDeleteClientes && <button
@@ -112,44 +120,87 @@ export default function ClientesPage() {
     )},
   ]
 
-  const deudaTotal = clientes.reduce((s, c) => s + (c.saldo || 0), 0)
-
   const toolbarExtra = (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {['all', ...tipos].map(t => (
-            <button key={t} onClick={() => setTipoFilter(t)} style={{
-              padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flex: 1, width: '100%' }}>
+      {/* Pills de tipo */}
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+        {['all', ...tipos].map(t => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTipoFilter(t)}
+            style={{
+              padding: '4px 10px',
+              borderRadius: 20,
+              fontSize: 11,
+              fontWeight: 500,
+              cursor: 'pointer',
               background: tipoFilter === t ? 'var(--green-900)' : '#fff',
               color: tipoFilter === t ? '#fff' : 'var(--text-2)',
               border: `1px solid ${tipoFilter === t ? 'var(--green-900)' : 'var(--border)'}`,
               transition: 'all 0.15s',
-            }}>{t === 'all' ? 'Todos' : t}</button>
-          ))}
-        </div>
-        <SearchBar placeholder="Buscar por nombre, RUT, email o ubicacion..." value={search} onChange={setSearch} style={{ width: 320 }} />
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {t === 'all' ? 'Todos los tipos' : t}
+          </button>
+        ))}
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <input value={region} onChange={e => setRegion(e.target.value)} placeholder="Región" style={miniInput} />
-        <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" style={{ ...miniInput, width: 180 }} />
-        <select value={segmento} onChange={e => setSegmento(e.target.value)} style={{ ...miniInput, cursor: 'pointer' }}>
-          <option value="">Segmento</option>
-          <option value="A">A</option>
-          <option value="B">B</option>
-          <option value="C">C</option>
+
+      <div style={{ height: 16, width: 1, background: 'var(--border)', margin: '0 2px' }} />
+
+      {/* Selects de segmento y estado */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)' }}>Segmento:</span>
+        <select value={segmento} onChange={e => setSegmento(e.target.value)} style={selectInputStyle}>
+          <option value="">Todos los segmentos</option>
+          <option value="A">Segmento A</option>
+          <option value="B">Segmento B</option>
+          <option value="C">Segmento C</option>
         </select>
-        <select value={estadoCliente} onChange={e => setEstadoCliente(e.target.value)} style={{ ...miniInput, cursor: 'pointer' }}>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)' }}>Estado:</span>
+        <select value={estadoCliente} onChange={e => setEstadoCliente(e.target.value)} style={selectInputStyle}>
           <option value="activos">Activos</option>
           <option value="inactivos">Inactivos</option>
           <option value="todos">Todos</option>
         </select>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-2)', cursor: 'pointer' }}>
-          <input type="checkbox" checked={conDeuda} onChange={e => setConDeuda(e.target.checked)} />
-          Solo con deuda
-        </label>
-        {(region || email || segmento || conDeuda || estadoCliente !== 'activos') && (
-          <button onClick={() => { setRegion(''); setEmail(''); setSegmento(''); setConDeuda(false); setEstadoCliente('activos') }} style={{ padding: '5px 10px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--text-2)' }}>Limpiar</button>
+      </div>
+
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-2)', cursor: 'pointer', userSelect: 'none' }}>
+        <input type="checkbox" checked={conDeuda} onChange={e => setConDeuda(e.target.checked)} style={{ cursor: 'pointer' }} />
+        Solo con deuda activa
+      </label>
+
+      {/* Buscador General a la derecha antes de paginador/controles */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+        <SearchBar
+          placeholder="Buscar por nombre, RUT, email, comuna..."
+          value={search}
+          onChange={setSearch}
+          style={{ width: 260, height: 30 }}
+        />
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={limpiarFiltros}
+            style={{
+              padding: '4px 8px',
+              fontSize: 11,
+              fontWeight: 600,
+              borderRadius: 6,
+              border: '1px solid var(--red)',
+              background: '#fff',
+              color: 'var(--red)',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+            title="Restablecer todos los filtros"
+          >
+            ✕ Limpiar
+          </button>
         )}
       </div>
     </div>
@@ -157,36 +208,77 @@ export default function ClientesPage() {
 
   return (
     <main className="page page-wide">
-      <PageHeader title="Clientes" subtitle={`${shown.length} de ${totalClientes.toLocaleString('es-CL')} clientes`} breadcrumb={['Inicio', 'Clientes']}
+      <PageHeader
+        title="Clientes"
+        subtitle={`${shown.length} de ${totalClientes.toLocaleString('es-CL')} clientes`}
+        breadcrumb={['Inicio', 'Clientes']}
         actions={<>
-          <Btn variant="secondary" icon="download" size="sm"
+          <Btn
+            variant="secondary"
+            icon="download"
+            size="sm"
             onClick={() => downloadFromBackend('/reportes/export/clientes', `clientes_${new Date().toISOString().slice(0, 10)}.csv`, filterParams)}
-          >Exportar CSV</Btn>
-          {canWriteClientes && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/clientes/nuevo')}>Nuevo Cliente</Btn>}
+          >
+            Exportar CSV
+          </Btn>
+          {canWriteClientes && (
+            <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/clientes/nuevo')}>
+              Nuevo Cliente
+            </Btn>
+          )}
         </>}
       />
+
       <div className="kpi-strip">
         <KpiCard label="Total clientes" value={totalClientes.toLocaleString('es-CL')} icon="users" sublabel="Registrados en el sistema" />
-        <KpiCard label="Con deuda activa" value={clientes.filter(c => c.saldo > 0).length} icon="dollarSign" tone="red" sublabel="Saldo pendiente" />
-        <KpiCard label="Deuda total" value={'$' + (deudaTotal / 1_000_000).toFixed(1) + 'M'} icon="barChart2" tone="amber" sublabel="Suma de saldos" />
-        <KpiCard label="Institucional / Gob." value={clientes.filter(c => ['Institucional', 'Gobierno', 'Municipal'].includes(c.tipo)).length} icon="clipboard" sublabel="Clientes públicos" />
+        <KpiCard
+          label="Con deuda activa"
+          value={totalDeudores.toLocaleString('es-CL')}
+          icon="dollarSign"
+          tone="red"
+          active={conDeuda}
+          onClick={() => setConDeuda(prev => !prev)}
+          sublabel={conDeuda ? 'Filtro activo: mostrando deudores' : 'Haz clic para filtrar deudores'}
+        />
+        <KpiCard
+          label="Deuda total"
+          value={'$' + (totalDeudaGlobal / 1_000_000).toFixed(1) + 'M'}
+          icon="barChart2"
+          tone="amber"
+          sublabel="Suma de saldos de la base de datos"
+        />
+        <KpiCard
+          label="Institucional / Gob."
+          value={clientes.filter(c => ['Institucional', 'Gobierno', 'Municipal'].includes(c.tipo)).length}
+          icon="clipboard"
+          sublabel="Clientes públicos en la página"
+        />
       </div>
+
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
         <Table
           columns={cols}
           rows={shown}
           emptyMessage="Sin clientes"
           keyboard
-          onRowDoubleClick={row => setSelected(row)}
+          onRowDoubleClick={row => navigate(`/clientes/${row.id}`)}
           ariaLabel="Clientes"
           getRowKey={row => row.id}
           toolbarExtra={toolbarExtra}
           pager={{ page, pages, total: totalClientes, limit, shown: shown.length, onChange: setPagerPage, disabled: isLoading }}
         />
       </div>
-      {selected && <ViewClientePanel cliente={selected} canWrite={canWriteClientes} onClose={() => setSelected(null)} onEdit={() => { navigate('/clientes/' + selected.id + '/editar'); setSelected(null) }} />}
     </main>
   )
 }
 
-const miniInput = { padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff', width: 130 }
+const selectInputStyle = {
+  padding: '4px 8px',
+  borderRadius: 6,
+  border: '1px solid var(--border)',
+  fontSize: 11,
+  fontFamily: 'inherit',
+  background: '#fff',
+  color: 'var(--text-1)',
+  cursor: 'pointer',
+}

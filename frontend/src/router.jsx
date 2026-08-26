@@ -18,6 +18,7 @@ import TallerCortePage from './pages/taller/TallerCortePage'
 import CajaPage from './pages/caja/CajaPage'
 import CajaFormPage from './pages/caja/CajaFormPage'
 import ClientesPage from './pages/clientes/ClientesPage'
+import ClienteDetallePage from './pages/clientes/ClienteDetallePage'
 import ClientesFormPage from './pages/clientes/ClientesFormPage'
 import CobranzaPage from './pages/cobranza/CobranzaPage'
 import LicitacionesPage from './pages/licitaciones/LicitacionesPage'
@@ -113,6 +114,7 @@ export const router = createBrowserRouter([
       { path: 'caja/nuevo', element: protect(<CajaFormPage />, { module: 'caja', permission: 'write' }) },
       { path: 'clientes', element: protect(<ClientesPage />, { module: 'clientes' }) },
       { path: 'clientes/nuevo', element: protect(<ClientesFormPage />, { module: 'clientes', permission: 'write' }) },
+      { path: 'clientes/:id', element: protect(<ClienteDetallePage />, { module: 'clientes' }) },
       { path: 'clientes/:id/editar', element: protect(<ClientesFormPage />, { module: 'clientes', permission: 'write' }) },
       { path: 'cobranza/*', element: protect(<CobranzaPage />, { module: 'cobranza' }) },
       { path: 'licitaciones', element: protect(<LicitacionesPage />, { module: 'licitaciones' }) },
@@ -135,6 +137,7 @@ export const router = createBrowserRouter([
       { path: 'crm', element: protect(<CrmPage />, { module: 'ventas' }) },
       { path: 'crm/nueva', element: <Navigate to="/crm" replace /> },
       { path: 'crm/nueva/licitacion', element: protect(<VentasFormPage crmMode forceTipo="Licitación" />, { module: 'ventas', permission: 'write' }) },
+      { path: 'crm/nueva/compra-agil', element: protect(<VentasFormPage crmMode forceTipo="Compra Ágil" crmQuoteMode="COMPRA_AGIL" />, { module: 'ventas', permission: 'write' }) },
       { path: 'crm/nueva/cotizacion-simple', element: protect(<VentasFormPage crmMode forceTipo="Venta Web" crmQuoteMode="PROSPECCION_DIRECTA" />, { module: 'ventas', permission: 'write' }) },
       { path: 'crm/:id/gestion', element: protect(<CrmGestionDetallePage />, { module: 'ventas' }) },
       { path: 'config',        element: <ProtectedRoute allowedRoles={['admin']}><ConfigPage /></ProtectedRoute> },
