@@ -895,7 +895,7 @@ export default function CrmPage() {
         breadcrumb={['Inicio', 'Ventas', 'CRM']}
         actions={<>
           <div style={{ position: 'relative' }}>
-            <Btn variant="primary" icon="plus" size="sm" onClick={() => setNewOpportunityMenu(open => !open)}>Nueva oportunidad</Btn>
+            <Btn variant="primary" icon="plus" size="sm" onClick={() => setNewOpportunityMenu(open => !open)}>Nueva Cotización</Btn>
             {newOpportunityMenu && <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 50, minWidth: 270, padding: 7, background: '#fff', border: '1px solid var(--border)', borderRadius: 9, boxShadow: 'var(--shadow-md)' }}>
               <div style={{ padding: '5px 8px 7px', fontSize: 11, color: 'var(--text-3)', fontWeight: 750, textTransform: 'uppercase', letterSpacing: .35 }}>Crear cotizacion</div>
               <Link to="/crm/nueva/licitacion" onClick={() => setNewOpportunityMenu(false)} style={{ display: 'block', padding: '10px 11px', borderRadius: 7, color: 'var(--text-1)', textDecoration: 'none' }}><div style={{ fontSize: 13, fontWeight: 750 }}>Licitacion</div><div style={{ marginTop: 2, fontSize: 11, color: 'var(--text-3)' }}>Bases, plazos, items y adjudicacion.</div></Link>
