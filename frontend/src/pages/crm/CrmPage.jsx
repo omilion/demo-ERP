@@ -891,7 +891,7 @@ export default function CrmPage() {
   return (
     <main className="page page-wide">
       <PageHeader
-        title="CRM — Pipeline de Ventas"
+        title="SISVENTA CRM — Pipeline de Ventas"
         breadcrumb={['Inicio', 'Ventas', 'CRM']}
         actions={<>
           <div style={{ position: 'relative' }}>
