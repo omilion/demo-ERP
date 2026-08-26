@@ -59,11 +59,12 @@ export const useCrmConvertirCliente = () => {
   })
 }
 
-export const useCrmPendientesHoy = () =>
+export const useCrmPendientesHoy = (enabled = true) =>
   useQuery({
     queryKey: ['crm', 'pendientes-hoy'],
     queryFn: () => api.get('/crm/pendientes-hoy').then(r => r.data),
     staleTime: 30_000,
+    enabled,
   })
 
 export const useCrmMetricas = (params = {}) =>
