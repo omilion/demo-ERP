@@ -59,9 +59,8 @@ function StockRow({ label, icon, critico, sinStock, onClick }) {
   )
 }
 
-// Reloj en vivo del panel de ventas: reemplaza el boton "Nueva Venta" del
-// header. Se actualiza cada 30s (suficiente para no atrasar el minuto
-// mostrado sin re-renderizar de mas).
+// Reloj en vivo del panel de ventas. Se actualiza cada 30s (suficiente para
+// no atrasar el minuto mostrado sin re-renderizar de mas).
 function LiveDateTime() {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -72,15 +71,29 @@ function LiveDateTime() {
   const fechaCap = fecha.charAt(0).toUpperCase() + fecha.slice(1)
   const hora = now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
   return (
-    <div style={{ textAlign: 'right' }}>
-      <div style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 500 }}>{fechaCap}</div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, marginTop: 2 }}>
-        <Icon name="clock" size={14} color="var(--text-3)" />
-        <span style={{
-          fontFamily: "'DM Mono', monospace", fontSize: 18, fontWeight: 700,
-          color: 'var(--text-1)', letterSpacing: 0.3, fontVariantNumeric: 'tabular-nums',
-        }}>{hora}</span>
-      </div>
+    <div style={{ textAlign: 'right', lineHeight: 1.35 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 500 }}>{fechaCap}</div>
+      <div style={{
+        fontFamily: "'DM Mono', monospace", fontSize: 15, fontWeight: 700,
+        color: 'var(--text-1)', letterSpacing: 0.3, fontVariantNumeric: 'tabular-nums',
+      }}>{hora}</div>
+    </div>
+  )
+}
+
+// Agrupa campanita + fecha/hora en un solo bloque elevado, en vez de dos
+// elementos sueltos flotando en el header — lee como una sola pieza de UI.
+function HeaderUtilityCluster() {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      background: '#fff', border: '1px solid var(--border)', borderRadius: 10,
+      padding: '6px 16px 6px 6px',
+      boxShadow: '0 1px 2px oklch(0 0 0 / 0.05), 0 1px 8px oklch(0 0 0 / 0.04)',
+    }}>
+      <NotificacionesBell dark={false} />
+      <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border)' }} />
+      <LiveDateTime />
     </div>
   )
 }
@@ -334,12 +347,7 @@ export default function DashboardPage() {
             title={`¡Hola, ${user.nombre || 'Vendedor'}!`}
             subtitle="Tu panel personal"
             breadcrumb={['Inicio', 'Mi Panel']}
-            actions={
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <NotificacionesBell dark={false} />
-                <LiveDateTime />
-              </div>
-            }
+            actions={<HeaderUtilityCluster />}
           />
 
           <section style={{ marginTop: 16 }}>
