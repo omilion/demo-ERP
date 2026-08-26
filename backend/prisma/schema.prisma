@@ -19,6 +19,7 @@ model User {
   codigoVendedor       String?         @unique @map("codigo_vendedor")
   cargo                String?
   permisoDescuentos    Boolean         @default(false) @map("permiso_descuentos")
+  permisoAprobarDescuentos Boolean      @default(false) @map("permiso_aprobar_descuentos")
   permisosExtra        Json?           @map("permisos_extra")
   sucursalId           Int?            @map("sucursal_id")
   activo               Boolean         @default(true)
@@ -28,6 +29,8 @@ model User {
   comisionReglas       ComisionRegla[]
   odtResponsabilidades OdtItemTaller[] @relation("OdtResponsable")
   trabajador           Trabajador?     @relation("TrabajadorUsuario")
+  reglasDescuentoCreadas DescuentoRegla[] @relation("DescuentoReglaCreadaPor")
+  reglasDescuentoModificadas DescuentoRegla[] @relation("DescuentoReglaModificadaPor")
 
   @@index([codigoVendedor])
   @@map("users")
@@ -810,15 +813,21 @@ model DescuentoRegla {
   vigenteDesde       DateTime?            @map("vigente_desde")
   vigenteHasta       DateTime?            @map("vigente_hasta")
   activo             Boolean              @default(true)
+  creadoPorId        Int?                 @map("creado_por_id")
+  modificadoPorId    Int?                 @map("modificado_por_id")
   createdAt          DateTime             @default(now()) @map("created_at")
   updatedAt          DateTime             @updatedAt @map("updated_at")
   solicitudes        DescuentoSolicitud[]
+  creadoPor          User?                @relation("DescuentoReglaCreadaPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  modificadoPor      User?                @relation("DescuentoReglaModificadaPor", fields: [modificadoPorId], references: [id], onDelete: SetNull)
 
   @@unique([codigo, version])
   @@index([codigo, activo])
   @@index([activo, prioridad])
   @@index([alcance, activo])
   @@index([vigenteDesde, vigenteHasta])
+  @@index([creadoPorId])
+  @@index([modificadoPorId])
   @@map("descuento_reglas")
   @@schema("ventas")
 }

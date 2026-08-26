@@ -1,7 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Shell } from './components/Shell'
-import { OdtLegacyRedirect } from './components/LegacyRedirects'
+import { LicitacionesLegacyRedirect, OdtLegacyRedirect } from './components/LegacyRedirects'
 import LoginPage from './pages/login/LoginPage'
 import DashboardPage, { DashboardOperativoPage } from './pages/dashboard/DashboardPage'
 import MatrizVentasPage from './pages/matriz-ventas/MatrizVentasPage'
@@ -21,8 +21,6 @@ import ClientesPage from './pages/clientes/ClientesPage'
 import ClienteDetallePage from './pages/clientes/ClienteDetallePage'
 import ClientesFormPage from './pages/clientes/ClientesFormPage'
 import CobranzaPage from './pages/cobranza/CobranzaPage'
-import LicitacionesPage from './pages/licitaciones/LicitacionesPage'
-import LicitacionFormPage from './pages/licitaciones/LicitacionFormPage'
 import LicitacionDetallePage from './pages/licitaciones/LicitacionDetallePage'
 import LicitacionFichaPage from './pages/licitaciones/LicitacionFichaPage'
 import OrdenesCompraPage from './pages/ordenes-compra/OrdenesCompraPage'
@@ -50,7 +48,6 @@ import HistorialMaterialesPage from './pages/historial-materiales/HistorialMater
 import StockIngresosPage from './pages/stock-ingresos/StockIngresosPage'
 import PasarTallerPage from './pages/pasar-taller/PasarTallerPage'
 import ConsultaPreciosPage from './pages/consulta-precios/ConsultaPreciosPage'
-import ReportesLicitacionesPage from './pages/reportes-licitaciones/ReportesLicitacionesPage'
 import ReportesGerencialesPage from './pages/reportes-gerenciales/ReportesGerencialesPage'
 import ReportesComisionesPage from './pages/reportes-comisiones/ReportesComisionesPage'
 import ReportesMovimientosAnormalesPage from './pages/reportes-movimientos-anormales/ReportesMovimientosAnormalesPage'
@@ -117,8 +114,8 @@ export const router = createBrowserRouter([
       { path: 'clientes/:id', element: protect(<ClienteDetallePage />, { module: 'clientes' }) },
       { path: 'clientes/:id/editar', element: protect(<ClientesFormPage />, { module: 'clientes', permission: 'write' }) },
       { path: 'cobranza/*', element: protect(<CobranzaPage />, { module: 'cobranza' }) },
-      { path: 'licitaciones', element: protect(<LicitacionesPage />, { module: 'licitaciones' }) },
-      { path: 'licitaciones/nueva', element: protect(<LicitacionFormPage />, { module: 'licitaciones', permission: 'write' }) },
+      { path: 'licitaciones', element: protect(<LicitacionesLegacyRedirect />, { module: 'ventas' }) },
+      { path: 'licitaciones/nueva', element: protect(<LicitacionesLegacyRedirect destination="nueva" />, { module: 'ventas', permission: 'write' }) },
       { path: 'licitaciones/:id/ficha', element: protect(<LicitacionFichaPage />, { module: 'licitaciones' }) },
       { path: 'licitaciones/:id', element: protect(<LicitacionDetallePage />, { module: 'licitaciones' }) },
       { path: 'ordenes-compra', element: protect(<OrdenesCompraPage />, { module: 'ventas' }) },
@@ -165,7 +162,7 @@ export const router = createBrowserRouter([
       { path: 'reportes/gerenciales', element: protect(<ReportesGerencialesPage />, { module: 'reportes' }) },
       { path: 'reportes/comisiones', element: <ProtectedRoute allowedRoles={['admin']}><ReportesComisionesPage /></ProtectedRoute> },
       { path: 'reportes/movimientos-anormales', element: protect(<ReportesMovimientosAnormalesPage />, { module: 'bodega' }) },
-      { path: 'reportes/licitaciones', element: protect(<ReportesLicitacionesPage />, { module: 'licitaciones' }) },
+      { path: 'reportes/licitaciones', element: protect(<LicitacionesLegacyRedirect destination="reportes" />, { module: 'reportes' }) },
       { path: 'rrhh', element: protect(<RrhhPage />, { module: 'rrhh' }) },
       { path: 'rrhh/:id', element: protect(<TrabajadorDetallePage />, { module: 'rrhh' }) },
       { path: 'admin/integridad', element: <ProtectedRoute allowedRoles={['admin']}><IntegridadPage /></ProtectedRoute> },

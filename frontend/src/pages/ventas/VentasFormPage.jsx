@@ -21,6 +21,9 @@ import api from '../../api/client'
 const DOCUMENTOS_VENTA = ['Factura Plast', 'Factura Laura', 'Boleta Electronica', 'NC Plast', 'NC Laura', 'NC Inter Plast', 'ND Plast', 'ND Laura']
 
 const TIPOS = ['Licitación', 'Compra Ágil', 'Convenio Marco', 'Marketplace', 'Venta Web', 'Venta Sala']
+// Las cotizaciones de licitación se originan en CRM. Matriz conserva sólo
+// tipos de venta directa para impedir crear registros paralelos al flujo CRM.
+const TIPOS_VENTA_DIRECTA = TIPOS.filter(tipo => !['Licitación', 'Compra Ágil'].includes(tipo))
 const MARKETPLACE_CANALES = ['París', 'Mercado Libre', 'Falabella']
 const TIPO_DEFAULT = 'Venta Sala'
 
@@ -1115,8 +1118,10 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
     navigate(`/pasar-taller?ordenId=${id}`)
   }
 
+  const tipoSolicitado = forceTipo || searchParams.get('tipo') || TIPO_DEFAULT
+  const tipoInicial = !crmMode && !isEdit && ['Licitación', 'Compra Ágil'].includes(tipoSolicitado) ? TIPO_DEFAULT : tipoSolicitado
   const { data, set } = useForm({
-    clienteId: '', clienteSucursalId: '', tipo: forceTipo || searchParams.get('tipo') || TIPO_DEFAULT, estado: 'Activa',
+    clienteId: '', clienteSucursalId: '', tipo: tipoInicial, estado: 'Activa',
     estadoPago: 'No pagada', estadoEntrega: 'Pendiente entrega',
     abono: '', guias: '', facturado: '', descuentoPct: '', licitacion: searchParams.get('oc') || '', observaciones: searchParams.get('obs') || '',
     licitacionFecha: '', licitacionPlazo: '', licitacionReferencia: '', licitacionOC: '',
@@ -1257,6 +1262,11 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   const saving = createVenta.isPending || updateVenta.isPending || savingCrmQuote
 
   function handleSave() {
+    if (!crmMode && !isEdit && ['Licitación', 'Compra Ágil'].includes(data.tipo)) {
+      toast.warning('Las licitaciones y compras ágiles se crean desde CRM')
+      navigate(data.tipo === 'Compra Ágil' ? '/crm/nueva/compra-agil' : '/crm/nueva/licitacion')
+      return
+    }
     const shouldSendItems = !isEdit || !itemsLocked
     const itemError = shouldSendItems ? validateItems(items) : null
     if (itemError) { toast.error(itemError); return }
@@ -1404,7 +1414,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         <Select
           value={data.tipo}
           onChange={handleTipoChange}
-          options={crmMode ? [{ value: forceTipo, label: isSimpleCrmQuote ? 'Cotizacion simple CRM' : forceTipo }] : (TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS])}
+          options={crmMode ? [{ value: forceTipo, label: isSimpleCrmQuote ? 'Cotizacion simple CRM' : forceTipo }] : (isEdit ? (TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS]) : TIPOS_VENTA_DIRECTA)}
           disabled={crmMode}
           aria-label="Tipo de venta"
           style={{ backgroundColor: '#fffbeb', borderColor: '#fcd34d', fontWeight: 700, color: '#78350f' }}
@@ -1431,7 +1441,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
               onAdd={addProducto}
               tipoVenta={data.tipo}
               disabled={itemsLocked}
-              onFocus={() => productsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              onFocus={() => productsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
             />
             <div className="venta-workspace-side-help">Busca por codigo, nombre o ID Marco. Revisa productos y total antes de guardar.</div>
           </div>
@@ -1457,7 +1467,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         <Select
           value={data.tipo}
           onChange={handleTipoChange}
-          options={crmMode ? [{ value: forceTipo, label: isSimpleCrmQuote ? 'Cotización simple · Prospección directa' : forceTipo }] : (TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS])}
+          options={crmMode ? [{ value: forceTipo, label: isSimpleCrmQuote ? 'Cotización simple · Prospección directa' : forceTipo }] : (isEdit ? (TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS]) : TIPOS_VENTA_DIRECTA)}
           disabled={crmMode}
           style={{ 
             backgroundColor: '#fffbeb', // Soft yellow background

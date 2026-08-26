@@ -397,7 +397,6 @@ export default function DashboardPage() {
     show.bodega && { label: 'Bodega', icon: 'warehouse', tone: 'green', route: '/bodega' },
     show.caja && { label: 'Caja', icon: 'creditCard', tone: 'slate', route: '/caja' },
     show.rrhh && { label: 'RRHH', icon: 'users', tone: 'amber', route: '/rrhh' },
-    show.licitaciones && { label: 'Licitaciones', icon: 'briefcase', tone: 'blue', route: '/licitaciones' },
     show.taller && { label: 'Taller', icon: 'wrench', tone: 'green', route: '/taller' },
     show.admin && { label: 'Admin', icon: 'settings', tone: 'red', route: '/usuarios' },
   ].filter(Boolean)
@@ -683,9 +682,9 @@ export function DashboardOperativoPage() {
             <ActionRow icon="cloud" label="Cotizaciones Web" badge={n(webPend)} badgeTone={webPend > 0 ? 'amber' : 'neutral'} onClick={() => navigate('/ordenes-compra?estado=Pendiente')} />
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
             {canWriteVentas && <ActionRow icon="plusCircle" label="Nueva Venta Sala" onClick={() => navigate('/ventas/nueva')} />}
-            <ActionRow icon="clipboard" label="Cotizar Licitación" onClick={() => navigate('/licitaciones')} />
-            <ActionRow icon="briefcase" label="Convenio Marco" onClick={() => navigate('/ventas?filtro=licitacion')} />
-            <ActionRow icon="fileText" label="Reportes Licitaciones" onClick={() => navigate('/reportes/licitaciones')} />
+            {canWriteVentas && <ActionRow icon="clipboard" label="Nueva Licitación" onClick={() => navigate('/crm/nueva/licitacion')} />}
+            <ActionRow icon="briefcase" label="Convenio Marco" onClick={() => navigate('/ventas?tipo=convenio-marco')} />
+            {can(user, 'reportes') && <ActionRow icon="fileText" label="Reporte de Licitaciones" onClick={() => navigate('/reportes/gerenciales')} />}
             {canReadCatalogo && <ActionRow icon="tag" label="Consulta Precios" onClick={() => navigate('/consulta-precios')} />}
           </SectionCard>
         )}

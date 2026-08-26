@@ -15,6 +15,8 @@ async function buildCrmHandlers(prisma) {
         get: (path, _opts, handler) => { handlers[`GET ${path}`] = handler },
         patch: (path, _opts, handler) => { handlers[`PATCH ${path}`] = handler },
         post: (path, _opts, handler) => { handlers[`POST ${path}`] = handler },
+        put: (path, _opts, handler) => { handlers[`PUT ${path}`] = handler },
+        delete: (path, _opts, handler) => { handlers[`DELETE ${path}`] = handler },
       })
     },
   }

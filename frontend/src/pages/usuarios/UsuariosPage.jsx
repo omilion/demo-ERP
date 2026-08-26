@@ -55,6 +55,7 @@ export default function UsuariosPage() {
     { key: 'cargo', label: 'Cargo' },
     { key: 'rut', label: 'RUT', render: v => mono(v) },
     { key: 'permisoDescuentos', label: 'Descuentos', render: v => v ? <Badge tone="green">Si</Badge> : <Badge tone="gray">No</Badge> },
+    { key: 'permisoAprobarDescuentos', label: 'Aprueba dctos.', render: v => v ? <Badge tone="green">Si</Badge> : <Badge tone="gray">No</Badge> },
     { key: 'permisosExtra', label: 'Permisos', render: v => {
       if (!v) return <span style={{ color: 'var(--text-3)', fontSize: 12 }}>-</span>
       const count = Object.keys(v).length
@@ -131,6 +132,7 @@ function CreateUsuarioModal({ sucursales, onClose }) {
     cargo: '',
     sucursalId: '',
     permisoDescuentos: false,
+    permisoAprobarDescuentos: false,
     activo: true,
   })
 
@@ -166,6 +168,7 @@ function EditUsuarioModal({ user, sucursales, onClose }) {
     cargo: user.cargo || '',
     sucursalId: user.sucursalId != null ? String(user.sucursalId) : '',
     permisoDescuentos: Boolean(user.permisoDescuentos),
+    permisoAprobarDescuentos: Boolean(user.permisoAprobarDescuentos),
     password: '',
     activo: user.activo,
   })
@@ -279,6 +282,9 @@ function UserFields({ form, setForm, sucursales, showPassword = false, passwordH
       </Field>
       <Field label="Permite hacer descuentos">
         <label style={checkStyle}><input type="checkbox" checked={form.permisoDescuentos} onChange={e => set('permisoDescuentos', e.target.checked)} /> Si</label>
+      </Field>
+      <Field label="Puede aprobar o rechazar descuentos">
+        <label style={checkStyle}><input type="checkbox" checked={form.permisoAprobarDescuentos} onChange={e => set('permisoAprobarDescuentos', e.target.checked)} /> Si</label>
       </Field>
     </div>
   )

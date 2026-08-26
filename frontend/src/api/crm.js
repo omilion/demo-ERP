@@ -99,6 +99,17 @@ export const useCrmTransicion = () => {
   })
 }
 
+export const useUpdateCrmCotizacion = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ crmId, ...data }) => api.put(`/crm/${crmId}/cotizacion`, data).then(r => r.data),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['crm'] })
+      qc.invalidateQueries({ queryKey: ['crm', 'detalle', variables.crmId] })
+    },
+  })
+}
+
 export const useCrmGestionCreate = () => {
   const qc = useQueryClient()
   return useMutation({

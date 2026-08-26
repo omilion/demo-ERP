@@ -18,6 +18,7 @@ const userSelect = {
   codigoVendedor: true,
   cargo: true,
   permisoDescuentos: true,
+  permisoAprobarDescuentos: true,
   permisosExtra: true,
   sucursalId: true,
   activo: true,
@@ -166,6 +167,7 @@ export default async function usuariosRoutes(fastify) {
           codigoVendedor,
           cargo,
           permisoDescuentos: Boolean(b.permisoDescuentos),
+          permisoAprobarDescuentos: Boolean(b.permisoAprobarDescuentos),
           permisosExtra: permisos.value,
           sucursalId: parsedSucursal.value,
           activo: b.activo !== false,
@@ -203,6 +205,7 @@ export default async function usuariosRoutes(fastify) {
     if (b.codigoVendedor !== undefined) data.codigoVendedor = cleanText(b.codigoVendedor)
     if (b.cargo !== undefined) data.cargo = cleanText(b.cargo)
     if (b.permisoDescuentos !== undefined) data.permisoDescuentos = Boolean(b.permisoDescuentos)
+    if (b.permisoAprobarDescuentos !== undefined) data.permisoAprobarDescuentos = Boolean(b.permisoAprobarDescuentos)
     if (b.activo !== undefined) data.activo = Boolean(b.activo)
     if (b.permisosExtra !== undefined) {
       const permisos = sanitizePermisosExtra(b.permisosExtra)

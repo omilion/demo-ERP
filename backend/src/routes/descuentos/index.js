@@ -1,5 +1,6 @@
-import { canApplyDescuento } from '../ventas/descuentos-permissions.js'
+import { canApplyDescuento, canApproveDescuento } from '../ventas/descuentos-permissions.js'
 import { can } from '../../middleware/rbac.js'
+import { discountRulesEnabled, discountRulesDisabledResponse } from './rules-status.js'
 import {
   buildDiscountSnapshot,
   evaluateDiscountRules,
@@ -25,15 +26,57 @@ function parseValor(body, { integerOnly = false } = {}) {
   return { valor }
 }
 
-function rulesEnabled() {
-  return process.env.DESCUENTOS_REGLAS_ENABLED !== 'false'
-}
-
 function canReadDescuentos(user) {
   if (!user) return false
   return can(user.role, 'ventas', 'read', user.permisosExtra) ||
     can(user.role, 'descuentos', 'read', user.permisosExtra) ||
     canApplyDescuento(user)
+}
+
+function replyRulesDisabled(reply) {
+  return reply.code(503).send(discountRulesDisabledResponse())
+}
+
+function isNonEmpty(value) {
+  if (Array.isArray(value)) return value.length > 0
+  return value !== undefined && value !== null && String(value).trim() !== ''
+}
+
+function ruleWarnings(rule) {
+  const condiciones = rule?.condiciones || {}
+  const hasScope = [
+    'tiposVenta', 'productoIds', 'categoriaIds', 'subcategoriaIds',
+    'proveedorIds', 'categoriaNombres', 'proveedorNombres', 'sucursalId',
+    'clienteId', 'clienteSegmento',
+  ].some(key => isNonEmpty(condiciones[key])) || Number(condiciones.montoMinimo || 0) > 0
+  return hasScope
+    ? []
+    : ['Esta regla no tiene condiciones comerciales y puede aplicar a cualquier venta con productos. Verifica que sea intencional.']
+}
+
+function ruleDataForNewVersion(previous, changes, actorId) {
+  const conditions = { ...(previous.condiciones || {}), ...(changes.condiciones || {}) }
+  const effect = { ...(previous.efecto || {}), ...(changes.efecto || {}) }
+  const hasConditions = Object.keys(conditions).length > 0
+  const hasEffect = Object.keys(effect).length > 0
+  return {
+    codigo: previous.codigo,
+    nombre: changes.nombre ?? previous.nombre,
+    descripcion: changes.descripcion ?? previous.descripcion,
+    alcance: changes.alcance ?? previous.alcance,
+    tipoDescuento: changes.tipoDescuento ?? previous.tipoDescuento,
+    prioridad: changes.prioridad ?? previous.prioridad,
+    condiciones: hasConditions ? conditions : null,
+    efecto: hasEffect ? effect : null,
+    porcentajeMax: changes.porcentajeMax ?? previous.porcentajeMax,
+    montoMax: changes.montoMax ?? previous.montoMax,
+    requiereAprobacion: changes.requiereAprobacion ?? previous.requiereAprobacion,
+    vigenteDesde: changes.vigenteDesde ?? previous.vigenteDesde,
+    vigenteHasta: changes.vigenteHasta ?? previous.vigenteHasta,
+    activo: changes.activo ?? previous.activo,
+    creadoPorId: actorId || null,
+    modificadoPorId: actorId || null,
+  }
 }
 
 function parseJsonArray(value) {
@@ -168,35 +211,79 @@ export default async function descuentosRoutes(fastify) {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     if (!canReadDescuentos(request.user)) return reply.code(403).send({ error: 'Forbidden' })
-    if (!rulesEnabled()) return []
+    if (!discountRulesEnabled()) return replyRulesDisabled(reply)
     return fastify.prisma.descuentoRegla.findMany({
       orderBy: [{ activo: 'desc' }, { prioridad: 'desc' }, { id: 'asc' }],
+      include: {
+        creadoPor: { select: { id: true, nombre: true, email: true } },
+        modificadoPor: { select: { id: true, nombre: true, email: true } },
+      },
     })
   })
 
   fastify.post('/reglas', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    if (!rulesEnabled()) return reply.code(404).send({ error: 'Reglas de descuento deshabilitadas' })
+    if (!discountRulesEnabled()) return replyRulesDisabled(reply)
     if (!canApplyDescuento(request.user)) return reply.code(403).send({ error: 'No tiene permiso para administrar reglas de descuento' })
     const parsed = parseRuleBody(request.body)
     if (parsed.error) return reply.code(400).send({ error: parsed.error })
-    const regla = await fastify.prisma.descuentoRegla.create({ data: parsed.data })
-    return reply.code(201).send(regla)
+    const regla = await fastify.prisma.descuentoRegla.create({
+      data: {
+        ...parsed.data,
+        creadoPorId: request.user?.id || null,
+        modificadoPorId: request.user?.id || null,
+      },
+    })
+    return reply.code(201).send({ ...regla, warnings: ruleWarnings(regla) })
   })
 
   fastify.put('/reglas/:id', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    if (!rulesEnabled()) return reply.code(404).send({ error: 'Reglas de descuento deshabilitadas' })
+    if (!discountRulesEnabled()) return replyRulesDisabled(reply)
     if (!canApplyDescuento(request.user)) return reply.code(403).send({ error: 'No tiene permiso para administrar reglas de descuento' })
     const id = parseId(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID invalido' })
     const parsed = parseRuleBody(request.body, { partial: true })
     if (parsed.error) return reply.code(400).send({ error: parsed.error })
     try {
-      return await fastify.prisma.descuentoRegla.update({ where: { id }, data: parsed.data })
+      const regla = await fastify.prisma.$transaction(async tx => {
+        const anterior = await tx.descuentoRegla.findUnique({ where: { id } })
+        if (!anterior) {
+          const err = new Error('Regla no encontrada')
+          err.statusCode = 404
+          throw err
+        }
+        if (!anterior.activo) {
+          const err = new Error('No se puede editar una versión histórica. Crea una nueva regla si debe reactivarse.')
+          err.statusCode = 409
+          throw err
+        }
+        if (parsed.data.codigo && parsed.data.codigo !== anterior.codigo) {
+          const err = new Error('El código de una regla versionada no se puede cambiar. Crea una nueva regla para otro código.')
+          err.statusCode = 400
+          throw err
+        }
+        const latest = await tx.descuentoRegla.findFirst({
+          where: { codigo: anterior.codigo },
+          orderBy: { version: 'desc' },
+          select: { version: true },
+        })
+        await tx.descuentoRegla.update({
+          where: { id: anterior.id },
+          data: { activo: false, modificadoPorId: request.user?.id || null },
+        })
+        return tx.descuentoRegla.create({
+          data: {
+            ...ruleDataForNewVersion(anterior, parsed.data, request.user?.id),
+            version: (latest?.version || anterior.version) + 1,
+          },
+        })
+      })
+      return { ...regla, warnings: ruleWarnings(regla) }
     } catch (e) {
+      if (e.statusCode) return reply.code(e.statusCode).send({ error: e.message })
       if (e.code === 'P2025') return reply.code(404).send({ error: 'Regla no encontrada' })
       throw e
     }
@@ -205,12 +292,12 @@ export default async function descuentosRoutes(fastify) {
   fastify.delete('/reglas/:id', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    if (!rulesEnabled()) return reply.code(404).send({ error: 'Reglas de descuento deshabilitadas' })
+    if (!discountRulesEnabled()) return replyRulesDisabled(reply)
     if (!canApplyDescuento(request.user)) return reply.code(403).send({ error: 'No tiene permiso para administrar reglas de descuento' })
     const id = parseId(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID invalido' })
     try {
-      await fastify.prisma.descuentoRegla.update({ where: { id }, data: { activo: false } })
+      await fastify.prisma.descuentoRegla.update({ where: { id }, data: { activo: false, modificadoPorId: request.user?.id || null } })
       return reply.code(204).send()
     } catch (e) {
       if (e.code === 'P2025') return reply.code(404).send({ error: 'Regla no encontrada' })
@@ -220,15 +307,15 @@ export default async function descuentosRoutes(fastify) {
 
   fastify.post('/evaluar', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
-  }, async (request) => {
-    if (!rulesEnabled()) return { reglas: [], selected: null }
+  }, async (request, reply) => {
+    if (!discountRulesEnabled()) return replyRulesDisabled(reply)
     return evaluateDiscountRules(fastify.prisma, request.body || {}, request.user)
   })
 
   fastify.post('/solicitudes', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
   }, async (request, reply) => {
-    if (!rulesEnabled()) return reply.code(404).send({ error: 'Reglas de descuento deshabilitadas' })
+    if (!discountRulesEnabled()) return replyRulesDisabled(reply)
     const reglaId = parseId(request.body?.reglaId)
     if (!reglaId) return reply.code(400).send({ error: 'reglaId requerido' })
     const evaluation = await evaluateDiscountRules(fastify.prisma, { ...(request.body || {}), reglaId }, request.user)
@@ -257,9 +344,9 @@ export default async function descuentosRoutes(fastify) {
 
   fastify.get('/solicitudes', {
     preHandler: [fastify.authenticate],
-  }, async (request) => {
-    if (!rulesEnabled()) return []
-    const canManage = request.user?.role === 'admin' || canApplyDescuento(request.user)
+  }, async (request, reply) => {
+    if (!discountRulesEnabled()) return replyRulesDisabled(reply)
+    const canManage = canApproveDescuento(request.user) || canApplyDescuento(request.user)
     return fastify.prisma.descuentoSolicitud.findMany({
       where: canManage ? {} : { solicitanteId: request.user?.id || -1 },
       include: { regla: { select: { id: true, codigo: true, nombre: true } } },
@@ -271,8 +358,8 @@ export default async function descuentosRoutes(fastify) {
   fastify.post('/solicitudes/:id/aprobar', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    if (!rulesEnabled()) return reply.code(404).send({ error: 'Reglas de descuento deshabilitadas' })
-    if (request.user?.role !== 'admin') return reply.code(403).send({ error: 'Solo admin puede aprobar descuentos' })
+    if (!discountRulesEnabled()) return replyRulesDisabled(reply)
+    if (!canApproveDescuento(request.user)) return reply.code(403).send({ error: 'No tiene permiso para aprobar descuentos' })
     const id = parseId(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID invalido' })
     try {
@@ -281,6 +368,11 @@ export default async function descuentosRoutes(fastify) {
         if (!solicitud) {
           const err = new Error('Solicitud no encontrada')
           err.statusCode = 404
+          throw err
+        }
+        if (Number(solicitud.solicitanteId) === Number(request.user?.id)) {
+          const err = new Error('No puedes aprobar tu propia solicitud de descuento')
+          err.statusCode = 403
           throw err
         }
         const aprobadoAt = new Date()
@@ -313,7 +405,7 @@ export default async function descuentosRoutes(fastify) {
             aprobadorId: request.user?.id || null,
             aprobadorNombre: request.user?.nombre || request.user?.email || null,
             resueltoAt: aprobadoAt,
-            comentarioResolucion: request.body?.motivo || 'Aprobada por admin',
+            comentarioResolucion: request.body?.motivo || 'Aprobada por responsable autorizado',
           },
         })
         if (solicitud.origenTipo === 'cotizacion' && solicitud.contextoSnapshot?.cotizacionId) {
@@ -380,13 +472,14 @@ export default async function descuentosRoutes(fastify) {
   fastify.post('/solicitudes/:id/rechazar', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    if (!rulesEnabled()) return reply.code(404).send({ error: 'Reglas de descuento deshabilitadas' })
-    if (request.user?.role !== 'admin') return reply.code(403).send({ error: 'Solo admin puede rechazar descuentos' })
+    if (!discountRulesEnabled()) return replyRulesDisabled(reply)
+    if (!canApproveDescuento(request.user)) return reply.code(403).send({ error: 'No tiene permiso para rechazar descuentos' })
     const id = parseId(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID invalido' })
     try {
-      const current = await fastify.prisma.descuentoSolicitud.findUnique({ where: { id }, select: { estado: true } })
+      const current = await fastify.prisma.descuentoSolicitud.findUnique({ where: { id }, select: { estado: true, solicitanteId: true } })
       if (!current) return reply.code(404).send({ error: 'Solicitud no encontrada' })
+      if (Number(current.solicitanteId) === Number(request.user?.id)) return reply.code(403).send({ error: 'No puedes rechazar tu propia solicitud de descuento' })
       if (current.estado === 'APLICADA') return reply.code(409).send({ error: 'Solicitud ya aplicada no puede rechazarse' })
       return await fastify.prisma.descuentoSolicitud.update({
         where: { id },
@@ -395,7 +488,7 @@ export default async function descuentosRoutes(fastify) {
           aprobadorId: request.user?.id || null,
           aprobadorNombre: request.user?.nombre || request.user?.email || null,
           resueltoAt: new Date(),
-          comentarioResolucion: request.body?.motivo || 'Rechazada por admin',
+          comentarioResolucion: request.body?.motivo || 'Rechazada por responsable autorizado',
         },
       })
     } catch (e) {

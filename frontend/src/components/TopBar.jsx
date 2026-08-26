@@ -11,7 +11,6 @@ const NAV_GROUPS = [
   { label: 'Ventas', items: [
     { label: '+ Nueva Venta', route: '/ventas/nueva', module: 'ventas', permission: 'write', highlight: true },
     { label: 'Matriz Ventas', route: '/ventas', module: 'ventas' },
-    { label: 'OC Online / Venta Web', route: '/ordenes-compra', module: 'ventas' },
     { label: 'CRM', route: '/crm', module: 'ventas' },
     { label: 'Clientes', route: '/clientes', module: 'clientes' },
   ] },
@@ -47,17 +46,11 @@ const NAV_GROUPS = [
     { label: 'Emitir documento exportación', route: '/facturacion/exportacion', module: 'facturacion', permission: 'write' },
     { label: 'Configuración', route: '/facturacion/configuracion', module: 'facturacion' },
   ] },
-  { label: 'Licitaciones', items: [
-    { label: 'Cotizaciones Licitación', route: '/licitaciones', module: 'licitaciones' },
-    { label: 'Convenio Marco', route: '/ventas?tipo=convenio-marco', module: 'ventas' },
-    { label: 'Reportes Licitaciones', route: '/reportes/licitaciones', module: 'licitaciones' },
-  ] },
   { label: 'Gerencia', items: [
     { label: 'Reporteria Gerencial', route: '/reportes/gerenciales', module: 'reportes' },
     { label: 'Comisiones', route: '/reportes/comisiones', roles: ['admin'] },
     { label: 'Reglas de Comision', route: '/admin/comisiones', roles: ['admin'] },
     { label: 'Costeo de Fabricacion', route: '/costeo', module: 'costeo' },
-    { label: 'Reportes Licitaciones', route: '/reportes/licitaciones', module: 'licitaciones' },
   ] },
   { label: 'RRHH', items: [
     { label: 'Trabajadores', route: '/rrhh', module: 'rrhh' },

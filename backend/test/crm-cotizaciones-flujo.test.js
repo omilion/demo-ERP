@@ -117,6 +117,54 @@ describeDb('CRM: nueva oportunidad crea cotizacion y entra al pipeline', () => {
     expect(await ordenesDelCliente()).toBe(0)
   })
 
+  it('crea y edita la cotizacion dentro de una oportunidad CRM existente', async () => {
+    const lead = await app.prisma.crmRegistro.create({
+      data: {
+        nombre: `${marca} oportunidad existente`,
+        rut: `${marca}-9`,
+        clienteId,
+        vendedorId,
+        ejecutiva: 'Vendedor de prueba',
+        canalVenta: 'LICITACION',
+        tipoVenta: 'LICITACION',
+        etapaComercial: 'PENDIENTE_CLASIFICACION',
+      },
+    })
+    creados.push(lead.id)
+
+    const crear = await app.inject({
+      method: 'POST',
+      url: '/api/crm/cotizaciones',
+      headers: auth(),
+      payload: {
+        ...fichaBase(),
+        crmId: lead.id,
+        tipo: 'Licitación',
+        licitacion: `${marca}-EXISTENTE`,
+        licitacionFecha: new Date().toISOString(),
+      },
+    })
+    expect(crear.statusCode, crear.body).toBe(201)
+    const creada = crear.json()
+    expect(creada.lead.id).toBe(lead.id)
+    expect(creada.cotizacion.crmId).toBe(lead.id)
+    expect(await app.prisma.crmRegistro.count({ where: { id: lead.id } })).toBe(1)
+
+    const editar = await app.inject({
+      method: 'PUT',
+      url: `/api/crm/${lead.id}/cotizacion`,
+      headers: auth(),
+      payload: {
+        items: [{ productoId, cantidad: 3, precioUnitario: 17000, descripcion: 'Precio revisado' }],
+        licitacionReferencia: 'Referencia actualizada',
+      },
+    })
+    expect(editar.statusCode, editar.body).toBe(200)
+    expect(editar.json()).toMatchObject({ crmId: lead.id, licitacionReferencia: 'Referencia actualizada' })
+    expect(editar.json().items).toMatchObject([{ productoId, cantidad: 3, precioUnitario: 17000, descripcion: 'Precio revisado' }])
+    expect(await ordenesDelCliente()).toBe(0)
+  })
+
   it('cotizacion simple: mismo flujo por el canal de prospeccion', async () => {
     const res = await app.inject({
       method: 'POST',
@@ -154,10 +202,11 @@ describeDb('CRM: nueva oportunidad crea cotizacion y entra al pipeline', () => {
     expect(filas.length).toBeGreaterThan(0)
     for (const fila of filas) {
       expect(fila.ordenCompraOnline ?? null).toBeNull()   // no viene de la web
-      expect(fila.montoCotizado).toBe(2 * 15000)          // y aun asi tiene monto
+      const totalEsperado = fila.id === creados[1] ? 3 * 17000 : 2 * 15000
+      expect(fila.montoCotizado).toBe(totalEsperado)      // y aun asi tiene monto
     }
 
-    const detalle = await app.inject({ method: 'GET', url: `/api/crm/${filas[0].id}`, headers: auth() })
+    const detalle = await app.inject({ method: 'GET', url: `/api/crm/${creados[0]}`, headers: auth() })
     expect(detalle.statusCode).toBe(200)
     expect(detalle.json().montoCotizado).toBe(2 * 15000)
   })

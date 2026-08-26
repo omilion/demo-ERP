@@ -28,7 +28,7 @@ export default function CrmNuevaOportunidadPage() {
       const crm = await create.mutateAsync({ ...form, canalVenta: selected.canal, tipoVenta: selected.tipoVenta })
       const paths = {
         WEB: `/ventas/nueva?tipo=Venta%20Web&crmId=${crm.id}`,
-        LICITACION: `/licitaciones/nueva?crmId=${crm.id}`,
+        LICITACION: `/crm/nueva/licitacion?crmId=${crm.id}`,
       }
       navigate(paths[selected.canal])
     } catch (error) { toast.error(error.response?.data?.error || 'No se pudo crear la oportunidad') }

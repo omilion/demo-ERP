@@ -4,9 +4,9 @@ import { buildApp } from '../src/app.js'
 process.env.JWT_ACCESS_SECRET ||= 'test-access-secret'
 process.env.JWT_REFRESH_SECRET ||= 'test-refresh-secret'
 
-function tokenFor(app, role = 'admin', permisosExtra = null) {
+function tokenFor(app, role = 'admin', permisosExtra = null, id = 1) {
   return app.jwt.sign({
-    id: 1,
+    id,
     role,
     nombre: `Test ${role}`,
     permisosExtra,
@@ -172,7 +172,7 @@ describe('descuentos reglas comerciales', () => {
     app = buildApp({ logger: false })
     await app.ready()
     adminToken = tokenFor(app, 'admin')
-    vendedorToken = tokenFor(app, 'vendedor')
+    vendedorToken = tokenFor(app, 'vendedor', null, 2)
   })
 
   afterAll(async () => {

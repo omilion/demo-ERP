@@ -23,6 +23,7 @@ export function createErpAccessTokenPayload(user) {
     nombre: user.nombre,
     sucursalId: user.sucursalId ?? null,
     permisoDescuentos: !!user.permisoDescuentos,
+    permisoAprobarDescuentos: !!user.permisoAprobarDescuentos,
     permisosExtra: user.permisosExtra || null,
     scope: TOKEN_SCOPES.ERP,
     aud: TOKEN_AUDIENCES.ERP,

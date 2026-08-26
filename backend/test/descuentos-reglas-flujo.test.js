@@ -31,8 +31,10 @@ const describeDb = hasUsableDatabaseUrl() ? describe : describe.skip
 describeDb('Reglas de descuento: crear, evaluar, aplicar y registrar', () => {
   let app
   let adminToken
+  let approverToken
   let clienteId
   let userId
+  let approverId
   const marca = `DCTO-${Date.now()}`
   const creado = { reglas: [], ordenes: [], productos: [], solicitudes: [] }
   const auth = () => ({ authorization: `Bearer ${adminToken}` })
@@ -52,6 +54,23 @@ describeDb('Reglas de descuento: crear, evaluar, aplicar y registrar', () => {
       permisoDescuentos: true, scope: 'erp', aud: 'plastimar:erp', tokenType: 'access',
     })
 
+    const approver = await app.prisma.user.create({
+      data: {
+        email: `${marca.toLowerCase()}-approver@plastimar.test`,
+        passwordHash: 'test-only',
+        role: 'vendedor',
+        nombre: `${marca} Aprobador`,
+        permisoAprobarDescuentos: true,
+        activo: true,
+      },
+    })
+    approverId = approver.id
+    approverToken = app.jwt.sign({
+      id: approver.id, role: approver.role, nombre: approver.nombre,
+      permisosExtra: null, permisoDescuentos: false, permisoAprobarDescuentos: true,
+      scope: 'erp', aud: 'plastimar:erp', tokenType: 'access',
+    })
+
     const cliente = await app.prisma.cliente.create({ data: { rut: `${marca}-9`, nombre: `${marca} Cliente`, activo: true } })
     clienteId = cliente.id
 
@@ -67,6 +86,8 @@ describeDb('Reglas de descuento: crear, evaluar, aplicar y registrar', () => {
     }
     for (const id of creado.solicitudes) await app.prisma.descuentoSolicitud.delete({ where: { id } }).catch(() => {})
     for (const id of creado.reglas) await app.prisma.descuentoRegla.delete({ where: { id } }).catch(() => {})
+    await app.prisma.session.deleteMany({ where: { userId: approverId } }).catch(() => {})
+    await app.prisma.user.delete({ where: { id: approverId } }).catch(() => {})
     await app.prisma.producto.deleteMany({ where: { id: { in: creado.productos } } }).catch(() => {})
     await app.prisma.cliente.delete({ where: { id: clienteId } }).catch(() => {})
     await app.close()
@@ -241,8 +262,14 @@ describeDb('Reglas de descuento: crear, evaluar, aplicar y registrar', () => {
     const solicitudId = solicitud.json().solicitud.id
     creado.solicitudes.push(solicitudId)
 
-    const aprobacion = await app.inject({
+    const autoAprobacion = await app.inject({
       method: 'POST', url: `/api/descuentos/solicitudes/${solicitudId}/aprobar`, headers: auth(), payload: {},
+    })
+    expect(autoAprobacion.statusCode).toBe(403)
+
+    const aprobacion = await app.inject({
+      method: 'POST', url: `/api/descuentos/solicitudes/${solicitudId}/aprobar`,
+      headers: { authorization: `Bearer ${approverToken}` }, payload: {},
     })
     expect(aprobacion.statusCode, aprobacion.body).toBe(200)
 
@@ -263,6 +290,45 @@ describeDb('Reglas de descuento: crear, evaluar, aplicar y registrar', () => {
     const solicitudFinal = await app.prisma.descuentoSolicitud.findUnique({ where: { id: solicitudId } })
     expect(String(solicitudFinal.estado).toUpperCase()).toBe('APLICADA')
 
+    await desactivarRegla(regla.id)
+  })
+
+  it('al editar una regla conserva la versión anterior y registra la nueva', async () => {
+    const original = await crearRegla({
+      nombre: `${marca} versionable`,
+      tiposVenta: ['Venta Sala'],
+      porcentajeSugerido: 5,
+      porcentajeAutoaprobado: 5,
+      porcentajeMaximo: 10,
+      prioridad: 900,
+    })
+    expect(original.version).toBe(1)
+    expect(original.creadoPorId).toBe(userId)
+
+    const respuesta = await app.inject({
+      method: 'PUT', url: `/api/descuentos/reglas/${original.id}`, headers: auth(),
+      payload: { nombre: `${marca} version 2`, porcentajeMaximo: 12 },
+    })
+    expect(respuesta.statusCode, respuesta.body).toBe(200)
+    const nueva = respuesta.json()
+    creado.reglas.push(nueva.id)
+    expect(nueva).toMatchObject({ codigo: original.codigo, version: 2, activo: true, creadoPorId: userId, modificadoPorId: userId })
+
+    const anterior = await app.prisma.descuentoRegla.findUnique({ where: { id: original.id } })
+    expect(anterior).toMatchObject({ activo: false, version: 1, nombre: original.nombre })
+    expect(nueva.warnings).toEqual([])
+    await desactivarRegla(nueva.id)
+  })
+
+  it('advierte cuando una regla activa no tiene condiciones comerciales', async () => {
+    const regla = await crearRegla({
+      nombre: `${marca} alcance global`,
+      porcentajeSugerido: 5,
+      porcentajeAutoaprobado: 5,
+      porcentajeMaximo: 5,
+      prioridad: 900,
+    })
+    expect(regla.warnings).toContain('Esta regla no tiene condiciones comerciales y puede aplicar a cualquier venta con productos. Verifica que sea intencional.')
     await desactivarRegla(regla.id)
   })
 

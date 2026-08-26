@@ -10,6 +10,7 @@
 // La regla ahora es una sola: un descuento existe solo si una regla vigente lo
 // permite para ese borrador. Sin regla aplicable, no hay descuento.
 import { evaluateDiscountRules } from '../descuentos/rules-engine.js'
+import { discountRulesEnabled, discountRulesDisabledResponse } from '../descuentos/rules-status.js'
 
 // El motor devuelve tres estados por regla:
 //   AUTORIZADA - la regla cubre el porcentaje pedido y se puede guardar.
@@ -27,6 +28,14 @@ import { evaluateDiscountRules } from '../descuentos/rules-engine.js'
 export async function validateDescuentoContraReglas(prisma, { tipo, descuentoPct, clienteId, sucursalId, items, cargosTotal } = {}, user = null) {
   const valor = Number(descuentoPct || 0)
   if (!Number.isFinite(valor) || valor <= 0) return { applies: false }
+
+  if (!discountRulesEnabled()) {
+    return {
+      applies: true,
+      statusCode: 503,
+      ...discountRulesDisabledResponse(),
+    }
+  }
 
   const lineas = Array.isArray(items) ? items : []
   if (!lineas.length) {

@@ -3,10 +3,6 @@ import { useState } from 'react'
 import { Badge, PageHeader, Btn, Icon } from '../../components/shared'
 import { FormField, Input, Select, Textarea } from '../../components/forms'
 import {
-  useDescuentos,
-  useCreateDescuento,
-  useUpdateDescuento,
-  useDeleteDescuento,
   useReglasDescuento,
   useCreateReglaDescuento,
   useUpdateReglaDescuento,
@@ -48,14 +44,6 @@ const TIPO_VENTA_OPTIONS = [
 const TIPO_DESCUENTO_OPTIONS = [
   { value: 'porcentaje', label: 'Porcentaje' },
 ]
-
-function parsePercent(value, { integerOnly = false } = {}) {
-  if (value === null || value === undefined || String(value).trim() === '') return { error: 'Ingresa un porcentaje' }
-  const number = Number(value)
-  if (!Number.isFinite(number) || number < 0 || number > 100) return { error: 'El porcentaje debe estar entre 0 y 100' }
-  if (integerOnly && !Number.isInteger(number)) return { error: 'El descuento normal debe ser entero' }
-  return { value: number }
-}
 
 function apiError(error, fallback = 'No se pudo guardar') {
   return error?.response?.data?.error || fallback
@@ -115,6 +103,7 @@ function normalizeReglas(data) {
     const tipoDescuento = firstDefined(regla.tipoDescuento, regla.tipo_descuento, regla.modo, 'porcentaje')
     return {
       id: regla.id ?? regla.codigo ?? `regla-${idx}`,
+      version: regla.version || 1,
       nombre: firstDefined(regla.nombre, regla.name, regla.titulo, `Regla ${idx + 1}`),
       codigo: firstDefined(regla.codigo, regla.code, ''),
       tipoVenta: tiposVenta.length ? tiposVenta.join(', ') : 'Todos',
@@ -132,6 +121,8 @@ function normalizeReglas(data) {
       requiereAprobacion: Boolean(firstDefined(regla.requiereAprobacion, regla.requiere_aprobacion, regla.requiresApproval, false)),
       activo: firstDefined(regla.activo, regla.enabled, true) !== false,
       descripcion: String(firstDefined(regla.descripcion, regla.description, '') || ''),
+      creadoPor: regla.creadoPor?.nombre || null,
+      modificadoPor: regla.modificadoPor?.nombre || null,
       raw: regla,
     }
   })
@@ -261,12 +252,22 @@ function statusTone(estado) {
   return 'gray'
 }
 
+function ruleNeedsScopeWarning(form) {
+  return form.tipoVenta === 'Todos' && Number(form.montoMinimo || 0) <= 0 && !form.categoriaNombres && !form.proveedorNombres && !form.productoIds
+}
+
+function expirationState(value) {
+  if (!value) return null
+  const end = new Date(`${String(value).slice(0, 10)}T23:59:59`)
+  if (Number.isNaN(end.getTime())) return null
+  const days = Math.ceil((end.getTime() - Date.now()) / 86400000)
+  if (days < 0) return { label: 'Vencida', tone: 'red' }
+  if (days <= 30) return { label: `Vence en ${days} día${days === 1 ? '' : 's'}`, tone: 'amber' }
+  return null
+}
+
 export default function DescuentosPage() {
-  const catalogQuery = useDescuentos()
   const reglasQuery = useReglasDescuento()
-  const createMut = useCreateDescuento()
-  const updateMut = useUpdateDescuento()
-  const deleteMut = useDeleteDescuento()
   const createRule = useCreateReglaDescuento()
   const updateRule = useUpdateReglaDescuento()
   const deleteRule = useDeleteReglaDescuento()
@@ -281,7 +282,6 @@ export default function DescuentosPage() {
   const reglas = normalizeReglas(reglasQuery.data)
   const solicitudes = normalizeSolicitudes(solicitudesQuery.data)
   const rulePending = createRule.isPending || updateRule.isPending || deleteRule.isPending
-  const legacyPending = createMut.isPending || updateMut.isPending || deleteMut.isPending
   const solicitudPending = aprobarSolicitud.isPending || rechazarSolicitud.isPending
 
   const setRuleField = (key, value) => setForm(current => ({ ...current, [key]: value }))
@@ -292,8 +292,10 @@ export default function DescuentosPage() {
     const built = buildRulePayload(form)
     if (built.error) { setRuleError(built.error); return }
     try {
-      if (editingId) await updateRule.mutateAsync({ id: editingId, data: built.payload })
-      else await createRule.mutateAsync(built.payload)
+      const result = editingId
+        ? await updateRule.mutateAsync({ id: editingId, data: built.payload })
+        : await createRule.mutateAsync(built.payload)
+      for (const warning of result?.warnings || []) toast.warning(warning)
       setEditingId(null)
       setForm(RULE_DEFAULTS)
     } catch (err) {
@@ -348,7 +350,7 @@ export default function DescuentosPage() {
         <div style={{ padding: 16, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-1)' }}>Administracion de reglas</div>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>Condiciones, vigencia y porcentaje disponible para ventas</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>Condiciones, vigencia y porcentaje disponible para ventas. Al editar se crea una nueva versión y la anterior queda como historial.</div>
           </div>
           {reglasQuery.isError && <Badge tone="amber">Reglas no disponibles</Badge>}
         </div>
@@ -364,8 +366,8 @@ export default function DescuentosPage() {
             <FormField label="Nombre de regla" required>
               <Input value={form.nombre} onChange={v => setRuleField('nombre', v)} placeholder="Ej: Venta sala mayorista" disabled={rulePending} />
             </FormField>
-            <FormField label="Codigo interno">
-              <Input value={form.codigo} onChange={v => setRuleField('codigo', v)} placeholder="Ej: VS-MAY-10" disabled={rulePending} />
+            <FormField label="Código interno" hint={editingId ? 'El código se mantiene para conservar el historial de versiones' : undefined}>
+              <Input value={form.codigo} onChange={v => setRuleField('codigo', v)} placeholder="Ej: VS-MAY-10" disabled={rulePending || Boolean(editingId)} />
             </FormField>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <FormField label="Tipo de venta">
@@ -376,7 +378,7 @@ export default function DescuentosPage() {
               </FormField>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <FormField label={form.tipoDescuento === 'porcentaje' ? 'Porcentaje' : 'Monto'} required>
+              <FormField label={form.tipoDescuento === 'porcentaje' ? 'Porcentaje sugerido' : 'Monto'} required>
                 <Input value={form.valor} onChange={v => setRuleField('valor', v)} type="number" placeholder="0" disabled={rulePending} />
               </FormField>
               <FormField label="Monto minimo">
@@ -384,10 +386,10 @@ export default function DescuentosPage() {
               </FormField>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <FormField label="Autoaprobado hasta %">
+              <FormField label="Máximo sin aprobación (%)">
                 <Input value={form.porcentajeAutoaprobado} onChange={v => setRuleField('porcentajeAutoaprobado', v)} type="number" placeholder={form.valor || '0'} disabled={rulePending} />
               </FormField>
-              <FormField label="Maximo %">
+              <FormField label="Máximo permitido (%)">
                 <Input value={form.porcentajeMaximo} onChange={v => setRuleField('porcentajeMaximo', v)} type="number" placeholder={form.valor || '0'} disabled={rulePending} />
               </FormField>
             </div>
@@ -400,6 +402,11 @@ export default function DescuentosPage() {
             <FormField label="IDs de producto elegibles">
               <Input value={form.productoIds} onChange={v => setRuleField('productoIds', v)} placeholder="Ej: 1201, 1202" disabled={rulePending} />
             </FormField>
+            {ruleNeedsScopeWarning(form) && (
+              <div style={{ margin: '0 0 12px', padding: '9px 10px', borderRadius: 8, background: 'var(--amber-bg)', color: 'var(--amber-700)', fontSize: 12 }}>
+                Esta regla no tiene condiciones comerciales: podría aplicar a cualquier venta con productos. Revísala antes de guardarla.
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <FormField label="Vigencia desde">
                 <Input value={form.vigenciaDesde} onChange={v => setRuleField('vigenciaDesde', v)} type="date" disabled={rulePending} />
@@ -452,8 +459,10 @@ export default function DescuentosPage() {
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
                     <Badge tone={regla.activo ? 'green' : 'gray'}>{regla.activo ? 'Activa' : 'Inactiva'}</Badge>
+                    <Badge tone="gray">v{regla.version}</Badge>
                     <Badge tone="blue">{regla.tipoVenta || 'Todos'}</Badge>
                     {regla.requiereAprobacion && <Badge tone="amber">Aprobacion</Badge>}
+                    {expirationState(regla.vigenciaHasta) && <Badge tone={expirationState(regla.vigenciaHasta).tone}>{expirationState(regla.vigenciaHasta).label}</Badge>}
                   </div>
                   <div style={{ marginTop: 10, display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
                     <span>Auto/max: <strong style={mono}>{regla.porcentajeAutoaprobado || 0}% / {regla.porcentajeMaximo || regla.valor}%</strong></span>
@@ -462,6 +471,7 @@ export default function DescuentosPage() {
                     <span>Proveedores: <strong style={mono}>{regla.proveedorNombres || 'Todos'}</strong></span>
                     {regla.productoIds && <span>Productos: <strong style={mono}>{regla.productoIds}</strong></span>}
                     <span>Vigencia: <strong style={mono}>{dateInput(regla.vigenciaDesde) || 'Sin inicio'} / {dateInput(regla.vigenciaHasta) || 'Sin termino'}</strong></span>
+                    <span>Auditada por: <strong style={mono}>{regla.modificadoPor || regla.creadoPor || 'Registro anterior sin autor'}</strong></span>
                     {regla.descripcion && <span style={{ color: 'var(--text-3)' }}>{regla.descripcion}</span>}
                   </div>
                   <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
@@ -524,164 +534,7 @@ export default function DescuentosPage() {
         </div>
       </section>
 
-      <section style={{ marginTop: 18 }}>
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-1)' }}>Catalogo de porcentajes autorizado</div>
-          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>Respaldo operativo para ventas normales y Convenio Marco.</div>
-        </div>
-        {catalogQuery.isLoading ? (
-          <div style={emptyState}>Cargando catalogo...</div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
-            <Catalog
-              titulo="Descuentos normales"
-              subtitulo="Aplican a ventas regulares"
-              items={catalogQuery.data?.normales ?? []}
-              integerOnly
-              placeholder="Solo enteros sin puntos"
-              pending={legacyPending}
-              onCreate={(valor) => createMut.mutateAsync({ tipo: 'normales', valor })}
-              onUpdate={(id, valor) => updateMut.mutateAsync({ tipo: 'normales', id, valor })}
-              onDelete={(id) => deleteMut.mutateAsync({ tipo: 'normales', id })}
-            />
-            <Catalog
-              titulo="Descuentos Convenio Marco"
-              subtitulo="Aplican al total de ventas Convenio Marco"
-              items={catalogQuery.data?.marco ?? []}
-              placeholder="Ej: 1.8"
-              pending={legacyPending}
-              onCreate={(valor) => createMut.mutateAsync({ tipo: 'marco', valor })}
-              onUpdate={(id, valor) => updateMut.mutateAsync({ tipo: 'marco', id, valor })}
-              onDelete={(id) => deleteMut.mutateAsync({ tipo: 'marco', id })}
-            />
-          </div>
-        )}
-      </section>
     </main>
-  )
-}
-
-function Catalog({ titulo, subtitulo, items, onCreate, onUpdate, onDelete, pending = false, integerOnly = false, placeholder = 'Ej: 1.8' }) {
-  const [valor, setValor] = useState('')
-  const [editing, setEditing] = useState(null)
-  const [editValue, setEditValue] = useState('')
-  const [error, setError] = useState('')
-
-  async function create(e) {
-    e.preventDefault()
-    setError('')
-    const parsed = parsePercent(valor, { integerOnly })
-    if (parsed.error) { setError(parsed.error); return }
-    try {
-      await onCreate(parsed.value)
-      setValor('')
-    } catch (err) {
-      setError(apiError(err))
-    }
-  }
-
-  async function saveEdit(e) {
-    e.preventDefault()
-    setError('')
-    const parsed = parsePercent(editValue, { integerOnly })
-    if (parsed.error) { setError(parsed.error); return }
-    try {
-      await onUpdate(editing, parsed.value)
-      setEditing(null)
-      setEditValue('')
-    } catch (err) {
-      setError(apiError(err))
-    }
-  }
-
-  async function remove(item) {
-    if (!await confirmDialog({ title: 'Confirmar', detail: `Eliminar descuento ${item.valor}%?`, tone: 'danger' })) return
-    setError('')
-    try {
-      await onDelete(item.id)
-      if (editing === item.id) {
-        setEditing(null)
-        setEditValue('')
-      }
-    } catch (err) {
-      setError(apiError(err, 'No se pudo eliminar'))
-    }
-  }
-
-  function startEdit(item) {
-    setError('')
-    setEditing(item.id)
-    setEditValue(String(item.valor))
-  }
-
-  return (
-    <section style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-      <div style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
-        <div style={{ fontWeight: 600, fontSize: 15 }}>{titulo}</div>
-        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{subtitulo}</div>
-      </div>
-      <div style={{ padding: 16 }}>
-        <form onSubmit={create} style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-          <input
-            type="number"
-            min="0"
-            max="100"
-            step={integerOnly ? '1' : '0.01'}
-            placeholder={placeholder}
-            value={valor}
-            onChange={e => setValor(e.target.value)}
-            disabled={pending}
-            style={{ flex: 1, padding: '8px 10px', fontSize: 13, borderRadius: 6, border: '1px solid var(--border)', fontFamily: 'inherit' }}
-          />
-          <Btn type="submit" variant="primary" size="sm" disabled={pending} icon="plus">Crear</Btn>
-        </form>
-
-        {error && (
-          <div style={{ marginBottom: 12, padding: '8px 10px', borderRadius: 6, background: 'var(--red-bg)', color: 'var(--red)', fontSize: 12, fontWeight: 600 }}>
-            {error}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {items.length === 0 && <span style={{ color: 'var(--text-3)', fontSize: 13 }}>Sin descuentos definidos</span>}
-          {items.map(item => (
-            <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--bg)', borderRadius: 8, fontSize: 13 }}>
-              {editing === item.id ? (
-                <form onSubmit={saveEdit} style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
-                  <input
-                    autoFocus
-                    type="number"
-                    min="0"
-                    max="100"
-                    step={integerOnly ? '1' : '0.01'}
-                    value={editValue}
-                    onChange={e => setEditValue(e.target.value)}
-                    disabled={pending}
-                    style={{ flex: 1, minWidth: 0, padding: '7px 9px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, fontFamily: "'DM Mono', monospace" }}
-                  />
-                  <button type="submit" disabled={pending} title="Guardar" style={{ color: 'var(--green-700)', padding: 4, opacity: pending ? 0.45 : 1 }}>
-                    <Icon name="check" size={16} />
-                  </button>
-                  <button type="button" disabled={pending} title="Cancelar" onClick={() => { setEditing(null); setEditValue('') }} style={{ color: 'var(--text-3)', padding: 4, opacity: pending ? 0.45 : 1 }}>
-                    <Icon name="x" size={16} />
-                  </button>
-                </form>
-              ) : (
-                <>
-                  <strong style={{ flex: 1, fontFamily: "'DM Mono', monospace", fontSize: 16 }}>{item.valor}%</strong>
-                  <button onClick={() => startEdit(item)} disabled={pending} title="Modificar" style={{ color: 'var(--blue)', padding: 4, opacity: pending ? 0.45 : 1 }}>
-                    <Icon name="edit" size={15} />
-                  </button>
-                  <button onClick={() => remove(item)} disabled={pending} title="Eliminar" style={{ color: 'var(--red)', padding: 4, opacity: pending ? 0.45 : 1 }}>
-                    <Icon name="trash" size={15} />
-                  </button>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
   )
 }
 

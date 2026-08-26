@@ -170,10 +170,13 @@ export default async function crmRoutes(fastify) {
       const canalVenta = esCotizacionSimple ? 'PROSPECCION_DIRECTA' : tipo === 'Licitación' ? 'LICITACION' : null
       const tipoVenta = esCotizacionSimple ? 'COTIZACION_SIMPLE' : canalVenta === 'LICITACION' ? 'LICITACION' : null
       const clienteId = Number(b.clienteId)
+      const crmId = b.crmId === undefined || b.crmId === null || b.crmId === '' ? null : Number(b.crmId)
       const descuentoPct = Number(b.descuentoPct || 0)
       const rawItems = Array.isArray(b.items) ? b.items : []
       if (!canalVenta) return reply.code(400).send({ error: 'Selecciona una cotizacion CRM valida' })
       if (!Number.isInteger(clienteId) || clienteId <= 0) return reply.code(400).send({ error: 'Selecciona un cliente' })
+      if (crmId !== null && (!Number.isInteger(crmId) || crmId <= 0)) return reply.code(400).send({ error: 'Registro CRM invalido' })
+      if (crmId !== null && !await ensureCrmAccess(f.prisma, crmId, request.user)) return reply.code(404).send({ error: 'Registro CRM no encontrado' })
       if (!rawItems.length) return reply.code(400).send({ error: 'Agrega al menos un producto' })
       if (!Number.isFinite(descuentoPct) || descuentoPct < 0 || descuentoPct > 100) return reply.code(400).send({ error: 'Descuento invalido' })
       if (requiresDescuentoPermission(descuentoPct) && !canApplyDescuento(request.user)) {
@@ -229,7 +232,36 @@ export default async function crmRoutes(fastify) {
         const vendedorId = request.user.role === 'admin' && Number.isInteger(Number(b.vendedorId)) ? Number(b.vendedorId) : request.user.id
         const vendedor = await tx.user.findFirst({ where: { id: vendedorId, activo: true }, select: { id: true, nombre: true } })
         if (!vendedor) throw Object.assign(new Error('Vendedor no valido'), { statusCode: 400 })
-        const lead = await tx.crmRegistro.create({
+        let lead
+        if (crmId !== null) {
+          const actual = await tx.crmRegistro.findUnique({
+            where: { id: crmId },
+            include: { cotizacionComercial: { select: { id: true } } },
+          })
+          if (!actual) throw Object.assign(new Error('Registro CRM no encontrado'), { statusCode: 404 })
+          if (actual.cotizacionComercial) throw Object.assign(new Error('Este registro CRM ya tiene una cotizacion vinculada'), { statusCode: 409 })
+          lead = await tx.crmRegistro.update({
+            where: { id: crmId },
+            data: {
+              nombre: cliente.nombre || actual.nombre || null,
+              rsocial: cliente.nombre || actual.rsocial || null,
+              rut: cliente.rut || actual.rut || null,
+              email: cliente.email || actual.email || null,
+              telefono: cliente.telefono || actual.telefono || null,
+              prioridad: String(b.prioridad || actual.prioridad || 'Media'),
+              accion: String(b.observaciones || '').trim() || actual.accion || 'Cotizacion creada desde CRM',
+              comentarios: String(b.observaciones || '').trim() || actual.comentarios || null,
+              fechaCotizacion: now,
+              etapaComercial: CRM_ETAPAS.COTIZACION_ENVIADA,
+              canalVenta,
+              tipoVenta,
+              origenDato: esCotizacionSimple ? 'CRM_COTIZACION_SIMPLE' : 'CRM_LICITACION',
+              estadoCambiadoAt: now,
+              ultimaGestionAt: now,
+              clienteId: cliente.id,
+            },
+          })
+        } else lead = await tx.crmRegistro.create({
           data: {
             ncotizacion: null,
             nombre: cliente.nombre || null,
@@ -282,10 +314,66 @@ export default async function crmRoutes(fastify) {
           }, include: { items: true },
         })
         await tx.crmRegistro.update({ where: { id: lead.id }, data: { ncotizacion: `CRM-${lead.id}` } })
-        await tx.crmAsignacionHistorial.create({ data: { crmId: lead.id, vendedorId: vendedor.id, origen: 'cotizacion_crm', asignadoPorId: Number(request.user.id) || null } })
+        if (crmId === null) await tx.crmAsignacionHistorial.create({ data: { crmId: lead.id, vendedorId: vendedor.id, origen: 'cotizacion_crm', asignadoPorId: Number(request.user.id) || null } })
         return { lead: { ...lead, ncotizacion: `CRM-${lead.id}` }, cotizacion }
       })
       return reply.code(201).send(result)
+    })
+
+    // La cotización que nace en CRM se edita siempre desde su oportunidad; no
+    // se crea una segunda licitación ni una orden de venta al guardar.
+    f.put('/:id/cotizacion', {
+      preHandler: [f.authenticate, f.rbac('ventas', 'write')],
+    }, async (request, reply) => {
+      const crmId = parseInt(request.params.id, 10)
+      if (!Number.isInteger(crmId) || crmId <= 0) return reply.code(400).send({ error: 'ID CRM invalido' })
+      if (!await ensureCrmAccess(f.prisma, crmId, request.user)) return reply.code(404).send({ error: 'Registro CRM no encontrado' })
+      const rawItems = Array.isArray(request.body?.items) ? request.body.items : null
+      if (!rawItems?.length) return reply.code(400).send({ error: 'La cotizacion debe tener al menos un producto' })
+      const productIds = [...new Set(rawItems.map(item => Number(item.productoId)).filter(Number.isInteger))]
+      if (productIds.length !== rawItems.length) return reply.code(400).send({ error: 'Cada item debe corresponder a un producto del catalogo' })
+      try {
+        const cotizacion = await f.prisma.$transaction(async tx => {
+          const actual = await tx.crmCotizacion.findUnique({ where: { crmId }, select: { id: true } })
+          if (!actual) throw Object.assign(new Error('El registro CRM no tiene una cotizacion propia'), { statusCode: 409 })
+          const productos = await tx.producto.findMany({
+            where: { id: { in: productIds }, activo: true },
+            select: { id: true, codigoInterno: true, nombre: true, descripcion: true },
+          })
+          if (productos.length !== productIds.length) throw Object.assign(new Error('Hay productos inexistentes o inactivos'), { statusCode: 400 })
+          const byId = new Map(productos.map(producto => [producto.id, producto]))
+          const items = rawItems.map((item, index) => {
+            const producto = byId.get(Number(item.productoId))
+            const cantidad = Number(item.cantidad)
+            const precioUnitario = Number(item.precioUnitario)
+            if (!Number.isInteger(cantidad) || cantidad < 1 || !Number.isFinite(precioUnitario) || precioUnitario < 0) {
+              throw Object.assign(new Error(`Item ${index + 1} tiene cantidad o precio invalido`), { statusCode: 400 })
+            }
+            return {
+              productoId: producto.id,
+              codigoInterno: String(item.codigoInterno || producto.codigoInterno || '').trim() || null,
+              nombre: String(item.nombre || producto.nombre || '').trim() || null,
+              descripcion: String(item.descripcion || producto.descripcion || '').trim() || null,
+              cantidad,
+              precioUnitario,
+            }
+          })
+          const patch = {}
+          for (const field of ['licitacion', 'licitacionPlazo', 'licitacionReferencia', 'licitacionOC', 'observaciones', 'direccionDespacho', 'direccionDespachoExtra', 'contactoDespacho', 'telefonoContactoDespacho', 'emailContactoDespacho', 'regionDespacho', 'comunaDespacho']) {
+            if (request.body?.[field] !== undefined) patch[field] = String(request.body[field] || '').trim() || null
+          }
+          if (request.body?.licitacionFecha !== undefined) patch.licitacionFecha = request.body.licitacionFecha ? new Date(request.body.licitacionFecha) : null
+          if (request.body?.fechaPlazo !== undefined) patch.fechaPlazo = request.body.fechaPlazo ? new Date(request.body.fechaPlazo) : null
+          if (request.body?.enviosParciales !== undefined) patch.enviosParciales = Boolean(request.body.enviosParciales)
+          if (request.body?.montoDespacho !== undefined) patch.montoDespacho = Number(request.body.montoDespacho) || 0
+          await tx.crmCotizacionItem.deleteMany({ where: { cotizacionId: actual.id } })
+          return tx.crmCotizacion.update({ where: { id: actual.id }, data: { ...patch, items: { create: items } }, include: { items: true } })
+        })
+        return cotizacion
+      } catch (error) {
+        if (error.statusCode) return reply.code(error.statusCode).send({ error: error.message })
+        throw error
+      }
     })
 
     // GET /api/crm?ejecutiva=...&estado=...&prioridad=...&search=...&page=1
