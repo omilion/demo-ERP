@@ -49,19 +49,37 @@ export function handleClienteUniqueError(error, reply) {
 }
 
 export async function ensureClienteIdentifiersAvailable(prisma, data = {}, reply, excludeId = null) {
-  if (!data.rut) return true
+  const scope = excludeId ? { id: { not: excludeId } } : {}
 
-  const existing = await prisma.cliente.findFirst({
-    where: {
-      rut: data.rut,
-      ...(excludeId ? { id: { not: excludeId } } : {}),
-    },
-    select: { id: true, rut: true },
-  })
-  if (!existing) return true
+  if (data.rut) {
+    const existing = await prisma.cliente.findFirst({
+      where: { rut: data.rut, ...scope },
+      select: { id: true },
+    })
+    if (existing) {
+      reply.code(409).send({ error: 'Ya existe un cliente registrado con ese RUT' })
+      return false
+    }
+  }
 
-  reply.code(409).send({ error: 'Ya existe un cliente registrado con ese RUT' })
-  return false
+  // El email se comprueba aca y no con un unique de base: la migracion que lo
+  // agregaba quedo revertida en el deploy (habia duplicados historicos) y hoy
+  // handleClienteUniqueError nunca llega a dispararse para este caso. La
+  // comparacion es case-insensitive porque el duplicado tipico difiere solo en
+  // mayusculas.
+  const email = typeof data.email === 'string' ? data.email.trim() : ''
+  if (email) {
+    const existing = await prisma.cliente.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' }, ...scope },
+      select: { id: true },
+    })
+    if (existing) {
+      reply.code(409).send({ error: 'Ya existe un cliente registrado con ese email' })
+      return false
+    }
+  }
+
+  return true
 }
 
 // Resumen real de las ventas del cliente.

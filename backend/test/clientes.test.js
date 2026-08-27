@@ -396,13 +396,16 @@ describe('PUT /api/clientes/:id', () => {
       const res = await app.inject({
         method: 'PUT', url: `/api/clientes/${cliente.id}`,
         headers: { authorization: `Bearer ${token}` },
-        payload: { nombre: `${marker}-EDITADO`, ciudad: 'Valparaiso' },
+        // "ciudad" se retiro de la ficha de cliente: la ubicacion vive en
+        // region/comuna. Se comprueba con otro campo de perfil, que es lo que
+        // este caso verifica en realidad: editar un inactivo sin reactivarlo.
+        payload: { nombre: `${marker}-EDITADO`, direccion: 'Av. Siempre Viva 742' },
       })
       expect(res.statusCode).toBe(200)
       expect(JSON.parse(res.body)).toMatchObject({
         id: cliente.id,
         nombre: `${marker}-EDITADO`,
-        ciudad: 'Valparaiso',
+        direccion: 'Av. Siempre Viva 742',
         activo: false,
       })
     } finally {
