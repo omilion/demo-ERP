@@ -19,6 +19,7 @@
  * Aplicar:
  *   node scripts/normalizar-estados-ventas.mjs --apply --confirm=NORMALIZAR_ESTADOS
  */
+import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { normalizeEstadoEntrega, normalizeTipoVenta } from '../src/routes/ventas/estados-normalize.js'
