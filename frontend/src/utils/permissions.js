@@ -2,9 +2,7 @@ export const ROLE_PERMISSIONS = {
   admin: { '*': ['read', 'write', 'delete'] },
   vendedor: {
     reportes: ['read'],
-    ventas: ['read', 'write'],
-    cotizaciones: ['read', 'write'],
-    licitaciones: ['read', 'write'],
+    ventas: ['read', 'write'],    licitaciones: ['read', 'write'],
     clientes: ['read', 'write'],
     catalogo: ['read'],
     despacho: ['read'],
@@ -15,9 +13,7 @@ export const ROLE_PERMISSIONS = {
   // no un permiso de modulo distinto aqui.
   coordinador_comercial: {
     reportes: ['read'],
-    ventas: ['read', 'write'],
-    cotizaciones: ['read', 'write'],
-    licitaciones: ['read', 'write'],
+    ventas: ['read', 'write'],    licitaciones: ['read', 'write'],
     clientes: ['read', 'write'],
     catalogo: ['read'],
     despacho: ['read'],

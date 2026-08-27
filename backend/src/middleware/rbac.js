@@ -4,9 +4,7 @@ const PERMISSIONS = {
   admin:        { '*': ['read', 'write', 'delete'] },
   vendedor:     {
     reportes:     ['read'],
-    ventas:       ['read', 'write'],
-    cotizaciones: ['read', 'write'],
-    licitaciones: ['read', 'write'],
+    ventas:       ['read', 'write'],    licitaciones: ['read', 'write'],
     clientes:     ['read', 'write'],
     catalogo:     ['read'],
     despacho:     ['read'],
@@ -16,9 +14,7 @@ const PERMISSIONS = {
   // los vendedores (backend/src/routes/crm/index.js), no un modulo/permiso nuevo aqui.
   coordinador_comercial: {
     reportes:     ['read'],
-    ventas:       ['read', 'write'],
-    cotizaciones: ['read', 'write'],
-    licitaciones: ['read', 'write'],
+    ventas:       ['read', 'write'],    licitaciones: ['read', 'write'],
     clientes:     ['read', 'write'],
     catalogo:     ['read'],
     despacho:     ['read'],
