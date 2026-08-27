@@ -25,6 +25,13 @@ export const ESTADO_PAGO_VALUES = ['No pagada', 'Pagada', 'Parcial', 'Pendiente 
 
 export const TIPO_VENTA_VALUES = ['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala', 'Marketplace']
 
+// Grafias con que un mismo valor aparece hoy en la base, para las consultas que
+// filtran por igualdad. Mientras convivan ambos vocabularios, un `where` que
+// nombre una sola grafia deja fuera al resto de las ordenes en silencio.
+export const GRAFIAS_ENTREGADA = ['Entregada', 'Entregado']
+export const GRAFIAS_LICITACION = ['Licitación', 'Licitacion']
+export const GRAFIAS_VENTA_SALA = ['Venta Sala', 'Venta sala']
+
 // Compara ignorando mayusculas, acentos y espacios sobrantes, que es
 // exactamente en lo que difieren las grafias legacy de las canonicas.
 function comparisonKey(value) {

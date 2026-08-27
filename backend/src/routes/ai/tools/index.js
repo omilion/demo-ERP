@@ -5,6 +5,7 @@ import { buildComisionesReporte } from '../../reportes/comisiones.js'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { GRAFIAS_ENTREGADA } from '../../ventas/estados-normalize.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const docsDir = path.join(__dirname, '../docs')
@@ -340,7 +341,9 @@ register({
   },
 }, async (prisma, input) => {
   const fecha = rangoPeriodo(input.periodo, input.anio, input.mes)
-  const where = { eliminada: false, createdAt: fecha, estadoEntrega: { not: 'Entregado' } }
+  // Ambas grafias significan lo mismo: nombrar solo una contaba como pendientes
+  // las ordenes ya entregadas escritas con la otra.
+  const where = { eliminada: false, createdAt: fecha, estadoEntrega: { notIn: GRAFIAS_ENTREGADA } }
   const [total, lista] = await Promise.all([
     prisma.orden.count({ where }),
     prisma.orden.findMany({ where, select: { nInterno: true, estadoEntrega: true, estadoPago: true, rutCliente: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take: 30 }),

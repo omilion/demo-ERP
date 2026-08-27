@@ -11,6 +11,7 @@ import { buildCobranzaHistoricoScopeWhere, mergeCobranzaWhere } from '../cobranz
 import { attachConsultaPreciosData } from '../productos/pricing.js'
 import { buildProveedorWhere, proveedorOrderBy } from '../proveedores/helpers.js'
 import { buildBodegaTallerWhere, enrichBodegaTallerItems, filterStockCriticoItems } from '../bodega-taller/helpers.js'
+import { GRAFIAS_LICITACION } from '../ventas/estados-normalize.js'
 import { registerComisionesReportRoutes } from './comisiones.js'
 import { registerMovimientosAnormalesReportRoutes } from './movimientos-anormales.js'
 import ExcelJS from 'exceljs'
@@ -464,12 +465,14 @@ export async function buildVentasExportWhere(fastify, query = {}) {
     if (range.error) return { error: range.error }
     applyRange(where, 'createdAt', range)
   }
-  if (tipo === 'venta-sala' || tipo === 'venta-directa') where.tipo = { in: ['Venta sala', 'Venta directa'] }
+  // Se nombran todas las grafias: filtrar por una sola dejaba fuera en silencio
+  // las ordenes escritas con la otra (2.648 licitaciones sin tilde, entre otras).
+  if (tipo === 'venta-sala' || tipo === 'venta-directa') where.tipo = { in: VENTA_DIRECTA_TIPOS }
   else if (tipo === 'convenio-marco') where.tipo = 'Convenio Marco'
-  else if (tipo === 'licitacion-convenio') where.tipo = { in: ['Licitación', 'Convenio Marco'] }
+  else if (tipo === 'licitacion-convenio') where.tipo = { in: [...GRAFIAS_LICITACION, 'Convenio Marco'] }
   else if (tipo === 'venta-web') where.tipo = 'Venta Web'
   else if (tipo && tipo !== 'licitacion') where.tipo = tipo
-  else if (tipo === 'licitacion') where.tipo = 'Licitación'
+  else if (tipo === 'licitacion') where.tipo = { in: GRAFIAS_LICITACION }
   if (rut) where.rutCliente = { contains: rut, mode: 'insensitive' }
   if (nInterno) {
     const parsedNInterno = parsePositiveInt(nInterno)
@@ -1177,10 +1180,10 @@ export default async function reportesRoutes(fastify) {
     }
     if (tipo === 'venta-sala' || tipo === 'venta-directa') where.tipo = { in: VENTA_DIRECTA_TIPOS }
     else if (tipo === 'convenio-marco') where.tipo = 'Convenio Marco'
-    else if (tipo === 'licitacion-convenio') where.tipo = { in: ['Licitación', 'Convenio Marco'] }
+    else if (tipo === 'licitacion-convenio') where.tipo = { in: [...GRAFIAS_LICITACION, 'Convenio Marco'] }
     else if (tipo === 'venta-web') where.tipo = 'Venta Web'
     else if (tipo && tipo !== 'licitacion') where.tipo = tipo
-    else if (tipo === 'licitacion') where.tipo = 'Licitación'
+    else if (tipo === 'licitacion') where.tipo = { in: GRAFIAS_LICITACION }
     if (rut) where.rutCliente = { contains: rut, mode: 'insensitive' }
     if (nInterno) where.nInterno = parseInt(nInterno, 10)
     if (oc) where.licitacion = { contains: oc, mode: 'insensitive' }
