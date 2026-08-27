@@ -1873,3 +1873,121 @@ describe('Venta directa stock, lifecycle and sucursal scope', () => {
     }
   })
 })
+
+// Regresion: el legacy MySQL escribe "Entregado" y "Venta sala"; la validacion
+// solo aceptaba "Entregada" y "Venta Sala". Como el formulario lee el estado
+// guardado y lo reenvia al guardar, editar cualquiera de esas ordenes moria en
+// 400. Al 26-08-2026 eran 16.035 de 16.368 ordenes activas en produccion (98%).
+describe('Edicion de ventas con la grafia heredada del legacy', () => {
+  let app, token
+
+  beforeAll(async () => {
+    app = buildApp({ logger: false })
+    await app.ready()
+    token = await loginAs(app, 'admin')
+  })
+  afterAll(async () => { await app.close() })
+
+  async function crearOrdenLegacy(data) {
+    const cliente = await app.prisma.cliente.findFirst({ select: { id: true } })
+    const user = await app.prisma.user.findFirst({ select: { id: true } })
+    // Se crea por Prisma a proposito: replica como entra el dato desde los
+    // importadores legacy, sin pasar por la validacion de la API.
+    return app.prisma.orden.create({
+      data: {
+        estado: 'Activa',
+        estadoPago: 'No pagada',
+        clienteId: cliente.id,
+        userId: user.id,
+        nInterno: 973000000 + Math.floor(Math.random() * 100000),
+        ...data,
+      },
+    })
+  }
+
+  it('permite editar una orden guardada como "Entregado" y la persiste como "Entregada"', async () => {
+    const orden = await crearOrdenLegacy({ tipo: 'Venta Web', estadoEntrega: 'Entregado' })
+    try {
+      const res = await app.inject({
+        method: 'PUT',
+        url: `/api/ventas/${orden.id}`,
+        headers: { authorization: `Bearer ${token}` },
+        // El formulario reenvia el mismo estado que leyo de la base.
+        payload: { estadoEntrega: 'Entregado', observaciones: 'editada tras el fix' },
+      })
+      expect(res.statusCode).toBe(200)
+      const guardada = await app.prisma.orden.findUnique({
+        where: { id: orden.id },
+        select: { estadoEntrega: true, observaciones: true },
+      })
+      expect(guardada.estadoEntrega).toBe('Entregada')
+      expect(guardada.observaciones).toBe('editada tras el fix')
+    } finally {
+      await app.prisma.orden.delete({ where: { id: orden.id } })
+    }
+  })
+
+  it('no exige guia ni despacho al reenviar un estado entregado que ya estaba guardado', async () => {
+    // La orden no tiene guia, despacho ni items entregados: si el guard tratara
+    // esto como una transicion nueva a "Entregada", responderia 409.
+    const orden = await crearOrdenLegacy({ tipo: 'Venta Web', estadoEntrega: 'Entregado' })
+    try {
+      const res = await app.inject({
+        method: 'PUT',
+        url: `/api/ventas/${orden.id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { estadoEntrega: 'Entregado' },
+      })
+      expect(res.statusCode).toBe(200)
+    } finally {
+      await app.prisma.orden.delete({ where: { id: orden.id } })
+    }
+  })
+
+  it('sigue exigiendo respaldo cuando la entrega es una transicion real', async () => {
+    const orden = await crearOrdenLegacy({ tipo: 'Venta Web', estadoEntrega: 'Pendiente entrega' })
+    try {
+      const res = await app.inject({
+        method: 'PUT',
+        url: `/api/ventas/${orden.id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { estadoEntrega: 'Entregada' },
+      })
+      expect(res.statusCode).toBe(409)
+    } finally {
+      await app.prisma.orden.delete({ where: { id: orden.id } })
+    }
+  })
+
+  it('unifica las grafias duplicadas de tipo de venta al guardar', async () => {
+    const orden = await crearOrdenLegacy({ tipo: 'Venta sala', estadoEntrega: 'Pendiente entrega' })
+    try {
+      const res = await app.inject({
+        method: 'PUT',
+        url: `/api/ventas/${orden.id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { tipo: 'Venta sala' },
+      })
+      expect(res.statusCode).toBe(200)
+      const guardada = await app.prisma.orden.findUnique({ where: { id: orden.id }, select: { tipo: true } })
+      expect(guardada.tipo).toBe('Venta Sala')
+    } finally {
+      await app.prisma.orden.delete({ where: { id: orden.id } })
+    }
+  })
+
+  it('rechaza un estado que no corresponde a ningun valor del catalogo', async () => {
+    const orden = await crearOrdenLegacy({ tipo: 'Venta Web', estadoEntrega: 'Pendiente entrega' })
+    try {
+      const res = await app.inject({
+        method: 'PUT',
+        url: `/api/ventas/${orden.id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { estadoEntrega: 'Cualquier cosa' },
+      })
+      expect(res.statusCode).toBe(400)
+    } finally {
+      await app.prisma.orden.delete({ where: { id: orden.id } })
+    }
+  })
+})

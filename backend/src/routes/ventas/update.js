@@ -8,9 +8,26 @@ import { validateDescuentoContraReglas } from './descuentos-guard.js'
 import { assertDiscountAuthorizationForDraft } from '../descuentos/rules-engine.js'
 import { autoNotifyTaller } from '../pasar-taller/service.js'
 import { calculateDeliveryDate, normalizeLicitacionPlazo, normalizeMarketplace, sanitizeCommercialIdentifier } from './operational-rules.js'
+import {
+  ESTADO_ENTREGA_VALUES as ENTREGA_VALUES,
+  ESTADO_PAGO_VALUES as PAGO_VALUES,
+  TIPO_VENTA_VALUES as TIPO_VALUES,
+  normalizeEstadoEntrega,
+  normalizeEstadoPago,
+  normalizeTipoVenta,
+} from './estados-normalize.js'
 
-export const ESTADO_PAGO_VALUES = ['No pagada', 'Pagada', 'Parcial']
-export const ESTADO_ENTREGA_VALUES = ['Pendiente entrega', 'En despacho', 'Entregada', 'Parcial']
+// Los catalogos y su normalizacion viven en estados-normalize.js: el legacy
+// escribe otra grafia de los mismos estados y hay que aceptarla al entrar.
+// Se reexportan para no romper a quien ya los importaba desde aqui.
+export { ESTADO_PAGO_VALUES, ESTADO_ENTREGA_VALUES, TIPO_VENTA_VALUES } from './estados-normalize.js'
+
+// Acepta cualquier grafia conocida y persiste siempre la forma canonica. Si el
+// valor no corresponde a ningun estado del catalogo, cae al enum y se rechaza
+// con el mensaje habitual.
+function canonicalEnum(values, normalize) {
+  return z.preprocess(value => (value === undefined ? value : normalize(value) ?? value), z.enum(values))
+}
 
 const ItemSchema = z.object({
   productoId: z.number().int(),
@@ -23,10 +40,10 @@ const ItemSchema = z.object({
 })
 
 const Schema = z.object({
-  tipo: z.enum(['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala', 'Marketplace']).optional(),
+  tipo: canonicalEnum(TIPO_VALUES, normalizeTipoVenta).optional(),
   estado: z.string().optional(),
-  estadoPago: z.enum(ESTADO_PAGO_VALUES).optional(),
-  estadoEntrega: z.enum(ESTADO_ENTREGA_VALUES).optional(),
+  estadoPago: canonicalEnum(PAGO_VALUES, normalizeEstadoPago).optional(),
+  estadoEntrega: canonicalEnum(ENTREGA_VALUES, normalizeEstadoEntrega).optional(),
   clienteSucursalId: z.number().int().nullable().optional(),
   abono: z.number().min(0).optional(),
   facturado: z.number().min(0).optional(),
@@ -161,7 +178,15 @@ export default async function updateVenta(fastify) {
           return reply.code(403).send({ error: 'No tiene permiso para aplicar descuentos' })
         }
       }
-      if (ordenData.estadoEntrega === 'Entregada') {
+      // El estado guardado puede venir con la grafia legacy ("Entregado"), que
+      // normaliza a la misma forma canonica. Comparar en canonico evita tratar
+      // como transicion lo que es el mismo estado reenviado por el formulario:
+      // de lo contrario las ordenes ya entregadas quedarian bloqueadas por el
+      // guard de abajo al editarles cualquier otro campo.
+      const currentEstadoEntrega = normalizeEstadoEntrega(current.estadoEntrega) ?? current.estadoEntrega
+      const cambiaEstadoEntrega = ordenData.estadoEntrega !== undefined && ordenData.estadoEntrega !== currentEstadoEntrega
+
+      if (ordenData.estadoEntrega === 'Entregada' && cambiaEstadoEntrega) {
         const allItemsDelivered = current.items.length > 0 && current.items.every(item => Number(item.nEntregados || 0) >= Number(item.cantidad || 0))
         if (!allItemsDelivered) {
           const [despacho, guia] = await Promise.all([
@@ -179,7 +204,7 @@ export default async function updateVenta(fastify) {
           }
         }
       }
-      if (ordenData.estadoEntrega !== undefined && ordenData.estadoEntrega !== current.estadoEntrega) {
+      if (cambiaEstadoEntrega) {
         ordenData.fechaEstadoEntrega = new Date()
       }
 

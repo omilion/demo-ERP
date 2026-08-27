@@ -15,6 +15,10 @@ import { fileURLToPath } from 'url'
 import { createInterface } from 'readline'
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
+// El legacy escribe otra grafia de los mismos estados y tipos ("Entregado" por
+// "Entregada", "Venta sala" por "Venta Sala"). Se normaliza al importar para no
+// reponer en la base valores que despues bloquean la edicion desde la API.
+import { normalizeEstadoEntrega, normalizeEstadoPago, normalizeTipoVenta } from '../src/routes/ventas/estados-normalize.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 for (const envPath of [resolve(process.cwd(), '.env'), resolve(__dirname, '../.env')]) {
@@ -145,10 +149,12 @@ function legacyOrder(row, clienteId) {
   const rut = text(row.rut_cliente)
   return {
     nInterno: int(row.n_interno),
-    tipo: text(row.tipo) || 'Venta sala',
+    // Un valor que no corresponde a ningun tipo conocido se preserva tal cual
+    // en vez de adivinar a cual deberia mapear.
+    tipo: normalizeTipoVenta(row.tipo) ?? (text(row.tipo) || 'Venta Sala'),
     estado: text(row.estado) || 'Activa',
-    estadoPago: text(row.estado_pago) || 'No pagada',
-    estadoEntrega: text(row.estado_entrega) || 'Pendiente entrega',
+    estadoPago: normalizeEstadoPago(row.estado_pago) ?? (text(row.estado_pago) || 'No pagada'),
+    estadoEntrega: normalizeEstadoEntrega(row.estado_entrega) ?? (text(row.estado_entrega) || 'Pendiente entrega'),
     fechaEstadoEntrega: date(row.fecha_estado_entrega),
     clienteId: clienteId || null,
     rutCliente: rut || null,

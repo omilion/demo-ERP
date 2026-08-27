@@ -16,6 +16,7 @@ import { useEvaluarDescuentos, useSolicitarDescuento, useSolicitudesDescuento } 
 import { can, canAny } from '../../utils/permissions'
 import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
 import { plazoDiasFromLicitacion, sanitizeOrdenCompra, sanitizePlazoDias } from '../../utils/licitacionFields'
+import { normalizeEstadoEntrega, normalizeTipoVenta } from '../../utils/ventaEstados'
 import api from '../../api/client'
 
 const DOCUMENTOS_VENTA = ['Factura Plast', 'Factura Laura', 'Boleta Electronica', 'NC Plast', 'NC Laura', 'NC Inter Plast', 'ND Plast', 'ND Laura']
@@ -1178,10 +1179,14 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
     if (found && initializedId !== found.id) {
       set('clienteId', String(found.clienteId || ''))
       set('clienteSucursalId', String(found.clienteSucursalId || ''))
-      set('tipo', found.tipo || 'Normal')
+      // Las ordenes traidas del legacy usan otra grafia ("Entregado",
+      // "Venta sala"). Se normaliza al cargar para que el desplegable muestre
+      // el estado real: si queda sin opcion seleccionada, guardar cualquier
+      // otro campo persistiria el primer valor de la lista.
+      set('tipo', normalizeTipoVenta(found.tipo) ?? found.tipo ?? 'Normal')
       set('estado', found.estado || 'Activa')
       set('estadoPago', found.estadoPago || 'No pagada')
-      set('estadoEntrega', found.estadoEntrega || 'Pendiente entrega')
+      set('estadoEntrega', normalizeEstadoEntrega(found.estadoEntrega) ?? 'Pendiente entrega')
       set('abono', found.abono != null ? String(found.abono) : '')
       set('guias', found.guias != null ? String(found.guias) : '')
       set('facturado', found.facturado != null ? String(found.facturado) : '')

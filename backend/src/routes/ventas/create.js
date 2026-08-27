@@ -1,7 +1,12 @@
 import { z } from 'zod'
 import { linkCrmToOrder } from '../../domain/crm/service.js'
 import { computeTotal, attachCliente } from './helpers.js'
-import { ESTADO_PAGO_VALUES, ESTADO_ENTREGA_VALUES } from './update.js'
+import {
+  ESTADO_PAGO_VALUES,
+  ESTADO_ENTREGA_VALUES,
+  normalizeEstadoEntrega,
+  normalizeEstadoPago,
+} from './estados-normalize.js'
 import { applyVentaStockDeltas, buildStockDeltasFromItems, isVentaDirectaStockTipo } from './stock.js'
 import { validateConvenioMarcoOcForWrite } from './convenio-marco.js'
 import { canApplyDescuento, requiresDescuentoPermission } from './descuentos-permissions.js'
@@ -33,8 +38,10 @@ const Schema = z.object({
   licitacion: z.string().optional(),
   observaciones: z.string().optional(),
   creadorNombre: z.string().optional(),
-  estadoPago: z.enum(ESTADO_PAGO_VALUES).optional(),
-  estadoEntrega: z.enum(ESTADO_ENTREGA_VALUES).optional(),
+  // Misma tolerancia de grafia que en el update: los importadores legacy y los
+  // reintentos del formulario pueden traer la forma masculina.
+  estadoPago: z.preprocess(v => (v === undefined ? v : normalizeEstadoPago(v) ?? v), z.enum(ESTADO_PAGO_VALUES)).optional(),
+  estadoEntrega: z.preprocess(v => (v === undefined ? v : normalizeEstadoEntrega(v) ?? v), z.enum(ESTADO_ENTREGA_VALUES)).optional(),
   items: z.array(ItemSchema).min(1),
   licitacionFecha: z.string().optional().nullable(),
   licitacionPlazo: z.string().optional().nullable(),
