@@ -349,12 +349,26 @@ export default async function crmRoutes(fastify) {
             if (!Number.isInteger(cantidad) || cantidad < 1 || !Number.isFinite(precioUnitario) || precioUnitario < 0) {
               throw Object.assign(new Error(`Item ${index + 1} tiene cantidad o precio invalido`), { statusCode: 400 })
             }
+            // CU-03: adjudicacion parcial. Se distingue "no registrada" (null,
+            // se vende lo cotizado) de "no me adjudicaron nada" (0, no pasa a la
+            // venta); con el 0 por defecto del legacy no se pueden separar.
+            let cantAdjudicados = null
+            if (item.cantAdjudicados !== undefined && item.cantAdjudicados !== null && item.cantAdjudicados !== '') {
+              cantAdjudicados = Number(item.cantAdjudicados)
+              if (!Number.isInteger(cantAdjudicados) || cantAdjudicados < 0) {
+                throw Object.assign(new Error(`Item ${index + 1}: la cantidad adjudicada debe ser un entero no negativo`), { statusCode: 400 })
+              }
+              if (cantAdjudicados > cantidad) {
+                throw Object.assign(new Error(`Item ${index + 1}: no se puede adjudicar ${cantAdjudicados} si se cotizaron ${cantidad}`), { statusCode: 400 })
+              }
+            }
             return {
               productoId: producto.id,
               codigoInterno: String(item.codigoInterno || producto.codigoInterno || '').trim() || null,
               nombre: String(item.nombre || producto.nombre || '').trim() || null,
               descripcion: String(item.descripcion || producto.descripcion || '').trim() || null,
               cantidad,
+              cantAdjudicados,
               precioUnitario,
             }
           })

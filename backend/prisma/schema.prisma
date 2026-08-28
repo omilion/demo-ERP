@@ -1028,6 +1028,8 @@ model CrmCotizacionItem {
   nombre          String?
   descripcion     String?
   cantidad        Int
+  // null = adjudicacion no registrada (se vende lo cotizado); 0 = no adjudicada.
+  cantAdjudicados Int?            @map("cant_adjudicados")
   precioUnitario  Float           @map("precio_unitario")
   cotizacion      CrmCotizacion   @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
 

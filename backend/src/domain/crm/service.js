@@ -49,6 +49,25 @@ function validationError(message, statusCode = 400) {
   return error
 }
 
+// CU-03: la venta se crea por lo ADJUDICADO, no por lo cotizado.
+//
+//   null -> no se registro adjudicacion: se vende la cantidad cotizada
+//   0    -> la linea no fue adjudicada: no pasa a la venta
+//   N    -> se vende N
+//
+// El legacy ya lo modelaba (cotizacion_licitacion_items.cantAdjudicados) y el
+// CRM que lo reemplaza no, de modo que aprobar una adjudicacion parcial creaba
+// la venta por el total cotizado. Hay 221 lineas parciales en 64 cotizaciones.
+//
+// Se distingue null de 0 -a diferencia del default 0 del legacy- porque "todavia
+// no registro la adjudicacion" y "no me adjudicaron nada" llevan a ventas
+// distintas: la primera se vende completa, la segunda no se vende.
+export function resolverItemsAdjudicados(items = []) {
+  return items
+    .filter(item => item.cantAdjudicados === null || item.cantAdjudicados === undefined || item.cantAdjudicados > 0)
+    .map(item => ({ ...item, cantidad: item.cantAdjudicados ?? item.cantidad }))
+}
+
 // Faltaban COMPRA_AGIL y PROSPECCION_DIRECTA, que son canales validos del CRM
 // (ver CRM_CANALES). Al no estar mapeados caian al 'Normal' del fallback, con
 // lo que una compra agil ganada quedaba indistinguible de una venta comun y
@@ -123,7 +142,7 @@ async function createOrdenFromCrmCotizacion(tx, crm, actor = {}) {
   const productos = await tx.producto.findMany({ where: { id: { in: productIds } }, select: { id: true, activo: true, codigoInterno: true, nombre: true, descripcion: true } })
   if (productos.length !== productIds.length || productos.some(producto => !producto.activo)) throw validationError('La cotizacion contiene productos inexistentes o inactivos')
   const productById = new Map(productos.map(producto => [producto.id, producto]))
-  const items = cotizacion.items.map(item => ({
+  const items = resolverItemsAdjudicados(cotizacion.items).map(item => ({
     productoId: item.productoId,
     codigoInterno: item.codigoInterno || productById.get(item.productoId).codigoInterno,
     nombre: item.nombre || productById.get(item.productoId).nombre,
@@ -131,6 +150,7 @@ async function createOrdenFromCrmCotizacion(tx, crm, actor = {}) {
     cantidad: item.cantidad,
     precioUnitario: item.precioUnitario,
   }))
+  if (!items.length) throw validationError('Ninguna linea de la cotizacion fue adjudicada: no hay venta que crear')
   const tipo = cotizacion.tipo
   if (!['Licitación', 'Venta Directa'].includes(tipo)) throw validationError('Tipo de cotizacion CRM no soportado')
   if (tipo === 'Licitación' && (!cotizacion.licitacion || !cotizacion.licitacionFecha)) throw validationError('La licitacion requiere ID y fecha para aprobarla')
@@ -190,11 +210,22 @@ async function createOrdenFromCrmCotizacion(tx, crm, actor = {}) {
       fechaPlazo: cotizacion.fechaPlazo, plazoEntregaDias: cotizacion.plazoEntregaDias, plazoEntregaTipo: cotizacion.plazoEntregaTipo,
       enviosParciales: cotizacion.enviosParciales, montoDespacho: cotizacion.montoDespacho || 0,
     }
+    // El espejo legacy conserva las dos cifras -cotizada y adjudicada-, asi que
+    // se arma desde los items originales de la cotizacion: en `items` la
+    // cantidad ya es la adjudicada y la parcialidad se perderia.
+    const itemsEspejoLegacy = cotizacion.items.map(item => ({
+      codigoInterno: item.codigoInterno || productById.get(item.productoId)?.codigoInterno || null,
+      nombre: item.nombre || productById.get(item.productoId)?.nombre || null,
+      descripcion: item.descripcion || productById.get(item.productoId)?.descripcion || null,
+      cantidad: item.cantidad,
+      precio: item.precioUnitario,
+      cantAdjudicados: item.cantAdjudicados ?? item.cantidad,
+    }))
     if (existing) {
       await tx.cotizacionLicitacionItem.deleteMany({ where: { cotizacionId: existing.id } })
-      await tx.cotizacionLicitacion.update({ where: { id: existing.id }, data: { ...data, items: { create: items.map(item => ({ codigoInterno: item.codigoInterno, nombre: item.nombre, descripcion: item.descripcion, cantidad: item.cantidad, precio: item.precioUnitario, cantAdjudicados: 0 })) } } })
+      await tx.cotizacionLicitacion.update({ where: { id: existing.id }, data: { ...data, items: { create: itemsEspejoLegacy } } })
     } else {
-      await tx.cotizacionLicitacion.create({ data: { idLicitacion: cotizacion.licitacion, ...data, items: { create: items.map(item => ({ codigoInterno: item.codigoInterno, nombre: item.nombre, descripcion: item.descripcion, cantidad: item.cantidad, precio: item.precioUnitario, cantAdjudicados: 0 })) } } })
+      await tx.cotizacionLicitacion.create({ data: { idLicitacion: cotizacion.licitacion, ...data, items: { create: itemsEspejoLegacy } } })
     }
   }
   return orden

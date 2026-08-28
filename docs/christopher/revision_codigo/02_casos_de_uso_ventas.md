@@ -126,9 +126,30 @@ Montos recuperables del nivel alta:
 
 **Decisión pendiente:** el modelo tiene un solo campo de comisión, pero el portal descuenta **dos** conceptos: comisión por venta y cofinanciamiento logístico. Se graba la comisión por venta, que es lo que el campo declara, y el cofinanciamiento queda anotado en observaciones. Si Plastimar necesita separarlo para el margen, requiere campo propio.
 
+### CU-03 — Adjudicación parcial: resuelta
+
+La venta ahora se crea por lo **adjudicado**, no por lo cotizado. Antes, aprobar una adjudicación parcial generaba una venta por el total cotizado — se facturaba de más.
+
+Fue más barato de lo estimado porque **las tablas de cotización del CRM están vacías**: las 18.528 cotizaciones viven en la tabla legacy, así que no hubo datos que migrar y el cambio es puramente hacia adelante.
+
+El modelo distingue tres situaciones, que el `default 0` del legacy no permitía separar:
+
+| Valor | Significado | Al aprobar |
+|---|---|---|
+| `null` | Adjudicación no registrada | Se vende la cantidad cotizada |
+| `0` | La línea no fue adjudicada | No pasa a la venta |
+| `N` | Adjudicación parcial o total | Se venden N |
+
+Con el `0` por defecto no se puede distinguir "todavía no registro la adjudicación" de "no me adjudicaron nada", y llevan a ventas distintas.
+
+Incluye restricción en base de datos (`cantAdjudicados <= cantidad`): el legacy tiene una fila que lo incumple, señal de que sin restricción ocurre. Si ninguna línea queda adjudicada, aprobar falla en vez de crear una venta vacía.
+
+El espejo hacia la tabla legacy conserva **ambas** cifras —cotizada y adjudicada—, de modo que la parcialidad no se pierde al sincronizar.
+
+---
+
 ### Lo que sigue abierto en esta ficha
 
 - **CU-01** boleta sin cliente — corresponde al área de facturación.
 - **CU-02** prueba integrada de Webpay rechazado, transferencia pendiente y diferencia de monto.
-- **CU-03** adjudicación parcial: 221 casos reales, y es una regresión respecto del legacy.
 - **CU-06** versionado de la cotización y registro de la aceptación del cliente.
