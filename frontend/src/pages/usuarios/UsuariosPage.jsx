@@ -1,29 +1,62 @@
 import { toast, confirmDialog } from '../../store/notif'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../components/shared'
 import { useDeleteUsuario, useUsuarios, useCreateUsuario, useUpdateUsuario, useUpdatePermisos } from '../../api/usuarios'
 import { useSucursales } from '../../api/locations'
 import { useAuthStore } from '../../store/auth'
 
-const ROLES = ['admin', 'vendedor', 'coordinador_comercial', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
+const ROLES = ['admin', 'vendedor', 'coordinador_comercial', 'bodeguero', 'cajero', 'taller', 'taller_operario', 'rrhh', 'solo_lectura']
 
+// Espejo de MODULES y MODULE_FUNCTIONS en backend/src/routes/usuarios/index.js.
+// Si se ofrece aca algo que el backend no acepta, guardar responde 400; si falta
+// algo que el backend si exige, ese permiso no se puede delegar desde la UI.
+// Ambas cosas pasaban: 'cotizaciones' ya no existe en el backend y 'usuarios',
+// 'config', 'admin' y 'ai' no se ofrecian aunque el codigo los exige.
+//
+// El tercer elemento son las funciones delegables dentro del modulo. Sin marcar
+// ninguna, el permiso del modulo cubre todas sus funciones, como siempre.
 const MODULOS = [
-  ['ventas', 'Ventas'],
-  ['cotizaciones', 'Cotizaciones'],
+  ['ventas', 'Ventas', [
+    ['crear', 'Crear venta'],
+    ['editar', 'Editar venta y cargos'],
+    ['entregas', 'Marcar entregas — bodega'],
+    ['taller', 'Enviar orden a taller'],
+    ['anular', 'Anular y reactivar'],
+  ]],
   ['licitaciones', 'Licitaciones'],
   ['clientes', 'Clientes'],
-  ['bodega', 'Bodega'],
+  ['bodega', 'Bodega', [
+    ['movimientos', 'Entradas y salidas'],
+    ['ajustes', 'Ajustes y mermas'],
+    ['compras', 'OC a proveedores'],
+  ]],
   ['catalogo', 'Catalogo'],
   ['proveedores', 'Proveedores'],
-  ['despacho', 'Despacho'],
-  ['taller', 'Taller / Bodega Taller / Telas'],
+  ['despacho', 'Despacho', [
+    ['packing', 'Armar packing'],
+    ['guias', 'Emitir y editar guias'],
+  ]],
+  ['taller', 'Taller / Bodega Taller / Telas', [
+    ['avance', 'Registrar avance y consumos'],
+    ['gestion', 'Crear, editar y asignar OT'],
+    ['cerrar', 'Cerrar y anular OT'],
+    ['materiales', 'Materiales de taller'],
+  ]],
   ['caja', 'Caja'],
   ['cobranza', 'Cobranza'],
-  ['facturacion', 'Facturación electrónica'],
+  ['facturacion', 'Facturación electrónica', [
+    ['emitir', 'Emitir y enviar DTE'],
+    ['anular', 'Notas de credito y anulacion'],
+    ['folios', 'CAF y ajuste de folios'],
+  ]],
   ['descuentos', 'Descuentos'],
   ['rrhh', 'RRHH'],
   ['costeo', 'Costeo de fabricación'],
   ['reportes', 'Reportes'],
+  ['usuarios', 'Usuarios y accesos'],
+  ['config', 'Configuración'],
+  ['admin', 'Administración'],
+  ['ai', 'Asistente IA'],
 ]
 const PERMS = ['read', 'write', 'delete']
 
@@ -234,15 +267,31 @@ function EditUsuarioModal({ user, sucursales, onClose }) {
                 </tr>
               </thead>
               <tbody>
-                {MODULOS.map(([mod, label]) => (
-                  <tr key={mod} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={{ padding: '7px 12px', fontWeight: 500 }}>{label}</td>
-                    {PERMS.map(p => (
-                      <td key={p} style={{ padding: '7px 8px', textAlign: 'center' }}>
-                        <input type="checkbox" checked={(permisos[mod] || []).includes(p)} onChange={() => togglePerm(mod, p)} />
-                      </td>
-                    ))}
-                  </tr>
+                {MODULOS.map(([mod, label, funciones = []]) => (
+                  <Fragment key={mod}>
+                    <tr style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: '7px 12px', fontWeight: 500 }}>{label}</td>
+                      {PERMS.map(p => (
+                        <td key={p} style={{ padding: '7px 8px', textAlign: 'center' }}>
+                          <input type="checkbox" checked={(permisos[mod] || []).includes(p)} onChange={() => togglePerm(mod, p)} />
+                        </td>
+                      ))}
+                    </tr>
+                    {/* El permiso del modulo ya cubre todas sus funciones: estas filas
+                        sirven para dar UNA sin abrir el modulo entero. */}
+                    {funciones.map(([fn, fnLabel]) => {
+                      const clave = `${mod}.${fn}`
+                      const cubiertaPorModulo = (permisos[mod] || []).length > 0
+                      return <tr key={clave} style={{ borderTop: '1px solid var(--border)' }}>
+                        <td style={{ padding: '5px 12px 5px 30px', fontSize: 12, color: 'var(--text-2)' }}>{fnLabel}</td>
+                        {PERMS.map(p => (
+                          <td key={p} style={{ padding: '5px 8px', textAlign: 'center' }}>
+                            <input type="checkbox" checked={(permisos[clave] || []).includes(p)} onChange={() => togglePerm(clave, p)} />
+                          </td>
+                        ))}
+                      </tr>
+                    })}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

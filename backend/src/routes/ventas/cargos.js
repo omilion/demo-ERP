@@ -235,8 +235,10 @@ export default async function ventaCargosRoutes(fastify) {
   })
 
   // Actualizar nEntregados de un item
+  // Lo hace BODEGA, no ventas. Etiquetado como funcion para poder darle el
+  // permiso sin habilitarla ademas a crear y editar ventas.
   fastify.put('/items/:itemId/entregados', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('ventas.entregas', 'write')],
   }, async (request, reply) => {
     const itemId = parseInt(request.params.itemId, 10)
     const { nEntregados } = request.body || {}

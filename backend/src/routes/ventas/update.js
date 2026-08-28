@@ -564,8 +564,10 @@ export default async function updateVenta(fastify) {
     }
   })
 
+  // Lo hace el COORDINADOR DE TALLER. Misma razon que las entregas: empujar
+  // una orden a taller no deberia exigir poder crear ventas.
   fastify.post('/:id/forzar-taller', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('ventas.taller', 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })

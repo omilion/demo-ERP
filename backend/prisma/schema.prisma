@@ -55,6 +55,7 @@ enum Role {
   bodeguero
   cajero
   taller
+  taller_operario
   rrhh
   solo_lectura
 

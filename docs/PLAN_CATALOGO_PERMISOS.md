@@ -120,8 +120,8 @@ Sale de agrupar los endpoints reales por la operación de negocio que representa
 | Dyan Cortés | `bodeguero` | `taller.gestion`, `ventas.taller`, `bodega.compras` |
 | Diego Ávila | `bodeguero` | `bodega.movimientos`, **`ventas.entregas`** |
 | Zalma Lobos | `taller` | `taller.gestion`, `taller.cerrar` |
-| Jenifer Breidenbach | `taller` | **`taller.avance`** únicamente |
-| Mercedes Rodríguez | `taller` | **`taller.avance`** únicamente |
+| Jenifer Breidenbach | **`taller_operario`** | **`taller.avance`** únicamente |
+| Mercedes Rodríguez | **`taller_operario`** | **`taller.avance`** únicamente |
 | Sebastián Mella | `taller` | `taller.materiales`, `bodega.movimientos`, `despacho` |
 
 Lo que esto cambia en concreto: **Diego Ávila puede marcar entregas sin poder crear ventas**, y **Jenifer y Mercedes registran su avance sin poder cerrar ni anular una OT**. Hoy ninguna de las dos cosas es posible.
@@ -164,3 +164,33 @@ Cada paso debería demostrarse con las cuentas reales sobre la copia local de pr
 - Jenifer registra un avance y **falla** al cerrar la OT.
 - Daniela emite un DTE y **falla** al ajustar folios.
 - Un permiso antiguo a nivel de módulo sigue funcionando igual que antes.
+
+---
+
+## 8. Corrección al implementarlo (28-08-2026)
+
+Al construir el mecanismo apareció un error de este mismo documento, y conviene dejarlo escrito porque cambia el catálogo de roles.
+
+**Los permisos extra son aditivos: amplían lo que da el rol, nunca lo recortan.** Es deliberado — si una función suelta pudiera restar, asignar un permiso dejaría a alguien con menos acceso del que ya tenía, y de forma silenciosa.
+
+La consecuencia es que **para acotar a alguien dentro de un módulo, su rol no puede otorgar ese módulo en bloque**. Y el rol `taller` otorga `taller: [read, write]`, así que cualquier función cae al permiso del módulo:
+
+| Con rol `taller` | Resultado |
+|---|---|
+| `taller.avance` write | permitido |
+| `taller.cerrar` write | **permitido** — cae al módulo |
+| `taller.gestion` write | **permitido** — cae al módulo |
+
+O sea: la tabla de arriba, que decía que Jenifer y Mercedes tendrían `taller.avance` únicamente, **no era alcanzable**. Con ese rol podían cerrar y anular OT por más funciones que se les acotaran.
+
+Se agrega el rol **`taller_operario`** — `taller: [read]` más `taller.avance: [read, write]` — que sí lo consigue. Es aditivo: ningún usuario existente cambia de rol.
+
+El caso de bodega no tenía este problema y funciona tal como estaba escrito: `bodeguero` da `ventas: [read]`, de modo que `ventas.entregas` amplía sin abrir el módulo. **Diego Ávila marca entregas y sigue sin poder crear ventas.**
+
+### El catálogo de funciones es cerrado
+
+El middleware resuelve cualquier `modulo.funcion`, pero la asignación valida contra una lista fija. Si se aceptara cualquier texto después del punto, un typo como `ventas.entergas` crearía un permiso asignable que no hace nada — exactamente el defecto de los seis módulos fantasma eliminados en `54057ab`.
+
+### Qué falta
+
+El mecanismo está listo y es retrocompatible: verificado que un permiso de módulo sigue habilitando todas sus funciones y que lo negado sigue negado. Falta **etiquetar los endpoints** con su función —hasta que se etiquete, cada uno resuelve por su módulo como hoy— y ampliar la pantalla de Accesos.

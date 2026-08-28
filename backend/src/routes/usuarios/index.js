@@ -22,6 +22,41 @@ const MODULES = new Set([
   'facturacion', 'costeo', 'usuarios', 'config', 'admin', 'ai',
 ])
 
+// Funciones delegables dentro de un modulo. El middleware resuelve cualquier
+// 'modulo.funcion' cayendo al modulo, pero aca el catalogo es CERRADO a
+// proposito: si se acepta cualquier texto despues del punto, un typo crea un
+// permiso que se puede asignar y no hace nada. Es el mismo defecto que tenian
+// los seis modulos fantasma que se eliminaron en 54057ab.
+//
+// Salen de agrupar los endpoints reales por la operacion de negocio que
+// representan; el detalle esta en docs/PLAN_CATALOGO_PERMISOS.md.
+const MODULE_FUNCTIONS = {
+  // El caso que motiva todo esto: bodega marca entregas sin poder crear ventas.
+  ventas: new Set(['crear', 'editar', 'entregas', 'taller', 'anular']),
+  taller: new Set(['avance', 'gestion', 'cerrar', 'materiales']),
+  facturacion: new Set(['emitir', 'anular', 'folios']),
+  despacho: new Set(['packing', 'guias']),
+  bodega: new Set(['movimientos', 'ajustes', 'compras']),
+}
+
+// Acepta 'ventas' y tambien 'ventas.entregas'. Devuelve el motivo del rechazo
+// en vez de un booleano para poder decir que fue lo invalido.
+function validarClavePermiso(clave) {
+  const punto = clave.indexOf('.')
+  if (punto === -1) {
+    return MODULES.has(clave) ? null : `modulo de permiso invalido: ${clave}`
+  }
+  const base = clave.slice(0, punto)
+  const funcion = clave.slice(punto + 1)
+  if (!MODULES.has(base)) return `modulo de permiso invalido: ${base}`
+  const funciones = MODULE_FUNCTIONS[base]
+  if (!funciones) return `el modulo ${base} no tiene permisos por funcion`
+  if (!funciones.has(funcion)) {
+    return `funcion invalida en ${base}: ${funcion}. Validas: ${[...funciones].join(', ')}`
+  }
+  return null
+}
+
 const userSelect = {
   id: true,
   email: true,
@@ -62,7 +97,8 @@ function sanitizePermisosExtra(value) {
   if (typeof value !== 'object' || Array.isArray(value)) return { error: 'permisosExtra debe ser un objeto' }
   const sanitized = {}
   for (const [module, permissions] of Object.entries(value)) {
-    if (!MODULES.has(module)) return { error: `modulo de permiso invalido: ${module}` }
+    const motivo = validarClavePermiso(module)
+    if (motivo) return { error: motivo }
     if (!Array.isArray(permissions)) return { error: `permisos de ${module} deben ser una lista` }
     const unique = [...new Set(permissions)]
     if (unique.some(permission => !PERMISSIONS.has(permission))) {
