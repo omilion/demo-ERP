@@ -378,10 +378,11 @@ async function buildOrdenWhere(fastify, ctx, user) {
   let where = applyCommonOrdenFilters({ eliminada: false }, ctx, user)
   const corte = await getPrimerRegistroInterno(fastify.prisma)
   // El filtro por fecha es autonomo: cuando hay rango de fechas, la busqueda abarca todo
-  // el historial (no solo el set operacional). El corte solo aplica cuando se navega sin
-  // fecha o el usuario eligio explicitamente un scope distinto de "operacional".
+  // el historial. Sin un scope explicito, la matriz tambien parte mostrando todo el
+  // historial; el corte solo aplica cuando el usuario pide scope=operacional.
   const hasDateFilter = Boolean(ctx.dateDesde || ctx.dateHasta)
-  const effectiveScope = (hasDateFilter && ctx.scope === 'operacional') ? 'todos' : ctx.scope
+  const hasExplicitScope = hasValue(ctx.query.scope)
+  const effectiveScope = (!hasExplicitScope || (hasDateFilter && ctx.scope === 'operacional')) ? 'todos' : ctx.scope
   where = mergeWhere(where, buildOrdenScopeWhere(effectiveScope, corte))
   return where
 }
