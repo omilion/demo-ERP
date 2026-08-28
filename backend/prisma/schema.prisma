@@ -1012,8 +1012,17 @@ model CrmCotizacion {
   comunaDespacho         String?              @map("comuna_despacho")
   createdAt              DateTime             @default(now()) @map("created_at")
   updatedAt              DateTime             @updatedAt @map("updated_at")
+  // Aceptacion del cliente (CU-06). Se guarda contra que version acepto: si
+  // despues se edita la cotizacion, queda a la vista que lo aceptado cambio.
+  aceptadaAt             DateTime?            @map("aceptada_at")
+  aceptadaVersion        Int?                 @map("aceptada_version")
+  aceptadaPor            String?              @map("aceptada_por")
+  aceptacionMedio        String?              @map("aceptacion_medio")
+  aceptacionReferencia   String?              @map("aceptacion_referencia")
+  aceptacionRegistradaPorId Int?              @map("aceptacion_registrada_por_id")
   crm                    CrmRegistro          @relation("CrmRegistroCotizacion", fields: [crmId], references: [id], onDelete: Cascade)
   items                  CrmCotizacionItem[]
+  versiones              CrmCotizacionVersion[]
 
   @@index([tipo])
   @@map("crm_cotizaciones")
@@ -1036,6 +1045,26 @@ model CrmCotizacionItem {
   @@index([cotizacionId])
   @@index([productoId])
   @@map("crm_cotizacion_items")
+  @@schema("ventas")
+}
+
+// Copia inmutable de la propuesta en un momento dado. Antes, editar una
+// cotizacion borraba los items y los volvia a crear, de modo que no quedaba
+// rastro de que se le habia ofrecido al cliente.
+model CrmCotizacionVersion {
+  id              Int           @id @default(autoincrement())
+  cotizacionId    Int           @map("cotizacion_id")
+  version         Int
+  snapshot        Json
+  total           Float         @default(0)
+  motivo          String?
+  creadaPorId     Int?          @map("creada_por_id")
+  creadaPorNombre String?       @map("creada_por_nombre")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  cotizacion      CrmCotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+
+  @@unique([cotizacionId, version])
+  @@map("crm_cotizacion_versiones")
   @@schema("ventas")
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Btn, PageHeader } from '../../components/shared'
-import { useCrmDetalle, useCrmGestionCreate, useCrmPatch, useCrmTransicion, useUpdateCrmCotizacion } from '../../api/crm'
+import { useCrmCotizacionVersiones, useCrmDetalle, useCrmGestionCreate, useCrmPatch, useCrmTransicion, useRegistrarAceptacionCotizacion, useUpdateCrmCotizacion } from '../../api/crm'
 import { useUpdateOrdenCompraItems } from '../../api/ordenesCompra'
 import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
 import { toast, confirmDialog, promptDialog } from '../../store/notif'
@@ -37,6 +37,53 @@ function Description({ value }) {
   const [expanded, setExpanded] = useState(false)
   const short = excerpt(value)
   return <div style={{ color: 'var(--text-2)', lineHeight: 1.4 }}>{expanded ? readableText(value) : short.text || '—'}{short.truncated && <button type="button" onClick={() => setExpanded(open => !open)} style={{ display: 'block', marginTop: 5, padding: 0, border: 0, background: 'none', color: 'var(--green-800)', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>{expanded ? 'Ver menos' : 'Ver descripción completa'}</button>}</div>
+}
+
+// CU-06: historial de la propuesta y aceptacion del cliente. Antes, editar una
+// cotizacion borraba la anterior sin dejar rastro de que se habia ofrecido.
+function HistorialCotizacion({ crmId }) {
+  const { data, isLoading, isError } = useCrmCotizacionVersiones(crmId)
+  const registrar = useRegistrarAceptacionCotizacion()
+  const [form, setForm] = useState({ medio: 'OC', por: '', referencia: '' })
+  const set = campo => e => setForm(actual => ({ ...actual, [campo]: e.target.value }))
+  if (isLoading || isError || !data) return null
+
+  const { vigente, aceptacion, versiones } = data
+  const guardar = async () => {
+    if (!form.por.trim()) return toast.warning('Indica quién aceptó por parte del cliente')
+    try {
+      await registrar.mutateAsync({ crmId, ...form })
+      toast.success('Aceptación registrada')
+    } catch (error) { toast.error(error.response?.data?.error || 'No se pudo registrar la aceptación') }
+  }
+
+  return <Section title="Propuesta: versiones y aceptación" tint="#fefce8">
+    {aceptacion
+      ? <div style={{ padding: '11px 13px', borderRadius: 8, marginBottom: 14, border: `1px solid ${aceptacion.desactualizada ? '#fca5a5' : '#bbf7d0'}`, background: aceptacion.desactualizada ? '#fef2f2' : '#f0fdf4' }}>
+          <strong style={{ fontSize: 13 }}>Aceptada por {aceptacion.por} · {aceptacion.medio}{aceptacion.referencia ? ` · ${aceptacion.referencia}` : ''}</strong>
+          <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4 }}>Versión {aceptacion.version} · {new Date(aceptacion.at).toLocaleString('es-CL')}</div>
+          {/* Lo valioso de fijar la version aceptada: si despues se edita, se ve. */}
+          {aceptacion.desactualizada && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 6, fontWeight: 700 }}>La cotización se editó después de aceptada: el cliente aceptó la versión {aceptacion.version} y la vigente es la {vigente.version}.</div>}
+        </div>
+      : <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1.2fr auto', gap: 10, alignItems: 'end', marginBottom: 14 }}>
+          <Field label="Vía"><select value={form.medio} onChange={set('medio')} style={input}>{[['OC', 'Orden de compra'], ['CORREO', 'Correo'], ['PORTAL', 'Portal / plataforma'], ['VERBAL', 'Verbal'], ['OTRO', 'Otro']].map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></Field>
+          <Field label="Quién aceptó"><input value={form.por} onChange={set('por')} style={input} placeholder="Nombre del contacto" /></Field>
+          <Field label={form.medio === 'OC' ? 'N° orden de compra' : form.medio === 'CORREO' ? 'Asunto o remitente' : 'Referencia'}><input value={form.referencia} onChange={set('referencia')} style={input} /></Field>
+          <Btn variant="primary" size="sm" onClick={guardar} disabled={registrar.isPending}>{registrar.isPending ? 'Guardando…' : 'Registrar aceptación'}</Btn>
+        </div>}
+
+    <div style={{ fontSize: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', fontWeight: 750 }}>
+        <span>Versión {vigente.version} · vigente</span><span>{money(vigente.total)}</span>
+      </div>
+      {versiones.length
+        ? versiones.map(v => <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--border)', color: 'var(--text-2)' }}>
+            <span>Versión {v.version}{v.motivo ? ` · ${v.motivo}` : ''}<span style={{ color: 'var(--text-3)', marginLeft: 6 }}>{v.creadaPorNombre || ''} {new Date(v.createdAt).toLocaleDateString('es-CL')}</span></span>
+            <span style={{ fontFamily: "'DM Mono', monospace", whiteSpace: 'nowrap' }}>{money(v.total)}</span>
+          </div>)
+        : <div style={{ padding: '8px 0', color: 'var(--text-3)' }}>Sin cambios posteriores a la propuesta original.</div>}
+    </div>
+  </Section>
 }
 
 function ProductDetail({ oc, cotizacion, licitacion, crmId, items, setItems }) {
@@ -109,7 +156,7 @@ export default function CrmGestionDetallePage() {
       <div><Section title="Gestión comercial" tint="#f8fafc"><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}><Field label="Etapa actual"><select value={currentStage} onChange={e => changeStage(e.target.value)} style={input}>{STAGES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field><Field label="Prioridad"><select value={form.prioridad || ''} onChange={set('prioridad')} style={input}><option value="">—</option><option>Alta</option><option>Media</option><option>Baja</option></select></Field><Field label="Próximo contacto" full><input type="date" value={form.fechaProximo || ''} onChange={set('fechaProximo')} style={input} /></Field><Field label="Acción / siguiente paso" full><textarea value={form.accion || ''} onChange={set('accion')} rows={3} style={{ ...input, resize: 'vertical' }} /></Field><Field label="Resultado última gestión" full><textarea value={form.resultado || ''} onChange={set('resultado')} rows={3} style={{ ...input, resize: 'vertical' }} /></Field></div><div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}><Btn variant="primary" size="sm" onClick={save} disabled={patch.isPending}>{patch.isPending ? 'Guardando…' : 'Guardar cambios'}</Btn></div></Section>
         <Section title="Registrar gestión" tint="#fffbeb"><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}><Field label="Tipo"><select value={gestion.tipo} onChange={e => setGestion(g => ({ ...g, tipo: e.target.value }))} style={input}>{['LLAMADA', 'CORREO', 'REUNION', 'VISITA', 'COTIZACION', 'NOTA', 'OTRO'].map(value => <option key={value}>{value}</option>)}</select></Field><Field label="Próximo contacto"><input type="date" value={gestion.fechaProximo} onChange={e => setGestion(g => ({ ...g, fechaProximo: e.target.value }))} style={input} /></Field><Field label="Resultado" full><textarea value={gestion.resultado} onChange={e => setGestion(g => ({ ...g, resultado: e.target.value }))} rows={3} style={{ ...input, resize: 'vertical' }} /></Field><Field label="Siguiente acción" full><input value={gestion.siguienteAccion} onChange={e => setGestion(g => ({ ...g, siguienteAccion: e.target.value }))} style={input} /></Field></div><div style={{ marginTop: 14 }}><Btn variant="primary" size="sm" onClick={saveGestion} disabled={createGestion.isPending}>{createGestion.isPending ? 'Registrando…' : 'Registrar gestión'}</Btn></div></Section>
         <Section title="Datos del cliente"><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}><Field label="Contacto"><input value={form.nombre || ''} onChange={set('nombre')} style={input} /></Field><Field label="Razón social"><input value={form.rsocial || ''} onChange={set('rsocial')} style={input} /></Field><Field label="RUT"><div style={{ ...input, background: '#f8fafc' }}>{crm.rut || '—'}</div></Field><Field label="Teléfono"><input value={form.telefono || ''} onChange={set('telefono')} style={input} /></Field><Field label="Correo" full><input type="email" value={form.email || ''} onChange={set('email')} style={input} /></Field><Field label="Notas internas" full><textarea value={form.comentarios || ''} onChange={set('comentarios')} rows={3} style={{ ...input, resize: 'vertical' }} /></Field></div></Section></div>
-      <div><ProductDetail oc={crm.ordenCompraOnline} cotizacion={crm.cotizacionComercial} licitacion={crm.cotizacionLicitacion} crmId={crm.id} items={items} setItems={setItems} /><Section title="Historial reciente"><div style={{ fontSize: 13, color: 'var(--text-2)' }}>{crm.gestiones?.length ? crm.gestiones.slice(0, 10).map(row => <div key={row.id} style={{ padding: '9px 0', borderBottom: '1px solid var(--border)' }}><strong>{row.tipo}</strong> · {row.resultado}<span style={{ float: 'right', color: 'var(--text-3)', fontSize: 11 }}>{new Date(row.realizadaAt).toLocaleDateString('es-CL')}</span></div>) : 'Aún no hay gestiones registradas.'}</div></Section></div>
+      <div><ProductDetail oc={crm.ordenCompraOnline} cotizacion={crm.cotizacionComercial} licitacion={crm.cotizacionLicitacion} crmId={crm.id} items={items} setItems={setItems} />{crm.cotizacionComercial && <HistorialCotizacion crmId={crm.id} />}<Section title="Historial reciente"><div style={{ fontSize: 13, color: 'var(--text-2)' }}>{crm.gestiones?.length ? crm.gestiones.slice(0, 10).map(row => <div key={row.id} style={{ padding: '9px 0', borderBottom: '1px solid var(--border)' }}><strong>{row.tipo}</strong> · {row.resultado}<span style={{ float: 'right', color: 'var(--text-3)', fontSize: 11 }}>{new Date(row.realizadaAt).toLocaleDateString('es-CL')}</span></div>) : 'Aún no hay gestiones registradas.'}</div></Section></div>
     </div>
   </main>
 }

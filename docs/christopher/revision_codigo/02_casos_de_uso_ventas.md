@@ -146,10 +146,21 @@ Incluye restricción en base de datos (`cantAdjudicados <= cantidad`): el legacy
 
 El espejo hacia la tabla legacy conserva **ambas** cifras —cotizada y adjudicada—, de modo que la parcialidad no se pierde al sincronizar.
 
+### CU-06 — Versionado y aceptación: resuelto
+
+El problema de fondo no era que faltara una pantalla: **editar una cotización hacía `deleteMany` + `create` sobre los ítems**, de modo que la propuesta anterior se destruía. No había forma de saber qué se le había ofrecido al cliente ni qué fue lo que aceptó.
+
+Ahora, antes de sobrescribir, la propuesta vigente se archiva como versión inmutable —ítems, descuento y monto de despacho— con su total, quién la cambió, cuándo y por qué.
+
+**La aceptación se registra contra una versión**, no sólo contra la cotización. Eso es lo que da valor al versionado: si después se edita, el sistema avisa que *el cliente aceptó la versión 2 y la vigente es la 3*. Sin fijar la versión, una edición posterior a la aceptación pasa inadvertida.
+
+Se registra quién aceptó, por qué vía (orden de compra, correo, portal, verbal, otro) y con qué referencia. La vía está restringida en la base: si queda como texto libre, termina como el campo de ejecutiva, imposible de reportar. Y cuando la vía tiene respaldo documental —orden de compra o correo— la referencia es obligatoria; una aceptación verbal no tiene documento que exigir.
+
+
 ---
 
 ### Lo que sigue abierto en esta ficha
 
 - **CU-01** boleta sin cliente — corresponde al área de facturación.
 - **CU-02** prueba integrada de Webpay rechazado, transferencia pendiente y diferencia de monto.
-- **CU-06** versionado de la cotización y registro de la aceptación del cliente.
+

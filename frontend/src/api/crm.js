@@ -106,6 +106,27 @@ export const useUpdateCrmCotizacion = () => {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['crm'] })
       qc.invalidateQueries({ queryKey: ['crm', 'detalle', variables.crmId] })
+      qc.invalidateQueries({ queryKey: ['crm', 'cotizacion-versiones', variables.crmId] })
+    },
+  })
+}
+
+// CU-06: historial de la propuesta. La version vigente viene aparte de las
+// archivadas, para poder compararlas.
+export const useCrmCotizacionVersiones = crmId => useQuery({
+  queryKey: ['crm', 'cotizacion-versiones', crmId],
+  queryFn: () => api.get(`/crm/${crmId}/cotizacion/versiones`).then(r => r.data),
+  enabled: Boolean(crmId),
+  retry: false,
+})
+
+export const useRegistrarAceptacionCotizacion = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ crmId, ...data }) => api.post(`/crm/${crmId}/cotizacion/aceptacion`, data).then(r => r.data),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['crm', 'detalle', variables.crmId] })
+      qc.invalidateQueries({ queryKey: ['crm', 'cotizacion-versiones', variables.crmId] })
     },
   })
 }
