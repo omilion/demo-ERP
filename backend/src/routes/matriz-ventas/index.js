@@ -3,6 +3,7 @@ import { getUserSucursalId } from '../caja/scope.js'
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenScope } from '../historico/corte.js'
 import { parseDate, parsePage, parsePositiveInt } from '../operational-utils.js'
 import { computeVentaFinancialState } from '../ventas/financial.js'
+import { deriveEstadoFlujo } from '../ventas/estados-normalize.js'
 
 const LIMIT = 100
 const MAX_PAGE_SIZE = 500
@@ -481,6 +482,7 @@ async function getOrdenRowsByWhere(fastify, where) {
       estadoEntrega: o.estadoEntrega,
       fechaEstadoEntrega: o.fechaEstadoEntrega,
       pago: financialState.estadoPago,
+      estadoFlujo: deriveEstadoFlujo({ ...o, estadoPago: financialState.estadoPago }),
       creadorNombre: o.creadorNombre || null,
       guiasLegacy: o.guias || null,
       odts,

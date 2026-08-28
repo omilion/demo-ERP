@@ -6,6 +6,8 @@ import {
   normalizeEstadoEntrega,
   normalizeEstadoPago,
   normalizeTipoVenta,
+  deriveEstadoFlujo,
+  attachEstadoFlujo,
 } from '../src/routes/ventas/estados-normalize.js'
 
 // Contexto: el ERP convive con el legacy MySQL, que escribe otra grafia de los
@@ -78,5 +80,26 @@ describe('normalizeEstadoPago', () => {
 
   it('devuelve null para un estado de pago desconocido', () => {
     expect(normalizeEstadoPago('inventado')).toBeNull()
+  })
+})
+
+describe('flujo transversal de venta', () => {
+  it.each([
+    [{ estado: 'Activa', estadoPago: 'No pagada', estadoEntrega: 'Pendiente entrega' }, 'ACTIVA'],
+    [{ estado: 'Activa', estadoPago: 'Pendiente Webpay', estadoEntrega: 'Pendiente entrega' }, 'PAGO_WEBPAY_PENDIENTE'],
+    [{ estado: 'Activa', estadoPago: 'Parcial', estadoEntrega: 'Pendiente entrega' }, 'PAGO_PARCIAL'],
+    [{ estado: 'Activa', estadoPago: 'Pagada', estadoEntrega: 'Pendiente entrega' }, 'PAGADA_PENDIENTE_ENTREGA'],
+    [{ estado: 'Activa', estadoPago: 'No pagada', estadoEntrega: 'En despacho' }, 'EN_DESPACHO'],
+    [{ estado: 'Activa', estadoPago: 'No pagada', estadoEntrega: 'Parcial' }, 'ENTREGA_PARCIAL'],
+    [{ estado: 'Activa', estadoPago: 'No pagada', estadoEntrega: 'Entregado' }, 'ENTREGADA_PENDIENTE_PAGO'],
+    [{ estado: 'Activa', estadoPago: 'Pagada', estadoEntrega: 'Entregada' }, 'CERRADA'],
+    [{ estado: 'Anulada', estadoPago: 'Pagada', estadoEntrega: 'Entregada' }, 'ANULADA'],
+  ])('deriva %s como %s', (orden, esperado) => {
+    expect(deriveEstadoFlujo(orden).codigo).toBe(esperado)
+  })
+
+  it('normaliza las grafias legacy al adjuntar el estado consolidado', () => {
+    const orden = attachEstadoFlujo({ estado: 'Activa', estadoPago: 'pagada', estadoEntrega: 'Entregado' })
+    expect(orden).toMatchObject({ estadoPago: 'Pagada', estadoEntrega: 'Entregada', estadoFlujo: { codigo: 'CERRADA', terminal: true } })
   })
 })

@@ -1,6 +1,7 @@
 import { attachCliente, attachProductos } from './helpers.js'
 import { computeVentaFinancialState } from './financial.js'
 import { getUserSucursalId } from '../caja/scope.js'
+import { attachEstadoFlujo } from './estados-normalize.js'
 
 function ignoreMissingLegacyColumn(error) {
   return error.code === 'P2022' ? [] : Promise.reject(error)
@@ -63,6 +64,6 @@ export default async function getVenta(fastify) {
     const items = await attachProductos(fastify, o.items)
     const financialState = computeVentaFinancialState(o, { movimientos: pagos, multas })
     const montoDespachoReal = despachos.reduce((sum, d) => sum + Number(d.montoEnvio || 0), 0)
-    return { ...withCliente, ...financialState, items, odts: attachEstadoTallerReal(odts), pagos, multas, despachos, guias, cobranza, cotizaciones, montoDespachoReal }
+    return attachEstadoFlujo({ ...withCliente, ...financialState, items, odts: attachEstadoTallerReal(odts), pagos, multas, despachos, guias, cobranza, cotizaciones, montoDespachoReal })
   })
 }

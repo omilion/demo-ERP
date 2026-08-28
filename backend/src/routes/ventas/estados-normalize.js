@@ -25,6 +25,22 @@ export const ESTADO_PAGO_VALUES = ['No pagada', 'Pagada', 'Parcial', 'Pendiente 
 
 export const TIPO_VENTA_VALUES = ['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala', 'Marketplace']
 
+// Estado transversal de lectura. No se persiste: se deriva de las tres
+// dimensiones que ya son fuente de verdad (vigencia, pago y entrega), evitando
+// crear una cuarta columna que pueda quedar desincronizada.
+export const ESTADO_FLUJO = Object.freeze({
+  ACTIVA: { codigo: 'ACTIVA', label: 'Activa', terminal: false },
+  PAGO_WEBPAY_PENDIENTE: { codigo: 'PAGO_WEBPAY_PENDIENTE', label: 'Pago Webpay pendiente', terminal: false },
+  PAGO_WEBPAY_RECHAZADO: { codigo: 'PAGO_WEBPAY_RECHAZADO', label: 'Pago Webpay rechazado', terminal: false },
+  PAGO_PARCIAL: { codigo: 'PAGO_PARCIAL', label: 'Pago parcial', terminal: false },
+  PAGADA_PENDIENTE_ENTREGA: { codigo: 'PAGADA_PENDIENTE_ENTREGA', label: 'Pagada, pendiente de entrega', terminal: false },
+  EN_DESPACHO: { codigo: 'EN_DESPACHO', label: 'En despacho', terminal: false },
+  ENTREGA_PARCIAL: { codigo: 'ENTREGA_PARCIAL', label: 'Entrega parcial', terminal: false },
+  ENTREGADA_PENDIENTE_PAGO: { codigo: 'ENTREGADA_PENDIENTE_PAGO', label: 'Entregada, pendiente de pago', terminal: false },
+  CERRADA: { codigo: 'CERRADA', label: 'Cerrada', terminal: true },
+  ANULADA: { codigo: 'ANULADA', label: 'Anulada', terminal: true },
+})
+
 // Grafias con que un mismo valor aparece hoy en la base, para las consultas que
 // filtran por igualdad. Mientras convivan ambos vocabularios, un `where` que
 // nombre una sola grafia deja fuera al resto de las ordenes en silencio.
@@ -60,3 +76,28 @@ function buildResolver(canonicalValues, aliases = {}) {
 export const normalizeEstadoEntrega = buildResolver(ESTADO_ENTREGA_VALUES, ESTADO_ENTREGA_ALIASES)
 export const normalizeEstadoPago = buildResolver(ESTADO_PAGO_VALUES)
 export const normalizeTipoVenta = buildResolver(TIPO_VENTA_VALUES)
+
+export function deriveEstadoFlujo(orden = {}) {
+  const estadoBase = comparisonKey(orden.estado)
+  if (orden.eliminada || ['anulada', 'anulado', 'eliminada', 'eliminado'].includes(estadoBase)) {
+    return ESTADO_FLUJO.ANULADA
+  }
+
+  const pago = normalizeEstadoPago(orden.estadoPago) || orden.estadoPago
+  const entrega = normalizeEstadoEntrega(orden.estadoEntrega) || orden.estadoEntrega
+  if (pago === 'Rechazada Webpay') return ESTADO_FLUJO.PAGO_WEBPAY_RECHAZADO
+  if (entrega === 'Entregada' && pago === 'Pagada') return ESTADO_FLUJO.CERRADA
+  if (entrega === 'Entregada') return ESTADO_FLUJO.ENTREGADA_PENDIENTE_PAGO
+  if (entrega === 'Parcial') return ESTADO_FLUJO.ENTREGA_PARCIAL
+  if (entrega === 'En despacho') return ESTADO_FLUJO.EN_DESPACHO
+  if (pago === 'Pagada') return ESTADO_FLUJO.PAGADA_PENDIENTE_ENTREGA
+  if (pago === 'Parcial') return ESTADO_FLUJO.PAGO_PARCIAL
+  if (pago === 'Pendiente Webpay') return ESTADO_FLUJO.PAGO_WEBPAY_PENDIENTE
+  return ESTADO_FLUJO.ACTIVA
+}
+
+export function attachEstadoFlujo(orden = {}) {
+  const estadoEntrega = normalizeEstadoEntrega(orden.estadoEntrega) || orden.estadoEntrega
+  const estadoPago = normalizeEstadoPago(orden.estadoPago) || orden.estadoPago
+  return { ...orden, estadoEntrega, estadoPago, estadoFlujo: deriveEstadoFlujo({ ...orden, estadoEntrega, estadoPago }) }
+}

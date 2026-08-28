@@ -3,6 +3,7 @@ import { computeVentaFinancialState } from './financial.js'
 import { parseDate, parsePagination, parsePositiveInt } from '../operational-utils.js'
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenScope } from '../historico/corte.js'
 import { getUserSucursalId } from '../caja/scope.js'
+import { attachEstadoFlujo } from './estados-normalize.js'
 
 function normalizeTipo(value) {
   return String(value || '')
@@ -197,14 +198,14 @@ export default async function listVentas(fastify) {
           multas: multasMap[o.id] || [],
           notasInternas: notasInternasMap[o.id] || [],
         })
-        return {
+        return attachEstadoFlujo({
           ...o,
           ...financialState,
           items: await attachProductos(fastify, o.items),
           pagos: pagosMap[o.id] || [],
           multas: multasMap[o.id] || [],
           notasInternas: notasInternasMap[o.id] || [],
-        }
+        })
       })
     )
     return {
