@@ -2,11 +2,24 @@ import bcrypt from 'bcrypt'
 
 const ROLES = new Set(['admin', 'vendedor', 'coordinador_comercial', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura'])
 const PERMISSIONS = new Set(['read', 'write', 'delete'])
+// Catalogo de modulos delegables. Tiene que corresponder uno a uno con lo que
+// el codigo exige via rbac() o can(): un modulo que se puede asignar y nadie
+// exige es un permiso muerto, y uno que se exige y no se puede asignar deja esa
+// parte del sistema reservada al admin sin que nadie lo haya decidido.
+//
+// Se quitaron 'cotizaciones', 'ordenes-compra', 'pagos-proveedores', 'telas',
+// 'bodega-taller' y 'crm': ninguno tenia un solo uso real. Esas pantallas se
+// protegen con el modulo de su area (ventas, proveedores, taller).
+//
+// Se agregaron los seis que el codigo si exige y no eran delegables. El caso que
+// lo destapo: facturacion se exige en sus rutas, no estaba aca ni en ningun rol,
+// asi que la encargada de facturacion no podia facturar sin ser admin.
 const MODULES = new Set([
-  'ventas', 'cotizaciones', 'licitaciones', 'clientes',
+  'ventas', 'licitaciones', 'clientes',
   'bodega', 'catalogo', 'despacho', 'taller',
   'caja', 'cobranza', 'rrhh', 'reportes',
-  'proveedores', 'descuentos', 'ordenes-compra', 'pagos-proveedores', 'telas', 'bodega-taller', 'crm',
+  'proveedores', 'descuentos',
+  'facturacion', 'costeo', 'usuarios', 'config', 'admin', 'ai',
 ])
 
 const userSelect = {
