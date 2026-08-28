@@ -206,3 +206,44 @@ describe('endpoints etiquetados: efecto sobre las personas reales', () => {
     expect(can('vendedor', 'ventas.taller', 'write')).toBe(true)
   })
 })
+
+// Taller etiquetado: la cortadora registra avance y consumo, la supervisora
+// gestiona y cierra. Es el escenario de Jenifer y Mercedes contra Zalma.
+describe('taller: operario frente a supervisora', () => {
+  it('la cortadora registra avance, consumo y mueve el estado del item', () => {
+    expect(can('taller_operario', 'taller.avance', 'write')).toBe(true)
+  })
+
+  it('pero no crea, edita, cierra ni anula la OT', () => {
+    expect(can('taller_operario', 'taller.gestion', 'write')).toBe(false)
+    expect(can('taller_operario', 'taller.cerrar', 'write')).toBe(false)
+    expect(can('taller_operario', 'taller.cerrar', 'delete')).toBe(false)
+    expect(can('taller_operario', 'taller.gestion', 'delete')).toBe(false)
+  })
+
+  it('ni toca los materiales de taller', () => {
+    expect(can('taller_operario', 'taller.materiales', 'delete')).toBe(false)
+  })
+
+  it('sigue viendo la OT y el kanban', () => {
+    expect(can('taller_operario', 'taller', 'read')).toBe(true)
+    expect(can('taller_operario', 'taller.avance', 'read')).toBe(true)
+  })
+
+  it('la supervisora conserva todo lo que ya podia, por caida al modulo', () => {
+    expect(can('taller', 'taller.avance', 'write')).toBe(true)
+    expect(can('taller', 'taller.gestion', 'write')).toBe(true)
+    expect(can('taller', 'taller.cerrar', 'write')).toBe(true)
+  })
+
+  // Hallazgo preexistente, verificado contra el arbol limpio: el rol `taller`
+  // tiene [read, write] pero NO delete, de modo que anular o eliminar una OT
+  // -y borrar materiales- solo lo puede un admin. La supervisora nunca pudo.
+  // Queda igual que antes; si Plastimar espera que Zalma pueda anular, hay que
+  // decidirlo y agregarle delete al rol o la funcion `taller.cerrar`.
+  it('anular y eliminar siguen fuera del alcance del rol taller', () => {
+    expect(can('taller', 'taller.cerrar', 'delete')).toBe(false)
+    expect(can('taller', 'taller.materiales', 'delete')).toBe(false)
+    expect(can('admin', 'taller.cerrar', 'delete')).toBe(true)
+  })
+})

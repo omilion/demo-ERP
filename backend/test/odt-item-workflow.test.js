@@ -225,7 +225,7 @@ describe('ODT item/taller workflow route', () => {
     const prisma = { odtItemTaller: { findFirst: vi.fn(), update: vi.fn() } }
     const { fastify, handlers } = await buildHandlers(prisma)
 
-    expect(fastify.rbac).toHaveBeenCalledWith('taller', 'write')
+    expect(fastify.rbac).toHaveBeenCalledWith('taller.avance', 'write')
     expect(handlers[`PUT ${ROUTE}`]).toBeTruthy()
     expect(handlers[`PATCH ${ROUTE}`]).toBeTruthy()
     expect(handlers['POST /:odtId/talleres/:tallerId/estado']).toBeTruthy()

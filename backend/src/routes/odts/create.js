@@ -20,7 +20,7 @@ const Schema = z.object({
 
 export default async function createOdt(fastify) {
   fastify.post('/', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('taller.gestion', 'write')],
   }, async (request, reply) => {
     if (request.body?.ordenId === undefined || request.body?.ordenId === null || request.body?.ordenId === '') {
       return reply.code(400).send({ error: 'ordenId requerido' })

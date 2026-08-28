@@ -407,7 +407,7 @@ describe('ODT consumos route', () => {
   it('registers POST /:id/consumos with taller write access', async () => {
     const { fastify, handlers } = await buildHandlers({})
 
-    expect(fastify.rbac).toHaveBeenCalledWith('taller', 'write')
+    expect(fastify.rbac).toHaveBeenCalledWith('taller.avance', 'write')
     expect(handlers[`POST ${ROUTE}`]).toBeTruthy()
     expect(handlers[`POST ${ROUTE}`].opts.preHandler).toHaveLength(2)
   })
