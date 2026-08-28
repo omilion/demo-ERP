@@ -29,8 +29,34 @@ export const TIPO_VENTA_VALUES = ['Normal', 'Licitación', 'Convenio Marco', 'Ve
 // filtran por igualdad. Mientras convivan ambos vocabularios, un `where` que
 // nombre una sola grafia deja fuera al resto de las ordenes en silencio.
 export const GRAFIAS_ENTREGADA = ['Entregada', 'Entregado']
-export const GRAFIAS_LICITACION = ['Licitación', 'Licitacion']
+
+// "LicitaciÃ³n" es mojibake real presente en la base, no una grafia teorica:
+// UTF-8 leido como latin1 en alguna importacion. Hasta ahora solo el reporte de
+// comisiones lo contemplaba, de modo que esas ordenes quedaban fuera de todas
+// las demas pantallas que filtran por tipo.
+export const LICITACION_MOJIBAKE = 'LicitaciÃ³n'
+export const GRAFIAS_LICITACION = ['Licitación', 'Licitacion', LICITACION_MOJIBAKE]
 export const GRAFIAS_VENTA_SALA = ['Venta Sala', 'Venta sala']
+export const GRAFIAS_VENTA_DIRECTA = ['Venta directa', 'Venta Directa']
+export const GRAFIAS_CONVENIO_MARCO = ['Convenio Marco', 'Convenio marco']
+
+// Agrupacion de negocio, no de grafia: la venta que se atiende en mostrador.
+//
+// Cinco modulos la definian por su cuenta con conjuntos distintos, de modo que
+// el mismo filtro entregaba totales distintos segun la pantalla:
+//
+//   despachos/matriz     sala + directa                  (sin "Normal")
+//   matriz-ventas:51     sala + directa + Normal
+//   matriz-ventas:706    sala + directa + Normal + Convenio Marco
+//   reportes             sala + directa + Normal
+//   reportes/comisiones  sala                            (sin directa ni Normal)
+//
+// Se unifica incluyendo "Normal", que es la mayoritaria y corresponde a como el
+// legacy grababa la venta de mostrador antes de que existiera el tipo propio.
+// Queda anotado que es una decision de negocio a confirmar con Plastimar: si
+// "Normal" NO debe contar como venta de sala, se saca de aqui y las cinco
+// pantallas se corrigen juntas.
+export const TIPOS_VENTA_MOSTRADOR = [...GRAFIAS_VENTA_SALA, ...GRAFIAS_VENTA_DIRECTA, 'Normal']
 
 // Compara ignorando mayusculas, acentos y espacios sobrantes, que es
 // exactamente en lo que difieren las grafias legacy de las canonicas.

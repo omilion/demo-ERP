@@ -1,6 +1,7 @@
 import { rowsToCsv, sendCsv } from '../../utils/csv.js'
 import { parseDate } from '../operational-utils.js'
 import { computeTotal } from '../ventas/helpers.js'
+import { GRAFIAS_CONVENIO_MARCO, GRAFIAS_LICITACION, LICITACION_MOJIBAKE } from '../ventas/estados-normalize.js'
 
 const TIPO_VENTA_TODOS = 'Todos'
 const TIPOS_VENTA = [
@@ -11,7 +12,6 @@ const TIPOS_VENTA = [
   'Convenio Marco',
   'Licitaci\u00f3n',
 ]
-const LICITACION_MOJIBAKE = 'Licitaci\u00c3\u00b3n'
 
 function aliasKey(value) {
   return String(value ?? '')
@@ -39,8 +39,8 @@ const TIPO_DB_VARIANTS = {
   'Venta directa': ['Venta directa', 'Venta Directa'],
   Normal: ['Normal'],
   'Venta Web': ['Venta Web'],
-  'Convenio Marco': ['Convenio Marco'],
-  'Licitaci\u00f3n': ['Licitaci\u00f3n', LICITACION_MOJIBAKE],
+  'Convenio Marco': [...GRAFIAS_CONVENIO_MARCO],
+  'Licitaci\u00f3n': [...GRAFIAS_LICITACION],
 }
 
 function parseTipoVenta(value) {

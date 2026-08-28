@@ -11,12 +11,12 @@ import { buildCobranzaHistoricoScopeWhere, mergeCobranzaWhere } from '../cobranz
 import { attachConsultaPreciosData } from '../productos/pricing.js'
 import { buildProveedorWhere, proveedorOrderBy } from '../proveedores/helpers.js'
 import { buildBodegaTallerWhere, enrichBodegaTallerItems, filterStockCriticoItems } from '../bodega-taller/helpers.js'
-import { GRAFIAS_LICITACION } from '../ventas/estados-normalize.js'
+import { GRAFIAS_CONVENIO_MARCO, GRAFIAS_LICITACION, TIPOS_VENTA_MOSTRADOR } from '../ventas/estados-normalize.js'
 import { registerComisionesReportRoutes } from './comisiones.js'
 import { registerMovimientosAnormalesReportRoutes } from './movimientos-anormales.js'
 import ExcelJS from 'exceljs'
 
-const VENTA_DIRECTA_TIPOS = ['Venta sala', 'Venta directa', 'Venta Sala', 'Venta Directa', 'Normal']
+const VENTA_DIRECTA_TIPOS = TIPOS_VENTA_MOSTRADOR
 
 function buildDateRange(desde, hasta) {
   const gte = desde ? parseDate(desde) : null
@@ -468,8 +468,8 @@ export async function buildVentasExportWhere(fastify, query = {}) {
   // Se nombran todas las grafias: filtrar por una sola dejaba fuera en silencio
   // las ordenes escritas con la otra (2.648 licitaciones sin tilde, entre otras).
   if (tipo === 'venta-sala' || tipo === 'venta-directa') where.tipo = { in: VENTA_DIRECTA_TIPOS }
-  else if (tipo === 'convenio-marco') where.tipo = 'Convenio Marco'
-  else if (tipo === 'licitacion-convenio') where.tipo = { in: [...GRAFIAS_LICITACION, 'Convenio Marco'] }
+  else if (tipo === 'convenio-marco') where.tipo = { in: [...GRAFIAS_CONVENIO_MARCO] }
+  else if (tipo === 'licitacion-convenio') where.tipo = { in: [...GRAFIAS_LICITACION, ...GRAFIAS_CONVENIO_MARCO] }
   else if (tipo === 'venta-web') where.tipo = 'Venta Web'
   else if (tipo && tipo !== 'licitacion') where.tipo = tipo
   else if (tipo === 'licitacion') where.tipo = { in: GRAFIAS_LICITACION }
@@ -582,7 +582,7 @@ async function buildVentasGerenciales(fastify, query, user, { includeComparison 
   if (rut || cliente) ordenWhere.rutCliente = { contains: rut || cliente, mode: 'insensitive' }
   if (vendedor) ordenWhere.creadorNombre = { contains: vendedor, mode: 'insensitive' }
   if (tipoText === 'venta-sala' || tipoText === 'venta-directa') ordenWhere.tipo = { in: VENTA_DIRECTA_TIPOS }
-  else if (tipoText === 'convenio-marco' || tipoText === 'convenio') ordenWhere.tipo = 'Convenio Marco'
+  else if (tipoText === 'convenio-marco' || tipoText === 'convenio') ordenWhere.tipo = { in: [...GRAFIAS_CONVENIO_MARCO] }
   else if (tipo) ordenWhere.tipo = { contains: tipo.replace(/-/g, ' '), mode: 'insensitive' }
 
   const ocWhere = applyRange({}, 'fechaHora', range)
@@ -1179,8 +1179,8 @@ export default async function reportesRoutes(fastify) {
       applyRange(where, 'createdAt', range)
     }
     if (tipo === 'venta-sala' || tipo === 'venta-directa') where.tipo = { in: VENTA_DIRECTA_TIPOS }
-    else if (tipo === 'convenio-marco') where.tipo = 'Convenio Marco'
-    else if (tipo === 'licitacion-convenio') where.tipo = { in: [...GRAFIAS_LICITACION, 'Convenio Marco'] }
+    else if (tipo === 'convenio-marco') where.tipo = { in: [...GRAFIAS_CONVENIO_MARCO] }
+    else if (tipo === 'licitacion-convenio') where.tipo = { in: [...GRAFIAS_LICITACION, ...GRAFIAS_CONVENIO_MARCO] }
     else if (tipo === 'venta-web') where.tipo = 'Venta Web'
     else if (tipo && tipo !== 'licitacion') where.tipo = tipo
     else if (tipo === 'licitacion') where.tipo = { in: GRAFIAS_LICITACION }

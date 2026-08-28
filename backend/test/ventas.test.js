@@ -1889,8 +1889,30 @@ describe('Edicion de ventas con la grafia heredada del legacy', () => {
   afterAll(async () => { await app.close() })
 
   async function crearOrdenLegacy(data) {
-    const cliente = await app.prisma.cliente.findFirst({ select: { id: true } })
-    const user = await app.prisma.user.findFirst({ select: { id: true } })
+    let cliente = await app.prisma.cliente.findFirst({ select: { id: true } })
+    if (!cliente) {
+      cliente = await app.prisma.cliente.create({
+        data: {
+          rut: `99${Math.floor(10000000 + Math.random() * 89999999)}-K`,
+          nombre: 'Cliente Test Legacy',
+          razonSocial: 'Cliente Test Legacy',
+          email: `test.legacy.${Date.now()}@test.com`,
+        },
+        select: { id: true },
+      })
+    }
+    let user = await app.prisma.user.findFirst({ select: { id: true } })
+    if (!user) {
+      user = await app.prisma.user.create({
+        data: {
+          email: `legacy.${Date.now()}@test.com`,
+          passwordHash: 'hash',
+          role: 'admin',
+          nombre: 'Usuario Test Legacy',
+        },
+        select: { id: true },
+      })
+    }
     // Se crea por Prisma a proposito: replica como entra el dato desde los
     // importadores legacy, sin pasar por la validacion de la API.
     return app.prisma.orden.create({
