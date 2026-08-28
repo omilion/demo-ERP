@@ -21,6 +21,30 @@ const ESTADOS_ACEPTADO = new Set(['DOK', 'EOK']);
 const ESTADOS_RECHAZADO = new Set(['RCH', 'RFR', 'RSC', 'RCT', 'FAU', 'FNA']);
 const ESTADOS_DOCUMENTO_VIGENTE = new Set(['emitido', 'enviado', 'aceptado']);
 const TIPOS_VENTA_TRIBUTARIA = new Set([33, 39]);
+const TIPOS_RECEPTOR_TRIBUTARIO_COMPLETO = new Set([33, 34, 43, 46, 52, 56, 61]);
+
+export const resolveDatosReceptor = (doc, value = {}) => {
+  const receptor = { ...value };
+  if (isBoleta(doc?.tipoDte)) {
+    receptor.rut = normalizeRut(receptor.rut) || '66666666-6';
+    receptor.razonSocial = receptor.razonSocial || 'Consumidor Final';
+    return receptor;
+  }
+
+  receptor.rut = normalizeRut(receptor.rut);
+  if (!receptor.rut || !isValidRut(receptor.rut)) {
+    throw new Error('El receptor no tiene un RUT válido.');
+  }
+  if (!receptor.razonSocial) throw new Error('El receptor no tiene razón social.');
+
+  if (TIPOS_RECEPTOR_TRIBUTARIO_COMPLETO.has(Number(doc?.tipoDte))) {
+    const faltantes = ['giro', 'direccion', 'comuna'].filter(campo => !String(receptor[campo] || '').trim());
+    if (faltantes.length) {
+      throw new Error(`Completa los datos tributarios del receptor antes de facturar. Faltan: ${faltantes.join(', ')}.`);
+    }
+  }
+  return receptor;
+};
 
 const anulaDocumento = (referencias, docId) => (Array.isArray(referencias) ? referencias : [])
   .some(ref => Number(ref?.docLocalId) === Number(docId) && (
@@ -175,12 +199,7 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
         ciudad: empresa.ciudad
       };
     }
-    receptor.rut = normalizeRut(receptor.rut);
-    if (!receptor.rut || !isValidRut(receptor.rut)) {
-      throw new Error('El receptor no tiene un RUT válido.');
-    }
-    if (!receptor.razonSocial) throw new Error('El receptor no tiene razón social.');
-    return receptor;
+    return resolveDatosReceptor(doc, receptor);
   };
 
   // Resuelve referencias que apuntan a documentos locales (docLocalId) al

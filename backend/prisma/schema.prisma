@@ -630,6 +630,74 @@ model CobranzaHistorico {
   @@schema("ventas")
 }
 
+model CobranzaGestion {
+  id                   Int      @id @default(autoincrement())
+  ordenId              Int?     @map("orden_id")
+  cobranzaHistoricoId  Int?     @map("cobranza_historico_id")
+  tipo                 String
+  canal                String?
+  resultado            String?
+  detalle              String
+  usuarioId            Int?     @map("usuario_id")
+  usuarioNombre        String?  @map("usuario_nombre")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  @@index([ordenId, createdAt])
+  @@index([cobranzaHistoricoId, createdAt])
+  @@map("cobranza_gestiones")
+  @@schema("ventas")
+}
+
+model CobranzaCompromisoPago {
+  id                   Int       @id @default(autoincrement())
+  gestionId            Int?      @unique @map("gestion_id")
+  ordenId              Int?      @map("orden_id")
+  cobranzaHistoricoId  Int?      @map("cobranza_historico_id")
+  fechaCompromiso      DateTime   @map("fecha_compromiso")
+  monto                Float
+  estado               String    @default("PENDIENTE")
+  observacion          String?
+  usuarioId            Int?      @map("usuario_id")
+  usuarioNombre        String?   @map("usuario_nombre")
+  cumplidoAt           DateTime? @map("cumplido_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  @@index([estado, fechaCompromiso])
+  @@index([ordenId])
+  @@index([cobranzaHistoricoId])
+  @@map("cobranza_compromisos_pago")
+  @@schema("ventas")
+}
+
+model CobranzaCartolaMovimiento {
+  id                   Int       @id @default(autoincrement())
+  fingerprint          String    @unique
+  fecha                DateTime
+  descripcion          String
+  referencia           String?
+  monto                Float
+  moneda               String    @default("CLP")
+  banco                String?
+  cuenta               String?
+  estado               String    @default("PENDIENTE")
+  ordenId              Int?      @map("orden_id")
+  cobranzaHistoricoId  Int?      @map("cobranza_historico_id")
+  movimientoCajaId     Int?      @map("movimiento_caja_id")
+  conciliadoPorId      Int?      @map("conciliado_por_id")
+  conciliadoPorNombre  String?   @map("conciliado_por_nombre")
+  conciliadoAt         DateTime? @map("conciliado_at")
+  observacion          String?
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  @@index([estado, fecha])
+  @@index([ordenId])
+  @@index([movimientoCajaId])
+  @@map("cobranza_cartola_movimientos")
+  @@schema("ventas")
+}
+
 model CotizacionLicitacion {
   id                   Int                        @id @default(autoincrement())
   idLicitacion         String                     @map("id_licitacion")

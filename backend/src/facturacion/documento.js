@@ -43,7 +43,9 @@ export const TIPO_DESPACHO = {
 };
 
 export const IVA_RATE = 19;
-export const MAX_DTE_DETAIL_LINES = 60;
+// Regla operativa de Plastimar: cada DTE se limita a 20 lineas para que la
+// preparacion, revision y trazabilidad del documento sigan siendo manejables.
+export const MAX_DTE_DETAIL_LINES = 20;
 export const MAX_DTE_COMMISSION_LINES = 20;
 
 export const assertDteLineLimits = (doc = {}) => {
@@ -51,7 +53,7 @@ export const assertDteLineLimits = (doc = {}) => {
     ? (Array.isArray(doc.detalles) ? doc.detalles.length : 0)
     : (Array.isArray(doc.items) ? doc.items.length : 0);
   if (detailLines > MAX_DTE_DETAIL_LINES) {
-    throw new Error(`Máximo ${MAX_DTE_DETAIL_LINES} ítems por documento (límite del SII); tienes ${detailLines}. Divide en más de un documento.`);
+    throw new Error(`Máximo ${MAX_DTE_DETAIL_LINES} ítems por documento (límite operativo de Plastimar); tienes ${detailLines}. Divide en más de un documento.`);
   }
   const commissionLines = Array.isArray(doc.comisiones) ? doc.comisiones.length : 0;
   if (commissionLines > MAX_DTE_COMMISSION_LINES) {

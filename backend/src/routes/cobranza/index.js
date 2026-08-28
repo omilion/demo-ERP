@@ -1,5 +1,6 @@
 import { parseDate, parsePage, parsePositiveInt } from '../operational-utils.js'
 import { buildCobranzaHistoricoScopeWhere, mergeCobranzaWhere } from './scope.js'
+import cobranzaGestionRoutes from './gestion.js'
 
 const FECHA_FIELDS = {
   factura: 'fechaFactura',
@@ -64,6 +65,7 @@ export function buildCobranzaHistoricoFilters(query = {}) {
 
 export default async function cobranzaHistoricoRoutes(fastify) {
   fastify.register(async function (f) {
+    await cobranzaGestionRoutes(f)
     // GET /api/cobranza-historico?ejecutiva=...&estado=...&search=...&mes=...&page=1
     f.get('/', {
       preHandler: [f.authenticate, f.rbac('cobranza', 'read')],

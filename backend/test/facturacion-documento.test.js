@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { generateKeyPairSync } from 'node:crypto'
 import { assertDteLineLimits, buildDocumento, computeTotales, isBoleta, TIPOS_DTE } from '../src/facturacion/documento.js'
-import { createFacturacionEngine } from '../src/facturacion/engine.js'
+import { createFacturacionEngine, resolveDatosReceptor } from '../src/facturacion/engine.js'
 
 const PLASTIMAR_EMPRESA = {
   rut: '76354051-0',
@@ -121,8 +121,8 @@ describe('facturacion/documento', () => {
     expect(result.documentoXml).toContain('<FolioRef>OC-6</FolioRef>')
   })
 
-  it('genera exactamente 60 lineas de detalle sin truncar el XML', () => {
-    const items = Array.from({ length: 60 }, (_, index) => ({
+  it('acepta exactamente 20 lineas de detalle sin truncar el XML', () => {
+    const items = Array.from({ length: 20 }, (_, index) => ({
       nombre: `Producto prueba ${index + 1}`,
       cantidad: 1,
       precio: 100 + index,
@@ -135,18 +135,18 @@ describe('facturacion/documento', () => {
       timestamp: new Date('2026-07-24T10:00:00'),
     })
 
-    expect((result.documentoXml.match(/<Detalle>/g) || [])).toHaveLength(60)
-    expect(result.documentoXml).toContain('<NroLinDet>60</NroLinDet>')
-    expect(result.documentoXml).toContain('<NmbItem>Producto prueba 60</NmbItem>')
+    expect((result.documentoXml.match(/<Detalle>/g) || [])).toHaveLength(20)
+    expect(result.documentoXml).toContain('<NroLinDet>20</NroLinDet>')
+    expect(result.documentoXml).toContain('<NmbItem>Producto prueba 20</NmbItem>')
   })
 
-  it('rechaza 61 lineas antes de intentar tomar un folio', async () => {
+  it('rechaza 21 lineas antes de intentar tomar un folio', async () => {
     const tomarFolio = vi.fn()
     const documento = {
       id: 901,
       tipoDte: 33,
       estado: 'borrador',
-      items: Array.from({ length: 61 }, (_, index) => ({ nombre: `Item ${index + 1}`, cantidad: 1, precio: 100 })),
+      items: Array.from({ length: 21 }, (_, index) => ({ nombre: `Item ${index + 1}`, cantidad: 1, precio: 100 })),
     }
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'facturacion-max-lines-'))
     const engine = createFacturacionEngine({
@@ -158,28 +158,42 @@ describe('facturacion/documento', () => {
     })
 
     try {
-      await expect(engine.emitir(documento.id)).rejects.toThrow(/Máximo 60 ítems.*tienes 61/)
+      await expect(engine.emitir(documento.id)).rejects.toThrow(/Máximo 20 ítems.*tienes 21/)
       expect(tomarFolio).not.toHaveBeenCalled()
     } finally {
       fs.rmSync(dataDir, { recursive: true, force: true })
     }
   })
 
-  it('aplica 60 detalles y 20 comisiones a Liquidacion Factura', () => {
+  it('aplica 20 detalles y 20 comisiones a Liquidacion Factura', () => {
     expect(() => assertDteLineLimits({
       tipoDte: 43,
-      detalles: Array.from({ length: 60 }, () => ({})),
+      detalles: Array.from({ length: 20 }, () => ({})),
       comisiones: Array.from({ length: 20 }, () => ({})),
     })).not.toThrow()
     expect(() => assertDteLineLimits({
       tipoDte: 43,
-      detalles: Array.from({ length: 61 }, () => ({})),
-    })).toThrow(/Máximo 60 ítems/)
+      detalles: Array.from({ length: 21 }, () => ({})),
+    })).toThrow(/Máximo 20 ítems/)
     expect(() => assertDteLineLimits({
       tipoDte: 43,
       detalles: [{}],
       comisiones: Array.from({ length: 21 }, () => ({})),
     })).toThrow(/Máximo 20 comisiones/)
+  })
+
+  it('acepta una boleta anónima como Consumidor Final', () => {
+    expect(resolveDatosReceptor({ tipoDte: 39 }, {})).toMatchObject({
+      rut: '66666666-6',
+      razonSocial: 'Consumidor Final',
+    })
+  })
+
+  it('bloquea una factura de venta incompleta antes de tomar folio', () => {
+    expect(() => resolveDatosReceptor({ tipoDte: 33 }, {
+      rut: '11111111-1',
+      razonSocial: 'Cliente incompleto',
+    })).toThrow(/datos tributarios.*giro, direccion, comuna/i)
   })
 
   it('isBoleta true only for 39/41', () => {

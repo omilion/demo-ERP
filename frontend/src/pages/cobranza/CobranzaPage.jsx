@@ -8,6 +8,7 @@ import { useCobranzaHistorico, useCobranzaEjecutivas, useCobranzaMeses } from '.
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can, ventaPath } from '../../utils/permissions'
+import CobranzaGestionPanel from './CobranzaGestionPanel'
 
 const MEDIOS_PAGO = ['Efectivo', 'Debito', 'Credito', 'Transferencia', 'Cheque dia', 'Cheque fecha', 'Webpay', 'Transbank']
 
@@ -19,6 +20,7 @@ const ESTADO_TABS = [
 const MAIN_TABS = [
   { id: 'activo',     label: 'Por Cobrar' },
   { id: 'historico',  label: 'Historial de Cobro' },
+  { id: 'gestion',    label: 'Gestión y Cartola' },
 ]
 
 function diasDesde(fecha) {
@@ -74,6 +76,7 @@ export default function CobranzaPage() {
   const canWriteCobranza = can(user, 'cobranza', 'write')
   const canRegisterPayment = canWriteCobranza && can(user, 'caja', 'read') && can(user, 'caja', 'write')
   const [mainTab, setMainTab] = useState('activo')
+  const [gestionTarget, setGestionTarget] = useState(null)
   const [estadoTab, setEstadoTab] = useState('No pagada')
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
@@ -312,6 +315,12 @@ export default function CobranzaPage() {
               onClick={e => { e.stopPropagation(); navigate(ventaPath(row.id, user)) }}
               style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500, whiteSpace: 'nowrap' }}
             >{can(user, 'ventas', 'write') ? 'Gestionar' : 'Ver'}</button>
+            {canWriteCobranza && (
+              <button
+                onClick={e => { e.stopPropagation(); setGestionTarget(row); setMainTab('gestion') }}
+                style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--blue, #2563eb)', fontWeight: 500, whiteSpace: 'nowrap' }}
+              >Seguimiento</button>
+            )}
           </div>
         )
       }
@@ -451,7 +460,7 @@ export default function CobranzaPage() {
 
         <select value={histEjecutiva} onChange={e => setHistEjecutiva(e.target.value)} style={miniInput}>
           <option value="">Todas las ejecutivas</option>
-          {ejecutivas.map(ej => <option key={ej} value={ej}>{ej}</option>)}
+          {ejecutivas.map(ej => <option key={ej.ejecutiva || ej} value={ej.ejecutiva || ej}>{ej.ejecutiva || ej}</option>)}
         </select>
 
         <select value={histEstado} onChange={e => setHistEstado(e.target.value)} style={miniInput}>
@@ -463,7 +472,7 @@ export default function CobranzaPage() {
 
         <select value={histMes} onChange={e => setHistMes(e.target.value)} style={miniInput}>
           <option value="">Todos los períodos</option>
-          {meses.map(m => <option key={m} value={m}>{m}</option>)}
+          {meses.map(m => <option key={m.mes_anio || m} value={m.mes_anio || m}>{m.mes_anio || m}</option>)}
         </select>
 
         {(histSearch || histEjecutiva || histEstado || histMes || histFechaDesde || histFechaHasta || histNdoc || histInterno || histRut || histCliente) && (
@@ -504,9 +513,13 @@ export default function CobranzaPage() {
     <main className="page page-wide">
       <PageHeader
         title="Cobranza"
-        subtitle={mainTab === 'activo' ? `${total.toLocaleString('es-CL')} documentos por cobrar` : `${histResult.total.toLocaleString('es-CL')} registros históricos`}
+        subtitle={mainTab === 'activo'
+          ? `${total.toLocaleString('es-CL')} documentos por cobrar`
+          : mainTab === 'historico'
+            ? `${histResult.total.toLocaleString('es-CL')} registros históricos`
+            : 'Seguimiento de compromisos y conciliación bancaria'}
         breadcrumb={['Inicio', 'Caja', 'Cobranza']}
-        actions={<>
+        actions={mainTab !== 'gestion' ? <>
           <Btn variant="secondary" icon="download" size="sm"
             onClick={() => {
               if (mainTab === 'activo') {
@@ -539,7 +552,7 @@ export default function CobranzaPage() {
               }
             }}
           >Exportar</Btn>
-        </>}
+        </> : null}
       />
 
       {mainTab === 'activo' && (
@@ -565,7 +578,7 @@ export default function CobranzaPage() {
           <Tabs tabs={MAIN_TABS} active={mainTab} onChange={t => setMainTab(t)} style={{ marginBottom: 0 }} />
         </div>
 
-        {mainTab === 'activo' ? (
+        {mainTab === 'activo' && (
           activeError
             ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--red)' }}>{activeQueryError?.response?.data?.error || 'No se pudo cargar cobranza activa'}</div>
             : isLoading
@@ -579,7 +592,9 @@ export default function CobranzaPage() {
                 getRowKey={row => row.id}
                 toolbarExtra={toolbarExtraActivo}
               />
-        ) : (
+        )}
+
+        {mainTab === 'historico' && (
           histError
             ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--red)' }}>{histQueryError?.response?.data?.error || 'No se pudo cargar historico de cobranza'}</div>
             : histLoading
@@ -593,6 +608,14 @@ export default function CobranzaPage() {
                 getRowKey={row => row.id}
                 toolbarExtra={toolbarExtraHistorico}
               />
+        )}
+
+        {mainTab === 'gestion' && (
+          <CobranzaGestionPanel
+            key={gestionTarget?.id || 'general'}
+            canWrite={canWriteCobranza}
+            initialTarget={gestionTarget}
+          />
         )}
 
         {mainTab === 'historico' && histResult.total > histResult.limit && (

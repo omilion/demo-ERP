@@ -163,6 +163,21 @@ export const useDocumentosRecibidos = () => useQuery({
   queryFn: () => api.get('/facturacion/recibidos').then(r => r.data),
 })
 
+export const useTrazabilidadExcepciones = (options = {}) => useQuery({
+  queryKey: ['facturacion', 'trazabilidad', 'excepciones'],
+  queryFn: () => api.get('/facturacion/trazabilidad/excepciones').then(r => r.data),
+  staleTime: 30_000,
+  ...options,
+})
+
+export const useTrazabilidadOrden = (ordenId, options = {}) => useQuery({
+  queryKey: ['facturacion', 'trazabilidad', 'orden', ordenId],
+  queryFn: () => api.get(`/facturacion/trazabilidad/orden/${ordenId}`).then(r => r.data),
+  enabled: Boolean(ordenId),
+  staleTime: 30_000,
+  ...options,
+})
+
 export const useSincronizarDocumentosRecibidos = () => {
   const qc = useQueryClient()
   return useMutation({

@@ -87,9 +87,9 @@ export const REFERENCIA_TIPOS_INTERNOS = ['33', '39', '43', '46', '52', '56', '6
 // ni "perderse" en el envio: se ignora hasta que el usuario escriba algo.
 export const isReferenciaRowEmpty = (row = {}) =>
   !row.tipo && !row.docLocalId && !String(row.folio || '').trim() && !String(row.razon || '').trim()
-export const MAX_DTE_DETAIL_LINES = 60
+export const MAX_DTE_DETAIL_LINES = 20
 export const MAX_DTE_COMMISSION_LINES = 20
-export const dteDetailLimitMessage = count => `Máximo ${MAX_DTE_DETAIL_LINES} ítems por documento (límite del SII); tienes ${count}. Divide en más de un documento.`
+export const dteDetailLimitMessage = count => `Máximo ${MAX_DTE_DETAIL_LINES} ítems por documento (límite operativo de Plastimar); tienes ${count}. Divide en más de un documento.`
 export const dteCommissionLimitMessage = count => `Máximo ${MAX_DTE_COMMISSION_LINES} comisiones u otros cargos por documento (límite del SII); tienes ${count}.`
 
 // Un DTE sigue siendo una referencia valida despues de enviarlo al SII.

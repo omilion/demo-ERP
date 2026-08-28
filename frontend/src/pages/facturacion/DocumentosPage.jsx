@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
-import { useConsultarEstado, useDocumento, useDocumentos, useEnviarDocumento, useEnviarLote, useReenviarDocumento } from '../../api/facturacion'
+import { useConsultarEstado, useDocumento, useDocumentos, useEnviarDocumento, useEnviarLote, useReenviarDocumento, useTrazabilidadExcepciones } from '../../api/facturacion'
 import { can, ventaPath } from '../../utils/permissions'
 import { useAuthStore } from '../../store/auth'
 import { TIPOS_DTE } from '../../utils/facturacion'
@@ -17,6 +17,30 @@ const ESTADO_TONE = { borrador: 'gray', emitido: 'blue', enviado: 'amber', acept
 const fmt = value => '$' + Math.round(Number(value || 0)).toLocaleString('es-CL')
 const dateFmt = value => value ? new Date(value).toLocaleDateString('es-CL') : '—'
 const errorText = error => error?.response?.data?.error || error?.message || 'No se pudo completar la acción.'
+const EXCEPCION_LABEL = {
+  SIN_INTERNO: 'Sin N° interno',
+  SIN_GUIA: 'Sin guía',
+  GUIA_SIN_DTE: 'Guía sin DTE 52',
+  SIN_DTE_VENTA: 'Sin factura o boleta',
+}
+
+function TrazabilidadExcepciones({ navigate, user }) {
+  const [expanded, setExpanded] = useState(false)
+  const { data = { items: [], total: 0, revisadas: 0, porCodigo: {} }, isLoading, isError, error } = useTrazabilidadExcepciones()
+  return (
+    <section style={tracePanelStyle} aria-label="Excepciones de trazabilidad de facturación">
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><strong>Trazabilidad venta → guía → DTE</strong>{!isLoading && !isError && <Badge tone={data.total ? 'amber' : 'green'}>{data.total} con excepción</Badge>}</div>
+          <p style={{ margin: '4px 0 0', color: 'var(--text-3)', fontSize: 12 }}>{isLoading ? 'Revisando cadenas documentales…' : isError ? errorText(error) : `${data.revisadas} ventas recientes revisadas automáticamente.`}</p>
+        </div>
+        {!isLoading && !isError && Boolean(data.items.length) && <Btn variant="secondary" size="sm" onClick={() => setExpanded(value => !value)}>{expanded ? 'Ocultar informe' : 'Revisar excepciones'}</Btn>}
+      </div>
+      {!isLoading && !isError && Boolean(data.items.length) && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>{Object.entries(data.porCodigo || {}).map(([code, count]) => <Badge key={code} tone="gray">{EXCEPCION_LABEL[code] || code}: {count}</Badge>)}</div>}
+      {expanded && <div style={{ overflowX: 'auto', marginTop: 12 }}><table style={traceTableStyle}><thead><tr><th>Venta</th><th>Tipo</th><th>Guías</th><th>Documentos</th><th>Excepciones</th><th /></tr></thead><tbody>{data.items.map(item => <tr key={item.orden.id}><td><strong>{item.orden.nInterno ? `Interno ${item.orden.nInterno}` : `Venta #${item.orden.id}`}</strong><span>Venta #{item.orden.id}</span></td><td>{item.orden.tipo || '—'}</td><td>{item.guias.length}</td><td>{item.documentosVenta.length}</td><td>{item.excepciones.map(exception => <div key={`${exception.codigo}-${exception.guiaId || ''}`} style={{ color: 'var(--red)', fontSize: 11 }}>{EXCEPCION_LABEL[exception.codigo] || exception.detalle}</div>)}</td><td><button type="button" onClick={() => navigate(ventaPath(item.orden.id, user))} style={actionButtonStyle}>Abrir venta</button></td></tr>)}</tbody></table></div>}
+    </section>
+  )
+}
 
 function DocumentoDetail({ id, onClose }) {
   const { data: documento, isLoading } = useDocumento(id)
@@ -182,6 +206,7 @@ export default function DocumentosPage() {
   return <main className="page page-wide">
     {!!resultadoLote.length && <section style={resultPanelStyle}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}><strong>Resultado del ultimo envio masivo</strong><button type="button" onClick={() => setResultadoLote([])} style={{ border: 0, background: 'none', color: 'var(--text-3)', cursor: 'pointer' }}>Cerrar</button></div><div style={{ display: 'grid', gap: 6, marginTop: 10 }}>{resultadoLote.map(result => <div key={result.id} style={{ display: 'grid', gridTemplateColumns: '90px 90px minmax(180px, 1fr)', gap: 10, fontSize: 12 }}><span>Folio {result.folio || '-'}</span><strong style={{ color: result.ok ? 'var(--green-700)' : 'var(--red)' }}>{result.ok ? 'Enviado' : 'Error'}</strong><span style={{ color: 'var(--text-2)' }}>{result.ok ? `Track ${result.trackId}` : result.error}</span></div>)}</div></section>}
     <PageHeader title="Documentos Emitidos" subtitle="Facturación electrónica DTE/SII" breadcrumb={['Inicio', 'Facturación', 'Documentos emitidos']} actions={<Btn variant="primary" icon="plus" onClick={() => navigate('/facturacion/emitir')}>Emitir documento</Btn>} />
+    <TrazabilidadExcepciones navigate={navigate} user={user} />
     <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
       <Table columns={columns} rows={visible} onRowClick={row => setSelected(row.id)} emptyMessage="No hay documentos para estos filtros" ariaLabel="Documentos emitidos" columnPrefsKey="facturacion-documentos" toolbarExtra={<div style={{ display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', width: '100%' }}><Tabs tabs={ESTADO_TABS} active={tab} onChange={value => { setTab(value); setPage(1) }} style={{ marginBottom: 0 }} /><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{canWrite && !!pendientes.length && <Btn variant="secondary" onClick={enviarPendientes} disabled={enviarLote.isPending}>Enviar pendientes ({pendientes.length})</Btn>}<select value={tipoDte} onChange={event => { setTipoDte(event.target.value); setPage(1) }} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', fontFamily: 'inherit', fontSize: 13 }}>{TIPO_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select><SearchBar value={search} onChange={value => { setSearch(value); setPage(1) }} placeholder="Buscar folio o receptor..." style={{ width: 260 }} /></div></div>} pager={{ page: activePage, pages, total: documents.length, limit, shown: visible.length, onChange: setPage, disabled: isLoading }} />
     </div>
@@ -191,3 +216,5 @@ export default function DocumentosPage() {
 
 const actionButtonStyle = { border: '1px solid var(--border)', borderRadius: 6, background: '#fff', color: 'var(--blue)', padding: '5px 8px', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }
 const resultPanelStyle = { marginBottom: 14, padding: 14, border: '1px solid var(--border)', borderRadius: 8, background: '#fff' }
+const tracePanelStyle = { marginBottom: 14, padding: 16, border: '1px solid var(--border)', borderRadius: 8, background: '#fff' }
+const traceTableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 12 }

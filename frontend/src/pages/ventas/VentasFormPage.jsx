@@ -299,7 +299,7 @@ function WorkspaceDataRow({ label, children, value }) {
   )
 }
 
-function VentaClienteWorkspaceCard({ cliente, sucursal, clienteOptions, sucursalOptions, clienteId, sucursalId, onClienteChange, onSucursalChange, onNewCliente, className = '' }) {
+function VentaClienteWorkspaceCard({ cliente, sucursal, clienteOptions, sucursalOptions, clienteId, sucursalId, onClienteChange, onSucursalChange, onNewCliente, allowAnonymous = false, className = '' }) {
   const direccion = sucursal?.direccion || cliente?.direccion
   const region = sucursal?.region || cliente?.region
   const comuna = sucursal?.comuna || cliente?.comuna
@@ -308,11 +308,16 @@ function VentaClienteWorkspaceCard({ cliente, sucursal, clienteOptions, sucursal
   return (
     <section className={`venta-workspace-client-card ${className}`}>
       <div className="venta-workspace-client-heading">
-        <span>Cliente</span>
+        <span>{allowAnonymous ? 'Cliente (opcional en Venta Sala)' : 'Cliente'}</span>
         <button type="button" className="venta-workspace-new-client" onClick={onNewCliente}>
           <Icon name="plus" size={14} /> Nuevo cliente
         </button>
       </div>
+      {allowAnonymous && !clienteId && (
+        <div className="venta-workspace-client-address" role="status">
+          La venta se guardará como consumidor final anónimo y podrá emitirse como boleta.
+        </div>
+      )}
       <div className="venta-workspace-client-grid">
         <div>
           <WorkspaceDataRow label="Nombre">
@@ -1299,7 +1304,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
     const shouldSendItems = !isEdit || !itemsLocked
     const itemError = shouldSendItems ? validateItems(items) : null
     if (itemError) { toast.error(itemError); return }
-    if (!isEdit && !data.clienteId) {
+    if (!isEdit && !data.clienteId && data.tipo !== 'Venta Sala') {
       toast.warning('Selecciona un cliente')
       return
     }
@@ -1489,6 +1494,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         onClienteChange={value => { set('clienteId', value); set('clienteSucursalId', '') }}
         onSucursalChange={value => set('clienteSucursalId', value)}
         onNewCliente={() => setShowNewCliente(true)}
+        allowAnonymous={!isEdit && data.tipo === 'Venta Sala'}
       />
       <div className="venta-workspace-legacy-control">
         <FormDivider label="Tipo de Venta" />

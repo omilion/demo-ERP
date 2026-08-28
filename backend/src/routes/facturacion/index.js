@@ -9,6 +9,7 @@ import { renderDtePdf, renderDteRecibidoPdf } from '../../facturacion/printDtePd
 import { syncGmailReceptor } from '../../facturacion/receptorDte.js'
 import { sendDteEmail, buildReenvioHtml } from '../../facturacion/mailer.js'
 import { assertNotaDteInput, evaluarDocumentoParaNota } from '../../facturacion/notas.js'
+import { getTrazabilidadOrden, listTrazabilidadExcepciones } from './trazabilidad.js'
 
 const ESTADOS = ['borrador', 'emitido', 'enviado', 'aceptado', 'rechazado', 'error']
 
@@ -478,6 +479,18 @@ export default async function facturacionRoutes(fastify) {
         ...evaluacion,
       }))
     return { documentos: candidatos, total: candidatos.length }
+  })
+
+  fastify.get('/trazabilidad/excepciones', readAuth, async (request) => {
+    return listTrazabilidadExcepciones(fastify.prisma, { limit: request.query.limit })
+  })
+
+  fastify.get('/trazabilidad/orden/:ordenId', readAuth, async (request, reply) => {
+    const ordenId = Number(request.params.ordenId)
+    if (!Number.isInteger(ordenId) || ordenId <= 0) return reply.code(400).send({ error: 'ordenId inválido' })
+    const result = await getTrazabilidadOrden(fastify.prisma, ordenId)
+    if (!result) return reply.code(404).send({ error: 'Venta no encontrada' })
+    return result
   })
 
   fastify.post('/documentos', writeAuth, async (request, reply) => {

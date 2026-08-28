@@ -28,7 +28,7 @@ const ItemSchema = z.object({
 
 const Schema = z.object({
   tipo: z.enum(['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala', 'Marketplace']).default('Normal'),
-  clienteId: z.number().int(),
+  clienteId: z.number().int().positive().optional().nullable(),
   clienteSucursalId: z.number().int().optional().nullable(),
   descuentoPct: z.number().min(0).max(100).default(0),
   descuentoAutorizacionId: z.number().int().positive().optional(),
@@ -115,9 +115,18 @@ export default async function createVenta(fastify) {
     if (!descuentoAutorizacionId && requiresDescuentoPermission(rest.descuentoPct) && !canApplyDescuento(request.user)) {
       return reply.code(403).send({ error: 'No tiene permiso para aplicar descuentos' })
     }
-    const cliente = await fastify.prisma.cliente.findUnique({ where: { id: rest.clienteId }, select: { id: true, activo: true, rut: true } })
-    if (!cliente) return reply.code(404).send({ error: 'Cliente no encontrado' })
-    if (!cliente.activo) return reply.code(409).send({ error: 'Cliente inactivo no puede generar ventas' })
+    const esVentaSalaAnonima = rest.tipo === 'Venta Sala' && !rest.clienteId
+    if (!rest.clienteId && !esVentaSalaAnonima) {
+      return reply.code(400).send({ error: 'Selecciona un cliente; solo Venta Sala permite consumidor final anónimo' })
+    }
+    const cliente = rest.clienteId
+      ? await fastify.prisma.cliente.findUnique({ where: { id: rest.clienteId }, select: { id: true, activo: true, rut: true } })
+      : null
+    if (rest.clienteId && !cliente) return reply.code(404).send({ error: 'Cliente no encontrado' })
+    if (cliente && !cliente.activo) return reply.code(409).send({ error: 'Cliente inactivo no puede generar ventas' })
+    if (rest.clienteSucursalId && !rest.clienteId) {
+      return reply.code(400).send({ error: 'No se puede seleccionar una sucursal sin cliente' })
+    }
     if (crmId) {
       const crm = await fastify.prisma.crmRegistro.findUnique({
         where: { id: crmId },

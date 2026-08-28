@@ -1886,6 +1886,54 @@ describe('Edicion de ventas con la grafia heredada del legacy', () => {
     await app.ready()
     token = await loginAs(app, 'admin')
   })
+
+  it('crea Venta Sala anónima sin cliente y mantiene clienteId nulo', async () => {
+    const marker = `TEST-VENTA-SALA-ANONIMA-${Date.now()}`
+    const producto = await app.prisma.producto.create({
+      data: { codigoInterno: `${marker}-P`, nombre: `${marker} Producto`, activo: true },
+    })
+    let ordenId = null
+    try {
+      const res = await app.inject({
+        method: 'POST', url: '/api/ventas',
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          tipo: 'Venta Sala',
+          items: [{ productoId: producto.id, cantidad: 1, precioUnitario: 5000 }],
+        },
+      })
+      expect(res.statusCode, res.body).toBe(201)
+      const body = JSON.parse(res.body)
+      ordenId = body.id
+      expect(body.clienteId).toBeNull()
+      expect(body.cliente).toBeNull()
+      expect(body.total).toBe(5000)
+    } finally {
+      if (ordenId) await app.prisma.orden.delete({ where: { id: ordenId } }).catch(() => {})
+      await app.prisma.producto.delete({ where: { id: producto.id } }).catch(() => {})
+    }
+  })
+
+  it('mantiene cliente obligatorio fuera de Venta Sala', async () => {
+    const marker = `TEST-VENTA-SIN-CLIENTE-${Date.now()}`
+    const producto = await app.prisma.producto.create({
+      data: { codigoInterno: `${marker}-P`, nombre: `${marker} Producto`, activo: true },
+    })
+    try {
+      const res = await app.inject({
+        method: 'POST', url: '/api/ventas',
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          tipo: 'Normal',
+          items: [{ productoId: producto.id, cantidad: 1, precioUnitario: 5000 }],
+        },
+      })
+      expect(res.statusCode).toBe(400)
+      expect(JSON.parse(res.body).error).toMatch(/solo Venta Sala/i)
+    } finally {
+      await app.prisma.producto.delete({ where: { id: producto.id } }).catch(() => {})
+    }
+  })
   afterAll(async () => { await app.close() })
 
   async function crearOrdenLegacy(data) {
