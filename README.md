@@ -103,6 +103,10 @@ Requisitos: **Node 22**, **npm 10+**, **Docker Desktop** (para la base de datos 
 docker compose up -d      # Postgres en el puerto 55432
 ```
 
+Compose crea `plastimar_dev` para desarrollo y `plastimar_test` para las
+pruebas de integracion. Ambas quedan dentro del volumen local
+`plastimar_pgdata`; no se conectan al Postgres nativo ni a produccion.
+
 ### 5.2 Backend
 
 ```bash
@@ -126,6 +130,18 @@ npm run db:generate       # cliente Prisma desde schema.prisma
 npm run db:migrate        # aplica migraciones
 npm run db:seed           # usuarios/roles, comunas, regiones, talleres de muestra
 npm run dev               # API en http://localhost:3001
+```
+
+En Windows, para usar Docker sin modificar el `.env` que pueda contener otras
+credenciales locales, copiar los perfiles incluidos y usar los comandos
+dedicados:
+
+```powershell
+Copy-Item .env.docker.example .env.docker
+Copy-Item .env.test.docker.example .env.test.docker
+npm run db:migrate:docker
+npm run db:seed:docker
+npm run dev:docker
 ```
 
 ### 5.3 Frontend
@@ -153,6 +169,14 @@ DATABASE_URL=$TEST_DB npx prisma migrate deploy
 DATABASE_URL=$TEST_DB npm run db:seed     # sin seed → 401 masivo en las suites
 DATABASE_URL=$TEST_DB npm test            # suite completa
 npm run test:ci                           # subset focal
+```
+
+Con el perfil Docker de Windows, el equivalente es:
+
+```powershell
+npm run db:migrate:test:docker
+npm run db:seed:test:docker
+npm run test:docker
 ```
 
 > Si tu `.env` apunta al túnel SSH de producción, los tests fallan con `SASL: client password must be a string`. Es entorno, no código.
