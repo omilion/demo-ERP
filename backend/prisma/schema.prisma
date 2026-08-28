@@ -534,6 +534,7 @@ model Orden {
   marketplaceCanal         String?                   @map("marketplace_canal")
   marketplaceComisionPct   Float?                    @map("marketplace_comision_pct")
   marketplaceComisionMonto Float?                    @map("marketplace_comision_monto")
+  marketplaceReferencia    String?                   @map("marketplace_referencia")
   regionDespacho           String?                   @map("region_despacho")
   comunaDespacho           String?                   @map("comuna_despacho")
   ciudadDespacho           String?                   @map("ciudad_despacho")

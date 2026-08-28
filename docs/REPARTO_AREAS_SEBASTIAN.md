@@ -175,3 +175,15 @@ Si de todo esto sólo sobrevive una parte:
 2. Nada sin commitear al terminar.
 3. `schema.prisma` y los permisos tienen dueño único.
 4. Los transversales van de a uno.
+
+---
+
+## Anexo — Hallazgos en tus áreas (28-08-2026)
+
+Cosas que encontré trabajando en lo mío y que caen en tu lado. No las toqué.
+
+**Test rojo en facturación.** `test/facturacion-routes.test.js` falla en *"rechaza reanudar un CAF de certificación anterior a la resolución vigente"*. Verificado que **no es mío**: falla igual con el árbol limpio en `main`.
+
+**El mojibake está vivo en `orden_compra_online`.** 2.635 filas con `tipo_cotizacion = 'Mercado PÃºblico'`, más varias en `canal` (`'Ya habÃ­a comprado antes'`, `'RecomendaciÃ³n de un conocido'`). Es el canal de Compra Ágil, así que afecta a cualquier filtro sobre esa tabla.
+
+**Para el flujo único de estados, que es tuyo:** el catálogo de tipos de venta ahora vive en `backend/src/routes/ventas/estados-normalize.js`, con `normalizeTipoVenta`, `tipoVentaFromSlug` y `grafiasDeTipoVenta`. Conviene que los estados sigan el mismo patrón para no volver a tener dos vocabularios.

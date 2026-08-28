@@ -14,8 +14,11 @@ import {
   GRAFIAS_VENTA_DIRECTA,
   GRAFIAS_VENTA_SALA,
   LICITACION_MOJIBAKE,
+  TIPO_VENTA_VALUES,
   TIPOS_VENTA_MOSTRADOR,
+  grafiasDeTipoVenta,
   normalizeTipoVenta,
+  tipoVentaFromSlug,
 } from '../src/routes/ventas/estados-normalize.js'
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
@@ -79,9 +82,57 @@ describe('normalizeTipoVenta escribe siempre la forma canonica', () => {
   })
 
   it('devuelve null para un tipo desconocido, en vez de inventarlo', () => {
-    expect(normalizeTipoVenta('Trato Directo')).toBeNull()
+    expect(normalizeTipoVenta('Tipo Inventado')).toBeNull()
     expect(normalizeTipoVenta('')).toBeNull()
     expect(normalizeTipoVenta(null)).toBeNull()
+  })
+})
+
+// Compra Agil se ofrecia en el selector al editar una venta pero no estaba en la
+// validacion, de modo que guardar respondia 400. Trato Directo no existia en
+// ninguna parte, asi que esas ventas quedaban mezcladas en Convenio Marco.
+describe('tipos que faltaban en el catalogo', () => {
+  it('acepta Compra Agil y Trato Directo', () => {
+    expect(TIPO_VENTA_VALUES).toContain('Compra Ágil')
+    expect(TIPO_VENTA_VALUES).toContain('Trato Directo')
+    expect(normalizeTipoVenta('compra agil')).toBe('Compra Ágil')
+    expect(normalizeTipoVenta('trato directo')).toBe('Trato Directo')
+  })
+
+  it('no los mete en la agrupacion de mostrador', () => {
+    expect(TIPOS_VENTA_MOSTRADOR).not.toContain('Compra Ágil')
+    expect(TIPOS_VENTA_MOSTRADOR).not.toContain('Trato Directo')
+  })
+})
+
+// Los filtros de pantalla viajan como slug. Pasarlos crudos al `where` no
+// coincide con ninguna fila; devolver {} deja la consulta sin filtro y muestra
+// todo. Ambos fallan en silencio, en direcciones opuestas.
+describe('resolucion de slugs de filtro', () => {
+  it('resuelve el slug de cada tipo del catalogo', () => {
+    for (const tipo of TIPO_VENTA_VALUES) {
+      const slug = tipo.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, '-')
+      expect(tipoVentaFromSlug(slug)).toBe(tipo)
+    }
+  })
+
+  it('devuelve null para un slug que no existe', () => {
+    expect(tipoVentaFromSlug('no-existe')).toBeNull()
+    expect(tipoVentaFromSlug('')).toBeNull()
+  })
+
+  it('entrega todas las grafias del tipo, no solo la canonica', () => {
+    expect(grafiasDeTipoVenta('licitacion')).toEqual(expect.arrayContaining([...GRAFIAS_LICITACION]))
+    expect(grafiasDeTipoVenta('convenio-marco')).toEqual(expect.arrayContaining([...GRAFIAS_CONVENIO_MARCO]))
+  })
+
+  it('un tipo sin grafias alternativas devuelve la canonica', () => {
+    expect(grafiasDeTipoVenta('trato-directo')).toEqual(['Trato Directo'])
+    expect(grafiasDeTipoVenta('compra-agil')).toEqual(['Compra Ágil'])
+  })
+
+  it('devuelve vacio si no lo reconoce, para que el llamador decida', () => {
+    expect(grafiasDeTipoVenta('inventado')).toEqual([])
   })
 })
 

@@ -71,6 +71,7 @@ const Schema = z.object({
   plazoEntregaDias: z.number().int().min(0).max(3650).optional().nullable(),
   plazoEntregaTipo: z.enum(['habiles', 'corridos']).optional().nullable(),
   marketplaceCanal: z.string().max(80).optional().nullable(),
+  marketplaceReferencia: z.string().max(120).optional().nullable(),
   marketplaceComisionPct: z.number().min(0).max(100).optional().nullable(),
   marketplaceComisionMonto: z.number().min(0).optional().nullable(),
   regionDespacho: z.string().optional().nullable(),
@@ -127,6 +128,7 @@ export default async function updateVenta(fastify) {
         plazoEntregaDias,
         plazoEntregaTipo,
         marketplaceCanal,
+        marketplaceReferencia,
         marketplaceComisionPct,
         marketplaceComisionMonto,
         regionDespacho,
@@ -226,10 +228,11 @@ export default async function updateVenta(fastify) {
       if (regionDespacho !== undefined) ordenData.regionDespacho = regionDespacho
       if (comunaDespacho !== undefined) ordenData.comunaDespacho = comunaDespacho
       if (ciudadDespacho !== undefined) ordenData.ciudadDespacho = ciudadDespacho
-      if (marketplaceCanal !== undefined || marketplaceComisionPct !== undefined || marketplaceComisionMonto !== undefined || ordenData.tipo !== undefined) {
+      if (marketplaceCanal !== undefined || marketplaceReferencia !== undefined || marketplaceComisionPct !== undefined || marketplaceComisionMonto !== undefined || ordenData.tipo !== undefined) {
         const marketplace = normalizeMarketplace({
           tipo: ordenData.tipo ?? current.tipo,
-          canal: marketplaceCanal,
+          canal: marketplaceCanal ?? current.marketplaceCanal,
+          referencia: marketplaceReferencia ?? current.marketplaceReferencia,
           comisionPct: marketplaceComisionPct,
           comisionMonto: marketplaceComisionMonto,
           total: computeTotal(items || current.items, ordenData.descuentoPct ?? current.descuentoPct),

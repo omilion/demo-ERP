@@ -11,7 +11,7 @@ import { buildCobranzaHistoricoScopeWhere, mergeCobranzaWhere } from '../cobranz
 import { attachConsultaPreciosData } from '../productos/pricing.js'
 import { buildProveedorWhere, proveedorOrderBy } from '../proveedores/helpers.js'
 import { buildBodegaTallerWhere, enrichBodegaTallerItems, filterStockCriticoItems } from '../bodega-taller/helpers.js'
-import { GRAFIAS_CONVENIO_MARCO, GRAFIAS_LICITACION, TIPOS_VENTA_MOSTRADOR } from '../ventas/estados-normalize.js'
+import { GRAFIAS_CONVENIO_MARCO, GRAFIAS_LICITACION, TIPOS_VENTA_MOSTRADOR, grafiasDeTipoVenta } from '../ventas/estados-normalize.js'
 import { registerComisionesReportRoutes } from './comisiones.js'
 import { registerMovimientosAnormalesReportRoutes } from './movimientos-anormales.js'
 import ExcelJS from 'exceljs'
@@ -470,9 +470,14 @@ export async function buildVentasExportWhere(fastify, query = {}) {
   if (tipo === 'venta-sala' || tipo === 'venta-directa') where.tipo = { in: VENTA_DIRECTA_TIPOS }
   else if (tipo === 'convenio-marco') where.tipo = { in: [...GRAFIAS_CONVENIO_MARCO] }
   else if (tipo === 'licitacion-convenio') where.tipo = { in: [...GRAFIAS_LICITACION, ...GRAFIAS_CONVENIO_MARCO] }
-  else if (tipo === 'venta-web') where.tipo = 'Venta Web'
-  else if (tipo && tipo !== 'licitacion') where.tipo = tipo
-  else if (tipo === 'licitacion') where.tipo = { in: GRAFIAS_LICITACION }
+  else if (tipo) {
+    // Se resuelve contra el catalogo en vez de pasar el slug crudo: asi un
+    // tipo nuevo trae filtro que funciona, con todas sus grafias. Un valor
+    // desconocido se filtra tal cual, que devuelve vacio; ignorarlo
+    // devolveria todas las ventas, que es peor.
+    const grafias = grafiasDeTipoVenta(tipo)
+    where.tipo = grafias.length ? { in: grafias } : tipo
+  }
   if (rut) where.rutCliente = { contains: rut, mode: 'insensitive' }
   if (nInterno) {
     const parsedNInterno = parsePositiveInt(nInterno)
@@ -1181,9 +1186,10 @@ export default async function reportesRoutes(fastify) {
     if (tipo === 'venta-sala' || tipo === 'venta-directa') where.tipo = { in: VENTA_DIRECTA_TIPOS }
     else if (tipo === 'convenio-marco') where.tipo = { in: [...GRAFIAS_CONVENIO_MARCO] }
     else if (tipo === 'licitacion-convenio') where.tipo = { in: [...GRAFIAS_LICITACION, ...GRAFIAS_CONVENIO_MARCO] }
-    else if (tipo === 'venta-web') where.tipo = 'Venta Web'
-    else if (tipo && tipo !== 'licitacion') where.tipo = tipo
-    else if (tipo === 'licitacion') where.tipo = { in: GRAFIAS_LICITACION }
+    else if (tipo) {
+      const grafias = grafiasDeTipoVenta(tipo)
+      where.tipo = grafias.length ? { in: grafias } : tipo
+    }
     if (rut) where.rutCliente = { contains: rut, mode: 'insensitive' }
     if (nInterno) where.nInterno = parseInt(nInterno, 10)
     if (oc) where.licitacion = { contains: oc, mode: 'insensitive' }

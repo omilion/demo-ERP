@@ -21,7 +21,9 @@ import api from '../../api/client'
 
 const DOCUMENTOS_VENTA = ['Factura Plast', 'Factura Laura', 'Boleta Electronica', 'NC Plast', 'NC Laura', 'NC Inter Plast', 'ND Plast', 'ND Laura']
 
-const TIPOS = ['Licitación', 'Compra Ágil', 'Convenio Marco', 'Marketplace', 'Venta Web', 'Venta Sala']
+// Trato Directo es venta directa como Convenio Marco: llega la OC sin pasar por
+// el CRM, asi que se puede crear desde aca.
+const TIPOS = ['Licitación', 'Compra Ágil', 'Convenio Marco', 'Trato Directo', 'Marketplace', 'Venta Web', 'Venta Sala']
 // Las cotizaciones de licitación se originan en CRM. Matriz conserva sólo
 // tipos de venta directa para impedir crear registros paralelos al flujo CRM.
 const TIPOS_VENTA_DIRECTA = TIPOS.filter(tipo => !['Licitación', 'Compra Ágil'].includes(tipo))
@@ -1325,6 +1327,10 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       toast.warning('Indica el canal Marketplace')
       return
     }
+    if (data.tipo === 'Marketplace' && !String(data.marketplaceReferencia || '').trim()) {
+      toast.warning('Indica el N° de orden del portal para poder conciliar la comisión')
+      return
+    }
 
     const normalizedItems = shouldSendItems ? normalizeItems(items, { withOverrides: data.tipo === 'Licitación' }) : null
     const payload = {
@@ -1345,6 +1351,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       regionDespacho: data.regionDespacho || null,
       comunaDespacho: data.comunaDespacho || null,
       marketplaceCanal: data.tipo === 'Marketplace' ? data.marketplaceCanal || null : null,
+      marketplaceReferencia: data.tipo === 'Marketplace' ? data.marketplaceReferencia || null : null,
       marketplaceComisionPct: data.tipo === 'Marketplace' && data.marketplaceComisionPct !== '' ? Number(data.marketplaceComisionPct) : null,
       marketplaceComisionMonto: data.tipo === 'Marketplace' && data.marketplaceComisionMonto !== '' ? Number(data.marketplaceComisionMonto) : null,
       crmId: searchParams.get('crmId') ? Number(searchParams.get('crmId')) : undefined,
@@ -1571,7 +1578,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       )}
 
       {data.tipo === 'Marketplace' && <VentaWorkspaceSection className="venta-workspace-special-details" title="Venta Marketplace y comisión">
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 1fr', gap: 14 }}>
           <FormField label="Canal Marketplace" required>
             <Select
               value={data.marketplaceCanal || ''}
@@ -1581,6 +1588,11 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
                 ...MARKETPLACE_CANALES.map(canal => ({ value: canal, label: canal })),
               ]}
             />
+          </FormField>
+          {/* Sin el numero de orden del portal la comision no se puede conciliar
+              contra nada, que es lo que pide CU-05. */}
+          <FormField label="N° de orden en el portal" required hint="Para conciliar contra el comprobante del marketplace">
+            <Input value={data.marketplaceReferencia || ''} onChange={v => set('marketplaceReferencia', v)} />
           </FormField>
           <FormField label="Comisión %">
             <Input type="number" value={data.marketplaceComisionPct || ''} onChange={v => set('marketplaceComisionPct', v)} min="0" max="100" />

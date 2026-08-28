@@ -49,7 +49,25 @@ function validationError(message, statusCode = 400) {
   return error
 }
 
-const CANAL_TO_TIPO_ORDEN = { WEB: 'Venta Web', SALA: 'Venta Sala', LICITACION: 'Licitación' }
+// Faltaban COMPRA_AGIL y PROSPECCION_DIRECTA, que son canales validos del CRM
+// (ver CRM_CANALES). Al no estar mapeados caian al 'Normal' del fallback, con
+// lo que una compra agil ganada quedaba indistinguible de una venta comun y
+// ademas se contaba como venta de mostrador en los reportes, que agrupan
+// 'Normal' dentro de TIPOS_VENTA_MOSTRADOR.
+//
+// El defecto es latente, no historico: al 28-08-2026 el CRM no tiene ninguna
+// oportunidad con estos canales ni ninguna cerrada como GANADO, porque todo lo
+// cargado viene de la migracion (WEB y LICITACION). Habria aparecido la primera
+// vez que se ganara una compra agil, que es justo lo que esta por empezar.
+const CANAL_TO_TIPO_ORDEN = {
+  WEB: 'Venta Web',
+  SALA: 'Venta Sala',
+  LICITACION: 'Licitación',
+  COMPRA_AGIL: 'Compra Ágil',
+  // La prospeccion directa termina en una venta comun: lo que la distingue es
+  // el origen de la oportunidad, que queda registrado en el CRM, no el tipo.
+  PROSPECCION_DIRECTA: 'Normal',
+}
 
 function tipoOrdenForCanal(canalVenta) {
   return CANAL_TO_TIPO_ORDEN[String(canalVenta || '').toUpperCase()] || 'Normal'

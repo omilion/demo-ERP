@@ -116,15 +116,25 @@ describe('POST /api/ventas', () => {
       })
       expect(invalida.statusCode).toBe(400)
 
-      const valida = await app.inject({
+      // CU-05 exige la referencia externa: sin el numero de orden del portal la
+      // comision no se puede conciliar contra el comprobante del marketplace.
+      const sinReferencia = await app.inject({
         method: 'POST', url: '/api/ventas',
         headers: { authorization: `Bearer ${token}` },
         payload: { ...payload, marketplaceCanal: 'Paris', marketplaceComisionPct: 10 },
+      })
+      expect(sinReferencia.statusCode).toBe(400)
+
+      const valida = await app.inject({
+        method: 'POST', url: '/api/ventas',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { ...payload, marketplaceCanal: 'Paris', marketplaceReferencia: `${marker}-REF`, marketplaceComisionPct: 10 },
       })
       expect(valida.statusCode).toBe(201)
       const body = JSON.parse(valida.body)
       ordenId = body.id
       expect(body.marketplaceCanal).toBe('París')
+      expect(body.marketplaceReferencia).toBe(`${marker}-REF`)
       expect(body.marketplaceComisionMonto).toBe(1000)
     } finally {
       if (ordenId) {

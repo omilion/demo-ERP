@@ -3,7 +3,7 @@ import { getUserSucursalId } from '../caja/scope.js'
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenScope } from '../historico/corte.js'
 import { parseDate, parsePage, parsePositiveInt } from '../operational-utils.js'
 import { computeVentaFinancialState } from '../ventas/financial.js'
-import { GRAFIAS_CONVENIO_MARCO, TIPOS_VENTA_MOSTRADOR } from '../ventas/estados-normalize.js'
+import { GRAFIAS_CONVENIO_MARCO, TIPOS_VENTA_MOSTRADOR, grafiasDeTipoVenta } from '../ventas/estados-normalize.js'
 
 const LIMIT = 100
 const MAX_PAGE_SIZE = 500
@@ -53,6 +53,11 @@ function tipoOrdenWhere(tipo) {
   if (tipo === 'venta-web' || tipo === 'web') return { tipo: { in: ['Venta Web', 'Venta web', 'OC Online', 'Web'] } }
   if (tipo === 'convenio-marco') return { tipo: { in: [...GRAFIAS_CONVENIO_MARCO] } }
   if (tipo === 'licitacion') return { tipo: { contains: 'Licit', mode: 'insensitive' } }
+  // Cualquier otro tipo del catalogo -Compra Agil, Trato Directo, Marketplace-
+  // se resuelve con sus grafias. Devolver {} dejaba la consulta sin filtro, de
+  // modo que una pestana nueva mostraba todas las ventas en vez de ninguna.
+  const grafias = grafiasDeTipoVenta(tipo)
+  if (grafias.length) return { tipo: { in: grafias } }
   return {}
 }
 

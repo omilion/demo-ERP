@@ -61,3 +61,74 @@ El documento indica que Compra Ágil se gestiona sólo en SisGestión, pero la d
 **Corrección a CU-05:** el canal **sí se usa**, y eso sube su prioridad en vez de bajarla. Hay del orden de 196 operaciones registradas fuera del tipo Marketplace, con el canal anotado en observaciones o incrustado en el nombre del cliente, y sin comisión registrada. El margen de esas ventas está sobrestimado en los reportes.
 
 > Medido con consultas de sólo lectura sobre la base productiva. Detalle transversal en [00_datos_y_esfuerzo.md](00_datos_y_esfuerzo.md).
+
+---
+
+## Avance del 28-08-2026
+
+Trabajo aplicado sobre el código, con las cifras medidas contra una copia local de producción.
+
+### CU-04 — Trato Directo y Compra Ágil: resueltos en el catálogo
+
+Ambos tipos ya existen y son seleccionables, filtrables y reportables.
+
+Al implementarlo aparecieron **tres defectos que la revisión no había detectado**:
+
+1. **Compra Ágil se ofrecía al editar una venta pero el backend la rechazaba.** El selector la incluye desde hace tiempo; la validación no. Guardar devolvía 400.
+2. **El CRM no mapeaba el canal `COMPRA_AGIL` a ningún tipo de orden.** Una oportunidad de compra ágil ganada se habría guardado como `Normal`, quedando además contada como venta de mostrador en los reportes. Es un defecto **latente**: hoy el CRM no tiene ninguna oportunidad de ese canal ni ninguna cerrada como ganada, así que no alcanzó a producir datos malos. Habría aparecido la primera vez que se ganara una compra ágil.
+3. **El mapa inverso, al crear la venta desde una oportunidad, tenía una entrada muerta** (`CONVENIO_MARCO`, que no es un canal del CRM) y le faltaban las dos vivas. Crear la venta desde una oportunidad de compra ágil respondía siempre 400.
+
+Queda pendiente, y es **decisión de Plastimar**: las ventas de Trato Directo ya registradas viven dentro de los 2.618 de Convenio Marco y no hay criterio automático para separarlas. El tipo permite distinguirlas de aquí en adelante.
+
+### Grafías: el filtro de Licitación devolvía el 0,2%
+
+Cinco módulos definían por su cuenta qué grafías cuentan como cada tipo, con conjuntos distintos, de modo que **el mismo filtro entregaba totales distintos según la pantalla**. Además varios nombraban una sola grafía.
+
+| Filtro | Antes devolvía | Ahora | Diferencia |
+|---|---|---|---|
+| Ventas · Licitación | 5 | 2.653 | **+2.648** |
+| Comisiones · Licitación | 5 | 2.653 | **+2.648** |
+| Convenio Marco | 2.618 | 2.618 | sin cambio (no hay variante en los datos) |
+
+El caso de comisiones importa aparte porque **afecta pagos**: el reporte contemplaba el mojibake pero no la grafía sin tilde, que es la mayoritaria.
+
+Se centralizaron las grafías en un catálogo único y se agregó un resolvedor de slugs, de modo que un tipo nuevo trae filtro que funciona desde el primer día. Antes, un filtro por un tipo no contemplado devolvía **todas** las ventas en Matriz (la consulta quedaba sin filtro) o **ninguna** en Reportes (se comparaba contra el slug crudo).
+
+**Decisión pendiente de negocio:** si `Normal` debe contar como venta de sala. Se unificó incluyéndola —es la mayoritaria y es como el legacy grababa el mostrador—, pero está en un solo lugar: si Plastimar dice que no, se saca de ahí y las cinco pantallas se corrigen juntas.
+
+### CU-05 — Marketplace: la comisión es recuperable
+
+Se agregó la **referencia externa** obligatoria (N° de orden del portal), que es lo que CU-05 exige para poder conciliar contra el comprobante.
+
+Y al medir apareció algo que cambia el pronóstico: **la liquidación del portal quedó escrita en las observaciones**, con este formato:
+
+> *"Falabella pagó $5.044 por esta venta. Resumen: Venta total $8.850, se le resta $2.390 por cofinanciamiento logístico y $1.416 comisión por venta."*
+
+La aritmética cuadra exacto, así que **la comisión histórica se puede recuperar sin pedirle nada a nadie**. El script `backend/scripts/reclasificar-marketplace.mjs` (dry-run por defecto) clasifica en dos niveles:
+
+| Nivel | Órdenes | Criterio |
+|---|---|---|
+| **Alta** | **132** | Trae la liquidación del portal y la aritmética verifica |
+| Alta, aritmética no cuadra | 10 | Se omiten: el parseo entendió mal |
+| **Media** | **118** | El cliente se llama como el canal, o la observación dice "VENTA MERCADO LIBRE", "COMISION FALABELLA", "LIQUIDACION FALABELLA N° 85276787" |
+| Descartadas | 16 | Sólo mención del nombre; quedan para revisión manual |
+
+Montos recuperables del nivel alta:
+
+| Canal | Órdenes | Comisión | Cofinanciamiento logístico | Venta total |
+|---|---|---|---|---|
+| Falabella | 112 | $675.595 | $682.710 | $4.239.463 |
+| París | 20 | $62.083 | $96.650 | $361.908 |
+
+**Corrección a la cifra anterior de esta ficha:** eran ~196 operaciones porque el conteo original omitió **París** (45 órdenes) y usó un patrón más estrecho para Falabella. El total con rastro es **276**, de las cuales 250 se identifican con confianza.
+
+**Dos cosas que el script no hace a propósito.** No inventa la comisión donde no está escrita —un valor supuesto parecería un dato medido—, y no inventa la referencia externa, que no está en la base y sale de los comprobantes del portal.
+
+**Decisión pendiente:** el modelo tiene un solo campo de comisión, pero el portal descuenta **dos** conceptos: comisión por venta y cofinanciamiento logístico. Se graba la comisión por venta, que es lo que el campo declara, y el cofinanciamiento queda anotado en observaciones. Si Plastimar necesita separarlo para el margen, requiere campo propio.
+
+### Lo que sigue abierto en esta ficha
+
+- **CU-01** boleta sin cliente — corresponde al área de facturación.
+- **CU-02** prueba integrada de Webpay rechazado, transferencia pendiente y diferencia de monto.
+- **CU-03** adjudicación parcial: 221 casos reales, y es una regresión respecto del legacy.
+- **CU-06** versionado de la cotización y registro de la aceptación del cliente.
