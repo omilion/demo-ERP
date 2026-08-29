@@ -155,6 +155,60 @@ export default async function notificacionesRoutes(fastify) {
       }
     }
 
+    // Taller rechazo un item: le vuelve a la vendedora con el motivo.
+    //
+    // El rechazo por item ya existe y exige motivo, pero solo quedaba en la
+    // bitacora del taller: nadie avisaba a quien hizo la venta. El caso tipico
+    // que describio Plastimar es un producto descontinuado ingresado por error;
+    // son pocos, pero si nadie se entera la OT queda detenida sin dueno.
+    //
+    // Se resuelve en dos pasos porque Odt guarda `ordenId` pero no declara la
+    // relacion con Orden. Y no sirve `Odt.vendedorId`: esta vacio en las 5.772
+    // OT, mientras que ordenId esta en todas.
+    if (puede('ventas')) {
+      const rechazados = await prisma.odtItemTaller.findMany({
+        where: {
+          estado: 'rechazado',
+          odtItem: { eliminado: false, odt: { eliminado: false, estado: { notIn: ['Anulada', 'Entregada'] } } },
+        },
+        select: {
+          id: true,
+          obs: true,
+          fechaInicio: true,
+          taller: { select: { nombre: true } },
+          odtItem: { select: { nombre: true, odt: { select: { id: true, ordenId: true } } } },
+        },
+        orderBy: { id: 'desc' },
+        take: 100,
+      })
+      const ordenIds = [...new Set(rechazados.map(item => item.odtItem?.odt?.ordenId).filter(Boolean))]
+      const ordenes = ordenIds.length
+        ? await prisma.orden.findMany({
+            where: { id: { in: ordenIds } },
+            select: { id: true, nInterno: true, userId: true },
+          })
+        : []
+      const ordenById = new Map(ordenes.map(orden => [orden.id, orden]))
+      // Cada vendedor ve solo lo suyo: si le llega a todo el equipo se vuelve
+      // ruido y nadie lo atiende. Admin y coordinacion comercial ven todo.
+      const veTodo = request.user?.role === 'admin' || request.user?.role === 'coordinador_comercial'
+      for (const item of rechazados) {
+        const orden = ordenById.get(item.odtItem?.odt?.ordenId)
+        if (!veTodo && orden?.userId !== request.user?.id) continue
+        const odtId = item.odtItem?.odt?.id
+        const venta = orden?.nInterno || orden?.id
+        items.push({
+          tipo: 'taller_item_rechazado',
+          severidad: 'alta',
+          titulo: `Taller rechazo un producto${venta ? ` de la venta #${venta}` : ''}`,
+          detalle: [item.odtItem?.nombre, item.taller?.nombre, item.obs]
+            .filter(Boolean).join(' · ') || 'Sin motivo registrado',
+          fecha: item.fechaInicio || ahora,
+          link: odtId ? `/taller?odtId=${odtId}` : '/taller',
+        })
+      }
+    }
+
     // Orden final: severidad alta primero, luego por fecha más antigua/urgente.
     // CRM sin gestión: respeta cartera del vendedor y usa el mismo semáforo del pipeline.
     if (puede('ventas')) {
