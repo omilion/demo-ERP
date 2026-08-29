@@ -34,8 +34,9 @@ export default async function bitacoraRoutes(fastify) {
   })
 
   // POST /odts/:id/bitacora
+  // Registrar avance es el trabajo del operario; borrar el historial no.
   fastify.post('/:id/bitacora', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('taller.avance', 'write')],
   }, async (request, reply) => {
     const odtId = parseInt(request.params.id, 10)
     if (isNaN(odtId)) return reply.code(400).send({ error: 'ID invalido' })
@@ -60,7 +61,7 @@ export default async function bitacoraRoutes(fastify) {
 
   // DELETE /odts/:id/bitacora/:entryId
   fastify.delete('/:id/bitacora/:entryId', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'delete')],
+    preHandler: [fastify.authenticate, fastify.rbac('taller.gestion', 'delete')],
   }, async (request, reply) => {
     const entryId = parseInt(request.params.entryId, 10)
     if (isNaN(entryId)) return reply.code(400).send({ error: 'ID invalido' })

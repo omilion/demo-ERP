@@ -12,7 +12,16 @@
 
 export const ESTADO_ENTREGA_OPCIONES = ['Pendiente entrega', 'En despacho', 'Entregada', 'Parcial']
 
-export const TIPO_VENTA_OPCIONES = ['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala', 'Marketplace']
+export const TIPO_VENTA_OPCIONES = [
+  'Normal',
+  'Licitación',
+  'Compra Ágil',
+  'Convenio Marco',
+  'Trato Directo',
+  'Venta Web',
+  'Venta Sala',
+  'Marketplace',
+]
 
 function comparisonKey(value) {
   return String(value ?? '')

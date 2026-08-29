@@ -3,7 +3,7 @@ import { getUserSucursalId } from '../caja/scope.js'
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenScope } from '../historico/corte.js'
 import { parseDate, parsePage, parsePositiveInt } from '../operational-utils.js'
 import { computeVentaFinancialState } from '../ventas/financial.js'
-import { deriveEstadoFlujo } from '../ventas/estados-normalize.js'
+import { deriveEstadoFlujo, GRAFIAS_CONVENIO_MARCO, TIPOS_VENTA_MOSTRADOR, grafiasDeTipoVenta } from '../ventas/estados-normalize.js'
 
 const LIMIT = 100
 const MAX_PAGE_SIZE = 500
@@ -49,10 +49,15 @@ function scopedMovimientoCajaWhere(user, where = {}) {
 }
 
 function tipoOrdenWhere(tipo) {
-  if (tipo === 'venta-sala' || tipo === 'venta-directa') return { tipo: { in: ['Venta sala', 'Venta directa', 'Venta Sala', 'Normal'] } }
+  if (tipo === 'venta-sala' || tipo === 'venta-directa') return { tipo: { in: [...TIPOS_VENTA_MOSTRADOR] } }
   if (tipo === 'venta-web' || tipo === 'web') return { tipo: { in: ['Venta Web', 'Venta web', 'OC Online', 'Web'] } }
-  if (tipo === 'convenio-marco') return { tipo: { in: ['Convenio Marco', 'Convenio marco'] } }
+  if (tipo === 'convenio-marco') return { tipo: { in: [...GRAFIAS_CONVENIO_MARCO] } }
   if (tipo === 'licitacion') return { tipo: { contains: 'Licit', mode: 'insensitive' } }
+  // Cualquier otro tipo del catalogo -Compra Agil, Trato Directo, Marketplace-
+  // se resuelve con sus grafias. Devolver {} dejaba la consulta sin filtro, de
+  // modo que una pestana nueva mostraba todas las ventas en vez de ninguna.
+  const grafias = grafiasDeTipoVenta(tipo)
+  if (grafias.length) return { tipo: { in: grafias } }
   return {}
 }
 
@@ -706,7 +711,7 @@ async function getTotalsForPeriod(fastify, start, end, user) {
   const ordenesWhere = {
     eliminada: false,
     createdAt: { gte: start, lte: end },
-    tipo: { in: ['Venta sala', 'Venta directa', 'Venta Sala', 'Normal', 'Convenio Marco'] },
+    tipo: { in: [...TIPOS_VENTA_MOSTRADOR, ...GRAFIAS_CONVENIO_MARCO] },
     ...userSucursalWhere(user)
   }
   const ordenes = await aggOrdenMonto(fastify, ordenesWhere)

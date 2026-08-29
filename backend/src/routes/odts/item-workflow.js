@@ -322,7 +322,8 @@ export default async function itemWorkflowRoutes(fastify) {
     }
   }
 
-  const opts = { preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')] }
+  // Mover el estado del item es como el operario declara su avance.
+  const opts = { preHandler: [fastify.authenticate, fastify.rbac('taller.avance', 'write')] }
   fastify.put(ROUTE, opts, updateEstado)
   fastify.patch(ROUTE, opts, updateEstado)
   fastify.post(BULK_ROUTE, opts, updateTallerEstadoMasivo)

@@ -14,7 +14,9 @@ const TABS = [
   { id: 'venta-sala', label: 'Venta sala' },
   { id: 'venta-web', label: 'Venta web' },
   { id: 'convenio-marco', label: 'Convenio marco' },
+  { id: 'trato-directo', label: 'Trato directo' },
   { id: 'licitacion', label: 'Licitaciones' },
+  { id: 'compra-agil', label: 'Compra ágil' },
 ]
 
 const QUICK_FILTERS = [

@@ -120,8 +120,8 @@ Sale de agrupar los endpoints reales por la operación de negocio que representa
 | Dyan Cortés | `bodeguero` | `taller.gestion`, `ventas.taller`, `bodega.compras` |
 | Diego Ávila | `bodeguero` | `bodega.movimientos`, **`ventas.entregas`** |
 | Zalma Lobos | `taller` | `taller.gestion`, `taller.cerrar` |
-| Jenifer Breidenbach | `taller` | **`taller.avance`** únicamente |
-| Mercedes Rodríguez | `taller` | **`taller.avance`** únicamente |
+| Jenifer Breidenbach | **`taller_operario`** | **`taller.avance`** únicamente |
+| Mercedes Rodríguez | **`taller_operario`** | **`taller.avance`** únicamente |
 | Sebastián Mella | `taller` | `taller.materiales`, `bodega.movimientos`, `despacho` |
 
 Lo que esto cambia en concreto: **Diego Ávila puede marcar entregas sin poder crear ventas**, y **Jenifer y Mercedes registran su avance sin poder cerrar ni anular una OT**. Hoy ninguna de las dos cosas es posible.
@@ -164,3 +164,58 @@ Cada paso debería demostrarse con las cuentas reales sobre la copia local de pr
 - Jenifer registra un avance y **falla** al cerrar la OT.
 - Daniela emite un DTE y **falla** al ajustar folios.
 - Un permiso antiguo a nivel de módulo sigue funcionando igual que antes.
+
+---
+
+## 8. Corrección al implementarlo (28-08-2026)
+
+Al construir el mecanismo apareció un error de este mismo documento, y conviene dejarlo escrito porque cambia el catálogo de roles.
+
+**Los permisos extra son aditivos: amplían lo que da el rol, nunca lo recortan.** Es deliberado — si una función suelta pudiera restar, asignar un permiso dejaría a alguien con menos acceso del que ya tenía, y de forma silenciosa.
+
+La consecuencia es que **para acotar a alguien dentro de un módulo, su rol no puede otorgar ese módulo en bloque**. Y el rol `taller` otorga `taller: [read, write]`, así que cualquier función cae al permiso del módulo:
+
+| Con rol `taller` | Resultado |
+|---|---|
+| `taller.avance` write | permitido |
+| `taller.cerrar` write | **permitido** — cae al módulo |
+| `taller.gestion` write | **permitido** — cae al módulo |
+
+O sea: la tabla de arriba, que decía que Jenifer y Mercedes tendrían `taller.avance` únicamente, **no era alcanzable**. Con ese rol podían cerrar y anular OT por más funciones que se les acotaran.
+
+Se agrega el rol **`taller_operario`** — `taller: [read]` más `taller.avance: [read, write]` — que sí lo consigue. Es aditivo: ningún usuario existente cambia de rol.
+
+El caso de bodega no tenía este problema y funciona tal como estaba escrito: `bodeguero` da `ventas: [read]`, de modo que `ventas.entregas` amplía sin abrir el módulo. **Diego Ávila marca entregas y sigue sin poder crear ventas.**
+
+### El catálogo de funciones es cerrado
+
+El middleware resuelve cualquier `modulo.funcion`, pero la asignación valida contra una lista fija. Si se aceptara cualquier texto después del punto, un typo como `ventas.entergas` crearía un permiso asignable que no hace nada — exactamente el defecto de los seis módulos fantasma eliminados en `54057ab`.
+
+### Endpoints ya etiquetados
+
+| Endpoint | Antes | Ahora | Quién |
+|---|---|---|---|
+| `PUT /ventas/items/:id/entregados` | `ventas:write` | `ventas.entregas` | Bodega |
+| `POST /ventas/:id/forzar-taller` | `ventas:write` | `ventas.taller` | Coordinación de taller |
+| `POST /odts/:id/bitacora` | `taller:write` | `taller.avance` | Operario |
+| `POST /odts/:id/consumos` | `taller:write` | `taller.avance` | Operario |
+| `PUT/PATCH .../estado` y masivo | `taller:write` | `taller.avance` | Operario |
+| `POST /odts` · `PUT /odts/:id` | `taller:write` | `taller.gestion` | Supervisora |
+| `DELETE /odts/:id/bitacora/:entryId` | `taller:delete` | `taller.gestion` | Supervisión |
+| `POST /odts/:id/cerrar` | `taller:write` | `taller.cerrar` | Supervisora |
+| `POST /odts/:id/anular` · `DELETE /odts/:id` | `taller:delete` | `taller.cerrar` | Supervisión |
+| `DELETE /odts/:id/materiales/:id` | `taller:delete` | `taller.materiales` | Encargado de materiales |
+
+Hasta que un endpoint se etiquete, resuelve por su módulo como siempre.
+
+### Un hallazgo del etiquetado: nadie del taller puede anular una OT
+
+El rol `taller` tiene `[read, write]` pero **no `delete`**. Como anular y eliminar una OT exigen `delete`, hoy **sólo un admin puede hacerlo** — la supervisora no. Verificado contra el árbol limpio: es anterior a este trabajo y quedó igual.
+
+Es una decisión para Plastimar: si Zalma debe poder anular una OT, hay que darle `delete` sobre `taller.cerrar`. Ahora se puede hacer sin abrirle también el borrado de materiales, que antes venía en el mismo paquete.
+
+### Qué falta
+
+El mecanismo es retrocompatible: verificado que un permiso de módulo sigue habilitando todas sus funciones y que lo negado sigue negado. La pantalla de Accesos ya muestra las funciones bajo su módulo.
+
+Queda **etiquetar `facturacion`, `despacho` y `bodega`** —los tres son del área de Sebastián, así que se coordina con él— y revisar los **74 endpoints que sólo exigen estar logueado**.

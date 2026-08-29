@@ -23,7 +23,28 @@ export const ESTADO_ENTREGA_VALUES = ['Pendiente entrega', 'En despacho', 'Entre
 // es una decision de negocio pendiente; aplastarlos aqui perderia el matiz.
 export const ESTADO_PAGO_VALUES = ['No pagada', 'Pagada', 'Parcial', 'Pendiente Webpay', 'Rechazada Webpay']
 
-export const TIPO_VENTA_VALUES = ['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala', 'Marketplace']
+// "Compra Ágil" y "Trato Directo" se agregan como tipos propios:
+//
+//   Compra Ágil ya se ofrecia en el selector de Nueva Venta, pero no estaba en
+//   la validacion del backend, de modo que crear una venta con ese tipo
+//   respondia 400. Ademas el CRM no mapeaba el canal COMPRA_AGIL a ningun tipo
+//   de orden, asi que una oportunidad ganada se guardaba como "Normal" y
+//   quedaba contada como venta de mostrador en los reportes.
+//
+//   Trato Directo no existia ni en codigo ni en datos: esas ventas viven hoy
+//   dentro de Convenio Marco, sin forma de separarlas. Agregar el tipo permite
+//   separarlas de aqui en adelante; reclasificar las anteriores es una decision
+//   de negocio pendiente, porque no hay criterio automatico para distinguirlas.
+export const TIPO_VENTA_VALUES = [
+  'Normal',
+  'Licitación',
+  'Compra Ágil',
+  'Convenio Marco',
+  'Trato Directo',
+  'Venta Web',
+  'Venta Sala',
+  'Marketplace',
+]
 
 // Estado transversal de lectura. No se persiste: se deriva de las tres
 // dimensiones que ya son fuente de verdad (vigencia, pago y entrega), evitando
@@ -45,8 +66,41 @@ export const ESTADO_FLUJO = Object.freeze({
 // filtran por igualdad. Mientras convivan ambos vocabularios, un `where` que
 // nombre una sola grafia deja fuera al resto de las ordenes en silencio.
 export const GRAFIAS_ENTREGADA = ['Entregada', 'Entregado']
-export const GRAFIAS_LICITACION = ['Licitación', 'Licitacion']
+
+// "LicitaciÃ³n" es mojibake: UTF-8 leido como latin1 en alguna importacion.
+//
+// Al 28-08-2026 no hay ninguna orden con este valor; el reporte de comisiones ya
+// lo contemplaba, seguramente por un caso visto antes de alguna limpieza. Se
+// conserva por precaucion -en un IN, una grafia que no existe no cuesta nada,
+// mientras que omitirla pierde filas en silencio- y para que todas las
+// pantallas coincidan con lo que comisiones ya hacia.
+//
+// El mojibake si esta vivo en otras columnas: ventas.orden_compra_online tiene
+// 2.635 filas con tipo_cotizacion = "Mercado PÃºblico", que es justamente el
+// canal de Compra Agil.
+export const LICITACION_MOJIBAKE = 'LicitaciÃ³n'
+export const GRAFIAS_LICITACION = ['Licitación', 'Licitacion', LICITACION_MOJIBAKE]
 export const GRAFIAS_VENTA_SALA = ['Venta Sala', 'Venta sala']
+export const GRAFIAS_VENTA_DIRECTA = ['Venta directa', 'Venta Directa']
+export const GRAFIAS_CONVENIO_MARCO = ['Convenio Marco', 'Convenio marco']
+
+// Agrupacion de negocio, no de grafia: la venta que se atiende en mostrador.
+//
+// Cinco modulos la definian por su cuenta con conjuntos distintos, de modo que
+// el mismo filtro entregaba totales distintos segun la pantalla:
+//
+//   despachos/matriz     sala + directa                  (sin "Normal")
+//   matriz-ventas:51     sala + directa + Normal
+//   matriz-ventas:706    sala + directa + Normal + Convenio Marco
+//   reportes             sala + directa + Normal
+//   reportes/comisiones  sala                            (sin directa ni Normal)
+//
+// Se unifica incluyendo "Normal", que es la mayoritaria y corresponde a como el
+// legacy grababa la venta de mostrador antes de que existiera el tipo propio.
+// Queda anotado que es una decision de negocio a confirmar con Plastimar: si
+// "Normal" NO debe contar como venta de sala, se saca de aqui y las cinco
+// pantallas se corrigen juntas.
+export const TIPOS_VENTA_MOSTRADOR = [...GRAFIAS_VENTA_SALA, ...GRAFIAS_VENTA_DIRECTA, 'Normal']
 
 // Compara ignorando mayusculas, acentos y espacios sobrantes, que es
 // exactamente en lo que difieren las grafias legacy de las canonicas.
@@ -100,4 +154,33 @@ export function attachEstadoFlujo(orden = {}) {
   const estadoEntrega = normalizeEstadoEntrega(orden.estadoEntrega) || orden.estadoEntrega
   const estadoPago = normalizeEstadoPago(orden.estadoPago) || orden.estadoPago
   return { ...orden, estadoEntrega, estadoPago, estadoFlujo: deriveEstadoFlujo({ ...orden, estadoEntrega, estadoPago }) }
+}
+
+// Los filtros de las pantallas viajan como slug: "convenio-marco",
+// "trato-directo". Varios modulos los pasaban crudos al `where`, que entonces
+// no coincidia con ninguna fila y devolvia vacio sin avisar. Resolver contra el
+// catalogo hace que un tipo nuevo tenga filtro que funciona desde el dia uno.
+const TIPO_VENTA_POR_SLUG = new Map(
+  TIPO_VENTA_VALUES.map(tipo => [comparisonKey(tipo).replace(/[\s-]+/g, '-'), tipo]),
+)
+
+export function tipoVentaFromSlug(slug) {
+  const key = comparisonKey(slug).replace(/[\s-]+/g, '-')
+  if (!key) return null
+  return TIPO_VENTA_POR_SLUG.get(key) ?? null
+}
+
+// Grafias conocidas de un tipo, para los `where` que filtran por igualdad.
+// Devuelve siempre un arreglo, de modo que quien lo use no tenga que decidir
+// entre `equals` y `in` segun el tipo.
+const GRAFIAS_POR_TIPO = new Map([
+  ['Licitación', GRAFIAS_LICITACION],
+  ['Convenio Marco', GRAFIAS_CONVENIO_MARCO],
+  ['Venta Sala', GRAFIAS_VENTA_SALA],
+])
+
+export function grafiasDeTipoVenta(tipo) {
+  const canonico = normalizeTipoVenta(tipo) ?? tipoVentaFromSlug(tipo)
+  if (!canonico) return []
+  return [...(GRAFIAS_POR_TIPO.get(canonico) ?? [canonico])]
 }

@@ -26,8 +26,10 @@ const TIPO_VENTA_OPTS = [
   ['', 'Todos'],
   ['venta-sala', 'Venta sala'],
   ['convenio-marco', 'Convenio marco'],
+  ['trato-directo', 'Trato directo'],
   ['venta-web', 'Venta web'],
   ['licitacion', 'Licitacion'],
+  ['compra-agil', 'Compra ágil'],
 ]
 
 const fmt = n => '$' + Math.round(Number(n || 0)).toLocaleString('es-CL')

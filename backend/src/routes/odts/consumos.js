@@ -282,7 +282,7 @@ export default async function odtConsumosRoutes(fastify) {
   })
 
   fastify.delete('/:id/materiales/:materialId', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'delete')],
+    preHandler: [fastify.authenticate, fastify.rbac('taller.materiales', 'delete')],
   }, async (request, reply) => {
     const resolved = await resolveOdtForWrite(fastify.prisma, request.params.id, {
       user: request.user,
@@ -299,8 +299,9 @@ export default async function odtConsumosRoutes(fastify) {
     return fastify.prisma.tallerMaterial.delete({ where: { id: materialId } })
   })
 
+  // El operario declara lo que consumio al trabajar.
   fastify.post('/:id/consumos', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('taller.avance', 'write')],
   }, async (request, reply) => {
     const consumo = parseConsumoRequest(request.body || {})
     if (consumo.error) return reply.code(400).send({ error: consumo.error })

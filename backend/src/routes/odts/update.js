@@ -58,7 +58,7 @@ function scopedOdtWhere(id, user) {
 
 export default async function updateOdt(fastify) {
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('taller.gestion', 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
@@ -104,8 +104,9 @@ export default async function updateOdt(fastify) {
     }
   })
 
+  // Cerrar y anular son de supervision: el operario declara avance, no cierra.
   fastify.post('/:id/cerrar', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('taller.cerrar', 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
@@ -136,7 +137,7 @@ export default async function updateOdt(fastify) {
   })
 
   fastify.post('/:id/anular', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'delete')],
+    preHandler: [fastify.authenticate, fastify.rbac('taller.cerrar', 'delete')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
@@ -167,7 +168,7 @@ export default async function updateOdt(fastify) {
   })
 
   fastify.delete('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'delete')],
+    preHandler: [fastify.authenticate, fastify.rbac('taller.cerrar', 'delete')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })

@@ -224,7 +224,7 @@ async function buildCotizacionDiscountPayload(prisma, cot, user, body = {}) {
     clienteSegmento = cliente?.segmento || null
   }
   return {
-    tipo: body.tipo || 'LicitaciÃ³n',
+    tipo: body.tipo || 'Licitación',
     clienteId,
     clienteSegmento,
     sucursalId: cot.sucursalId ?? getUserSucursalId(user),
@@ -1014,7 +1014,7 @@ export default async function cotizacionesRoutes(fastify) {
           const auth = await assertDiscountAuthorizationForDraft(tx, {
             autorizacionId: cot.descuentoSolicitudId,
             payload: {
-              tipo: 'LicitaciÃ³n',
+              tipo: 'Licitación',
               clienteId,
               sucursalId: cot.sucursalId ?? getUserSucursalId(request.user),
               items: ordenItems.map(item => ({
@@ -1162,7 +1162,7 @@ export default async function cotizacionesRoutes(fastify) {
             autorizacionId: cot.descuentoSolicitudId,
             requireAvailable: false,
             payload: {
-              tipo: 'LicitaciÃ³n',
+              tipo: 'Licitación',
               clienteId: orden.clienteId,
               sucursalId: cot.sucursalId ?? getUserSucursalId(request.user),
               items: ordenItems.map(item => ({

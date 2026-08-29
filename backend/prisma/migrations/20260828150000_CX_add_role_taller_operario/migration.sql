@@ -1,0 +1,12 @@
+-- Nuevo rol: taller_operario. Registra avance en la OT pero no la gestiona:
+-- no puede crear, cerrar ni anular (backend/src/middleware/rbac.js).
+--
+-- Por que hace falta un rol y no basta con permisos extra: los extras son
+-- aditivos, y el rol `taller` otorga taller:[read,write] en bloque. Con ese rol,
+-- cualquier funcion cae al permiso del modulo, de modo que una cortadora
+-- terminaba pudiendo cerrar y anular OT por mas que se le acotaran las
+-- funciones. Para acotar DENTRO de un modulo, el rol no puede otorgar el
+-- modulo entero.
+--
+-- Es aditivo: ningun usuario existente cambia de rol por esta migracion.
+ALTER TYPE "auth"."Role" ADD VALUE 'taller_operario' AFTER 'taller';

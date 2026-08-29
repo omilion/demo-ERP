@@ -36,23 +36,28 @@ describe('lifecycle route permissions', () => {
     expect(fastify.rbac).toHaveBeenCalledWith('clientes', 'delete')
   })
 
+  // Los endpoints estan etiquetados por funcion: gestion para editar, cerrar
+  // para el cierre y la anulacion. Lo que este test fija sigue siendo el nivel:
+  // cerrar es write y anular es delete.
   it('gates ODT anular/delete with taller delete while keeping cierre as write', async () => {
     const { fastify, routes } = buildRouteRecorder()
     await updateOdt(fastify)
 
-    expect(routes['PUT /:id'].opts.preHandler).toEqual(['auth', 'taller:write'])
-    expect(routes['POST /:id/cerrar'].opts.preHandler).toEqual(['auth', 'taller:write'])
-    expect(routes['POST /:id/anular'].opts.preHandler).toEqual(['auth', 'taller:delete'])
-    expect(routes['DELETE /:id'].opts.preHandler).toEqual(['auth', 'taller:delete'])
+    expect(routes['PUT /:id'].opts.preHandler).toEqual(['auth', 'taller.gestion:write'])
+    expect(routes['POST /:id/cerrar'].opts.preHandler).toEqual(['auth', 'taller.cerrar:write'])
+    expect(routes['POST /:id/anular'].opts.preHandler).toEqual(['auth', 'taller.cerrar:delete'])
+    expect(routes['DELETE /:id'].opts.preHandler).toEqual(['auth', 'taller.cerrar:delete'])
   })
 
   it('gates ODT bitacora deletion with taller delete while keeping read/write for view and append', async () => {
     const { fastify, routes } = buildRouteRecorder()
     await bitacoraRoutes(fastify)
 
+    // Ver la bitacora sigue siendo del modulo; registrar avance es del operario
+    // y borrar el historial, de supervision.
     expect(routes['GET /:id/bitacora'].opts.preHandler).toEqual(['auth', 'taller:read'])
-    expect(routes['POST /:id/bitacora'].opts.preHandler).toEqual(['auth', 'taller:write'])
-    expect(routes['DELETE /:id/bitacora/:entryId'].opts.preHandler).toEqual(['auth', 'taller:delete'])
+    expect(routes['POST /:id/bitacora'].opts.preHandler).toEqual(['auth', 'taller.avance:write'])
+    expect(routes['DELETE /:id/bitacora/:entryId'].opts.preHandler).toEqual(['auth', 'taller.gestion:delete'])
   })
 })
 

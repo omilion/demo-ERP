@@ -57,9 +57,14 @@ export function calculateDeliveryDate({ startDate = new Date(), days, type = 'co
   return date
 }
 
-export function normalizeMarketplace({ tipo, canal, comisionPct, comisionMonto, total = 0 } = {}) {
+export function normalizeMarketplace({ tipo, canal, referencia, comisionPct, comisionMonto, total = 0 } = {}) {
   if (String(tipo || '') !== 'Marketplace') {
-    return { marketplaceCanal: null, marketplaceComisionPct: null, marketplaceComisionMonto: null }
+    return {
+      marketplaceCanal: null,
+      marketplaceReferencia: null,
+      marketplaceComisionPct: null,
+      marketplaceComisionMonto: null,
+    }
   }
   const canalNormalizado = String(canal || '')
     .trim()
@@ -68,11 +73,18 @@ export function normalizeMarketplace({ tipo, canal, comisionPct, comisionMonto, 
     .toLowerCase()
   const marketplaceCanal = MARKETPLACE_CANALES_NORMALIZADOS.get(canalNormalizado)
   if (!marketplaceCanal) return { error: `Selecciona un canal Marketplace válido: ${MARKETPLACE_CANALES.join(', ')}.` }
+  // CU-05 exige la referencia externa: sin el numero de orden del portal no hay
+  // contra que conciliar la comision, que es justamente lo que hoy falta en las
+  // 272 operaciones de marketplace registradas como Venta sala o Venta Web.
+  const marketplaceReferencia = String(referencia || '').trim()
+  if (!marketplaceReferencia) {
+    return { error: `Indica la referencia de la venta en ${marketplaceCanal} (numero de orden del portal).` }
+  }
   const pct = comisionPct === null || comisionPct === undefined || comisionPct === '' ? null : Number(comisionPct)
   const monto = comisionMonto === null || comisionMonto === undefined || comisionMonto === '' ? null : Number(comisionMonto)
   if (pct !== null && (!Number.isFinite(pct) || pct < 0 || pct > 100)) return { error: 'La comisión Marketplace debe estar entre 0 y 100%.' }
   if (monto !== null && (!Number.isFinite(monto) || monto < 0)) return { error: 'El monto de comisión Marketplace no puede ser negativo.' }
   const marketplaceComisionMonto = monto ?? Math.round(Number(total || 0) * Number(pct || 0) / 100)
   if (marketplaceComisionMonto > Number(total || 0)) return { error: 'La comisión Marketplace no puede superar el total de la venta.' }
-  return { marketplaceCanal, marketplaceComisionPct: pct, marketplaceComisionMonto }
+  return { marketplaceCanal, marketplaceReferencia, marketplaceComisionPct: pct, marketplaceComisionMonto }
 }

@@ -4,8 +4,10 @@ import { computeTotal, attachCliente } from './helpers.js'
 import {
   ESTADO_PAGO_VALUES,
   ESTADO_ENTREGA_VALUES,
+  TIPO_VENTA_VALUES,
   normalizeEstadoEntrega,
   normalizeEstadoPago,
+  normalizeTipoVenta,
 } from './estados-normalize.js'
 import { applyVentaStockDeltas, buildStockDeltasFromItems, isVentaDirectaStockTipo } from './stock.js'
 import { validateConvenioMarcoOcForWrite } from './convenio-marco.js'
@@ -27,7 +29,13 @@ const ItemSchema = z.object({
 })
 
 const Schema = z.object({
-  tipo: z.enum(['Normal', 'Licitación', 'Convenio Marco', 'Venta Web', 'Venta Sala', 'Marketplace']).default('Normal'),
+  // Se repetia el catalogo a mano y sin normalizar, a diferencia de update.js:
+  // crear aceptaba solo la grafia canonica mientras editar toleraba las legacy.
+  tipo: z.preprocess(
+    value => (value === undefined ? value : normalizeTipoVenta(value) ?? value),
+    z.enum(TIPO_VENTA_VALUES),
+  ).default('Normal'),
+  // Venta Sala admite Consumidor Final/boleta anonima.
   clienteId: z.number().int().positive().optional().nullable(),
   clienteSucursalId: z.number().int().optional().nullable(),
   descuentoPct: z.number().min(0).max(100).default(0),
@@ -61,6 +69,7 @@ const Schema = z.object({
   plazoEntregaDias: z.number().int().min(0).max(3650).optional().nullable(),
   plazoEntregaTipo: z.enum(['habiles', 'corridos']).optional().nullable(),
   marketplaceCanal: z.string().max(80).optional().nullable(),
+  marketplaceReferencia: z.string().max(120).optional().nullable(),
   marketplaceComisionPct: z.number().min(0).max(100).optional().nullable(),
   marketplaceComisionMonto: z.number().min(0).optional().nullable(),
   // Vendedor asignado: solo lo respeta un admin; un vendedor siempre se autoasigna.
@@ -98,6 +107,7 @@ export default async function createVenta(fastify) {
       plazoEntregaDias,
       plazoEntregaTipo,
       marketplaceCanal,
+      marketplaceReferencia,
       marketplaceComisionPct,
       marketplaceComisionMonto,
       regionDespacho,
@@ -136,7 +146,16 @@ export default async function createVenta(fastify) {
       if (crm.esHistorico) return reply.code(409).send({ error: 'No se puede crear una venta ERP desde un registro CRM historico' })
       if (crm.ordenId) return reply.code(409).send({ error: 'La oportunidad CRM ya tiene una orden vinculada' })
       if (request.user.role !== 'admin' && crm.vendedorId !== request.user.id) return reply.code(403).send({ error: 'No tienes acceso a esta oportunidad CRM' })
-      const expectedChannel = { 'Venta Web': 'WEB', 'Convenio Marco': 'CONVENIO_MARCO', 'Licitación': 'LICITACION' }[rest.tipo]
+      // Inverso de CANAL_TO_TIPO_ORDEN. Tenia una entrada muerta -CONVENIO_MARCO
+      // no es un canal del CRM, ver CRM_CANALES- y le faltaban COMPRA_AGIL y
+      // PROSPECCION_DIRECTA, que si lo son: con eso, crear la venta desde una
+      // oportunidad de compra agil respondia siempre 400.
+      const expectedChannel = {
+        'Venta Web': 'WEB',
+        'Licitación': 'LICITACION',
+        'Compra Ágil': 'COMPRA_AGIL',
+        Normal: 'PROSPECCION_DIRECTA',
+      }[rest.tipo]
       if (!expectedChannel || crm.canalVenta !== expectedChannel) return reply.code(400).send({ error: 'El tipo de venta no corresponde al canal de la oportunidad CRM' })
     }
 
@@ -178,6 +197,7 @@ export default async function createVenta(fastify) {
     const marketplace = normalizeMarketplace({
       tipo: rest.tipo,
       canal: marketplaceCanal,
+      referencia: marketplaceReferencia,
       comisionPct: marketplaceComisionPct,
       comisionMonto: marketplaceComisionMonto,
       total: computeTotal(itemsData, rest.descuentoPct),

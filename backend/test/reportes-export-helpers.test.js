@@ -79,7 +79,9 @@ describe('reportes export filter helpers', () => {
       AND: [
         {
           eliminada: false,
-          tipo: 'Venta Web',
+          // Todos los tipos se resuelven ahora por su catalogo de grafias, asi que
+          // el filtro es siempre un `in`, aunque el tipo tenga una sola forma.
+          tipo: { in: ['Venta Web'] },
           nInterno: 123,
           guias: 456,
           estadoPago: 'Parcial',

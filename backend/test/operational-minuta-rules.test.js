@@ -33,10 +33,32 @@ describe('reglas operativas de la minuta', () => {
 
   it('calcula y valida comision marketplace', () => {
     expect(MARKETPLACE_CANALES).toEqual(['París', 'Mercado Libre', 'Falabella'])
-    expect(normalizeMarketplace({ tipo: 'Marketplace', canal: 'Mercado Libre', comisionPct: 12, total: 100_000 })).toEqual({ marketplaceCanal: 'Mercado Libre', marketplaceComisionPct: 12, marketplaceComisionMonto: 12_000 })
-    expect(normalizeMarketplace({ tipo: 'Marketplace', canal: 'Paris', total: 100_000 }).marketplaceCanal).toBe('París')
+    expect(normalizeMarketplace({ tipo: 'Marketplace', canal: 'Mercado Libre', referencia: 'ML-4471', comisionPct: 12, total: 100_000 })).toEqual({
+      marketplaceCanal: 'Mercado Libre',
+      marketplaceReferencia: 'ML-4471',
+      marketplaceComisionPct: 12,
+      marketplaceComisionMonto: 12_000,
+    })
+    expect(normalizeMarketplace({ tipo: 'Marketplace', canal: 'Paris', referencia: 'PAR-1', total: 100_000 }).marketplaceCanal).toBe('París')
     expect(normalizeMarketplace({ tipo: 'Marketplace', canal: '', total: 100_000 }).error).toMatch(/canal Marketplace válido/)
     expect(normalizeMarketplace({ tipo: 'Marketplace', canal: 'Otro', total: 100_000 }).error).toMatch(/París, Mercado Libre, Falabella/)
+  })
+
+  // CU-05: sin el numero de orden del portal la comision no se puede conciliar
+  // contra el comprobante del marketplace, que es el punto del caso de uso.
+  it('exige la referencia externa de la venta en el portal', () => {
+    expect(normalizeMarketplace({ tipo: 'Marketplace', canal: 'Falabella', total: 50_000 }).error).toMatch(/referencia/i)
+    expect(normalizeMarketplace({ tipo: 'Marketplace', canal: 'Falabella', referencia: '   ', total: 50_000 }).error).toMatch(/referencia/i)
+    expect(normalizeMarketplace({ tipo: 'Marketplace', canal: 'Falabella', referencia: ' FAL-77 ', total: 50_000 }).marketplaceReferencia).toBe('FAL-77')
+  })
+
+  it('limpia los campos marketplace cuando la venta no es de ese tipo', () => {
+    expect(normalizeMarketplace({ tipo: 'Venta Sala', canal: 'Falabella', referencia: 'FAL-1' })).toEqual({
+      marketplaceCanal: null,
+      marketplaceReferencia: null,
+      marketplaceComisionPct: null,
+      marketplaceComisionMonto: null,
+    })
   })
 
   it('incluye NC interna activa en el saldo sin considerar anuladas', () => {

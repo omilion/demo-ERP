@@ -116,15 +116,25 @@ describe('POST /api/ventas', () => {
       })
       expect(invalida.statusCode).toBe(400)
 
-      const valida = await app.inject({
+      // CU-05 exige la referencia externa: sin el numero de orden del portal la
+      // comision no se puede conciliar contra el comprobante del marketplace.
+      const sinReferencia = await app.inject({
         method: 'POST', url: '/api/ventas',
         headers: { authorization: `Bearer ${token}` },
         payload: { ...payload, marketplaceCanal: 'Paris', marketplaceComisionPct: 10 },
+      })
+      expect(sinReferencia.statusCode).toBe(400)
+
+      const valida = await app.inject({
+        method: 'POST', url: '/api/ventas',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { ...payload, marketplaceCanal: 'Paris', marketplaceReferencia: `${marker}-REF`, marketplaceComisionPct: 10 },
       })
       expect(valida.statusCode).toBe(201)
       const body = JSON.parse(valida.body)
       ordenId = body.id
       expect(body.marketplaceCanal).toBe('París')
+      expect(body.marketplaceReferencia).toBe(`${marker}-REF`)
       expect(body.marketplaceComisionMonto).toBe(1000)
     } finally {
       if (ordenId) {
@@ -1937,8 +1947,30 @@ describe('Edicion de ventas con la grafia heredada del legacy', () => {
   afterAll(async () => { await app.close() })
 
   async function crearOrdenLegacy(data) {
-    const cliente = await app.prisma.cliente.findFirst({ select: { id: true } })
-    const user = await app.prisma.user.findFirst({ select: { id: true } })
+    let cliente = await app.prisma.cliente.findFirst({ select: { id: true } })
+    if (!cliente) {
+      cliente = await app.prisma.cliente.create({
+        data: {
+          rut: `99${Math.floor(10000000 + Math.random() * 89999999)}-K`,
+          nombre: 'Cliente Test Legacy',
+          razonSocial: 'Cliente Test Legacy',
+          email: `test.legacy.${Date.now()}@test.com`,
+        },
+        select: { id: true },
+      })
+    }
+    let user = await app.prisma.user.findFirst({ select: { id: true } })
+    if (!user) {
+      user = await app.prisma.user.create({
+        data: {
+          email: `legacy.${Date.now()}@test.com`,
+          passwordHash: 'hash',
+          role: 'admin',
+          nombre: 'Usuario Test Legacy',
+        },
+        select: { id: true },
+      })
+    }
     // Se crea por Prisma a proposito: replica como entra el dato desde los
     // importadores legacy, sin pasar por la validacion de la API.
     return app.prisma.orden.create({

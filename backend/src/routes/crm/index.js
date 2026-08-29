@@ -334,7 +334,10 @@ export default async function crmRoutes(fastify) {
       if (productIds.length !== rawItems.length) return reply.code(400).send({ error: 'Cada item debe corresponder a un producto del catalogo' })
       try {
         const cotizacion = await f.prisma.$transaction(async tx => {
-          const actual = await tx.crmCotizacion.findUnique({ where: { crmId }, select: { id: true } })
+          const actual = await tx.crmCotizacion.findUnique({
+            where: { crmId },
+            select: { id: true, descuentoPct: true, montoDespacho: true, aceptadaAt: true, aceptadaVersion: true, items: true },
+          })
           if (!actual) throw Object.assign(new Error('El registro CRM no tiene una cotizacion propia'), { statusCode: 409 })
           const productos = await tx.producto.findMany({
             where: { id: { in: productIds }, activo: true },
@@ -349,12 +352,26 @@ export default async function crmRoutes(fastify) {
             if (!Number.isInteger(cantidad) || cantidad < 1 || !Number.isFinite(precioUnitario) || precioUnitario < 0) {
               throw Object.assign(new Error(`Item ${index + 1} tiene cantidad o precio invalido`), { statusCode: 400 })
             }
+            // CU-03: adjudicacion parcial. Se distingue "no registrada" (null,
+            // se vende lo cotizado) de "no me adjudicaron nada" (0, no pasa a la
+            // venta); con el 0 por defecto del legacy no se pueden separar.
+            let cantAdjudicados = null
+            if (item.cantAdjudicados !== undefined && item.cantAdjudicados !== null && item.cantAdjudicados !== '') {
+              cantAdjudicados = Number(item.cantAdjudicados)
+              if (!Number.isInteger(cantAdjudicados) || cantAdjudicados < 0) {
+                throw Object.assign(new Error(`Item ${index + 1}: la cantidad adjudicada debe ser un entero no negativo`), { statusCode: 400 })
+              }
+              if (cantAdjudicados > cantidad) {
+                throw Object.assign(new Error(`Item ${index + 1}: no se puede adjudicar ${cantAdjudicados} si se cotizaron ${cantidad}`), { statusCode: 400 })
+              }
+            }
             return {
               productoId: producto.id,
               codigoInterno: String(item.codigoInterno || producto.codigoInterno || '').trim() || null,
               nombre: String(item.nombre || producto.nombre || '').trim() || null,
               descripcion: String(item.descripcion || producto.descripcion || '').trim() || null,
               cantidad,
+              cantAdjudicados,
               precioUnitario,
             }
           })
@@ -366,6 +383,39 @@ export default async function crmRoutes(fastify) {
           if (request.body?.fechaPlazo !== undefined) patch.fechaPlazo = request.body.fechaPlazo ? new Date(request.body.fechaPlazo) : null
           if (request.body?.enviosParciales !== undefined) patch.enviosParciales = Boolean(request.body.enviosParciales)
           if (request.body?.montoDespacho !== undefined) patch.montoDespacho = Number(request.body.montoDespacho) || 0
+          // CU-06: se archiva la propuesta vigente ANTES de sobrescribirla. El
+          // deleteMany de abajo destruye los items, asi que sin esto no queda
+          // rastro de lo que se le habia ofrecido al cliente.
+          if (actual.items.length) {
+            const ultima = await tx.crmCotizacionVersion.findFirst({
+              where: { cotizacionId: actual.id },
+              orderBy: { version: 'desc' },
+              select: { version: true },
+            })
+            await tx.crmCotizacionVersion.create({
+              data: {
+                cotizacionId: actual.id,
+                version: (ultima?.version || 0) + 1,
+                snapshot: {
+                  items: actual.items.map(item => ({
+                    productoId: item.productoId,
+                    codigoInterno: item.codigoInterno,
+                    nombre: item.nombre,
+                    descripcion: item.descripcion,
+                    cantidad: item.cantidad,
+                    cantAdjudicados: item.cantAdjudicados,
+                    precioUnitario: item.precioUnitario,
+                  })),
+                  descuentoPct: actual.descuentoPct,
+                  montoDespacho: actual.montoDespacho,
+                },
+                total: actual.items.reduce((acc, item) => acc + Number(item.cantidad || 0) * Number(item.precioUnitario || 0), 0),
+                motivo: String(request.body?.motivoCambio || '').trim() || null,
+                creadaPorId: request.user?.id ?? null,
+                creadaPorNombre: request.user?.nombre || request.user?.email || null,
+              },
+            })
+          }
           await tx.crmCotizacionItem.deleteMany({ where: { cotizacionId: actual.id } })
           return tx.crmCotizacion.update({ where: { id: actual.id }, data: { ...patch, items: { create: items } }, include: { items: true } })
         })
@@ -374,6 +424,74 @@ export default async function crmRoutes(fastify) {
         if (error.statusCode) return reply.code(error.statusCode).send({ error: error.message })
         throw error
       }
+    })
+
+    // CU-06: historial de la propuesta. La version vigente no esta aca -vive en
+    // la cotizacion-, asi que se devuelve aparte para poder compararla.
+    f.get('/:id/cotizacion/versiones', {
+      preHandler: [f.authenticate, f.rbac('ventas', 'read')],
+    }, async (request, reply) => {
+      const crmId = Number(request.params.id)
+      if (!await ensureCrmVisible(f.prisma, crmId, request.user)) return reply.code(404).send({ error: 'Registro CRM no encontrado' })
+      const cotizacion = await f.prisma.crmCotizacion.findUnique({
+        where: { crmId },
+        include: { items: true, versiones: { orderBy: { version: 'desc' } } },
+      })
+      if (!cotizacion) return reply.code(404).send({ error: 'El registro CRM no tiene una cotizacion propia' })
+      const totalVigente = cotizacion.items.reduce((acc, item) => acc + Number(item.cantidad || 0) * Number(item.precioUnitario || 0), 0)
+      return {
+        vigente: {
+          version: (cotizacion.versiones[0]?.version || 0) + 1,
+          total: totalVigente,
+          items: cotizacion.items,
+          actualizadaAt: cotizacion.updatedAt,
+        },
+        aceptacion: cotizacion.aceptadaAt ? {
+          at: cotizacion.aceptadaAt,
+          version: cotizacion.aceptadaVersion,
+          por: cotizacion.aceptadaPor,
+          medio: cotizacion.aceptacionMedio,
+          referencia: cotizacion.aceptacionReferencia,
+          // Si se edito despues de aceptar, lo aceptado ya no es lo vigente.
+          desactualizada: cotizacion.aceptadaVersion !== (cotizacion.versiones[0]?.version || 0) + 1,
+        } : null,
+        versiones: cotizacion.versiones,
+      }
+    })
+
+    // Registra que el cliente acepto la propuesta, contra que version y por que
+    // via. Sin esto no hay forma de saber que se acepto ni con que respaldo.
+    f.post('/:id/cotizacion/aceptacion', {
+      preHandler: [f.authenticate, f.rbac('ventas', 'write')],
+    }, async (request, reply) => {
+      const crmId = Number(request.params.id)
+      if (!await ensureCrmAccess(f.prisma, crmId, request.user)) return reply.code(404).send({ error: 'Registro CRM no encontrado' })
+      const MEDIOS = ['OC', 'CORREO', 'PORTAL', 'VERBAL', 'OTRO']
+      const medio = String(request.body?.medio || '').trim().toUpperCase()
+      if (!MEDIOS.includes(medio)) return reply.code(400).send({ error: `Medio de aceptacion invalido. Debe ser uno de: ${MEDIOS.join(', ')}` })
+      const por = String(request.body?.por || '').trim()
+      if (!por) return reply.code(400).send({ error: 'Indica quien acepto la propuesta por parte del cliente' })
+      // Una OC o un correo tienen respaldo documental: se exige la referencia.
+      const referencia = String(request.body?.referencia || '').trim()
+      if (!referencia && (medio === 'OC' || medio === 'CORREO')) {
+        return reply.code(400).send({ error: medio === 'OC' ? 'Indica el numero de la orden de compra' : 'Indica el asunto o remitente del correo de aceptacion' })
+      }
+      const cotizacion = await f.prisma.crmCotizacion.findUnique({
+        where: { crmId },
+        include: { versiones: { orderBy: { version: 'desc' }, take: 1, select: { version: true } } },
+      })
+      if (!cotizacion) return reply.code(404).send({ error: 'El registro CRM no tiene una cotizacion propia' })
+      return f.prisma.crmCotizacion.update({
+        where: { id: cotizacion.id },
+        data: {
+          aceptadaAt: new Date(),
+          aceptadaVersion: (cotizacion.versiones[0]?.version || 0) + 1,
+          aceptadaPor: por,
+          aceptacionMedio: medio,
+          aceptacionReferencia: referencia || null,
+          aceptacionRegistradaPorId: request.user?.id ?? null,
+        },
+      })
     })
 
     // GET /api/crm?ejecutiva=...&estado=...&prioridad=...&search=...&page=1

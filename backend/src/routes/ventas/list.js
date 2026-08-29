@@ -3,7 +3,7 @@ import { computeVentaFinancialState } from './financial.js'
 import { parseDate, parsePagination, parsePositiveInt } from '../operational-utils.js'
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenScope } from '../historico/corte.js'
 import { getUserSucursalId } from '../caja/scope.js'
-import { attachEstadoFlujo } from './estados-normalize.js'
+import { attachEstadoFlujo, GRAFIAS_CONVENIO_MARCO, GRAFIAS_LICITACION } from './estados-normalize.js'
 
 function normalizeTipo(value) {
   return String(value || '')
@@ -15,9 +15,12 @@ function normalizeTipo(value) {
 
 function buildTipoWhere(tipo) {
   const text = normalizeTipo(tipo)
-  if (text === 'licitacion-convenio' || text === 'licitacion convenio') return { in: ['Licitación', 'Convenio Marco'] }
-  if (text === 'licitacion') return 'Licitación'
-  if (text === 'convenio-marco' || text === 'convenio marco' || text === 'convenio') return 'Convenio Marco'
+  // Se filtra por todas las grafias: nombrar una sola deja fuera en silencio las
+  // ordenes que entraron por los importadores legacy, que escriben "Licitacion"
+  // sin tilde. Es el mismo defecto que se corrigio en reportes (d852223).
+  if (text === 'licitacion-convenio' || text === 'licitacion convenio') return { in: [...GRAFIAS_LICITACION, ...GRAFIAS_CONVENIO_MARCO] }
+  if (text === 'licitacion') return { in: [...GRAFIAS_LICITACION] }
+  if (text === 'convenio-marco' || text === 'convenio marco' || text === 'convenio') return { in: [...GRAFIAS_CONVENIO_MARCO] }
   return tipo
 }
 
