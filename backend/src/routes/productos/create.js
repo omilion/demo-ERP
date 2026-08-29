@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { can } from '../../middleware/rbac.js'
-import { computeEstado, computeEstadoOperacional, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos, sanitizeProductoCosto, syncProductoCategoriaText, syncProductoUbicacionText, validateProductoClasificacion } from './helpers.js'
+import { attachStockOperacional, computeEstado, computeEstadoOperacional, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos, sanitizeProductoCosto, syncProductoCategoriaText, syncProductoUbicacionText, validateCodigoBarraUnico, validateProductoClasificacion } from './helpers.js'
 import { ensureProductoMkNotification } from './mkNotifications.js'
 import { syncPrecioWeb } from './pricing.js'
 
@@ -20,7 +20,7 @@ const LinkCompraSchema = z.string().nullable().optional().refine((value) => {
 
 const Schema = z.object({
   codigoInterno: z.string().min(1),
-  codigoBarra: z.string().optional(),
+  codigoBarra: z.string().trim().min(3, 'codigoBarra requerido'),
   nombre: z.string().min(1),
   descripcion: z.string().optional(),
   categoria: z.string().optional(),
@@ -77,6 +77,8 @@ export default async function createProducto(fastify) {
     const parsed = Schema.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
     const data = normalizeProductoFotoFields(parsed.data)
+    const codigoBarraError = await validateCodigoBarraUnico(fastify.prisma, data.codigoBarra)
+    if (codigoBarraError) return reply.code(codigoBarraError.status).send({ error: codigoBarraError.error })
     const touchesBodega = SENSITIVE_BODEGA_FIELDS.some(field => hasOwn(request.body, field))
     if (touchesBodega && !can(request.user?.role, 'bodega', 'write', request.user?.permisosExtra)) {
       return reply.code(403).send({ error: 'Permiso bodega:write requerido para crear productos con stock, precios, proveedor o visibilidad web' })
@@ -96,6 +98,7 @@ export default async function createProducto(fastify) {
       return syncPrecioWeb(tx, created)
     })
     const canReadCosto = can(request.user?.role, 'bodega', 'read', request.user?.permisosExtra)
-    return reply.code(201).send(sanitizeProductoCosto(normalizeProductoFotos({ ...p, estado: computeEstado(p), estadoOperacional: computeEstadoOperacional(p) }), canReadCosto))
+    const item = attachStockOperacional(p)
+    return reply.code(201).send(sanitizeProductoCosto(normalizeProductoFotos({ ...item, estado: computeEstado(item), estadoOperacional: computeEstadoOperacional(item) }), canReadCosto))
   })
 }

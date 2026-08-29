@@ -109,6 +109,7 @@ describe('GET /api/productos', () => {
     const producto = await app.prisma.producto.create({
       data: {
         codigoInterno,
+        codigoBarra: `${codigoInterno}-BAR`,
         codigoBarra,
         idMarco,
         nombre: 'Producto Colch\u00f3n Consulta SPR13',
@@ -287,6 +288,7 @@ describe('POST /api/productos', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: {
         codigoInterno,
+        codigoBarra: `${codigoInterno}-BAR`,
         nombre: 'Producto Test Plan',
         bodega: 'Inventario',
         stock: 5,
@@ -312,6 +314,7 @@ describe('POST /api/productos', () => {
         headers: { authorization: `Bearer ${token}` },
         payload: {
           codigoInterno,
+          codigoBarra: `${codigoInterno}-BAR`,
           nombre: 'Producto MK Catalogo',
           descripcionLicitacion: marker,
           linkCompra: 'https://proveedor.test/producto-mk',
@@ -375,6 +378,7 @@ describe('POST /api/productos', () => {
         headers: { authorization: `Bearer ${token}` },
         payload: {
           codigoInterno,
+          codigoBarra: `${codigoInterno}-BAR`,
           nombre: 'Producto con ubicacion catalogo',
           ubicacionId,
         },
@@ -413,6 +417,7 @@ describe('POST /api/productos', () => {
       headers: { authorization: `Bearer ${catalogoOnlyToken}` },
       payload: {
         codigoInterno: testCode('TEST-CATONLY'),
+        codigoBarra: testCode('BAR-CATONLY'),
         nombre: 'Producto Catalogo Sin Bodega',
         precioLista: 1000,
       },
@@ -854,8 +859,8 @@ describe('Bodega product safeguards', () => {
         headers: { authorization: `Bearer ${token}` },
         payload: {
           rows: [
-            { codigo: codigoMk, nombre: 'Import MK', linkCompra: 'https://proveedor.test/import-mk' },
-            { codigo: codigoNormal, nombre: 'Import normal' },
+            { codigo: codigoMk, codigoBarra: `${codigoMk}-BAR`, nombre: 'Import MK', linkCompra: 'https://proveedor.test/import-mk' },
+            { codigo: codigoNormal, codigoBarra: `${codigoNormal}-BAR`, nombre: 'Import normal' },
           ],
           dryRun: true,
         },
@@ -869,8 +874,8 @@ describe('Bodega product safeguards', () => {
         headers: { authorization: `Bearer ${token}` },
         payload: {
           rows: [
-            { codigo: codigoMk, nombre: 'Import MK', linkCompra: 'https://proveedor.test/import-mk' },
-            { codigo: codigoNormal, nombre: 'Import normal' },
+            { codigo: codigoMk, codigoBarra: `${codigoMk}-BAR`, nombre: 'Import MK', linkCompra: 'https://proveedor.test/import-mk' },
+            { codigo: codigoNormal, codigoBarra: `${codigoNormal}-BAR`, nombre: 'Import normal' },
           ],
           confirm: true,
         },

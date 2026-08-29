@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { can } from '../../middleware/rbac.js'
-import { computeEstado, computeEstadoOperacional, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos, sanitizeProductoCosto, syncProductoCategoriaText, syncProductoUbicacionText, validateProductoClasificacion } from './helpers.js'
+import { attachStockOperacional, computeEstado, computeEstadoOperacional, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos, sanitizeProductoCosto, syncProductoCategoriaText, syncProductoUbicacionText, validateCodigoBarraUnico, validateProductoClasificacion } from './helpers.js'
 import { ensureProductoMkNotification } from './mkNotifications.js'
 import { syncPrecioWeb } from './pricing.js'
 
@@ -21,7 +21,7 @@ const LinkCompraSchema = z.string().nullable().optional().refine((value) => {
 const Schema = z.object({
   codigoInterno: z.string().min(1).optional(),
   nombre: z.string().min(1).optional(),
-  codigoBarra: z.string().optional(),
+  codigoBarra: z.string().trim().min(3, 'codigoBarra requerido').optional(),
   descripcion: z.string().optional(),
   categoria: z.string().optional(),
   categoriaId: z.number().int().positive().nullable().optional(),
@@ -88,6 +88,12 @@ export default async function updateProducto(fastify) {
     const existing = await fastify.prisma.producto.findFirst({ where: { id, activo: true } })
     if (!existing) return reply.code(404).send({ error: 'Producto no encontrado' })
     const data = normalizeProductoFotoFields(parsed.data)
+    // El alta exige código de barras. Para no bloquear la corrección gradual
+    // del catálogo histórico, sólo se valida al modificar ese campo.
+    if (hasOwn(data, 'codigoBarra')) {
+      const codigoBarraError = await validateCodigoBarraUnico(fastify.prisma, data.codigoBarra, id)
+      if (codigoBarraError) return reply.code(codigoBarraError.status).send({ error: codigoBarraError.error })
+    }
 
     const touchesBodega = SENSITIVE_BODEGA_FIELDS.some(field => hasOwn(data, field))
     if (touchesBodega && !can(request.user?.role, 'bodega', 'write', request.user?.permisosExtra)) {
@@ -135,6 +141,7 @@ export default async function updateProducto(fastify) {
       throw error
     }
     const canReadCosto = can(request.user?.role, 'bodega', 'read', request.user?.permisosExtra)
-    return sanitizeProductoCosto(normalizeProductoFotos({ ...p, estado: computeEstado(p), estadoOperacional: computeEstadoOperacional(p) }), canReadCosto)
+    const item = attachStockOperacional(p)
+    return sanitizeProductoCosto(normalizeProductoFotos({ ...item, estado: computeEstado(item), estadoOperacional: computeEstadoOperacional(item) }), canReadCosto)
   })
 }

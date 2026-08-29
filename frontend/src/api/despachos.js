@@ -25,6 +25,15 @@ export const useDespachoMatriz = (params = {}) => {
   })
 }
 
+export const useDespachoConsolidadoTaller = (enabled = true) =>
+  useQuery({
+    queryKey: ['despachos', 'consolidado-taller'],
+    queryFn: () => api.get('/despachos/consolidado-taller').then(r => r.data),
+    enabled,
+    placeholderData: { items: [], total: 0 },
+    staleTime: 30_000,
+  })
+
 export const useDespacho = (id) =>
   useQuery({
     queryKey: ['despachos', id],

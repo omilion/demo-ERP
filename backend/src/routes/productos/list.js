@@ -1,5 +1,5 @@
 import { can } from '../../middleware/rbac.js'
-import { computeEstado, computeEstadoOperacional, normalizeProductoFotos, sanitizeProductoCosto } from './helpers.js'
+import { attachStockOperacional, computeEstado, computeEstadoOperacional, normalizeProductoFotos, sanitizeProductoCosto } from './helpers.js'
 import { attachConsultaPreciosData } from './pricing.js'
 
 function normalizeSearchText(value) {
@@ -162,15 +162,11 @@ export default async function listProductos(fastify) {
     if (andFilters.length) where.AND = andFilters
     const statsWhere = JSON.parse(JSON.stringify(where))
     // estado computado: 'sin-stock' | 'critico' | 'normal'
-    if (estado === 'sin-stock') where.stock = 0
-    else if (estado === 'critico') {
-      where.stock = { gt: 0 }
-      where.stockCritico = { gt: 0 }
-    }
+    if (estado === 'critico') where.stockCritico = { gt: 0 }
     const LIMIT = 500
     const sortByNombre = sort === 'nombre'
     // Prisma no compara columnas en where; acotamos y filtramos la comparacion final en memoria.
-    const fetchInMemory = estado === 'critico' || filterNombreInMemory
+    const fetchInMemory = ['critico', 'sin-stock'].includes(estado) || filterNombreInMemory
     const fetchTake = fetchInMemory ? 5000 : LIMIT
     const skip = fetchInMemory ? 0 : (parsedPage - 1) * LIMIT
     const [productos, total, statsRows] = await Promise.all([
@@ -184,14 +180,18 @@ export default async function listProductos(fastify) {
       fastify.prisma.producto.count({ where }),
       fastify.prisma.producto.findMany({
         where: statsWhere,
-        select: { stock: true, stockCritico: true, precioLista: true },
+        select: { stock: true, stockReservado: true, stockDanado: true, stockCritico: true, precioLista: true },
       }),
     ])
     let items = await attachConsultaPreciosData(
       fastify.prisma,
-      productos.map(p => normalizeProductoFotos({ ...p, estado: computeEstado(p), estadoOperacional: computeEstadoOperacional(p) })),
+      productos.map(p => {
+        const item = attachStockOperacional(p)
+        return normalizeProductoFotos({ ...item, estado: computeEstado(item), estadoOperacional: computeEstadoOperacional(item) })
+      }),
     )
     if (estado === 'critico') items = items.filter(p => p.estado === 'Crítico').slice(0, LIMIT)
+    if (estado === 'sin-stock') items = items.filter(p => p.estado === 'Sin stock').slice(0, LIMIT)
     if (filterNombreInMemory) items = items.filter(p => matchesNormalizedContains(p.nombre, nombre))
     if (!sortByNombre) items.sort((a, b) => {
       const order = { 'Normal': 0, 'Crítico': 1, 'Sin stock': 2 }
@@ -205,14 +205,21 @@ export default async function listProductos(fastify) {
     const canReadCosto = can(request.user?.role, 'bodega', 'read', request.user?.permisosExtra)
     items = items.map(item => sanitizeProductoCosto(item, canReadCosto))
     const stats = statsRows.reduce((acc, p) => {
-      const stock = Number(p.stock || 0)
+      const stockFisico = Number(p.stock || 0)
+      const stockReservado = Number(p.stockReservado || 0)
+      const stockDanado = Number(p.stockDanado || 0)
+      const stock = Math.max(0, stockFisico - stockReservado - stockDanado)
       const stockCritico = Number(p.stockCritico || 0)
       acc.total += 1
       if (stock === 0) acc.sinStock += 1
       if (stock > 0 && stockCritico > 0 && stock <= stockCritico) acc.critico += 1
       acc.valorInventario += Number(p.precioLista || 0) * stock
+      acc.stockFisico += stockFisico
+      acc.stockReservado += stockReservado
+      acc.stockDanado += stockDanado
+      acc.stockDisponible += stock
       return acc
-    }, { total: 0, critico: 0, sinStock: 0, valorInventario: 0 })
+    }, { total: 0, critico: 0, sinStock: 0, valorInventario: 0, stockFisico: 0, stockReservado: 0, stockDanado: 0, stockDisponible: 0 })
     return {
       items,
       total: responseTotal,

@@ -263,7 +263,7 @@ export default function BodegaFormPage() {
   }
 
   const handleSave = () => {
-    if (!validate({ nombre: { required: true }, cod: { required: true } })) return
+    if (!validate({ nombre: { required: true }, cod: { required: true }, codigoBarra: { required: true } })) return
     const payload = {
       nombre: data.nombre,
       categoriaId: data.categoriaId !== '' ? Number(data.categoriaId) : undefined,
@@ -354,8 +354,8 @@ export default function BodegaFormPage() {
         <FormField label="Código" required error={errors.cod}>
           <Input value={data.cod} onChange={v => set('cod', v)} placeholder="ESP-001" error={errors.cod} disabled={isEdit} />
         </FormField>
-        <FormField label="Código de barra">
-          <Input value={data.codigoBarra} onChange={v => set('codigoBarra', v)} placeholder="7800000000000" />
+        <FormField label="Código de barra" required error={errors.codigoBarra}>
+          <Input value={data.codigoBarra} onChange={v => set('codigoBarra', v)} placeholder="7800000000000" error={errors.codigoBarra} />
         </FormField>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
@@ -472,7 +472,7 @@ export default function BodegaFormPage() {
         </div>
       )}
 
-      {isEdit && found && <div id="movimientos"><MovimientosSection productoId={found.id} stockActual={found.stock} /></div>}
+      {isEdit && found && <div id="movimientos"><MovimientosSection productoId={found.id} stockActual={found.stockFisico ?? found.stock} stockReservado={found.stockReservado} stockDanado={found.stockDanado} stockDisponible={found.stockDisponible} /></div>}
 
       <PrecioHistorial historial={historial} />
 
@@ -596,7 +596,7 @@ function ProveedoresSection({ productoId, precioCostoActual }) {
   )
 }
 
-function MovimientosSection({ productoId, stockActual }) {
+function MovimientosSection({ productoId, stockActual, stockReservado = 0, stockDanado = 0, stockDisponible }) {
   const { data: movs = [] } = useMovimientos(productoId)
   const addMov = useAddMovimiento()
   const [tipo, setTipo] = useState('ingreso')
@@ -605,13 +605,33 @@ function MovimientosSection({ productoId, stockActual }) {
   const [motivoCategoria, setMotivoCategoria] = useState('')
 
   const cantidadNumero = parseInt(cantidad, 10)
-  const esDisminucion = tipo === 'egreso' || (tipo === 'ajuste' && !isNaN(cantidadNumero) && cantidadNumero < Number(stockActual || 0))
+  const disponibleActual = Number(stockDisponible ?? (Number(stockActual || 0) - Number(stockReservado || 0) - Number(stockDanado || 0)))
+  const requiereCategoria = tipo === 'egreso' || tipo === 'dano' || tipo === 'merma' || (tipo === 'ajuste' && !isNaN(cantidadNumero) && cantidadNumero < Number(stockActual || 0))
+  const movementLabels = {
+    ingreso: 'Ingreso: suma físico',
+    egreso: 'Egreso: resta disponible',
+    ajuste: 'Ajuste: fija físico',
+    reserva: 'Reserva: compromete disponible',
+    liberacion: 'Liberación: devuelve disponible',
+    dano: 'Daño: aparta unidades',
+    recuperacion: 'Recuperación: devuelve unidades',
+    merma: 'Merma: descuenta dañadas',
+  }
+  const impacto = !Number.isInteger(cantidadNumero) ? 'Ingrese una cantidad' : {
+    ingreso: `Físico +${cantidadNumero}`,
+    egreso: `Físico -${cantidadNumero}`,
+    ajuste: `Físico = ${cantidadNumero}`,
+    reserva: `Reservado +${cantidadNumero}`,
+    liberacion: `Reservado -${cantidadNumero}`,
+    dano: `Dañado +${cantidadNumero}`,
+    recuperacion: `Dañado -${cantidadNumero}`,
+    merma: `Físico y dañado -${cantidadNumero}`,
+  }[tipo]
 
   const submit = () => {
     const c = parseInt(cantidad, 10)
     if (isNaN(c)) { toast.warning('Cantidad inválida'); return }
     if (!motivo.trim()) { toast.warning('Motivo requerido'); return }
-    const requiereCategoria = tipo === 'egreso' || (tipo === 'ajuste' && c < Number(stockActual || 0))
     if (requiereCategoria && !motivoCategoria) { toast.warning('Motivo operacional requerido'); return }
     addMov.mutate({ productoId, tipo, cantidad: c, motivo: motivo.trim(), motivoCategoria: requiereCategoria ? motivoCategoria : undefined }, {
       onSuccess: () => { setCantidad(''); setMotivo(''); setMotivoCategoria('') },
@@ -629,16 +649,18 @@ function MovimientosSection({ productoId, stockActual }) {
     <>
       <FormDivider label="Movimientos manuales de stock" />
       <div style={{ background: 'var(--bg)', padding: 12, borderRadius: 8, marginBottom: 10, fontSize: 12, color: 'var(--text-2)' }}>
-        Stock actual: <b style={{ color: 'var(--text-1)', fontFamily: "'DM Mono', monospace" }}>{stockActual}</b>
-        {' · '}Ingreso suma · Egreso resta · Ajuste fija stock al valor indicado
+        Físico: <b style={{ color: 'var(--text-1)', fontFamily: "'DM Mono', monospace" }}>{stockActual}</b>
+        {' · '}Disponible: <b style={{ color: 'var(--green-700)', fontFamily: "'DM Mono', monospace" }}>{disponibleActual}</b>
+        {' · '}Reservado: <b style={{ color: 'var(--amber-700)', fontFamily: "'DM Mono', monospace" }}>{stockReservado}</b>
+        {' · '}Dañado: <b style={{ color: 'var(--red)', fontFamily: "'DM Mono', monospace" }}>{stockDanado}</b>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginBottom: 12, alignItems: 'start' }}>
-        <Select value={tipo} onChange={setTipo} options={[{ value: 'ingreso', label: 'Ingreso' }, { value: 'egreso', label: 'Egreso' }, { value: 'ajuste', label: 'Ajuste' }]} />
-        <Input value={cantidad} onChange={setCantidad} type="number" placeholder="0" />
+        <Select value={tipo} onChange={setTipo} options={Object.entries(movementLabels).map(([value, label]) => ({ value, label }))} />
+        <Input value={cantidad} onChange={setCantidad} type="number" placeholder={tipo === 'ajuste' ? 'Nuevo físico' : '0'} />
         <Select
           value={motivoCategoria}
           onChange={setMotivoCategoria}
-          disabled={!esDisminucion}
+          disabled={!requiereCategoria}
           options={MOTIVO_CATEGORIA_OPTIONS.map(value => ({ value, label: value || 'Motivo operacional' }))}
         />
         <Input value={motivo} onChange={setMotivo} placeholder="Motivo (obligatorio)" />
@@ -646,12 +668,16 @@ function MovimientosSection({ productoId, stockActual }) {
           {addMov.isPending ? '…' : 'Aplicar'}
         </Btn>
       </div>
+      <div style={{ margin: '-4px 0 12px', fontSize: 12, color: 'var(--text-3)' }}>
+        {impacto}. {requiereCategoria ? 'Debe indicar el motivo operacional.' : 'El motivo describe la operación.'}
+      </div>
       <MiniTable
         maxHeight={240}
         columns={[
           { key: 'fecha', label: 'Fecha', render: m => <span style={{ color: 'var(--text-2)', fontFamily: "'DM Mono', monospace" }}>{fmtDate(m.createdAt)}</span> },
           { key: 'tipo', label: 'Tipo', render: m => <span style={{ textTransform: 'capitalize' }}>{m.tipo}</span> },
           { key: 'cantidad', label: 'Cantidad', render: m => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600, color: m.cantidad >= 0 ? 'var(--green-700)' : 'var(--red)' }}>{m.cantidad > 0 ? '+' : ''}{m.cantidad}</span> },
+          { key: 'saldos', label: 'Saldos', render: m => m.stockPosterior == null ? '-' : <span style={{ color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>F {m.stockPosterior} · D {m.stockPosterior - Number(m.reservadoFinal || 0) - Number(m.danadoFinal || 0)} · R {m.reservadoFinal || 0} · Ñ {m.danadoFinal || 0}</span> },
           { key: 'motivo', label: 'Motivo', render: m => {
             const motivoInfo = parseMotivo(m.motivo)
             return (

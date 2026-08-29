@@ -6,7 +6,7 @@ export const useProductos = (params = {}) =>
     queryKey: ['productos', params],
     queryFn: () => api.get('/productos', { params }).then(r => r.data),
     staleTime: 30_000,
-    placeholderData: { items: [], total: 0, limit: 500, stats: { total: 0, critico: 0, sinStock: 0, valorInventario: 0 } },
+    placeholderData: { items: [], total: 0, limit: 500, stats: { total: 0, critico: 0, sinStock: 0, valorInventario: 0, stockFisico: 0, stockReservado: 0, stockDanado: 0, stockDisponible: 0 } },
   })
 
 export const useProducto = (id) =>
@@ -67,8 +67,8 @@ export const useMovimientos = (productoId) =>
 export const useAddMovimiento = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ productoId, tipo, cantidad, motivo, motivoCategoria }) =>
-      api.post(`/productos/${productoId}/movimientos`, { tipo, cantidad, motivo, motivoCategoria }).then(r => r.data),
+    mutationFn: ({ productoId, tipo, cantidad, motivo, motivoCategoria, ordenId, odtId, origenTipo, origenId }) =>
+      api.post(`/productos/${productoId}/movimientos`, { tipo, cantidad, motivo, motivoCategoria, ordenId, odtId, origenTipo, origenId }).then(r => r.data),
     onSuccess: (_, { productoId }) => {
       qc.invalidateQueries({ queryKey: ['movimientos', productoId] })
       qc.invalidateQueries({ queryKey: ['productos'] })

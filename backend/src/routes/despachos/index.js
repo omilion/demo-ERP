@@ -78,7 +78,13 @@ const TrackingEventoCreate = z.object({
   fechaEvento: z.string().optional().nullable(),
 })
 
-export const TRACKING_ESTADOS = ['Preparado', 'En ruta', 'Entregado', 'Incidencia', 'Reprogramado', 'Retenido', 'Devuelto']
+export const TRACKING_ESTADOS = ['Patio', 'Didáctico', 'Reparto', 'Entregado', 'Incidencia', 'Reprogramado', 'Retenido', 'Devuelto', 'Preparado', 'En ruta']
+const TRACKING_CHAIN = {
+  Patio: ['Didáctico', 'Incidencia', 'Reprogramado', 'Retenido', 'Preparado', 'En ruta'],
+  Didáctico: ['Reparto', 'Incidencia', 'Reprogramado', 'Retenido'],
+  Reparto: ['Entregado', 'Incidencia', 'Reprogramado', 'Retenido', 'Devuelto'],
+  Entregado: [],
+}
 
 function hasValue(value) {
   return value !== undefined && value !== null && value !== ''
@@ -582,6 +588,25 @@ export function buildTrackingEventData(input = {}, user = null, now = new Date()
   }
 }
 
+export function validateTrackingTransition(previousEstado, nextEstado) {
+  if (!TRACKING_CHAIN[previousEstado]) return null
+  if (previousEstado === nextEstado) return { error: `El despacho ya está en ${nextEstado}` }
+  if (!TRACKING_CHAIN[previousEstado].includes(nextEstado)) return { error: `Transición inválida: ${previousEstado} → ${nextEstado}` }
+  return null
+}
+
+function isRetiroEnSucursal(tipoDespacho) {
+  return /retiro|retira|pickup/i.test(String(tipoDespacho || ''))
+}
+
+export function validateDispatchAddress({ tipoDespacho, direccion, region, comuna } = {}) {
+  if (isRetiroEnSucursal(tipoDespacho)) return null
+  if (!cleanText(direccion) || !cleanText(region) || !cleanText(comuna)) {
+    return { error: 'Direccion, region y comuna son obligatorias para despacho a domicilio' }
+  }
+  return null
+}
+
 async function buildDespachoTrackingTrace(prisma, despachoId) {
   const eventos = await prisma.despachoTrackingEvento.findMany({
     where: { despachoId },
@@ -777,6 +802,59 @@ export default async function despachosRoutes(fastify) {
     ])
     const enriched = await attachLatestDespachoTracking(fastify.prisma, attachDespachoMetrics(items))
     return { items: enriched, total, limit: LIST_LIMIT, stats: { parciales, multas } }
+  })
+
+  // Cola consolidada para coordinar retiros por taller antes de armar la ruta.
+  // No crea despachos automáticamente: la agrupación sólo propone la carga
+  // disponible y conserva el vínculo ODT/orden para que logística decida.
+  fastify.get('/consolidado-taller', {
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
+  }, async (request) => {
+    const sucursalId = parsePositiveInt(request.user?.sucursalId)
+    const soloListos = request.query?.soloListos !== 'false'
+    const odts = await fastify.prisma.odt.findMany({
+      where: { eliminado: false, ...(sucursalId ? { sucursalId } : {}) },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        orden: { select: { id: true, nInterno: true, estadoEntrega: true } },
+        items: {
+          where: { eliminado: false },
+          include: { talleres: { include: { taller: { select: { id: true, nombre: true } } } } },
+        },
+      },
+    })
+    const readyStates = new Set(['listo', 'terminado', 'finalizado', 'completo'])
+    const groups = new Map()
+    for (const odt of odts) {
+      for (const item of odt.items) {
+        for (const rel of item.talleres) {
+          const estado = String(rel.estado || '').trim().toLocaleLowerCase('es-CL')
+          const listo = readyStates.has(estado)
+          if (soloListos && !listo) continue
+          const taller = rel.taller
+          if (!taller) continue
+          if (!groups.has(taller.id)) groups.set(taller.id, { tallerId: taller.id, taller: taller.nombre, cantidad: 0, itemsListos: 0, items: [] })
+          const group = groups.get(taller.id)
+          group.cantidad += Number(item.cantidad || 0)
+          if (listo) group.itemsListos += 1
+          group.items.push({
+            odtId: odt.id,
+            ordenId: odt.ordenId,
+            nInterno: odt.orden?.nInterno ?? null,
+            productoId: item.productoId,
+            codigoInterno: item.codigoInterno,
+            nombre: item.nombre,
+            cantidad: item.cantidad,
+            estado,
+            fechaListo: rel.fechaListo || item.fechaListo || null,
+          })
+        }
+      }
+    }
+    const items = [...groups.values()]
+      .map(group => ({ ...group, items: group.items.sort((a, b) => (a.fechaListo || '').localeCompare(b.fechaListo || '') || a.odtId - b.odtId) }))
+      .sort((a, b) => a.taller.localeCompare(b.taller, 'es'))
+    return { items, total: items.length, soloListos }
   })
 
   fastify.get('/export/registros', {
@@ -1021,6 +1099,9 @@ export default async function despachosRoutes(fastify) {
     if (!despacho) return reply.code(404).send({ error: 'no encontrado' })
     const built = buildTrackingEventData(parsed.data, request.user)
     if (built.error) return reply.code(400).send({ error: built.error })
+    const traceBefore = await buildDespachoTrackingTrace(fastify.prisma, id)
+    const transition = validateTrackingTransition(traceBefore.latest?.estado, built.data.estado)
+    if (transition?.error) return reply.code(409).send({ error: transition.error })
 
     return fastify.prisma.$transaction(async (tx) => {
       const evento = await tx.despachoTrackingEvento.create({
@@ -1068,7 +1149,11 @@ export default async function despachosRoutes(fastify) {
     if (b.montoEnvio && (montoEnvio == null || montoEnvio < 0)) return reply.code(400).send({ error: 'montoEnvio invalido' })
     const ordenContacto = await fastify.prisma.orden.findUnique({
       where: { id: resolved.orden.id },
-      select: { emailContactoDespacho: true, clienteId: true },
+      select: {
+        emailContactoDespacho: true,
+        clienteId: true,
+        clienteSucursal: { select: { direccion: true, region: true, comuna: true } },
+      },
     })
     const clienteContacto = !b.emailContacto && !ordenContacto?.emailContactoDespacho && ordenContacto?.clienteId
       ? await fastify.prisma.cliente.findUnique({ where: { id: ordenContacto.clienteId }, select: { email: true } })
@@ -1077,6 +1162,11 @@ export default async function despachosRoutes(fastify) {
     if (!isValidContactEmail(emailContacto)) {
       return reply.code(400).send({ error: 'Correo de contacto de despacho requerido y valido' })
     }
+    const direccion = cleanText(b.direccion) || ordenContacto?.clienteSucursal?.direccion || null
+    const region = cleanText(b.region) || ordenContacto?.clienteSucursal?.region || null
+    const comuna = cleanText(b.comuna) || ordenContacto?.clienteSucursal?.comuna || null
+    const addressError = validateDispatchAddress({ ...b, direccion, region, comuna })
+    if (addressError) return reply.code(400).send(addressError)
     const data = {
       ordenId: resolved.orden.id,
       odtId: resolved.odt?.id ?? null,
@@ -1088,11 +1178,11 @@ export default async function despachosRoutes(fastify) {
       transporte: b.transporte || null,
       numeroSeguimiento: b.numeroSeguimiento || null,
       montoEnvio,
-      direccion: b.direccion || null,
+      direccion,
       contacto: b.contacto || null,
       emailContacto,
-      region: b.region || null,
-      comuna: b.comuna || null,
+      region,
+      comuna,
       parcial: !!b.parcial,
       tieneMulta: !!b.tieneMulta,
       origenTipo: resolved.origenTipo,
@@ -1168,6 +1258,13 @@ export default async function despachosRoutes(fastify) {
     }
     if (b.parcial !== undefined) data.parcial = !!b.parcial
     if (b.tieneMulta !== undefined) data.tieneMulta = !!b.tieneMulta
+    const updateAddressError = validateDispatchAddress({
+      tipoDespacho: data.tipoDespacho ?? existing.tipoDespacho,
+      direccion: data.direccion ?? existing.direccion,
+      region: data.region ?? existing.region,
+      comuna: data.comuna ?? existing.comuna,
+    })
+    if (updateAddressError) return reply.code(400).send(updateAddressError)
     return fastify.prisma.$transaction(async (tx) => {
       const despacho = await tx.despacho.update({ where: { id }, data })
       const affectedOrdenIds = new Set([existing.ordenId, data.ordenId !== undefined ? data.ordenId : existing.ordenId].filter(Boolean))

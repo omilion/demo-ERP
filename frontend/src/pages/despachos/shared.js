@@ -29,13 +29,13 @@ export const DESPACHO_MODO_OPTS = [
   ['nuevo', 'Crear despacho nuevo'],
 ]
 
-export const TRACKING_ESTADOS = ['Preparado', 'En ruta', 'Entregado', 'Incidencia', 'Reprogramado', 'Retenido', 'Devuelto']
+export const TRACKING_ESTADOS = ['Patio', 'Didáctico', 'Reparto', 'Entregado', 'Incidencia', 'Reprogramado', 'Retenido', 'Devuelto', 'Preparado', 'En ruta']
 export const INCIDENT_TYPES = ['Retraso', 'Cliente ausente', 'Direccion incorrecta', 'Producto faltante', 'Producto danado', 'Transporte', 'Documentacion', 'Otro']
 
 export function trackingTone(estado) {
   if (estado === 'Entregado') return 'green'
   if (estado === 'Incidencia' || estado === 'Devuelto') return 'red'
-  if (estado === 'En ruta' || estado === 'Preparado') return 'blue'
+  if (estado === 'Patio' || estado === 'Didáctico' || estado === 'Reparto' || estado === 'En ruta' || estado === 'Preparado') return 'blue'
   if (estado === 'Reprogramado' || estado === 'Retenido') return 'amber'
   return 'gray'
 }

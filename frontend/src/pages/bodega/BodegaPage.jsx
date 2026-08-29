@@ -90,7 +90,7 @@ export default function BodegaPage() {
     ? (result.items ?? []).filter(p => p.estadoOperacional === estadoOperativo)
     : (result.items ?? [])
   const totalEnBodega = result.total ?? 0
-  const kpiStats = result.stats ?? { total: totalEnBodega, critico: 0, sinStock: 0, valorInventario: 0 }
+  const kpiStats = result.stats ?? { total: totalEnBodega, critico: 0, sinStock: 0, valorInventario: 0, stockFisico: 0, stockReservado: 0, stockDanado: 0, stockDisponible: 0 }
   const LIMIT = result.limit ?? 500
   const selectedCategoria = categoriasApi.find(c => String(c.id) === String(categoriaId))
   const subcategorias = selectedCategoria?.subcategorias || []
@@ -125,12 +125,12 @@ export default function BodegaPage() {
     { key: 'porcDesc', label: 'Desc.', align: 'right', render: v => `${Number(v || 0).toLocaleString('es-CL')}%` },
     { key: 'precioLista', label: 'Precio costo', align: 'right', render: v => mono(money(v)) },
     { key: 'stockCritico', label: 'Stock crit.', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
-    { key: 'stock', label: 'Stock', align: 'right', render: (v, row) => {
+    { key: 'stockFisico', label: 'Físico', align: 'right', render: (v, row) => {
       const transitItem = transitoMap.get(row.id)
       const enTransito = transitItem?.totalEnTransito || 0
       return (
         <div>
-          <div>{mono(Number(v || 0).toLocaleString('es-CL'))}</div>
+          <div>{mono(Number(v ?? row.stock ?? 0).toLocaleString('es-CL'))}</div>
           {enTransito > 0 && (
             <span style={{ fontSize: 10, color: 'var(--blue)', fontWeight: 600, display: 'inline-block' }} title={`En camino: ${enTransito} unidades`}>
               +{enTransito} trán.
@@ -139,6 +139,9 @@ export default function BodegaPage() {
         </div>
       )
     }},
+    { key: 'stockDisponible', label: 'Disponible', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
+    { key: 'stockReservado', label: 'Reservado', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
+    { key: 'stockDanado', label: 'Dañado', align: 'right', render: v => mono(Number(v || 0).toLocaleString('es-CL')) },
     { key: 'proveedor', label: 'Proveedor', render: v => v || '-' },
     { key: 'estadoInventario', label: 'Estado inventario', required: true, render: v => v || '-' },
     { key: 'estadoOperacional', label: 'Estado operativo', required: true, render: v => <Badge tone={estadoTone(v)}>{v === 'Reserva' ? 'Reservado' : (v || 'Sin evaluar')}</Badge> },
@@ -249,6 +252,9 @@ export default function BodegaPage() {
         <>
           <div className="kpi-strip">
             <KpiCard label="Total productos" value={kpiStats.total ?? totalEnBodega} icon="package" sublabel={`${bodegaParam} · limpiar filtro estado`} onClick={resetEstadoFilters} />
+            <KpiCard label="Stock disponible" value={Number(kpiStats.stockDisponible || 0).toLocaleString('es-CL')} icon="check" tone="green" sublabel="Apto para comprometer" onClick={resetEstadoFilters} />
+            <KpiCard label="Reservado" value={Number(kpiStats.stockReservado || 0).toLocaleString('es-CL')} icon="lock" tone="amber" sublabel="Comprometido a pedidos" onClick={resetEstadoFilters} />
+            <KpiCard label="Dañado" value={Number(kpiStats.stockDanado || 0).toLocaleString('es-CL')} icon="alertTriangle" tone="red" sublabel="Fuera de disponibilidad" onClick={resetEstadoFilters} />
             <KpiCard label="Stock crítico" value={criticos} icon="alertTriangle" tone="amber" sublabel="Stock bajo mínimo" onClick={() => { setFilter('critico'); setEstadoOperativo('') }} />
             <KpiCard label="Sin stock" value={sinStock} icon="x" tone="red" sublabel="Requiere reposición" onClick={() => { setFilter('sin-stock'); setEstadoOperativo('') }} />
             <KpiCard label="Valor inventario" value={valorInventarioLabel} icon="dollarSign" sublabel="Costo/lista valorizado" onClick={resetEstadoFilters} />

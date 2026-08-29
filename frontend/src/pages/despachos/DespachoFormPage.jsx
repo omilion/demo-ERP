@@ -65,6 +65,11 @@ function DespachoForm({ isEdit, initial, onDone, onCancel }) {
       showError({ response: { data: { error: 'Ingresa un correo de contacto de despacho valido' } } })
       return
     }
+    const esRetiro = /retiro|retira|pickup/i.test(String(form.tipoDespacho || ''))
+    if (!esRetiro && (!String(form.direccion || '').trim() || !String(form.region || '').trim() || !String(form.comuna || '').trim())) {
+      showError({ response: { data: { error: 'Ingresa dirección, región y comuna; para retiro indica "Retiro en sucursal" en tipo.' } } })
+      return
+    }
     if (isEdit) {
       updateMut.mutate({ id: initial.id, data: { ...form, emailContacto: effectiveEmail } }, { onSuccess: onDone, onError: showError })
     } else {

@@ -2,7 +2,7 @@ import { toast, promptDialog } from '../../store/notif'
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
-import { useDespachoMatriz, useDespachos, useGuias, useDeleteDespacho, useDeleteGuia } from '../../api/despachos'
+import { useDespachoMatriz, useDespachoConsolidadoTaller, useDespachos, useGuias, useDeleteDespacho, useDeleteGuia } from '../../api/despachos'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can, odtPath, ventaPath } from '../../utils/permissions'
@@ -16,6 +16,7 @@ import { Mono, PackingProgress } from './shared-ui'
 const TABS = [
   { id: 'matriz', label: 'Matriz despacho' },
   { id: 'registros', label: 'Registros' },
+  { id: 'taller', label: 'Consolidado taller' },
   { id: 'guias', label: 'Guias' },
 ]
 
@@ -142,6 +143,7 @@ export default function DespachosPage() {
 
   const matriz = useDespachoMatriz(tab === 'matriz' ? matrixParams : {})
   const despachos = useDespachos(tab === 'registros' ? registroParams : {})
+  const consolidadoTaller = useDespachoConsolidadoTaller(tab === 'taller')
   const guias = useGuias(tab === 'guias' ? guiaParams : {})
   const documentosGuias = useDocumentos({ tipoDte: 52 }, { enabled: tab === 'guias' })
   const dtePorGuiaId = useMemo(() => {
@@ -157,8 +159,8 @@ export default function DespachosPage() {
   const delMut = useDeleteDespacho()
   const delGuiaMut = useDeleteGuia()
 
-  const currentResult = tab === 'matriz' ? matriz.data : tab === 'registros' ? despachos.data : guias.data
-  const currentLoading = tab === 'matriz' ? matriz.isLoading : tab === 'registros' ? despachos.isLoading : guias.isLoading
+  const currentResult = tab === 'matriz' ? matriz.data : tab === 'registros' ? despachos.data : tab === 'taller' ? consolidadoTaller.data : guias.data
+  const currentLoading = tab === 'matriz' ? matriz.isLoading : tab === 'registros' ? despachos.isLoading : tab === 'taller' ? consolidadoTaller.isLoading : guias.isLoading
   const total = currentResult?.total || 0
   const limit = currentResult?.limit || 100
   const pages = Math.max(1, Math.ceil(total / limit))
@@ -284,6 +286,14 @@ export default function DespachosPage() {
     ) },
   ]
 
+  const colsTaller = [
+    { key: 'taller', label: 'Taller', render: v => <span style={{ fontWeight: 700 }}>{v}</span> },
+    { key: 'itemsListos', label: 'Ítems listos', align: 'right', render: v => <Badge tone={v ? 'green' : 'gray'}>{v}</Badge> },
+    { key: 'cantidad', label: 'Unidades', align: 'right', render: v => <Mono strong>{Number(v || 0).toLocaleString('es-CL')}</Mono> },
+    { key: 'items', label: 'Carga disponible', wrap: true, render: items => <InlineList items={(items || []).map(item => `OT #${item.odtId} · ${item.nombre || item.codigoInterno || 'Producto'} ×${item.cantidad}`)} /> },
+    { key: '_acc', label: '', render: (_, row) => row.items?.[0]?.ordenId && canWriteDespacho ? <button onClick={() => navigate(`/despachos/nuevo?ordenId=${row.items[0].ordenId}&odtId=${row.items[0].odtId}`)} style={btnSm('var(--blue)')}>Crear despacho</button> : '-' },
+  ]
+
   const renderGuiaDte = row => {
     const documento = dtePorGuiaId.get(Number(row.id))
     if (!documento) return null
@@ -326,7 +336,7 @@ export default function DespachosPage() {
     ) },
   ]
 
-  const columns = tab === 'matriz' ? colsMatriz : tab === 'registros' ? colsDespacho : colsGuia
+  const columns = tab === 'matriz' ? colsMatriz : tab === 'registros' ? colsDespacho : tab === 'taller' ? colsTaller : colsGuia
 
   const exportar = async () => {
     if (tab === 'matriz') {
@@ -337,7 +347,7 @@ export default function DespachosPage() {
       const exportParams = { ...registroParams }
       delete exportParams.page
       await downloadFromBackend('/despachos/export/registros', `despachos_${new Date().toISOString().slice(0, 10)}.csv`, exportParams)
-    } else {
+    } else if (tab === 'guias') {
       const exportParams = { ...guiaParams }
       delete exportParams.page
       await downloadFromBackend('/despachos/guias/export', `guias_${new Date().toISOString().slice(0, 10)}.csv`, exportParams)
@@ -460,7 +470,7 @@ export default function DespachosPage() {
               key={tab}
               columns={columns}
               rows={rows}
-              emptyMessage={tab === 'matriz' ? 'Sin ventas para despacho' : 'Sin registros'}
+              emptyMessage={tab === 'matriz' ? 'Sin ventas para despacho' : tab === 'taller' ? 'Sin carga lista por taller' : 'Sin registros'}
               keyboard
               ariaLabel="Despachos"
               columnPrefsKey={`despachos-${tab}`}

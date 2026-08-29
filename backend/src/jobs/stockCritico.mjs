@@ -58,7 +58,7 @@ function toNumber(value) {
 }
 
 function isCritical(item) {
-  return toNumber(item.stock) <= toNumber(item.stockCritico)
+  return toNumber(item.stockDisponible ?? item.stock) <= toNumber(item.stockCritico)
 }
 
 function sortByNombre(a, b) {
@@ -75,6 +75,8 @@ export async function collectStockCritico(prisma) {
         codigoBarra: true,
         nombre: true,
         stock: true,
+        stockReservado: true,
+        stockDanado: true,
         stockCritico: true,
         estadoInventario: true,
         bodega: true,
@@ -96,7 +98,12 @@ export async function collectStockCritico(prisma) {
     }),
   ])
 
-  const productosCriticos = productos
+  const productosConDisponible = productos.map(producto => ({
+    ...producto,
+    stockFisico: toNumber(producto.stock),
+    stockDisponible: Math.max(0, toNumber(producto.stock) - toNumber(producto.stockReservado) - toNumber(producto.stockDanado)),
+  }))
+  const productosCriticos = productosConDisponible
     .filter(p => isInventariado(p.estadoInventario) && isCritical(p))
     .sort(sortByNombre)
   const materialesCriticos = materiales

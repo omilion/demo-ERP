@@ -101,6 +101,17 @@ function validateUniqueCodes(rows, errors) {
   }
 }
 
+function validateUniqueBarcodes(rows, errors) {
+  const seen = new Set()
+  for (let i = 0; i < rows.length; i++) {
+    const codigoBarra = String(read(rows[i], ['codigoBarra', 'codigo barra', 'cod barra']) || '').trim()
+    if (!codigoBarra) continue
+    const key = codigoBarra.toLowerCase()
+    if (seen.has(key)) errors.push({ fila: i + 2, codigoBarra, error: 'codigoBarra duplicado en archivo' })
+    seen.add(key)
+  }
+}
+
 function buildPrecioRow(row, rowIndex, errors) {
   const data = {}
   const precioLista = parseNumber(read(row, ['precioLista', 'precio costo', 'precioCosto', 'precio1']), 'precioLista', rowIndex, errors, { min: 0 })
@@ -133,8 +144,10 @@ function buildWebRow(row, rowIndex, errors) {
 function buildNuevoRow(row, rowIndex, errors) {
   const codigo = readCodigo(row)
   const nombre = String(read(row, ['nombre', 'producto', 'nombre producto']) || '').trim()
+  const codigoBarra = String(read(row, ['codigoBarra', 'codigo barra', 'cod barra']) || '').trim()
   const bodega = String(read(row, ['bodega']) || 'Inventario').trim() || 'Inventario'
   if (!codigo || !nombre) errors.push({ fila: rowIndex, codigo, error: 'codigo y nombre requeridos' })
+  if (codigoBarra.length < 3) errors.push({ fila: rowIndex, codigo, error: 'codigoBarra requerido' })
   if (!VALID_BODEGAS.includes(bodega)) errors.push({ fila: rowIndex, codigo, error: 'bodega debe ser Inventario o Taller' })
   return {
     codigoInterno: codigo,
@@ -148,7 +161,7 @@ function buildNuevoRow(row, rowIndex, errors) {
     stock: parseIntNumber(read(row, ['stock']), 'stock', rowIndex, errors, { min: 0 }) ?? 0,
     stockCritico: parseIntNumber(read(row, ['stockCritico', 'stock critico', 'stock minimo', 'minimo']), 'stockCritico', rowIndex, errors, { min: 0 }) ?? 0,
     bodega,
-    codigoBarra: read(row, ['codigoBarra', 'codigo barra', 'cod barra']) || null,
+    codigoBarra,
     descripcion: read(row, ['descripcion', 'detalle']) || null,
     descripcionLicitacion: read(row, ['descripcionLicitacion', 'descripcion licitacion']) || null,
     linkCompra: parseUrl(read(row, ['linkCompra', 'link compra', 'url compra']), 'linkCompra', rowIndex, errors),
@@ -312,9 +325,19 @@ export default async function importarRoute(fastify) {
     const { rows } = input
     const errors = []
     validateUniqueCodes(rows, errors)
+    validateUniqueBarcodes(rows, errors)
     const parsedRows = rows.map((row, index) => buildNuevoRow(row, index + 2, errors))
     await resolveCategoriasNuevo(fastify.prisma, parsedRows, errors)
     const existingByCode = await findProductos(fastify.prisma, parsedRows.map(r => r.codigoInterno).filter(Boolean))
+    const barcodes = [...new Set(parsedRows.map(row => row.codigoBarra).filter(Boolean))]
+    const existingBarcodes = barcodes.length ? await fastify.prisma.producto.findMany({
+      where: { OR: barcodes.map(codigoBarra => ({ codigoBarra: { equals: codigoBarra, mode: 'insensitive' } })) },
+      select: { codigoBarra: true },
+    }) : []
+    const usedBarcodes = new Set(existingBarcodes.map(row => String(row.codigoBarra).toLowerCase()))
+    for (const row of parsedRows) {
+      if (row.codigoBarra && usedBarcodes.has(row.codigoBarra.toLowerCase())) errors.push({ codigo: row.codigoInterno, error: 'codigoBarra ya existe' })
+    }
     const createRows = parsedRows.filter(row => row.codigoInterno && !existingByCode.has(row.codigoInterno.toLowerCase()))
     const ignorados = parsedRows.length - createRows.length
 

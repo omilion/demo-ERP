@@ -81,6 +81,7 @@ function TrackingForm({ row, canWrite, onCancel }) {
         </div>
         <Badge tone={trackingTone(latest?.estado)}>{latest?.estado || 'Sin tracking'}</Badge>
       </div>
+      <div style={{ margin: '-4px 0 12px', fontSize: 12, color: 'var(--text-3)' }}>Flujo operativo: Patio → Didáctico → Reparto → Entregado.</div>
 
       {canWrite && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 10 }}>

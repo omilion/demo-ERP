@@ -269,6 +269,8 @@ model Producto {
   precioLicitacion          Float?                     @map("precio_licitacion")
   porcDesc                  Float                      @default(0) @map("porc_desc")
   stock                     Int                        @default(0)
+  stockReservado            Int                        @default(0) @map("stock_reservado")
+  stockDanado               Int                        @default(0) @map("stock_danado")
   stockCritico              Int                        @default(0) @map("stock_critico")
   ubicacion                 String?
   ubicacionId               Int?                       @map("ubicacion_id")
@@ -1756,6 +1758,12 @@ model MovimientoBodega {
   productoId      Int            @map("producto_id")
   tipo            String
   cantidad        Int
+  stockAnterior   Int?           @map("stock_anterior")
+  stockPosterior  Int?           @map("stock_posterior")
+  reservadoDelta Int             @default(0) @map("reservado_delta")
+  danadoDelta     Int             @default(0) @map("danado_delta")
+  reservadoFinal Int?            @map("reservado_final")
+  danadoFinal     Int?            @map("danado_final")
   motivo          String
   userId          Int            @map("user_id")
   ordenId         Int?           @map("orden_id")

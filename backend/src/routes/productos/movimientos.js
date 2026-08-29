@@ -3,7 +3,7 @@ import { resolveOdtForWrite, resolveOrdenForWrite } from '../relation-guards.js'
 import { can } from '../../middleware/rbac.js'
 import { recomputeProductoCosteo } from './costeo.js'
 
-const TIPOS = ['ingreso', 'egreso', 'ajuste']
+const TIPOS = ['ingreso', 'egreso', 'ajuste', 'reserva', 'liberacion', 'dano', 'recuperacion', 'merma']
 const MOTIVO_CATEGORIAS = [
   ['merma', 'Merma'],
   ['perdida', 'Perdida'],
@@ -98,7 +98,7 @@ export function buildMovimientoMotivo({ tipo, cantidad, stockActual, motivo, mot
   }
   if (!categoria) return { motivo: detail }
 
-  const isReduction = tipo === 'egreso' || (tipo === 'ajuste' && Number(cantidad) < Number(stockActual || 0))
+  const isReduction = ['egreso', 'dano', 'merma'].includes(tipo) || (tipo === 'ajuste' && Number(cantidad) < Number(stockActual || 0))
   if (!isReduction) {
     return { error: 'motivoCategoria solo aplica a egreso o ajuste de disminucion' }
   }
@@ -109,6 +109,61 @@ export function buildMovimientoMotivo({ tipo, cantidad, stockActual, motivo, mot
     return { motivo: detail }
   }
   return { motivo: `${categoria}: ${detail}` }
+}
+
+export function buildStockMovementPlan({ tipo, cantidad, stock, stockReservado = 0, stockDanado = 0 } = {}) {
+  const qty = Number.parseInt(cantidad, 10)
+  const current = {
+    stock: Number(stock || 0),
+    reservado: Number(stockReservado || 0),
+    danado: Number(stockDanado || 0),
+  }
+  current.disponible = Math.max(0, current.stock - current.reservado - current.danado)
+  if (!TIPOS.includes(tipo)) return { error: `tipo debe ser ${TIPOS.join(', ')}` }
+  if (!Number.isInteger(qty) || (tipo === 'ajuste' ? qty < 0 : qty <= 0)) return { error: 'cantidad invalida' }
+
+  let stockDelta = 0
+  let reservadoDelta = 0
+  let danadoDelta = 0
+  if (tipo === 'ingreso') stockDelta = qty
+  if (tipo === 'egreso') {
+    if (qty > current.disponible) return { error: 'Egreso supera el stock disponible' }
+    stockDelta = -qty
+  }
+  if (tipo === 'ajuste') {
+    if (qty < current.reservado + current.danado) return { error: 'El ajuste no puede dejar menos stock físico que el reservado y dañado' }
+    stockDelta = qty - current.stock
+  }
+  if (tipo === 'reserva') {
+    if (qty > current.disponible) return { error: 'Reserva supera el stock disponible' }
+    reservadoDelta = qty
+  }
+  if (tipo === 'liberacion') {
+    if (qty > current.reservado) return { error: 'Liberación supera el stock reservado' }
+    reservadoDelta = -qty
+  }
+  if (tipo === 'dano') {
+    if (qty > current.disponible) return { error: 'Daño supera el stock disponible' }
+    danadoDelta = qty
+  }
+  if (tipo === 'recuperacion') {
+    if (qty > current.danado) return { error: 'Recuperación supera el stock dañado' }
+    danadoDelta = -qty
+  }
+  if (tipo === 'merma') {
+    if (qty > current.danado) return { error: 'La merma debe provenir de stock previamente marcado como dañado' }
+    stockDelta = -qty
+    danadoDelta = -qty
+  }
+
+  const final = {
+    stock: current.stock + stockDelta,
+    reservado: current.reservado + reservadoDelta,
+    danado: current.danado + danadoDelta,
+  }
+  final.disponible = final.stock - final.reservado - final.danado
+  if (stockDelta === 0 && reservadoDelta === 0 && danadoDelta === 0) return { error: 'El movimiento no cambia el stock' }
+  return { qty, current, final, stockDelta, reservadoDelta, danadoDelta }
 }
 
 function parseOptionalPositiveInt(value, field) {
@@ -180,15 +235,11 @@ export default async function movimientosProductoRoutes(fastify) {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
     const { tipo, cantidad, motivo, motivoCategoria } = request.body || {}
-    if (!TIPOS.includes(tipo)) return reply.code(400).send({ error: 'tipo debe ser ingreso, egreso o ajuste' })
+    if (!TIPOS.includes(tipo)) return reply.code(400).send({ error: `tipo debe ser ${TIPOS.join(', ')}` })
     if (tipo === 'ajuste' && !can(request.user?.role, 'bodega', 'delete', request.user?.permisosExtra)) {
       return reply.code(403).send({ error: 'Forbidden' })
     }
     const qty = parseInt(cantidad, 10)
-    if (isNaN(qty)) return reply.code(400).send({ error: 'cantidad invalida' })
-    if (tipo === 'ajuste' ? qty < 0 : qty <= 0) {
-      return reply.code(400).send({ error: 'cantidad invalida' })
-    }
     const prod = await fastify.prisma.producto.findUnique({ where: { id } })
     if (!prod) return reply.code(404).send({ error: 'Producto no encontrado' })
     const builtMotivo = buildMovimientoMotivo({
@@ -203,33 +254,52 @@ export default async function movimientosProductoRoutes(fastify) {
     const traceability = await resolveTraceability(fastify.prisma, request.body || {}, { user: request.user })
     if (traceability.error) return reply.code(traceability.status || 400).send({ error: traceability.error })
 
-    if (tipo === 'egreso' && qty > prod.stock) {
-      return reply.code(409).send({ error: 'Egreso supera el stock disponible' })
-    }
-
-    const delta = tipo === 'ingreso' ? qty
-      : tipo === 'egreso' ? -qty
-      : qty - prod.stock // ajuste = setear stock al valor `cantidad`
-    if (delta === 0) return reply.code(400).send({ error: 'El movimiento no cambia el stock' })
-    const newStock = prod.stock + delta
+    const plan = buildStockMovementPlan({
+      tipo,
+      cantidad: qty,
+      stock: prod.stock,
+      stockReservado: prod.stockReservado,
+      stockDanado: prod.stockDanado,
+    })
+    if (plan.error) return reply.code(plan.error.includes('supera') || plan.error.includes('previamente') ? 409 : 400).send({ error: plan.error })
     const userId = request.user?.id || 1
 
     const result = await fastify.prisma.$transaction(async (tx) => {
-      await tx.producto.update({ where: { id }, data: { stock: newStock } })
-      if (delta < 0) {
-        await reduceProductoProveedorStock(tx, id, Math.abs(delta))
+      await tx.producto.update({
+        where: { id },
+        data: {
+          stock: plan.final.stock,
+          stockReservado: plan.final.reservado,
+          stockDanado: plan.final.danado,
+        },
+      })
+      if (plan.stockDelta < 0) {
+        await reduceProductoProveedorStock(tx, id, Math.abs(plan.stockDelta))
       }
       const movimiento = await tx.movimientoBodega.create({
         data: {
           productoId: id,
           tipo,
-          cantidad: delta,
+          cantidad: plan.stockDelta,
+          stockAnterior: plan.current.stock,
+          stockPosterior: plan.final.stock,
+          reservadoDelta: plan.reservadoDelta,
+          danadoDelta: plan.danadoDelta,
+          reservadoFinal: plan.final.reservado,
+          danadoFinal: plan.final.danado,
           motivo: builtMotivo.motivo,
           userId,
           ...traceability,
         },
       })
-      return { movimiento, stockFinal: newStock }
+      return {
+        movimiento,
+        stockFinal: plan.final.stock,
+        stockFisico: plan.final.stock,
+        stockReservado: plan.final.reservado,
+        stockDanado: plan.final.danado,
+        stockDisponible: plan.final.disponible,
+      }
     })
     return reply.code(201).send(result)
   })

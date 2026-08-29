@@ -71,20 +71,20 @@ export function DespachoCamposFields({ form, set }) {
         <Field label="Monto envío"><input value={form.montoEnvio || ''} onChange={e => set('montoEnvio', e.target.value)} style={input} /></Field>
         <Field label="Contacto"><input value={form.contacto || ''} onChange={e => set('contacto', e.target.value)} style={input} /></Field>
         <Field label="Correo contacto despacho *"><input type="email" required value={form.emailContacto || ''} onChange={e => set('emailContacto', e.target.value)} placeholder="contacto@cliente.cl" style={input} /></Field>
-        <Field label="Región">
+        <Field label="Región *">
           <select value={form.region || ''} onChange={e => { set('region', e.target.value); set('comuna', '') }} style={input}>
             <option value="">Seleccionar región...</option>
             {regiones.map(r => <option key={r.codigo} value={r.nombre}>{r.nombre}</option>)}
           </select>
         </Field>
-        <Field label="Comuna">
+        <Field label="Comuna *">
           <select value={form.comuna || ''} onChange={e => set('comuna', e.target.value)} style={input} disabled={!form.region}>
             <option value="">{form.region ? 'Seleccionar comuna...' : 'Elige región primero'}</option>
             {comunas.map(c => <option key={c.nombre} value={c.nombre}>{c.nombre}</option>)}
           </select>
         </Field>
       </div>
-      <Field label="Direccion"><textarea value={form.direccion || ''} onChange={e => set('direccion', e.target.value)} rows={2} style={{ ...input, resize: 'vertical' }} /></Field>
+      <Field label="Direccion *"><textarea value={form.direccion || ''} onChange={e => set('direccion', e.target.value)} rows={2} style={{ ...input, resize: 'vertical' }} /></Field>
     </>
   )
 }

@@ -1,6 +1,34 @@
+export function computeStockDisponible(p) {
+  return Math.max(0, Number(p?.stock || 0) - Number(p?.stockReservado || 0) - Number(p?.stockDanado || 0))
+}
+
+export function attachStockOperacional(p) {
+  return {
+    ...p,
+    stockFisico: Number(p?.stock || 0),
+    stockReservado: Number(p?.stockReservado || 0),
+    stockDanado: Number(p?.stockDanado || 0),
+    stockDisponible: computeStockDisponible(p),
+  }
+}
+
+export async function validateCodigoBarraUnico(prisma, codigoBarra, excludeId = null) {
+  const value = String(codigoBarra || '').trim()
+  if (!value) return { status: 400, error: 'codigoBarra requerido' }
+  const existing = await prisma.producto.findFirst({
+    where: {
+      codigoBarra: { equals: value, mode: 'insensitive' },
+      ...(excludeId ? { NOT: { id: excludeId } } : {}),
+    },
+    select: { id: true },
+  })
+  return existing ? { status: 409, error: 'codigoBarra ya existe' } : null
+}
+
 export function computeEstado(p) {
-  if (p.stock === 0) return 'Sin stock'
-  if ((p.stockCritico ?? 0) > 0 && p.stock <= p.stockCritico) return 'Crítico'
+  const stockDisponible = computeStockDisponible(p)
+  if (stockDisponible === 0) return 'Sin stock'
+  if ((p.stockCritico ?? 0) > 0 && stockDisponible <= p.stockCritico) return 'Crítico'
   return 'Normal'
 }
 
@@ -11,8 +39,9 @@ export function computeEstadoOperacional(p) {
   if (estadoInventario.includes('transitorio')) return 'Transitorio'
   if (estadoInventario.includes('transito')) return 'En transito'
   if (!p.codigoInterno || !p.nombre || !p.categoria || !p.proveedor) return 'Incompleto'
-  if (p.stock === 0) return 'Sin stock'
-  if ((p.stockCritico ?? 0) > 0 && p.stock <= p.stockCritico) return 'Stock crítico'
+  const stockDisponible = computeStockDisponible(p)
+  if (stockDisponible === 0) return 'Sin stock'
+  if ((p.stockCritico ?? 0) > 0 && stockDisponible <= p.stockCritico) return 'Stock crítico'
   return 'Disponible'
 }
 

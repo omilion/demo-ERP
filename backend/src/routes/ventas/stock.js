@@ -44,7 +44,7 @@ export async function applyVentaStockDeltas(tx, { deltas, ordenId, nInterno, tip
   const productIds = entries.map(([productId]) => productId)
   const productos = await tx.producto.findMany({
     where: { id: { in: productIds } },
-    select: { id: true, stock: true, estadoInventario: true },
+    select: { id: true, stock: true, stockReservado: true, stockDanado: true, estadoInventario: true },
   })
   const productoMap = Object.fromEntries(productos.map(p => [p.id, p]))
   const usuarioId = Number(userId || user?.id || 1)
@@ -54,19 +54,25 @@ export async function applyVentaStockDeltas(tx, { deltas, ordenId, nInterno, tip
     if (!producto) return { error: 'Producto no encontrado para stock de venta', status: 404 }
     if (normalize(producto.estadoInventario) !== 'inventariado') continue
 
-    if (delta > 0 && Number(producto.stock || 0) < delta) {
+    const stockDisponible = Math.max(0, Number(producto.stock || 0) - Number(producto.stockReservado || 0) - Number(producto.stockDanado || 0))
+    if (delta > 0 && stockDisponible < delta) {
       return {
         error: 'Stock insuficiente para venta directa',
         status: 409,
         productoId: productId,
-        stockDisponible: Number(producto.stock || 0),
+        stockDisponible,
         cantidadSolicitada: delta,
       }
     }
 
     if (delta > 0) {
       const updated = await tx.producto.updateMany({
-        where: { id: productId, stock: { gte: delta } },
+        where: {
+          id: productId,
+          stock: { gte: delta + Number(producto.stockReservado || 0) + Number(producto.stockDanado || 0) },
+          stockReservado: Number(producto.stockReservado || 0),
+          stockDanado: Number(producto.stockDanado || 0),
+        },
         data: { stock: { decrement: delta } },
       })
       if (updated.count !== 1) {
@@ -74,7 +80,7 @@ export async function applyVentaStockDeltas(tx, { deltas, ordenId, nInterno, tip
           error: 'Stock insuficiente para venta directa',
           status: 409,
           productoId: productId,
-          stockDisponible: Number(producto.stock || 0),
+          stockDisponible,
           cantidadSolicitada: delta,
         }
       }
@@ -89,6 +95,10 @@ export async function applyVentaStockDeltas(tx, { deltas, ordenId, nInterno, tip
         productoId: productId,
         tipo: delta > 0 ? 'egreso' : 'ingreso',
         cantidad: Math.abs(delta),
+        stockAnterior: Number(producto.stock || 0),
+        stockPosterior: Number(producto.stock || 0) - delta,
+        reservadoFinal: Number(producto.stockReservado || 0),
+        danadoFinal: Number(producto.stockDanado || 0),
         motivo: motivo || `Venta directa ${nInterno || ordenId || ''}`.trim(),
         userId: usuarioId,
         ordenId,
