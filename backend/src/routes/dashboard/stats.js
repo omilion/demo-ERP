@@ -1,3 +1,4 @@
+import { can } from '../../middleware/rbac.js'
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere } from '../historico/corte.js'
 import { getUserSucursalId } from '../caja/scope.js'
 import { buildCobranzaHistoricoScopeWhere } from '../cobranza/scope.js'
@@ -25,6 +26,8 @@ export default async function dashboardStats(fastify) {
     const corte = await getPrimerRegistroInterno(p)
     const ordenOperacionalWhere = buildOrdenScopeWhere('operacional', corte)
     const sucursalId = getUserSucursalId(request.user)
+    const ahora = new Date()
+    const en30dias = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     // El KPI y la pantalla de Taller deben usar el mismo alcance. Antes el
     // dashboard contaba OTs globales, pero /api/odts filtraba por sucursal:
     // al hacer clic el usuario pasaba de miles de pendientes a una lista vacía.
@@ -57,6 +60,9 @@ export default async function dashboardStats(fastify) {
       boletasProvNoPagadas,
       productosCalidadRows,
       matrizTotales,
+      dotacionPorEmpresa,
+      contratosPorVencer,
+      licenciasActivas,
     ] = await Promise.all([
       p.orden.count({ where: mergeWhere({ estadoPago: 'No pagada', eliminada: false, estado: 'Activa' }, ordenOperacionalWhere) }),
       p.orden.count({ where: mergeWhere({ estadoEntrega: 'Pendiente entrega', eliminada: false, estado: 'Activa' }, ordenOperacionalWhere) }),
@@ -103,6 +109,11 @@ export default async function dashboardStats(fastify) {
         FROM catalogo.productos
       `,
       getMatrizTotales(fastify, {}, request.user).catch(() => ({ kpis: {} })),
+      // RRHH: solo conteos. La ficha de cada trabajador vive en su modulo;
+      // el tablero no es lugar para datos personales ni sueldos.
+      p.trabajador.groupBy({ by: ['empresa'], where: { estado: true }, _count: { _all: true } }).catch(() => []),
+      p.contrato.count({ where: { estado: true, termino: { gte: ahora, lte: en30dias } } }).catch(() => 0),
+      p.licencia.count({ where: { estado: true, inicio: { lte: ahora }, termino: { gte: ahora } } }).catch(() => 0),
     ])
 
     const stockByBodega = {}
@@ -116,48 +127,63 @@ export default async function dashboardStats(fastify) {
 
     const cobranzaByEstado = Object.fromEntries(cobranzaStats.map(g => [String(g.estado || '').toUpperCase(), g]))
     const cal = productosCalidadRows[0]
+
+    // Cada bloque del tablero pertenece a un modulo. Se entrega solo lo que el
+    // usuario puede abrir: mostrarle el total vendido a quien no tiene acceso a
+    // ventas es filtrar informacion por la puerta de atras, y ademas le ofrece
+    // tarjetas que al hacer clic lo llevan a un 403.
+    //
+    // El alcance por sucursal ya se aplica arriba; esto se suma, no lo sustituye.
+    const ve = modulo => can(request.user?.role, modulo, 'read', request.user?.permisosExtra)
+    const soloSi = (permitido, valor) => (permitido ? valor : null)
     return {
-      kpis: matrizTotales?.kpis || {},
-      ventas: {
+      kpis: soloSi(ve('ventas'), matrizTotales?.kpis || {}),
+      ventas: soloSi(ve('ventas'), {
         noPagadas: ventasNoPagadas,
         pendienteEntrega: ventasPendienteEntrega,
         webPendientes: ordenesWebPendientes,
-      },
-      proveedoresPagos: {
+      }),
+      proveedoresPagos: soloSi(ve('proveedores'), {
         facturasNoPagadas: facturasProvNoPagadas,
         boletasNoPagadas: boletasProvNoPagadas,
-      },
-      productosCalidad: {
+      }),
+      productosCalidad: soloSi(ve('catalogo'), {
         sinCodigoBarra: cal?.sin_codigo_barra ?? 0,
         sinCodigoInterno: cal?.sin_codigo_interno ?? 0,
         sinCategoria: cal?.sin_categoria ?? 0,
         sinProveedor: cal?.sin_proveedor ?? 0,
-      },
-      odts: {
+      }),
+      odts: soloSi(ve('taller'), {
         pendientes: odtsPendientes,
         enProceso: odtsEnProceso,
         urgentes: odtsUrgentes,
         total: odtsPendientes + odtsEnProceso,
-      },
-      talleres: [
+      }),
+      talleres: soloSi(ve('taller'), [
         { tipo: 'Espumas',      activas: espumasPendientes,      urgentes: espumasUrgentes },
         { tipo: 'Confecciones', activas: confeccionesPendientes, urgentes: confeccionesUrgentes },
         { tipo: 'Madera',       activas: maderaPendientes,       urgentes: maderaUrgentes },
         { tipo: 'Externo',      activas: externoPendientes,      urgentes: externoUrgentes },
-      ],
-      stock: stockByBodega,
-      crm: {
+      ]),
+      stock: soloSi(ve('bodega'), stockByBodega),
+      crm: soloSi(ve('ventas'), {
         pendientes: crmPendientes,
         enGestion: crmEnGestion,
         altaPrioridad: crmAltaPrioridad,
-      },
-      proveedores: {
+      }),
+      proveedores: soloSi(ve('proveedores'), {
         total: proveedoresTotal,
-      },
-      cobranzaHistorico: {
+      }),
+      cobranzaHistorico: soloSi(ve('cobranza'), {
         cobrado: Number(cobranzaByEstado.CANCELADA?._sum.monto || 0),
         pendientes: cobranzaByEstado.PENDIENTE?._count._all || 0,
-      },
+      }),
+      rrhh: soloSi(ve('rrhh'), {
+        dotacionActiva: dotacionPorEmpresa.reduce((total, g) => total + g._count._all, 0),
+        porEmpresa: Object.fromEntries(dotacionPorEmpresa.map(g => [g.empresa || 'sin empresa', g._count._all])),
+        contratosPorVencer,
+        licenciasActivas,
+      }),
     }
   })
 }

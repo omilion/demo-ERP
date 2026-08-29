@@ -1,3 +1,4 @@
+import { can } from '../../middleware/rbac.js'
 import { randomUUID } from 'node:crypto'
 import { getAnthropic, isAiConfigured, buildSystemPrompt, AI_MODEL, AI_MAX_TOKENS, AI_EFFORT } from './llm.js'
 import { getToolDefinitions, runTool } from './tools/index.js'
@@ -13,8 +14,12 @@ export function allToolDefinitions() {
 
 // Ejecuta una herramienta por nombre, enrutando a consulta, documentos o UI.
 export async function executeTool(name, input, ctx) {
-  const esAdmin = ctx.user?.role === 'admin'
-  if (!esAdmin && name !== 'consultar_documentacion' && name !== 'ajustar_pantalla') {
+  // Se resuelve por permiso y no por rol fijo: el catalogo ofrece 'ai' como
+  // asignable, y con el rol hardcodeado ese permiso no hacia nada. Hoy da lo
+  // mismo -solo admin lo alcanza, via su comodin- pero ahora si se asigna,
+  // funciona.
+  const puedeUsarHerramientas = can(ctx.user?.role, 'ai', 'read', ctx.user?.permisosExtra)
+  if (!puedeUsarHerramientas && name !== 'consultar_documentacion' && name !== 'ajustar_pantalla') {
     return { error: 'Herramienta no disponible para tu rol' }
   }
   if (UI_TOOL_NAMES.has(name)) {
@@ -83,8 +88,8 @@ export default async function aiChatRoute(fastify) {
     try {
       const client = getAnthropic()
       const system = [{ type: 'text', text: buildSystemPrompt(request.user), cache_control: { type: 'ephemeral' } }]
-      const esAdmin = request.user?.role === 'admin'
-      const tools = esAdmin 
+      const puedeHerramientas = can(request.user?.role, 'ai', 'read', request.user?.permisosExtra)
+      const tools = puedeHerramientas 
         ? allToolDefinitions() 
         : allToolDefinitions().filter(t => t.name === 'consultar_documentacion' || t.name === 'ajustar_pantalla')
       const convo = [...messages]

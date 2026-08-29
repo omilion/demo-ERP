@@ -41,7 +41,17 @@ export const ROLE_PERMISSIONS = {
     catalogo: ['read'],
     bodega: ['read'],
   },
-  rrhh: { rrhh: ['read', 'write'] },
+  // Operario de taller: registra su avance, no gestiona la OT. No basta con
+  // quitarle funciones al rol `taller`: los permisos extra son aditivos y ese
+  // rol otorga taller:write en bloque, con lo que todo cae al modulo.
+  taller_operario: {
+    reportes: ['read'],
+    taller: ['read'],
+    'taller.avance': ['read', 'write'],
+    catalogo: ['read'],
+    bodega: ['read'],
+  },
+  rrhh: { rrhh: ['read', 'write'], reportes: ['read'] },
   solo_lectura: {
     reportes: ['read'],
     ventas: ['read'],
@@ -66,8 +76,19 @@ function extraPerms(user) {
   return user?.permisosExtra || user?.permisos_extra || null
 }
 
-function includesPermission(perms, moduleName, permission) {
-  return Array.isArray(perms?.[moduleName]) && perms[moduleName].includes(permission)
+// Permisos por funcion dentro de un modulo: 'ventas.entregas', 'taller.avance'.
+// Misma regla que el backend (backend/src/middleware/rbac.js): gana lo mas
+// especifico, y si no hay entrada por funcion cae al permiso del modulo.
+//
+// Tiene que coincidir con el backend o las dos capas quedan en desacuerdo: el
+// menu ofreceria pantallas que la API rechaza, o al reves.
+function decidir(perms, moduleName, permission) {
+  if (!perms || typeof perms !== 'object') return null
+  const punto = String(moduleName).indexOf('.')
+  if (punto !== -1 && Array.isArray(perms[moduleName])) return perms[moduleName].includes(permission)
+  const base = punto === -1 ? moduleName : String(moduleName).slice(0, punto)
+  if (Array.isArray(perms[base])) return perms[base].includes(permission)
+  return null
 }
 
 export function can(user, moduleName, permission = 'read') {
@@ -75,12 +96,13 @@ export function can(user, moduleName, permission = 'read') {
 
   const rolePerms = ROLE_PERMISSIONS[getUserRole(user)]
   if (rolePerms?.['*']) return true
-  if (includesPermission(rolePerms, moduleName, permission)) return true
+  if (decidir(rolePerms, moduleName, permission) === true) return true
 
+  // Los extra son aditivos: amplian el rol, nunca lo recortan.
   const extra = extraPerms(user)
   if (extra && typeof extra === 'object') {
-    if (includesPermission(extra, moduleName, permission)) return true
-    if (includesPermission(extra, '*', permission)) return true
+    if (decidir(extra, moduleName, permission) === true) return true
+    if (Array.isArray(extra['*']) && extra['*'].includes(permission)) return true
   }
 
   return false

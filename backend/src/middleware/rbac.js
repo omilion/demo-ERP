@@ -55,7 +55,7 @@ const PERMISSIONS = {
     catalogo:        ['read'],
     bodega:          ['read'],
   },
-  rrhh:         { rrhh: ['read', 'write'] },
+  rrhh:         { rrhh: ['read', 'write'], reportes: ['read'] },
   solo_lectura: {
     reportes:     ['read'],
     ventas:       ['read'],

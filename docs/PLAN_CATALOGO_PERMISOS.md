@@ -219,3 +219,75 @@ Es una decisión para Plastimar: si Zalma debe poder anular una OT, hay que darl
 El mecanismo es retrocompatible: verificado que un permiso de módulo sigue habilitando todas sus funciones y que lo negado sigue negado. La pantalla de Accesos ya muestra las funciones bajo su módulo.
 
 Queda **etiquetar `facturacion`, `despacho` y `bodega`** —los tres son del área de Sebastián, así que se coordina con él— y revisar los **74 endpoints que sólo exigen estar logueado**.
+
+---
+
+## 9. Revisión de los 74 endpoints "sólo login" (29-08-2026)
+
+El hallazgo principal es que **la cifra estaba inflada**: la gran mayoría sí está protegida, con formas que el detector no reconocía.
+
+### Lo que el detector no veía
+
+| Forma | Ejemplo | Dónde |
+|---|---|---|
+| Constante izada por asignación directa | `const adminRead = fastify.rbac('admin','read')` | `admin/`, `reportes/comisiones` |
+| Constante dentro del array | `preHandler: [authenticate, adminRead]` | mismo |
+| Verificación de rol en el handler | `if (req.user?.role !== 'admin') return 403` | `banners`, `historico`, `accesos`, `cargo-transporte` |
+| Permiso comprobado dentro | `if (!canApproveDescuento(user)) return 403` | `descuentos` |
+| Permiso por función | `rbac('ventas.entregas','write')` | el etiquetado nuevo |
+
+Casos que parecían graves y no lo eran: los 15 endpoints de `admin` —incluido borrar ítems—, aprobar descuentos, los reportes gerenciales de cobranza y caja, y las comisiones. **Todos con guardia.**
+
+### El susto del asistente de IA
+
+Expone 14 herramientas de negocio: `consultar_planillas` devuelve sueldos por trabajador, más comisiones, caja y RRHH. Ninguna recibe el usuario ni filtra por permisos, y las rutas sólo exigen estar logueado.
+
+**No es una fuga.** El control está antes, en dos capas: un no-admin sólo recibe las definiciones de las herramientas de documentación y UI, y si intenta otra obtiene *"Herramienta no disponible para tu rol"*.
+
+### Lo único real: el permiso `ai` no hacía nada
+
+El comentario del módulo decía que el acceso se controlaba con `rbac('ai','read')`. **El código nunca lo aplicaba**: el control era un `role === 'admin'` fijo. Como `ai` sí es asignable desde la pantalla de Accesos, asignarlo no producía ningún efecto — un permiso que promete y no cumple, la misma clase de defecto que los seis módulos fantasma.
+
+Corregido: ahora el permiso es el que manda. **Hoy no amplía el acceso a nadie** —sólo admin lo alcanza, por su comodín— pero asignarlo funciona.
+
+### Los que legítimamente sólo exigen sesión
+
+`locations` (regiones, comunas, sucursales) y `banners GET` son datos de referencia. `ai/conversaciones` está acotado por `userId` en cada consulta: cada quien ve sólo las suyas.
+
+---
+
+## 10. Lo que ve cada rol
+
+Tres capas que antes no coincidían.
+
+### El tablero de inicio
+
+Mostraba lo mismo a todos: una cortadora veía el total vendido y las cuentas por pagar a proveedores. Acotaba por sucursal, no por permiso. Ahora cada bloque se entrega sólo a quien puede abrir ese módulo.
+
+| Rol | Ventas | Taller | Bodega | Proveedores | Cobranza | Catálogo | RRHH |
+|---|---|---|---|---|---|---|---|
+| admin | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| vendedor | ✓ | ✓ | — | — | — | ✓ | — |
+| bodeguero | ✓ | — | ✓ | ✓ | — | ✓ | — |
+| cajero | ✓ | — | — | — | ✓ | — | — |
+| taller · operario | — | ✓ | ✓ | — | — | ✓ | — |
+| rrhh | — | — | — | — | — | — | ✓ |
+
+No es sólo filtración: antes ofrecía tarjetas que al hacer clic llevaban a un 403.
+
+### RRHH tenía el tablero vacío
+
+Su rol no incluía ninguno de los módulos que el tablero mostraba. Se resolvió por los dos lados, porque cada uno arregla una mitad:
+
+- **Bloque propio**: dotación activa por empresa, contratos por vencer en 30 días, licencias vigentes. Sólo conteos — la ficha de cada persona y los sueldos viven en su módulo.
+- **`reportes: read`**: sin eso, aunque tuviera su bloque, no podría ver ningún reporte de su área.
+
+### El resolvedor del frontend
+
+Le faltaba resolver `modulo.funcion` y no conocía `taller_operario`. Sin eso el menú habría ofrecido pantallas que la API rechaza.
+
+### Un test para que no vuelvan a divergir
+
+Front y back declaran el mismo modelo en **dos archivos distintos**, y ya divergieron una vez: la pantalla de Accesos ofrecía `cotizaciones`, que el backend rechazaba con 400.
+
+`permisos-front-back-coinciden.test.js` compara ambos resolvedores sobre **810 combinaciones** de rol × módulo × nivel, y otras tantas con permisos extra. Si alguien toca un lado y olvida el otro, falla.

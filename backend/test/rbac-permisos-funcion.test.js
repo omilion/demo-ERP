@@ -247,3 +247,23 @@ describe('taller: operario frente a supervisora', () => {
     expect(can('admin', 'taller.cerrar', 'delete')).toBe(true)
   })
 })
+
+// El asistente exponia 14 herramientas de negocio -sueldos, comisiones, caja-
+// tras un `role === 'admin'` fijo, mientras el catalogo ofrecia 'ai' como
+// permiso asignable que no hacia nada. Ahora el permiso es el que manda.
+describe('el permiso ai gobierna el asistente', () => {
+  it('admin lo alcanza por su comodin, como antes', () => {
+    expect(can('admin', 'ai', 'read')).toBe(true)
+  })
+
+  it('ningun otro rol lo tiene por defecto: el acceso no se amplia', () => {
+    for (const rol of ['vendedor', 'bodeguero', 'cajero', 'taller', 'taller_operario', 'rrhh', 'solo_lectura']) {
+      expect(can(rol, 'ai', 'read')).toBe(false)
+    }
+  })
+
+  // Lo que cambia: asignar el permiso ahora si habilita el asistente.
+  it('asignarlo como permiso extra ahora funciona', () => {
+    expect(can('vendedor', 'ai', 'read', { ai: ['read'] })).toBe(true)
+  })
+})

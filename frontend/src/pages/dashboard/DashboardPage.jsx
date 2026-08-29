@@ -527,7 +527,7 @@ export function DashboardOperativoPage() {
         )}
         {show.taller && (
           <KpiCard label="OT Activas" value={n(stats?.odts?.total)} icon="wrench"
-            sublabel={!isLoading ? `${stats.odts.urgentes} urgentes` : ''}
+            sublabel={!isLoading ? `${n(stats?.odts?.urgentes)} urgentes` : ''}
             tone={stats?.odts?.urgentes > 0 ? 'amber' : 'neutral'} onClick={() => navigate('/taller')} />
         )}
         {show.bodega && (
