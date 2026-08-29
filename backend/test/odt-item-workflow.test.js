@@ -58,11 +58,13 @@ describe('ODT item/taller workflow helpers', () => {
       'en_proceso',
       'pausado',
       'listo',
+      'rechazado',
       'cancelado',
     ])
     expect(normalizeTallerItemEstado('En proceso')).toBe('en_proceso')
     expect(normalizeTallerItemEstado(' en-proceso ')).toBe('en_proceso')
     expect(normalizeTallerItemEstado('listo')).toBe('listo')
+    expect(normalizeTallerItemEstado('rechazado')).toBe('rechazado')
     expect(normalizeTallerItemEstado('terminado')).toBeNull()
     expect(normalizeTallerItemEstado(null)).toBeNull()
   })

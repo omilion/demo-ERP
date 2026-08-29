@@ -7,6 +7,7 @@ export const ODT_ITEM_TALLER_ESTADOS = Object.freeze([
   'en_proceso',
   'pausado',
   'listo',
+  'rechazado',
   'cancelado',
 ])
 
@@ -114,7 +115,7 @@ export function buildTallerItemEstadoUpdate({ estado, current = {}, user, now = 
   return data
 }
 
-export function buildTallerItemEstadoBitacoraEntry({ current = {}, estado, user }) {
+export function buildTallerItemEstadoBitacoraEntry({ current = {}, estado, user, obs }) {
   const usuario = getRequestUsuario(user) || 'Sistema'
   const itemLabel = [current.odtItem?.codigoInterno, current.odtItem?.nombre].filter(Boolean).join(' - ')
     || `Item #${current.odtItemId}`
@@ -125,7 +126,7 @@ export function buildTallerItemEstadoBitacoraEntry({ current = {}, estado, user 
     usuarioReporta: usuario,
     sucursalId: current.odtItem?.odt?.sucursalId ?? null,
     fecha: new Date(),
-    texto: `Estado taller ${tallerLabel} / ${itemLabel}: ${current.estado || 'sin estado'} -> ${estado}`,
+    texto: `Estado taller ${tallerLabel} / ${itemLabel}: ${current.estado || 'sin estado'} -> ${estado}${estado === 'rechazado' && String(obs || '').trim() ? ` · Motivo: ${String(obs).trim()}` : ''}`,
   }
 }
 
@@ -182,6 +183,9 @@ export default async function itemWorkflowRoutes(fastify) {
     if (!estado && operarioResponsableId === undefined && obs === undefined) {
       return reply.code(400).send({ error: 'Cuerpo vacio o invalido' })
     }
+    if (estado === 'rechazado' && !String(obs || '').trim()) {
+      return reply.code(400).send({ error: 'Motivo de rechazo requerido en obs' })
+    }
 
     const { tallerItemId } = parsedParams
     const sucursalId = getUserSucursalId(request.user)
@@ -237,7 +241,7 @@ export default async function itemWorkflowRoutes(fastify) {
         })
 
         if (estado && estado !== txCurrent.estado) {
-          const bitacoraEntry = buildTallerItemEstadoBitacoraEntry({ current: txCurrent, estado, user: request.user })
+          const bitacoraEntry = buildTallerItemEstadoBitacoraEntry({ current: txCurrent, estado, user: request.user, obs: data.obs ?? txCurrent.obs })
           if (bitacoraEntry.odtId) await tx.bitacoraTaller.create({ data: bitacoraEntry })
         }
         return updated
@@ -255,6 +259,7 @@ export default async function itemWorkflowRoutes(fastify) {
 
     const estado = normalizeTallerItemEstado(request.body?.estado)
     if (!estado) return reply.code(400).send({ error: ODT_ITEM_TALLER_ESTADOS_ERROR })
+    if (estado === 'rechazado') return reply.code(400).send({ error: 'El rechazo debe registrarse por ítem e incluir su motivo' })
 
     const sucursalId = getUserSucursalId(request.user)
     const relationWhere = buildTallerBulkRelationWhere(parsedParams, { sucursalId })

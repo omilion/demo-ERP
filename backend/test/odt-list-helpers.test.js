@@ -56,7 +56,7 @@ describe('ODT list helpers', () => {
     )).resolves.toEqual({ error: 'Estado invalido' })
   })
 
-  it('sorts ODTs by operational state and newest creation date', () => {
+  it('sorts ODTs by operational state and earliest delivery commitment', () => {
     const odts = [
       { id: 1, estado: 'Pendiente', createdAt: '2026-05-20T12:00:00.000Z' },
       { id: 2, estado: 'En proceso', createdAt: '2026-05-19T12:00:00.000Z' },
@@ -64,6 +64,6 @@ describe('ODT list helpers', () => {
       { id: 4, estado: 'Pendiente', createdAt: '2026-05-22T12:00:00.000Z' },
     ]
 
-    expect(sortOdtsOperativas(odts).map(odt => odt.id)).toEqual([3, 2, 4, 1])
+    expect(sortOdtsOperativas(odts).map(odt => odt.id)).toEqual([3, 2, 1, 4])
   })
 })

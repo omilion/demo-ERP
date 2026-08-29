@@ -103,7 +103,33 @@ export default async function notificacionesRoutes(fastify) {
       }
     }
 
-    // 4. Despachos/entregas pendientes con plazo vencido.
+    // 4. Producción terminada: visible tanto para bodega como despacho.
+    // Una ODT sólo entra cuando todos sus talleres activos dejaron cada item listo.
+    if (puede('bodega') || puede('despacho')) {
+      const candidatas = await prisma.odt.findMany({
+        where: { eliminado: false, estado: { notIn: ['Terminada', 'Entregada', 'Anulada'] } },
+        select: {
+          id: true, clienteNombre: true, fechaEntregaCompromiso: true, plazo: true, createdAt: true,
+          items: { where: { eliminado: false }, select: { talleres: { select: { estado: true, fechaListo: true } } } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+      })
+      for (const odt of candidatas) {
+        const estaciones = odt.items.flatMap(item => item.talleres).filter(item => item.estado !== 'cancelado')
+        if (!estaciones.length || !estaciones.every(item => item.estado === 'listo')) continue
+        items.push({
+          tipo: 'odt_lista_despacho',
+          severidad: 'media',
+          titulo: `ODT lista para bodega y despacho: #${odt.id}`,
+          detalle: odt.clienteNombre || 'Producción terminada; coordinar preparación y ruta.',
+          fecha: odt.fechaEntregaCompromiso || odt.plazo || odt.createdAt,
+          link: `/despachos?odtId=${odt.id}`,
+        })
+      }
+    }
+
+    // 5. Despachos/entregas pendientes con plazo vencido.
     if (puede('ventas')) {
       const ordenes = await prisma.orden.findMany({
         where: {

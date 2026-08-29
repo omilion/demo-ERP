@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { toast } from '../../store/notif'
+import { toast, promptDialog } from '../../store/notif'
 import { Badge, Btn, Icon, KpiCard, PageHeader } from '../../components/shared'
 import { FormField, Input, Select, Textarea } from '../../components/forms'
 import { useOdtItemTallerEstado, useOdtOperarios } from '../../api/odts'
@@ -12,6 +12,7 @@ const STATE = {
   pendiente: { label: 'Pendiente', tone: 'amber' },
   en_proceso: { label: 'En Proceso', tone: 'blue' },
   listo: { label: 'Listo', tone: 'green' },
+  rechazado: { label: 'Rechazado', tone: 'red' },
   cancelado: { label: 'Cancelado', tone: 'gray' },
 }
 
@@ -21,6 +22,7 @@ const FILTERS = [
   ['pendiente', 'Pendientes'],
   ['en_proceso', 'En proceso'],
   ['listo', 'Listos'],
+  ['rechazado', 'Rechazados'],
 ]
 
 function fileAsDataUrl(file) {
@@ -76,8 +78,12 @@ export default function TallerCortePage() {
     }
   }
 
-  function changeState(item, next) {
-    updateEstado.mutate(relationPayload(item, { estado: next }), {
+  async function changeState(item, next) {
+    const obs = next === 'rechazado'
+      ? await promptDialog({ title: 'Motivo del rechazo', detail: 'Este motivo quedará en la trazabilidad del taller.' })
+      : undefined
+    if (next === 'rechazado' && !obs?.trim()) return
+    updateEstado.mutate(relationPayload(item, { estado: next, obs: obs?.trim() }), {
       onError: e => toast.error(e.response?.data?.error || 'No se pudo actualizar el estado'),
     })
   }
@@ -163,7 +169,7 @@ export default function TallerCortePage() {
               <button key={value || 'all'} onClick={() => setEstado(value)} style={filterButton(estado === value)}>{label}</button>
             ))}
           </div>
-          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Ordenado por OT más reciente</span>
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Prioridad por fecha de compromiso de entrega</span>
         </div>
       </section>
 
@@ -229,6 +235,8 @@ function CorteCard({ item, operarios, canWrite, onAssign, onChangeState, onAdvan
         {canWrite && item.estado === 'pendiente' && <Btn variant="secondary" size="sm" onClick={() => onChangeState(item, 'en_proceso')}>Iniciar</Btn>}
         {canWrite && item.estado === 'en_proceso' && <Btn variant="primary" size="sm" onClick={() => onAdvance(item)}>Registrar avance</Btn>}
         {canWrite && item.estado === 'en_proceso' && <Btn variant="secondary" size="sm" onClick={() => onChangeState(item, 'listo')}>Marcar listo</Btn>}
+        {canWrite && ['pendiente', 'en_proceso', 'pausado'].includes(item.estado) && <Btn variant="ghost" size="sm" onClick={() => onChangeState(item, 'rechazado')}>Rechazar</Btn>}
+        {canWrite && item.estado === 'rechazado' && <Btn variant="secondary" size="sm" onClick={() => onChangeState(item, 'en_proceso')}>Reprocesar</Btn>}
         {item.estado === 'listo' && <span style={{ fontSize: 12, color: 'var(--green-700)', fontWeight: 700 }}>Listo para el siguiente taller</span>}
       </div>
     </article>

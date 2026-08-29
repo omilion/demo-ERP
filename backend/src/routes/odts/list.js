@@ -51,7 +51,9 @@ export function sortOdtsOperativas(odts = []) {
     const oa = ESTADO_ORDER[a.estado] ?? 99
     const ob = ESTADO_ORDER[b.estado] ?? 99
     if (oa !== ob) return oa - ob
-    return new Date(b.createdAt) - new Date(a.createdAt)
+    const fechaA = a.fechaEntregaCompromiso || a.plazo || a.createdAt
+    const fechaB = b.fechaEntregaCompromiso || b.plazo || b.createdAt
+    return new Date(fechaA) - new Date(fechaB) || new Date(a.createdAt) - new Date(b.createdAt)
   })
   return odts
 }
