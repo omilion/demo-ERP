@@ -175,8 +175,20 @@ describeDb('reportes gerenciales backend', () => {
     })
     expect(exportTipo.statusCode).toBe(200)
     expect(exportTipo.body).toContain(`${scopedMarker}-A`)
-    expect(exportTipo.body).toContain(`${scopedMarker}-C`)
+    // C es tipo 'Normal'. Plastimar confirmo que es la venta simple, un tipo
+    // propio, no una forma de escribir la venta directa: ya no cae en este filtro.
+    expect(exportTipo.body).not.toContain(`${scopedMarker}-C`)
     expect(exportTipo.body).not.toContain(`${scopedMarker}-B`)
+
+    // Y se alcanza por su propio tipo, para que no quede sin filtro que la muestre.
+    const exportSimple = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/export/ventas?scope=todos&tipo=normal&search=${encodeURIComponent(scopedMarker)}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin', 9701)}` },
+    })
+    expect(exportSimple.statusCode).toBe(200)
+    expect(exportSimple.body).toContain(`${scopedMarker}-C`)
+    expect(exportSimple.body).not.toContain(`${scopedMarker}-A`)
 
     const gerencial = await app.inject({
       method: 'GET',
@@ -185,11 +197,22 @@ describeDb('reportes gerenciales backend', () => {
     })
     expect(gerencial.statusCode).toBe(200)
     const body = JSON.parse(gerencial.body)
-    expect(body.fuentes.ordenes.count).toBe(2)
-    expect(body.fuentes.ordenes.total).toBe(3000)
+    // Solo A: C es 'Normal' -la venta simple- y ya no cae en venta directa.
+    expect(body.fuentes.ordenes.count).toBe(1)
+    expect(body.fuentes.ordenes.total).toBe(1000)
     expect(body.byVendedor[`${scopedMarker}-A`].total).toBe(1000)
-    expect(body.byVendedor[`${scopedMarker}-C`].total).toBe(2000)
+    expect(body.byVendedor[`${scopedMarker}-C`]).toBeUndefined()
     expect(body.byVendedor[`${scopedMarker}-B`]).toBeUndefined()
+
+    // La venta simple se reporta bajo su propio tipo, no se pierde.
+    const gerencialSimple = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/gerencial/ventas?desde=${desde}&hasta=${hasta}&tipo=normal&vendedor=${encodeURIComponent(scopedMarker)}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'admin', 9701)}` },
+    })
+    const bodySimple = JSON.parse(gerencialSimple.body)
+    expect(bodySimple.fuentes.ordenes.count).toBe(1)
+    expect(bodySimple.byVendedor[`${scopedMarker}-C`].total).toBe(2000)
   })
 
   it('cuadra cuentas por cobrar y caja contra registros fuente', async () => {

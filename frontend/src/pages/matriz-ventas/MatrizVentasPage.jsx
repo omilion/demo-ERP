@@ -12,6 +12,7 @@ import { can, ventaPath } from '../../utils/permissions'
 const TABS = [
   { id: 'all', label: 'Todos' },
   { id: 'venta-sala', label: 'Venta sala' },
+  { id: 'normal', label: 'Venta simple' },
   { id: 'venta-web', label: 'Venta web' },
   { id: 'convenio-marco', label: 'Convenio marco' },
   { id: 'trato-directo', label: 'Trato directo' },

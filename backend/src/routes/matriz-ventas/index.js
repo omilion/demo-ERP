@@ -708,10 +708,14 @@ async function aggLicMonto(fastify, where) {
 }
 
 async function getTotalsForPeriod(fastify, start, end, user) {
+  // El KPI reparte las ventas en tres cubos: este, web y licitaciones. 'Normal'
+  // va aca aunque NO sea venta de mostrador -es la venta simple, un tipo propio-
+  // porque si no queda fuera de los tres y desaparece del total vendido. Son 60
+  // ordenes: el filtro de pantalla las separa, el total de la empresa las suma.
   const ordenesWhere = {
     eliminada: false,
     createdAt: { gte: start, lte: end },
-    tipo: { in: [...TIPOS_VENTA_MOSTRADOR, ...GRAFIAS_CONVENIO_MARCO] },
+    tipo: { in: [...TIPOS_VENTA_MOSTRADOR, ...GRAFIAS_CONVENIO_MARCO, 'Normal'] },
     ...userSucursalWhere(user)
   }
   const ordenes = await aggOrdenMonto(fastify, ordenesWhere)

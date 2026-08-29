@@ -25,6 +25,7 @@ const ESTADO_ENTREGA_OPTS = ['', 'Pendiente entrega', 'En despacho', 'Entregada'
 const TIPO_VENTA_OPTS = [
   ['', 'Todos'],
   ['venta-sala', 'Venta sala'],
+  ['normal', 'Venta simple'],
   ['convenio-marco', 'Convenio marco'],
   ['trato-directo', 'Trato directo'],
   ['venta-web', 'Venta web'],

@@ -52,12 +52,22 @@ describe('catalogo de grafias de tipo de venta', () => {
 })
 
 describe('agrupacion de venta de mostrador', () => {
-  it('reune sala, directa y la forma legacy Normal', () => {
+  it('reune sala y directa', () => {
     expect(TIPOS_VENTA_MOSTRADOR).toEqual(expect.arrayContaining([
       ...GRAFIAS_VENTA_SALA,
       ...GRAFIAS_VENTA_DIRECTA,
-      'Normal',
     ]))
+  })
+
+  // Plastimar confirmo que 'Normal' es la venta simple, un tipo propio, no una
+  // forma de escribir la venta de meson. Son 60 ordenes, todas sin pagar y de
+  // los ultimos tres meses.
+  it('no incluye Normal, que es la venta simple', () => {
+    expect(TIPOS_VENTA_MOSTRADOR).not.toContain('Normal')
+  })
+
+  it('Normal se filtra por su propio tipo', () => {
+    expect(grafiasDeTipoVenta('normal')).toEqual(['Normal'])
   })
 
   // Es una agrupacion de negocio, no de grafia: Convenio Marco es un tipo

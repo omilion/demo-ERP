@@ -4,8 +4,7 @@ import { computeTotal } from '../ventas/helpers.js'
 import {
   GRAFIAS_CONVENIO_MARCO,
   GRAFIAS_LICITACION,
-  GRAFIAS_VENTA_DIRECTA,
-  GRAFIAS_VENTA_SALA,
+  TIPOS_VENTA_MOSTRADOR,
 } from '../ventas/estados-normalize.js'
 
 const LIMIT = 100
@@ -171,10 +170,9 @@ function applyTipoVenta(where, tipoVenta) {
   const tipo = cleanText(tipoVenta)
   if (!tipo) return
   if (['venta-sala', 'venta sala', 'venta-directa', 'venta directa'].includes(tipo.toLowerCase())) {
-    // A diferencia de matriz-ventas y reportes, aqui NO se incluye "Normal".
-    // La divergencia esta anotada en TIPOS_VENTA_MOSTRADOR y queda pendiente de
-    // confirmar con Plastimar; no se cambia sin esa definicion.
-    where.tipo = { in: [...GRAFIAS_VENTA_SALA, ...GRAFIAS_VENTA_DIRECTA] }
+    // Este modulo ya excluia "Normal", y resulto ser el criterio correcto:
+    // Plastimar confirmo que es la venta simple, un tipo propio.
+    where.tipo = { in: [...TIPOS_VENTA_MOSTRADOR] }
   } else if (['convenio-marco', 'convenio marco'].includes(tipo.toLowerCase())) {
     where.tipo = { in: [...GRAFIAS_CONVENIO_MARCO] }
   } else if (['venta-web', 'venta web'].includes(tipo.toLowerCase())) {

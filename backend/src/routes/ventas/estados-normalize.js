@@ -95,12 +95,13 @@ export const GRAFIAS_CONVENIO_MARCO = ['Convenio Marco', 'Convenio marco']
 //   reportes             sala + directa + Normal
 //   reportes/comisiones  sala                            (sin directa ni Normal)
 //
-// Se unifica incluyendo "Normal", que es la mayoritaria y corresponde a como el
-// legacy grababa la venta de mostrador antes de que existiera el tipo propio.
-// Queda anotado que es una decision de negocio a confirmar con Plastimar: si
-// "Normal" NO debe contar como venta de sala, se saca de aqui y las cinco
-// pantallas se corrigen juntas.
-export const TIPOS_VENTA_MOSTRADOR = [...GRAFIAS_VENTA_SALA, ...GRAFIAS_VENTA_DIRECTA, 'Normal']
+// "Normal" NO va aca: Plastimar confirmo que es la venta simple, un tipo propio,
+// no una forma de escribir la venta de mostrador. Son 60 ordenes, todas sin
+// pagar y de los ultimos tres meses, coherente con ser el resultado de una
+// cotizacion simple y no de una venta de meson.
+//
+// Se filtra por su propio tipo: grafiasDeTipoVenta('normal') lo resuelve.
+export const TIPOS_VENTA_MOSTRADOR = [...GRAFIAS_VENTA_SALA, ...GRAFIAS_VENTA_DIRECTA]
 
 // Compara ignorando mayusculas, acentos y espacios sobrantes, que es
 // exactamente en lo que difieren las grafias legacy de las canonicas.
