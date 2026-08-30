@@ -76,6 +76,53 @@ export default async function notificacionesRoutes(fastify) {
 
     // 3. ODT atrasadas (plazo o compromiso de entrega ya pasado, no terminadas).
     if (puede('taller')) {
+      // Quien gestiona el taller ve toda la carga; el operario ve lo suyo.
+      // Sin esta distincion una cortadora recibia las OT atrasadas de espuma y
+      // madera, que no son su trabajo, y el aviso se volvia ruido.
+      const gestionaTaller = puede('taller.gestion', 'write')
+
+      // Trabajo nuevo asignado. Antes no existia aviso de ENTRADA: el taller solo
+      // se enteraba de una OT cuando ya estaba atrasada, y mientras tanto la
+      // coordinacion ocurria por WhatsApp -es lo que reportaron las tres fichas
+      // de taller-.
+      if (request.user?.id) {
+        const asignados = await prisma.odtItemTaller.findMany({
+          where: {
+            operarioResponsableId: request.user.id,
+            estado: 'pendiente',
+            odtItem: { eliminado: false, odt: { eliminado: false, estado: { notIn: ['Terminada', 'Entregada', 'Anulada'] } } },
+          },
+          select: {
+            id: true,
+            taller: { select: { nombre: true } },
+            odtItem: {
+              select: { nombre: true, cantidad: true, odt: { select: { id: true, clienteNombre: true, plazo: true, fechaEntregaCompromiso: true } } },
+            },
+          },
+          orderBy: { id: 'desc' },
+          take: 50,
+        })
+        for (const item of asignados) {
+          const odt = item.odtItem?.odt
+          const compromiso = odt?.fechaEntregaCompromiso || odt?.plazo
+          const dias = compromiso ? diasHasta(compromiso) : null
+          items.push({
+            tipo: 'taller_trabajo_asignado',
+            severidad: dias !== null && dias <= 2 ? 'alta' : 'media',
+            titulo: `Trabajo asignado: ${item.odtItem?.nombre || 'sin nombre'}`,
+            detalle: [
+              item.taller?.nombre,
+              item.odtItem?.cantidad ? `${item.odtItem.cantidad} u.` : null,
+              odt?.clienteNombre,
+              dias !== null ? (dias < 0 ? `atrasado ${Math.abs(dias)} día(s)` : `entrega en ${dias} día(s)`) : null,
+            ].filter(Boolean).join(' · '),
+            fecha: compromiso || ahora,
+            link: odt?.id ? `/taller/${odt.id}` : '/taller',
+          })
+        }
+      }
+
+      // Atrasos. Para quien gestiona, toda la carga; para el operario, solo lo suyo.
       const odts = await prisma.odt.findMany({
         where: {
           eliminado: false,
@@ -84,6 +131,9 @@ export default async function notificacionesRoutes(fastify) {
             { plazo: { not: null, lt: ahora } },
             { fechaEntregaCompromiso: { not: null, lt: ahora } },
           ],
+          ...(gestionaTaller ? {} : {
+            items: { some: { eliminado: false, talleres: { some: { operarioResponsableId: request.user?.id ?? -1 } } } },
+          }),
         },
         select: { id: true, plazo: true, fechaEntregaCompromiso: true, clienteNombre: true },
         orderBy: { createdAt: 'desc' },
