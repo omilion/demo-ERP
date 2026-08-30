@@ -700,6 +700,34 @@ register({
 })
 
 
+// Permiso de dominio que exige cada herramienta.
+//
+// El permiso 'ai' habilita el asistente; NO es una llave a los datos. Sin este
+// mapa, asignar ai:read desde Accesos daba acceso de lectura a remuneraciones,
+// caja y comisiones a cualquier rol, saltandose el RBAC de esos modulos.
+//
+// Una herramienta sin entrada aqui no exige permiso de dominio: son las de
+// documentacion y las de UI, que no leen datos del negocio.
+const PERMISO_POR_HERRAMIENTA = {
+  consultar_ventas: 'ventas',
+  ranking_ventas: 'ventas',
+  comparar_ventas_anios: 'ventas',
+  ventas_despacho_incompleto: 'ventas',
+  consultar_crm: 'ventas',
+  consultar_comisiones: 'ventas',
+  ficha_producto: 'catalogo',
+  consultar_stock: 'bodega',
+  consultar_taller: 'taller',
+  demora_produccion: 'taller',
+  consultar_caja: 'caja',
+  consultar_rrhh: 'rrhh',
+  consultar_planillas: 'rrhh',
+}
+
+export function permisoDeHerramienta(name) {
+  return PERMISO_POR_HERRAMIENTA[name] ?? null
+}
+
 export function getToolDefinitions() {
   return Object.values(tools).map(t => t.definition)
 }
@@ -707,6 +735,15 @@ export function getToolDefinitions() {
 export async function runTool(name, input, ctx) {
   const tool = tools[name]
   if (!tool) return { error: `Herramienta desconocida: ${name}` }
+  // Se valida aqui y no solo al elegir que herramientas ofrecer: el modelo
+  // podria pedir una que no se le ofrecio, y el nombre viaja en su respuesta.
+  const modulo = permisoDeHerramienta(name)
+  if (modulo) {
+    const { can } = await import('../../../middleware/rbac.js')
+    if (!can(ctx.user?.role, modulo, 'read', ctx.user?.permisosExtra)) {
+      return { error: `No tienes permiso de ${modulo} para esta consulta` }
+    }
+  }
   try {
     return await tool.execute(ctx.prisma, input || {}, ctx.user)
   } catch (e) {

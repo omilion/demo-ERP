@@ -1,4 +1,5 @@
 import { can } from '../../middleware/rbac.js'
+import { permisoDeHerramienta } from './tools/index.js'
 import { randomUUID } from 'node:crypto'
 import { getAnthropic, isAiConfigured, buildSystemPrompt, AI_MODEL, AI_MAX_TOKENS, AI_EFFORT } from './llm.js'
 import { getToolDefinitions, runTool } from './tools/index.js'
@@ -19,6 +20,7 @@ export async function executeTool(name, input, ctx) {
   // mismo -solo admin lo alcanza, via su comodin- pero ahora si se asigna,
   // funciona.
   const puedeUsarHerramientas = can(ctx.user?.role, 'ai', 'read', ctx.user?.permisosExtra)
+  // 'ai' es la puerta del asistente; el permiso del modulo lo valida runTool.
   if (!puedeUsarHerramientas && name !== 'consultar_documentacion' && name !== 'ajustar_pantalla') {
     return { error: 'Herramienta no disponible para tu rol' }
   }
@@ -88,9 +90,16 @@ export default async function aiChatRoute(fastify) {
     try {
       const client = getAnthropic()
       const system = [{ type: 'text', text: buildSystemPrompt(request.user), cache_control: { type: 'ephemeral' } }]
+      // Dos filtros distintos: 'ai' habilita el asistente, y cada herramienta
+      // exige ademas el permiso del modulo cuyos datos consulta. Ofrecerle al
+      // modelo una que el usuario no puede usar solo produce un rechazo a mitad
+      // de la conversacion.
       const puedeHerramientas = can(request.user?.role, 'ai', 'read', request.user?.permisosExtra)
-      const tools = puedeHerramientas 
-        ? allToolDefinitions() 
+      const tools = puedeHerramientas
+        ? allToolDefinitions().filter(t => {
+            const modulo = permisoDeHerramienta(t.name)
+            return !modulo || can(request.user?.role, modulo, 'read', request.user?.permisosExtra)
+          })
         : allToolDefinitions().filter(t => t.name === 'consultar_documentacion' || t.name === 'ajustar_pantalla')
       const convo = [...messages]
 

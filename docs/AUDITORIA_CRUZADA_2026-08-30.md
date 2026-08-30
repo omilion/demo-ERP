@@ -12,7 +12,9 @@ El reparto por área funcionó: en dos días, siete migraciones entre ambos el m
 
 # Parte 1 — Nuestro trabajo, para que lo audites
 
-Rama `area-a-ventas`, 8 commits sobre `main`, 32 archivos, ~1.700 líneas. Estado: **959 tests pasan**.
+Rama `area-a-ventas`, 8 commits sobre `main`, 32 archivos, ~1.700 líneas.
+
+**Estado de pruebas:** 117 pruebas nuevas aprobadas. La suite completa tiene **4 fallas conocidas** —una de categorías y tres de facturación— que llegaron con el merge y no se atribuyen a esta rama (evidencia en la Parte 2). Decirlo así y no "959 pasan" evita que el estado comunicado parezca mejor que el real.
 
 ## 1.1 Grafías de tipo de venta — `2d81e3a` y anteriores
 

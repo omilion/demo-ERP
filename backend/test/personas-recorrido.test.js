@@ -1,7 +1,14 @@
-// Recorre el proceso de cada persona del levantamiento contra la API real.
+// Verifica LA GUARDIA de cada endpoint del proceso de cada persona.
 //
-// La pregunta no es "tiene el permiso" sino las dos que importan al usarlo:
-// puede hacer SU trabajo, y no puede hacer el de otro.
+// Alcance, dicho con precision: comprueba que el control de acceso deja pasar a
+// quien corresponde y frena a quien no. NO comprueba que la operacion se
+// complete: los POST van con cuerpo vacio, de modo que quien pasa la guardia
+// recibe un 400 de validacion. Eso es suficiente para lo que este archivo
+// afirma -y solo para eso-.
+//
+// Un 404 o un 5xx hacen fallar la prueba: el primero significa que la ruta no
+// existe y el segundo que algo se rompio antes de llegar a la guardia. Contar
+// cualquiera de los dos como exito da confianza falsa.
 //
 // Sale de docs/PLAN_CATALOGO_PERMISOS.md. Si alguien cambia un rol o una
 // guardia y rompe el trabajo de una persona, esto falla antes que ella.
@@ -30,7 +37,7 @@ const PERSONAS = {
   cortadora:  { role: 'taller_operario', extra: null },
 }
 
-describeDb('el recorrido de cada persona', () => {
+describeDb('la guardia de cada endpoint del proceso de cada persona', () => {
   let app
   let userId
 
@@ -42,22 +49,21 @@ describeDb('el recorrido de cada persona', () => {
   })
   afterAll(async () => { await app.close() })
 
-  // Devuelve true si la guardia deja pasar. Un 404 no cuenta como paso: seria
-  // ocultar un error de la prueba, que es lo que ocurrio al apuntar a una ruta
-  // de cobranza que no existe.
-  const puede = async (quien, method, url) => {
+  const pasaLaGuardia = async (quien, method, url) => {
     const { role, extra } = PERSONAS[quien]
     const token = app.jwt.sign({
       id: userId, role, nombre: quien, permisosExtra: extra,
       scope: 'erp', aud: 'plastimar:erp', tokenType: 'access',
     })
     const res = await app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload: {} })
-    expect(res.statusCode, `${quien} ${method} ${url} devolvio 404: la ruta no existe`).not.toBe(404)
+    expect(res.statusCode, `${quien} ${method} ${url}: la ruta no existe`).not.toBe(404)
+    expect(res.statusCode, `${quien} ${method} ${url}: error del servidor, no de permisos`).toBeLessThan(500)
     return res.statusCode !== 403
   }
+  const puede = pasaLaGuardia
 
-  describe('la cortadora registra su avance y no cierra la OT', () => {
-    it('ve la OT y registra avance', async () => {
+  describe('la cortadora alcanza el avance y no el cierre', () => {
+    it('la guardia la deja entrar a la OT y al avance', async () => {
       expect(await puede('cortadora', 'GET', '/api/odts?limit=1')).toBe(true)
       expect(await puede('cortadora', 'POST', '/api/odts/1/bitacora')).toBe(true)
     })
@@ -141,7 +147,8 @@ describe('el segundo grupo de modulos etiquetados', () => {
       scope: 'erp', aud: 'plastimar:erp', tokenType: 'access',
     })
     const res = await app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload: {} })
-    expect(res.statusCode, `${method} ${url} devolvio 404`).not.toBe(404)
+    expect(res.statusCode, `${method} ${url}: la ruta no existe`).not.toBe(404)
+    expect(res.statusCode, `${method} ${url}: error del servidor, no de permisos`).toBeLessThan(500)
     return res.statusCode !== 403
   }
 

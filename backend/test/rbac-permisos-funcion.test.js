@@ -262,8 +262,12 @@ describe('el permiso ai gobierna el asistente', () => {
     }
   })
 
-  // Lo que cambia: asignar el permiso ahora si habilita el asistente.
-  it('asignarlo como permiso extra ahora funciona', () => {
+  // Asignarlo habilita el asistente, y nada mas: cada herramienta exige ademas
+  // el permiso del modulo cuyos datos consulta (ai-permisos-dominio.test.js).
+  // Sin esa segunda validacion, esto era una via de escalada a remuneraciones.
+  it('asignarlo habilita el asistente, no los datos', () => {
     expect(can('vendedor', 'ai', 'read', { ai: ['read'] })).toBe(true)
+    expect(can('vendedor', 'rrhh', 'read', { ai: ['read'] })).toBe(false)
+    expect(can('vendedor', 'caja', 'read', { ai: ['read'] })).toBe(false)
   })
 })

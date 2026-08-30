@@ -14,6 +14,7 @@
 //   node scripts/ajustar-permisos-personas.mjs --apply
 //   node scripts/ajustar-permisos-personas.mjs --db=<url>
 import bcrypt from 'bcrypt'
+import crypto from 'node:crypto'
 import pg from 'pg'
 import 'dotenv/config'
 
@@ -22,12 +23,35 @@ const APPLY = process.argv.includes('--apply')
 // dan de alta con la misma identidad y permisos, para poder recorrer el flujo
 // de cada una sin depender de la copia de produccion.
 const CREAR = process.argv.includes('--crear')
-const PASSWORD = 'plastimar2026'
+
+// Sin contraseña fija en el código. Se genera una al azar por persona, se
+// imprime una sola vez y no queda guardada en ninguna parte: si se pierde, se
+// restablece. Una constante compartida en el repositorio es una credencial
+// publicada, y dos de estas cuentas son de administración.
+function passwordDeUnUso() {
+  return `Pl-${crypto.randomBytes(9).toString('base64url')}`
+}
 const dbArg = process.argv.find(a => a.startsWith('--db='))
 const URL = dbArg ? dbArg.slice(5) : process.env.DATABASE_URL
 
 if (!URL) {
   console.error('Falta la base: define DATABASE_URL o pasa --db=<url>')
+  process.exit(1)
+}
+
+// Dar de alta cuentas -dos de ellas de administración- solo se permite contra
+// una base local. Una ejecución distraída con --db apuntando a producción
+// dejaría usuarios activos que nadie pidió.
+function esBaseLocal(url) {
+  try {
+    const host = new URL(url).hostname
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1'
+  } catch { return false }
+}
+
+if (CREAR && APPLY && !esBaseLocal(URL)) {
+  console.error('--crear --apply solo se permite contra una base local.')
+  console.error('Para una base remota, crea las cuentas desde la pantalla de Usuarios.')
   process.exit(1)
 }
 
@@ -66,6 +90,19 @@ const PERSONAS = [
   },
 ]
 
+// Forma canonica para comparar: claves ordenadas y niveles ordenados dentro de
+// cada una, de modo que solo un cambio real produzca diferencia.
+function normalizar(extra) {
+  if (!extra || typeof extra !== 'object') return 'null'
+  const orden = Object.keys(extra).sort()
+  return JSON.stringify(orden.map(k => [k, [...(extra[k] || [])].sort()]))
+}
+
+function describir(extra) {
+  if (!extra || typeof extra !== 'object') return '—'
+  return Object.keys(extra).sort().map(k => `${k}:${[...(extra[k] || [])].sort().join('/')}`).join(', ')
+}
+
 const c = new pg.Client({ connectionString: URL })
 await c.connect()
 
@@ -74,6 +111,7 @@ console.log('Base:', URL.replace(/:[^:@]*@/, ':***@'))
 
 const resumen = []
 const noEncontradas = []
+const credenciales = []
 
 for (const p of PERSONAS) {
   const { rows } = await c.query(
@@ -84,7 +122,9 @@ for (const p of PERSONAS) {
     if (!CREAR) { noEncontradas.push(p.email); continue }
     resumen.push({ persona: p.nombre, rol: `(nueva) ${p.rol}`, permisos: p.extra ? Object.keys(p.extra).sort().join(', ') : '—', cambia: 'alta' })
     if (APPLY) {
-      const hash = await bcrypt.hash(PASSWORD, 10)
+      const password = passwordDeUnUso()
+      const hash = await bcrypt.hash(password, 10)
+      credenciales.push({ persona: p.nombre, email: p.email, password })
       await c.query(
         `insert into auth.users (email, password_hash, role, nombre, cargo, permisos_extra, activo, created_at)
          values ($1, $2, $3, $4, $5, $6::jsonb, true, now())`,
@@ -95,10 +135,14 @@ for (const p of PERSONAS) {
   }
   const actual = rows[0]
 
-  const extraActual = actual.permisos_extra ? Object.keys(actual.permisos_extra).sort().join(', ') : '—'
-  const extraNuevo = p.extra ? Object.keys(p.extra).sort().join(', ') : '—'
+  const extraActual = describir(actual.permisos_extra)
+  const extraNuevo = describir(p.extra)
   const cambiaRol = actual.role !== p.rol
-  const cambiaExtra = extraActual !== extraNuevo
+  // Se comparan claves Y niveles. Mirando solo las claves,
+  // 'facturacion.emitir: [read]' y 'facturacion.emitir: [read, write]' parecen
+  // iguales: el script diria que no hay nada que cambiar y dejaria a la persona
+  // sin una capacidad prometida, o con una que se intentaba retirar.
+  const cambiaExtra = normalizar(actual.permisos_extra) !== normalizar(p.extra)
 
   resumen.push({
     persona: actual.nombre,

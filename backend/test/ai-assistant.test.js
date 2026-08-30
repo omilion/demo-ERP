@@ -8,6 +8,10 @@ import { documentToolDefinitions, runDocumentTool } from '../src/routes/ai/docum
 import { buildSystemPrompt } from '../src/routes/ai/llm.js'
 import { executeTool } from '../src/routes/ai/chat.js'
 
+// runTool valida el permiso del modulo de cada herramienta; sin usuario
+// falla cerrado, que es lo correcto. Las pruebas usan un admin.
+const USUARIO_PRUEBA = { id: 1, role: 'admin', permisosExtra: null }
+
 process.env.JWT_ACCESS_SECRET ||= 'test-access-secret'
 process.env.JWT_REFRESH_SECRET ||= 'test-refresh-secret'
 
@@ -97,7 +101,7 @@ describe('AI assistant — RBAC del endpoint', () => {
 
 describe('AI assistant — consultar_documentacion', () => {
   it('encuentra coincidencia en la documentación', async () => {
-    const r = await runTool('consultar_documentacion', { tema: 'ventas' }, { prisma: {} })
+    const r = await runTool('consultar_documentacion', { tema: 'ventas' }, { prisma: {}, user: USUARIO_PRUEBA })
     expect(r.encontrado).toBe(true)
     expect(r.documentos.length).toBeGreaterThan(0)
     expect(r.documentos[0].modulo).toBe('ventas')
@@ -105,7 +109,7 @@ describe('AI assistant — consultar_documentacion', () => {
   })
 
   it('retorna encontrado false cuando no hay coincidencia', async () => {
-    const r = await runTool('consultar_documentacion', { tema: 'xyz123noexistebusqueda' }, { prisma: {} })
+    const r = await runTool('consultar_documentacion', { tema: 'xyz123noexistebusqueda' }, { prisma: {}, user: USUARIO_PRUEBA })
     expect(r.encontrado).toBe(false)
   })
 })
@@ -191,7 +195,7 @@ describe('AI assistant — product rentabilidad & times', () => {
 
     try {
       // 1. Run ficha_producto
-      const r = await runTool('ficha_producto', { producto: code }, { prisma: app.prisma })
+      const r = await runTool('ficha_producto', { producto: code }, { prisma: app.prisma, user: USUARIO_PRUEBA })
       expect(r.encontrado).toBe(true)
       expect(r.producto.codigo).toBe(code)
       expect(r.rentabilidad.costoPromCompra).toBe(6000)
@@ -204,7 +208,7 @@ describe('AI assistant — product rentabilidad & times', () => {
         periodo: 'mes_actual',
         ordenar_por: 'margen',
         limite: 5
-      }, { prisma: app.prisma })
+      }, { prisma: app.prisma, user: USUARIO_PRUEBA })
 
       expect(rRank.ordenadoPor).toBe('margen')
       const rankItem = rRank.ranking.find(item => item.producto === `Producto Test Margen ${code}`)
@@ -223,7 +227,7 @@ describe('AI assistant — product rentabilidad & times', () => {
   })
 
   it('ficha_producto returns encontrado false for unknown product', async () => {
-    const r = await runTool('ficha_producto', { producto: 'NON_EXISTENT_PROD_12345' }, { prisma: app.prisma })
+    const r = await runTool('ficha_producto', { producto: 'NON_EXISTENT_PROD_12345' }, { prisma: app.prisma, user: USUARIO_PRUEBA })
     expect(r.encontrado).toBe(false)
   })
 })
