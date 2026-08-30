@@ -12,8 +12,21 @@ ALTER TABLE "bodega"."movimientos"
 
 ALTER TABLE "catalogo"."productos"
   ADD CONSTRAINT "productos_stock_reservado_no_negativo" CHECK ("stock_reservado" >= 0),
-  ADD CONSTRAINT "productos_stock_danado_no_negativo" CHECK ("stock_danado" >= 0),
-  ADD CONSTRAINT "productos_stock_comprometido_valido" CHECK (("stock_reservado" + "stock_danado") <= "stock");
+  ADD CONSTRAINT "productos_stock_danado_no_negativo" CHECK ("stock_danado" >= 0);
+
+-- El catálogo histórico contiene saldos negativos. Las columnas nuevas parten
+-- en cero, pero 0 <= stock es falso cuando el saldo histórico es negativo.
+-- NOT VALID evita validar esas filas al desplegar. Mientras exista saldo
+-- negativo se exige que no haya reserva ni daño; al volver a saldo positivo se
+-- aplica la comparación habitual. El saneamiento de inventario se realiza por
+-- separado.
+ALTER TABLE "catalogo"."productos"
+  ADD CONSTRAINT "productos_stock_comprometido_valido"
+  CHECK (
+    (("stock" >= 0) AND (("stock_reservado" + "stock_danado") <= "stock"))
+    OR
+    (("stock" < 0) AND "stock_reservado" = 0 AND "stock_danado" = 0)
+  ) NOT VALID;
 
 CREATE INDEX "productos_stock_operacional_idx"
   ON "catalogo"."productos" ("stock", "stock_reservado", "stock_danado", "stock_critico");

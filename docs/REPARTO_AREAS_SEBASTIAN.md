@@ -197,3 +197,13 @@ normalizado no único para que `prisma migrate deploy` pueda correr. Las altas,
 actualizaciones del código e importaciones continúan rechazando duplicados. Una
 restricción `UNIQUE` queda pendiente para una migración nueva, después de que
 negocio depure y decida cada grupo histórico.
+
+**Migración de stock operativo (bloqueo de deploy).** Hay 138 productos
+activos con stock negativo; con `stock_reservado = 0` y `stock_danado = 0`, la
+comparación contra el stock físico no pasa para esas filas. La restricción
+`productos_stock_comprometido_valido` se agrega como `NOT VALID`: no revisa el
+histórico al desplegar. Para no bloquear actualizaciones posteriores, un saldo
+negativo sólo es válido con reservado y dañado en cero; al ser positivo se exige
+la comparación habitual. No se normalizan saldos automáticamente; cada
+negativo representa una salida que debe conciliarse con la recepción o con un
+ajuste de inventario.
