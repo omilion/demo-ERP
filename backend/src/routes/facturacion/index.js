@@ -201,6 +201,13 @@ export default async function facturacionRoutes(fastify) {
   const writeAuth = { preHandler: [fastify.authenticate, fastify.rbac('facturacion', 'write')] }
   const folioAdminAuth = { preHandler: [fastify.authenticate, fastify.rbac('admin', 'write', { allowExtra: false })] }
 
+  // Dentro de facturacion conviven trabajos distintos: emitir el documento del
+  // dia es la operacion de la encargada; administrar folios y CAF es de otra
+  // persona. Con un solo permiso de modulo habia que darle ambos.
+  const emitirAuth = { preHandler: [fastify.authenticate, fastify.rbac('facturacion.emitir', 'write')] }
+  const foliosAuth = { preHandler: [fastify.authenticate, fastify.rbac('facturacion.folios', 'write')] }
+  const anularAuth = { preHandler: [fastify.authenticate, fastify.rbac('facturacion.anular', 'delete')] }
+
   // --- Empresa (emisor) ---
 
   fastify.get('/empresa', readAuth, async () => {
@@ -392,7 +399,7 @@ export default async function facturacionRoutes(fastify) {
     return result
   })
 
-  fastify.post('/cafs', writeAuth, async (request, reply) => {
+  fastify.post('/cafs', foliosAuth, async (request, reply) => {
     try {
       const data = await request.file()
       let xml
@@ -426,7 +433,7 @@ export default async function facturacionRoutes(fastify) {
     } catch (error) { return sendError(reply, error) }
   })
 
-  fastify.delete('/cafs/:id', writeAuth, async (request, reply) => {
+  fastify.delete('/cafs/:id', foliosAuth, async (request, reply) => {
     try {
       await fastify.prisma.factCaf.delete({ where: { id: Number(request.params.id) } })
       return reply.code(204).send()
@@ -493,7 +500,7 @@ export default async function facturacionRoutes(fastify) {
     return result
   })
 
-  fastify.post('/documentos', writeAuth, async (request, reply) => {
+  fastify.post('/documentos', emitirAuth, async (request, reply) => {
     try {
       const input = validateDocumentoInput(request.body)
       // Foto del usuario autenticado: nunca se acepta desde el payload.
@@ -514,7 +521,7 @@ export default async function facturacionRoutes(fastify) {
     return { ...doc, tipoNombre: TIPOS_DTE[doc.tipoDte] }
   })
 
-  fastify.put('/documentos/:id', writeAuth, async (request, reply) => {
+  fastify.put('/documentos/:id', emitirAuth, async (request, reply) => {
     try {
       const current = await db.documentos.get(request.params.id)
       if (!current) return reply.code(404).send({ error: 'Documento no encontrado.' })
@@ -532,7 +539,7 @@ export default async function facturacionRoutes(fastify) {
     }
   })
 
-  fastify.delete('/documentos/:id', writeAuth, async (request, reply) => {
+  fastify.delete('/documentos/:id', anularAuth, async (request, reply) => {
     const doc = await db.documentos.get(request.params.id)
     if (!doc) return reply.code(404).send({ error: 'Documento no encontrado.' })
     if (!['borrador', 'error'].includes(doc.estado)) {
@@ -542,7 +549,7 @@ export default async function facturacionRoutes(fastify) {
     return reply.code(204).send()
   })
 
-  fastify.post('/documentos/:id/emitir', writeAuth, async (request, reply) => {
+  fastify.post('/documentos/:id/emitir', emitirAuth, async (request, reply) => {
     try {
       const emitido = await engine.emitir(request.params.id)
       // Envio automatico al SII apenas se emite: el usuario ya no tiene que
@@ -561,14 +568,14 @@ export default async function facturacionRoutes(fastify) {
     } catch (error) { return sendError(reply, error) }
   })
 
-  fastify.post('/documentos/:id/enviar', writeAuth, async (request, reply) => {
+  fastify.post('/documentos/:id/enviar', emitirAuth, async (request, reply) => {
     try {
       const { trackId, documentos } = await engine.enviar([request.params.id])
       return { trackId, documentos }
     } catch (error) { return sendError(reply, error) }
   })
 
-  fastify.post('/enviar-lote', writeAuth, async (request, reply) => {
+  fastify.post('/enviar-lote', emitirAuth, async (request, reply) => {
     try {
       const ids = Array.isArray(request.body?.ids) ? request.body.ids : []
       if (!ids.length) return reply.code(400).send({ error: 'Indica los ids de documentos a enviar.' })

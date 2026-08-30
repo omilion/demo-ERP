@@ -62,8 +62,9 @@ export default async function proveedoresProductoRoutes(fastify) {
     return listProveedores(fastify.prisma, productoId)
   })
 
+  // Proveedores por producto: es trabajo de compras, no de inventario.
   fastify.post('/:id/proveedores', {
-    preHandler: [fastify.authenticate, fastify.rbac('bodega', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('bodega.compras', 'write')],
   }, async (request, reply) => {
     const productoId = parseId(request.params.id)
     if (!productoId) return reply.code(400).send({ error: 'ID invalido' })
@@ -101,7 +102,7 @@ export default async function proveedoresProductoRoutes(fastify) {
   })
 
   fastify.put('/:id/proveedores/:proveedorId', {
-    preHandler: [fastify.authenticate, fastify.rbac('bodega', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('bodega.compras', 'write')],
   }, async (request, reply) => {
     const productoId = parseId(request.params.id)
     const proveedorId = parseId(request.params.proveedorId)
@@ -141,7 +142,7 @@ export default async function proveedoresProductoRoutes(fastify) {
   })
 
   fastify.delete('/:id/proveedores/:proveedorId', {
-    preHandler: [fastify.authenticate, fastify.rbac('bodega', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('bodega.compras', 'delete')],
   }, async (request, reply) => {
     const productoId = parseId(request.params.id)
     const proveedorId = parseId(request.params.proveedorId)

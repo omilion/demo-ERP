@@ -119,3 +119,68 @@ describeDb('el recorrido de cada persona', () => {
     })
   })
 })
+
+// Facturacion, despacho y bodega etiquetados por funcion. Lo que hay que
+// garantizar es que nadie pierda lo que ya hacia y que se separe lo que antes
+// venia en el mismo paquete.
+describe('el segundo grupo de modulos etiquetados', () => {
+  let app
+  let userId
+
+  beforeAll(async () => {
+    app = buildApp({ logger: false })
+    await app.ready()
+    const u = await app.prisma.user.findFirst({ where: { activo: true }, select: { id: true } })
+    userId = u.id
+  })
+  afterAll(async () => { await app.close() })
+
+  const pasa = async (role, extra, method, url) => {
+    const token = app.jwt.sign({
+      id: userId, role, nombre: 'Test', permisosExtra: extra,
+      scope: 'erp', aud: 'plastimar:erp', tokenType: 'access',
+    })
+    const res = await app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload: {} })
+    expect(res.statusCode, `${method} ${url} devolvio 404`).not.toBe(404)
+    return res.statusCode !== 403
+  }
+
+  // Daniela: emite documentos, no administra folios.
+  const facturacion = { 'facturacion.emitir': ['read', 'write'], 'despacho.guias': ['read', 'write'] }
+
+  it('facturacion emite y envia documentos', async () => {
+    expect(await pasa('bodeguero', facturacion, 'POST', '/api/facturacion/documentos/1/emitir')).toBe(true)
+    expect(await pasa('bodeguero', facturacion, 'POST', '/api/facturacion/enviar-lote')).toBe(true)
+  })
+
+  it('pero no administra CAF ni folios', async () => {
+    expect(await pasa('bodeguero', facturacion, 'POST', '/api/facturacion/cafs')).toBe(false)
+    expect(await pasa('bodeguero', facturacion, 'DELETE', '/api/facturacion/cafs/1')).toBe(false)
+  })
+
+  it('emite guias de despacho', async () => {
+    expect(await pasa('bodeguero', facturacion, 'POST', '/api/despachos/guias')).toBe(true)
+  })
+
+  // Diego Avila: mueve inventario, no compra.
+  const inventario = { 'bodega.movimientos': ['read', 'write'], 'ventas.entregas': ['write'] }
+
+  it('inventario registra movimientos', async () => {
+    expect(await pasa('bodeguero', inventario, 'POST', '/api/productos/1/movimientos')).toBe(true)
+  })
+
+  // El rol bodeguero ya da bodega:write, asi que compras cae al modulo. Lo que
+  // el etiquetado permite es acotar a alguien cuyo rol NO otorgue el modulo.
+  it('un rol sin bodega:write no alcanza compras aunque tenga movimientos', async () => {
+    const soloMovimientos = { 'bodega.movimientos': ['read', 'write'] }
+    expect(await pasa('taller_operario', soloMovimientos, 'POST', '/api/productos/1/movimientos')).toBe(true)
+    expect(await pasa('taller_operario', soloMovimientos, 'POST', '/api/productos/1/proveedores')).toBe(false)
+  })
+
+  it('gerencia sigue pasando por todo', async () => {
+    for (const [m, u] of [['POST', '/api/facturacion/cafs'], ['POST', '/api/despachos/guias'],
+      ['POST', '/api/productos/1/movimientos'], ['POST', '/api/productos/1/proveedores']]) {
+      expect(await pasa('admin', null, m, u), `${m} ${u}`).toBe(true)
+    }
+  })
+})

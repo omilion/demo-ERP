@@ -213,8 +213,9 @@ function preflightResponse(tipo, rows, errores, countName, countValue) {
 }
 
 export default async function importarRoute(fastify) {
+  // Las cargas masivas mueven precios o stock segun el archivo: cada una va
   fastify.post('/importar/precios', {
-    preHandler: [fastify.authenticate, fastify.rbac('bodega', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('bodega.compras', 'write')],
   }, async (request, reply) => {
     const input = readRows(request)
     if (input.error) return reply.code(400).send({ error: input.error })
@@ -248,7 +249,7 @@ export default async function importarRoute(fastify) {
   })
 
   fastify.post('/importar/stock', {
-    preHandler: [fastify.authenticate, fastify.rbac('bodega', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('bodega.movimientos', 'write')],
   }, async (request, reply) => {
     const input = readRows(request)
     if (input.error) return reply.code(400).send({ error: input.error })
@@ -293,7 +294,7 @@ export default async function importarRoute(fastify) {
   })
 
   fastify.post('/importar/web', {
-    preHandler: [fastify.authenticate, fastify.rbac('bodega', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('bodega.compras', 'write')],
   }, async (request, reply) => {
     const input = readRows(request)
     if (input.error) return reply.code(400).send({ error: input.error })
@@ -318,7 +319,7 @@ export default async function importarRoute(fastify) {
   })
 
   fastify.post('/importar/nuevo', {
-    preHandler: [fastify.authenticate, fastify.rbac('bodega', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('bodega.compras', 'write')],
   }, async (request, reply) => {
     const input = readRows(request)
     if (input.error) return reply.code(400).send({ error: input.error })

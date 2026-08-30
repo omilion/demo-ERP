@@ -159,8 +159,27 @@ Se registra quién aceptó, por qué vía (orden de compra, correo, portal, verb
 
 ---
 
-### Lo que sigue abierto en esta ficha
+### CU-02 — Venta Web: verificado
 
-- **CU-01** boleta sin cliente — corresponde al área de facturación.
-- **CU-02** prueba integrada de Webpay rechazado, transferencia pendiente y diferencia de monto.
+Lo que la ficha pedía demostrar era esto: *que una orden pendiente no se convierte en venta confirmada y que el total persistido es el monto realmente cobrado*.
+
+**Una orden pendiente no es una venta.** `Pendiente Webpay` y `Rechazada Webpay` tienen estado propio y ninguno es terminal. Y el rechazo pesa más que la entrega: si el pago se cayó, que la mercadería haya salido no cierra la venta — la convierte en un problema que alguien tiene que ver.
+
+Los dos estados se conservan al normalizar. Aplastarlos a `No pagada` perdería la distinción entre *está esperando* y *se cayó el pago*, que llevan a acciones distintas.
+
+**El total es lo cobrado, no lo vendido.** Un cobro menor deja la venta parcial aunque el portal haya confirmado la transacción; un cobro mayor no genera saldo negativo; y una venta en cero no cuenta como pagada — marcarla así la haría desaparecer de cobranza.
+
+13 casos en `cu02-venta-web-pago.test.js`.
+
+---
+
+### CU-01 — Boleta sin cliente: resuelto en facturación
+
+Lo cerró Sebastián con una restricción que permite `cliente_id` nulo sólo cuando el tipo es Venta Sala; los demás tipos siguen obligados a vincular cliente.
+
+---
+
+### Estado de la ficha
+
+Los seis casos de uso están cerrados o verificados.
 

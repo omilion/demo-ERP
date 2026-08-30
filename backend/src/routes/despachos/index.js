@@ -948,8 +948,9 @@ export default async function despachosRoutes(fastify) {
     return { orden, ...(await buildPackingTrace(fastify.prisma, ordenId, despachoId, guiaDespachoId)) }
   })
 
+  // Armar el packing es el trabajo de bodega; emitir la guia, de despacho.
   fastify.put('/ordenes/:ordenId/packing', {
-    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho.packing', 'write')],
   }, async (request, reply) => {
     const ordenId = parsePositiveInt(request.params.ordenId)
     if (!ordenId) return reply.code(400).send({ error: 'ordenId invalido' })
@@ -1393,7 +1394,7 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.post('/guias', {
-    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho.guias', 'write')],
   }, async (request, reply) => {
     const parsed = GuiaCreate.safeParse(request.body || {})
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
@@ -1460,7 +1461,7 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.put('/guias/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho.guias', 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
@@ -1538,7 +1539,7 @@ export default async function despachosRoutes(fastify) {
   })
 
   fastify.delete('/guias/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'delete')],
+    preHandler: [fastify.authenticate, fastify.rbac('despacho.guias', 'delete')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })

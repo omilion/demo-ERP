@@ -229,8 +229,9 @@ export default async function movimientosProductoRoutes(fastify) {
     })
   })
 
+  // Entradas y salidas: es lo que hace el encargado de inventario a diario.
   fastify.post('/:id/movimientos', {
-    preHandler: [fastify.authenticate, fastify.rbac('bodega', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('bodega.movimientos', 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })

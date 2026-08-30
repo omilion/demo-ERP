@@ -291,3 +291,50 @@ Le faltaba resolver `modulo.funcion` y no conocía `taller_operario`. Sin eso el
 Front y back declaran el mismo modelo en **dos archivos distintos**, y ya divergieron una vez: la pantalla de Accesos ofrecía `cotizaciones`, que el backend rechazaba con 400.
 
 `permisos-front-back-coinciden.test.js` compara ambos resolvedores sobre **810 combinaciones** de rol × módulo × nivel, y otras tantas con permisos extra. Si alguien toca un lado y olvida el otro, falla.
+
+---
+
+## 11. Etiquetado completo (30-08-2026)
+
+Se cierran los tres módulos que faltaban. Con esto, **todos los del catálogo tienen sus funciones separadas**.
+
+### Facturación
+
+| Endpoint | Antes | Ahora |
+|---|---|---|
+| `POST /documentos` · `PUT /documentos/:id` | `facturacion:write` | `facturacion.emitir` |
+| `POST /documentos/:id/emitir` · `/enviar` · `/enviar-lote` | `facturacion:write` | `facturacion.emitir` |
+| `DELETE /documentos/:id` | `facturacion:write` | `facturacion.anular` |
+| `POST /cafs` · `DELETE /cafs/:id` | `facturacion:write` | `facturacion.folios` |
+
+El efecto concreto: **Daniela emite y envía documentos, y ya no puede administrar CAF ni folios**. Antes venían en el mismo paquete.
+
+`ajustar-folio` y `reanudar-certificacion` ya exigían `admin` con `allowExtra: false` — más estricto todavía — y se dejan como estaban.
+
+### Despacho
+
+`PUT /ordenes/:ordenId/packing` → `despacho.packing`; las tres de `/guias` → `despacho.guias`. Armar el packing es trabajo de bodega; emitir la guía, de despacho.
+
+### Bodega
+
+| Endpoint | Función |
+|---|---|
+| `POST /:id/movimientos` · `POST /importar/stock` | `bodega.movimientos` |
+| `POST/PUT/DELETE /:id/proveedores` | `bodega.compras` |
+| `POST /importar/precios` · `/web` · `/nuevo` | `bodega.compras` |
+
+Las cargas masivas se separan según lo que muevan: la de stock es inventario, las de precios y catálogo son compras.
+
+### Qué cambia y qué no
+
+Nada de lo que hoy funciona deja de funcionar: los roles no declaran funciones, así que todo cae al módulo como antes. Lo que el etiquetado habilita es **acotar a alguien cuyo rol no otorgue el módulo entero** — verificado con un caso: un `taller_operario` con `bodega.movimientos` registra movimientos y no alcanza compras.
+
+### Cobertura
+
+| | Endpoints |
+|---|---|
+| Con permiso de módulo o función | 345 |
+| Sólo exigen sesión iniciada | 65 |
+| Públicos por diseño | 15 |
+
+Los 65 se revisaron uno por uno (§9): la mayoría tiene guardia en formas que el detector no reconoce, y los que legítimamente sólo exigen sesión son datos de referencia o están acotados por `userId`.
