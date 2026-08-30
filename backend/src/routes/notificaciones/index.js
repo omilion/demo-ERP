@@ -153,6 +153,79 @@ export default async function notificacionesRoutes(fastify) {
       }
     }
 
+    // Stock bajo el critico. El dato existia -stockCritico y un job que manda
+    // correo- pero no llegaba a la campana, asi que el encargado de inventario
+    // se enteraba por mail o no se enteraba.
+    //
+    // Se mide el DISPONIBLE, no el fisico: lo reservado y lo danado no se puede
+    // vender, y contarlos como stock hace que el aviso llegue tarde.
+    // Con 'write', no con 'read': el taller tiene bodega:read para consultar
+    // stock, y no es su trabajo reponer. Un aviso que no es tuyo es ruido.
+    if (puede('bodega', 'write')) {
+      const criticos = await prisma.$queryRaw`
+        SELECT id, nombre, codigo_interno,
+               (stock - stock_reservado - stock_danado) AS disponible,
+               stock_critico
+          FROM catalogo.productos
+         WHERE activo = true
+           AND stock_critico > 0
+           AND (stock - stock_reservado - stock_danado) <= stock_critico
+         ORDER BY (stock - stock_reservado - stock_danado) ASC
+         LIMIT 50
+      `
+      for (const p of criticos) {
+        const disponible = Number(p.disponible)
+        items.push({
+          tipo: 'stock_critico',
+          severidad: disponible <= 0 ? 'alta' : 'media',
+          titulo: disponible <= 0
+            ? `Sin stock disponible: ${p.nombre || p.codigo_interno}`
+            : `Stock bajo el crítico: ${p.nombre || p.codigo_interno}`,
+          detalle: `${p.codigo_interno || 'sin código'} · disponible ${disponible} · crítico ${p.stock_critico}`,
+          fecha: ahora,
+          link: `/productos?id=${p.id}`,
+        })
+      }
+    }
+
+    // Entregado y sin facturar. El listado de ventas ya tenia el filtro, pero
+    // habia que ir a buscarlo: nadie avisaba que una venta salio y no se emitio
+    // el documento. Es plata entregada sin cobrar.
+    if (puede('facturacion.emitir', 'write')) {
+      // En dos pasos: Orden guarda los documentos por FK pero no declara la
+      // relacion, asi que no se puede filtrar con un `none` anidado.
+      const facturadas = await prisma.factDocumento.findMany({
+        where: {
+          ordenId: { not: null },
+          tipoDte: { in: [33, 39] },
+          estado: { notIn: ['borrador', 'rechazado', 'error', 'anulado'] },
+        },
+        select: { ordenId: true },
+      }).catch(() => [])
+      const yaFacturadas = [...new Set(facturadas.map(d => d.ordenId).filter(Boolean))]
+      const entregadas = await prisma.orden.findMany({
+        where: {
+          eliminada: false,
+          estadoEntrega: { in: ['Entregada', 'Entregado'] },
+          ...(yaFacturadas.length ? { id: { notIn: yaFacturadas } } : {}),
+        },
+        select: { id: true, nInterno: true, createdAt: true, rutCliente: true },
+        orderBy: { createdAt: 'asc' },
+        take: 50,
+      }).catch(() => [])
+      for (const o of entregadas) {
+        const dias = Math.abs(diasHasta(o.createdAt))
+        items.push({
+          tipo: 'venta_sin_facturar',
+          severidad: dias > 15 ? 'alta' : 'media',
+          titulo: `Entregada sin facturar: venta #${o.nInterno || o.id}`,
+          detalle: `${o.rutCliente || 'sin RUT'} · ${dias} día(s) desde la venta`,
+          fecha: o.createdAt,
+          link: `/ventas/${o.id}`,
+        })
+      }
+    }
+
     // 4. Producción terminada: visible tanto para bodega como despacho.
     // Una ODT sólo entra cuando todos sus talleres activos dejaron cada item listo.
     if (puede('bodega') || puede('despacho')) {
