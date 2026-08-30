@@ -187,3 +187,13 @@ Cosas que encontré trabajando en lo mío y que caen en tu lado. No las toqué.
 **El mojibake está vivo en `orden_compra_online`.** 2.635 filas con `tipo_cotizacion = 'Mercado PÃºblico'`, más varias en `canal` (`'Ya habÃ­a comprado antes'`, `'RecomendaciÃ³n de un conocido'`). Es el canal de Compra Ágil, así que afecta a cualquier filtro sobre esa tabla.
 
 **Para el flujo único de estados, que es tuyo:** el catálogo de tipos de venta ahora vive en `backend/src/routes/ventas/estados-normalize.js`, con `normalizeTipoVenta`, `tipoVentaFromSlug` y `grafiasDeTipoVenta`. Conviene que los estados sigan el mismo patrón para no volver a tener dos vocabularios.
+
+**Migración de código de barras (bloqueo de deploy).** La copia de producción
+contiene 51 grupos duplicados que abarcan 112 productos: 49 grupos (99
+productos) son códigos reales repetidos y 2 grupos (13 productos) son valores
+de relleno `0` o `1`. No se deben deduplicar ni elegir un producto de forma
+automática. La migración `20260828_SB_codigo_barra_unico` crea sólo un índice
+normalizado no único para que `prisma migrate deploy` pueda correr. Las altas,
+actualizaciones del código e importaciones continúan rechazando duplicados. Una
+restricción `UNIQUE` queda pendiente para una migración nueva, después de que
+negocio depure y decida cada grupo histórico.
