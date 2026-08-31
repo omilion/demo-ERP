@@ -159,7 +159,14 @@ export async function getRecetaByProductoId(prisma, productoId) {
 
   const producto = await prisma.producto.findUnique({
     where: { id },
-    include: {
+    select: {
+      id: true,
+      codigoInterno: true,
+      nombre: true,
+      categoria: true,
+      precioLista: true,
+      tallerId: true,
+      activo: true,
       receta: {
         include: {
           taller: true,
@@ -186,7 +193,13 @@ export async function upsertReceta(prisma, productoId, data) {
   const id = parseInt(productoId, 10);
   if (!id) throw new Error('ID de producto invalido');
 
-  const producto = await prisma.producto.findUnique({ where: { id } });
+  // Solo necesitamos comprobar existencia. Seleccionar el registro completo
+  // acopla el editor/importador a columnas de otros modulos que pueden estar
+  // pendientes de migrar durante un despliegue gradual.
+  const producto = await prisma.producto.findUnique({
+    where: { id },
+    select: { id: true },
+  });
   if (!producto) throw new Error('Producto no encontrado');
 
   const {
@@ -300,7 +313,11 @@ export async function calcularCosteoProducto(prisma, productoId) {
   const id = parseInt(productoId, 10);
   const producto = await prisma.producto.findUnique({
     where: { id },
-    include: {
+    select: {
+      id: true,
+      codigoInterno: true,
+      nombre: true,
+      precioLista: true,
       receta: {
         include: {
           materiales: { include: { material: true, tela: true } },
@@ -413,6 +430,12 @@ export async function aplicarCosteoProducto(prisma, productoId, user) {
     const productoActualizado = await tx.producto.update({
       where: { id: calculation.productoId },
       data: { precioLista: calculation.costoTransferencia },
+      select: {
+        id: true,
+        codigoInterno: true,
+        nombre: true,
+        precioLista: true,
+      },
     });
 
     return {
