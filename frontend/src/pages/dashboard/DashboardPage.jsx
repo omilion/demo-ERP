@@ -515,11 +515,11 @@ export function DashboardOperativoPage() {
       <div className="kpi-strip">
         {canReadVentas && (
           <KpiCard label="Ventas No Pagadas" value={n(stats?.ventas?.noPagadas)} icon="dollarSign" tone="red"
-            sublabel="Gestión cobranza requerida" onClick={() => navigate('/ventas?filtro=no_pagadas')} />
+            sublabel="Gestión cobranza requerida" onClick={() => navigate('/matriz-ventas?noPagada=1')} />
         )}
         {canReadVentas && (
           <KpiCard label="Pendientes Entrega" value={n(stats?.ventas?.pendienteEntrega)} icon="truck" tone="blue"
-            sublabel="Órdenes por despachar" onClick={() => navigate('/ventas?filtro=pendiente_entrega')} />
+            sublabel="Órdenes por despachar" onClick={() => navigate('/matriz-ventas?pendienteEntrega=1')} />
         )}
         {show.ventas && (
           <KpiCard label="Cotizaciones Web" value={n(webPend)} icon="cloud" tone={webPend > 0 ? 'amber' : 'neutral'}
@@ -677,8 +677,8 @@ export function DashboardOperativoPage() {
         {show.ventas && (
           <SectionCard title="Ventas" icon="shoppingCart">
             <ActionRow icon="grid" label="Matriz Ventas" onClick={() => navigate('/matriz-ventas')} />
-            <ActionRow icon="dollarSign" label="Ventas No Pagadas" badge={n(stats?.ventas?.noPagadas)} badgeTone="red" onClick={() => navigate('/ventas?filtro=no_pagadas')} />
-            <ActionRow icon="truck" label="Pendientes Entrega" badge={n(stats?.ventas?.pendienteEntrega)} badgeTone="blue" onClick={() => navigate('/ventas?filtro=pendiente_entrega')} />
+            <ActionRow icon="dollarSign" label="Ventas No Pagadas" badge={n(stats?.ventas?.noPagadas)} badgeTone="red" onClick={() => navigate('/matriz-ventas?noPagada=1')} />
+            <ActionRow icon="truck" label="Pendientes Entrega" badge={n(stats?.ventas?.pendienteEntrega)} badgeTone="blue" onClick={() => navigate('/matriz-ventas?pendienteEntrega=1')} />
             <ActionRow icon="cloud" label="Cotizaciones Web" badge={n(webPend)} badgeTone={webPend > 0 ? 'amber' : 'neutral'} onClick={() => navigate('/ordenes-compra?estado=Pendiente')} />
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
             {canWriteVentas && <ActionRow icon="plusCircle" label="Nueva Venta Sala" onClick={() => navigate('/ventas/nueva')} />}

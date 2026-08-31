@@ -1518,7 +1518,6 @@ model ExcepcionAlerta {
   @@map("excepcion_alertas")
   @@schema("ventas")
 }
-
 model BodegaTallerLote {
   id                 Int          @id @default(autoincrement())
   bodegaTallerId     Int          @map("bodega_taller_id")

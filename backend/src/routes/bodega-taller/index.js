@@ -287,7 +287,7 @@ export default async function bodegaTallerRoutes(fastify) {
     }
     if (body.nombre !== undefined && !data.nombre) return reply.code(400).send({ error: 'nombre requerido' })
     if (body.activo !== undefined) data.activo = Boolean(body.activo)
-    for (const field of ['stockCritico', 'stock', 'precio']) {
+    for (const field of ['stockCritico', 'stock', 'precio', 'densidadKgM3', 'espesorMm']) {
       if (body[field] !== undefined) {
         const parsed = parseOptionalNumber(body[field], field, { min: 0 })
         if (parsed.error) return reply.code(400).send({ error: parsed.error })

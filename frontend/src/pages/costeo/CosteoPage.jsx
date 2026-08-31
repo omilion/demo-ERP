@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Badge, Btn, Icon, PageHeader, Pager, SearchBar, Table } from '../../components/shared';
 import { useRecetas, useTarifas, useCreateTarifa, useDeleteTarifa, useMaterialesHistorialPrecios, useRecalcularMasivo } from '../../api/costeo';
-import { useBodegaTaller, useUpdateBodegaTaller, useCreateBodegaTaller } from '../../api/bodegaTaller';
+import { useBodegaTaller, useUpdateBodegaTaller, useCreateBodegaTaller, useDeleteBodegaTaller } from '../../api/bodegaTaller';
 import { useTalleres } from '../../api/pasarTaller';
 import { EditorRecetaModal } from './components/EditorRecetaModal';
 import { toast, confirmDialog } from '../../store/notif';

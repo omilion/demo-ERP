@@ -63,11 +63,34 @@ const getEstaSemanaRange = () => {
 }
 
 function getInitialQuick(searchParams) {
-  if (searchParams.get('no_pagada') || searchParams.get('noPagada')) return 'noPagada'
-  if (searchParams.get('pendiente_entrega') || searchParams.get('pendienteEntrega')) return 'pendienteEntrega'
-  if (searchParams.get('entregada')) return 'entregada'
+  const filtro = searchParams.get('filtro') || ''
+  if (
+    searchParams.get('no_pagada') ||
+    searchParams.get('noPagada') ||
+    filtro === 'no_pagadas' ||
+    filtro === 'no_pagada' ||
+    filtro === 'noPagadas'
+  ) return 'noPagada'
+
+  if (
+    searchParams.get('pendiente_entrega') ||
+    searchParams.get('pendienteEntrega') ||
+    filtro === 'pendiente_entrega' ||
+    filtro === 'pendienteEntrega'
+  ) return 'pendienteEntrega'
+
+  if (searchParams.get('entregada') || filtro === 'entregada') return 'entregada'
   if (searchParams.get('ventasHoy')) return 'ventasHoy'
-  if (searchParams.get('desde') || searchParams.get('hasta') || searchParams.get('all')) return ''
+
+  if (
+    searchParams.get('desde') ||
+    searchParams.get('hasta') ||
+    searchParams.get('all') ||
+    searchParams.get('estadoPago') ||
+    searchParams.get('estadoEntrega') ||
+    searchParams.get('search')
+  ) return ''
+
   return 'ventasHoy'
 }
 

@@ -7,9 +7,15 @@ import { can, canAny, getUserRole, hasRole } from '../utils/permissions'
 import { NotificacionesBell } from './NotificacionesBell'
 import plastimarLogo from '../assets/plastimar-logo.webp'
 
+const HIGHLIGHT_STYLES = {
+  amber: { bg: '#fef08a', hoverBg: '#fde047', color: '#78350f' },
+  blue: { bg: '#e0f2fe', hoverBg: '#bae6fd', color: '#0369a1' },
+}
+
 const NAV_GROUPS = [
   { label: 'Ventas', items: [
-    { label: '+ Nueva Venta', route: '/ventas/nueva', module: 'ventas', permission: 'write', highlight: true },
+    { label: '+ Nueva Venta', route: '/ventas/nueva', module: 'ventas', permission: 'write', highlight: 'amber' },
+    { label: '+ Nueva Cotización', route: '/crm/nueva/cotizacion-simple', module: 'ventas', permission: 'write', highlight: 'blue' },
     { label: 'Matriz Ventas', route: '/ventas', module: 'ventas' },
     { label: 'CRM', route: '/crm', module: 'ventas' },
     { label: 'Clientes', route: '/clientes', module: 'clientes' },
@@ -179,22 +185,26 @@ const DropdownGroup = ({ group, currentPath }) => {
             boxShadow: '0 8px 32px oklch(0 0 0 / 0.15)', border: '1px solid var(--border)',
             overflow: 'hidden', animation: 'dropIn 0.15s ease',
           }}>
-            {group.items.map((item, i) => (
-              <button key={item.route} onClick={e => handleNav(item.route, () => setOpen(false), e)} style={{
-                display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-                padding: '9px 16px', fontSize: 13,
-                fontWeight: item.highlight ? 700 : item.route === currentPath ? 600 : 400,
-                color: item.highlight ? '#78350f' : item.route === currentPath ? 'var(--green-700)' : 'var(--text-1)',
-                background: item.highlight ? '#fef08a' : item.route === currentPath ? 'var(--green-50)' : 'none',
-                borderBottom: i < group.items.length - 1 ? '1px solid var(--border)' : 'none',
-                cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
-              }}
-                onMouseEnter={e => item.highlight ? (e.currentTarget.style.background = '#fde047') : item.route !== currentPath && (e.currentTarget.style.background = 'var(--green-50)')}
-                onMouseLeave={e => item.highlight ? (e.currentTarget.style.background = '#fef08a') : item.route !== currentPath && (e.currentTarget.style.background = 'none')}
-              >
-                {item.label}
-              </button>
-            ))}
+            {group.items.map((item, i) => {
+              const hlStyle = item.highlight ? (typeof item.highlight === 'string' ? HIGHLIGHT_STYLES[item.highlight] || HIGHLIGHT_STYLES.amber : HIGHLIGHT_STYLES.amber) : null
+              const isCurrent = item.route === currentPath || currentPath.startsWith(item.route + '/')
+              return (
+                <button key={item.route} onClick={e => handleNav(item.route, () => setOpen(false), e)} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                  padding: '9px 16px', fontSize: 13,
+                  fontWeight: hlStyle ? 700 : isCurrent ? 600 : 400,
+                  color: hlStyle ? hlStyle.color : isCurrent ? 'var(--green-700)' : 'var(--text-1)',
+                  background: hlStyle ? hlStyle.bg : isCurrent ? 'var(--green-50)' : 'none',
+                  borderBottom: i < group.items.length - 1 ? '1px solid var(--border)' : 'none',
+                  cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
+                }}
+                  onMouseEnter={e => hlStyle ? (e.currentTarget.style.background = hlStyle.hoverBg) : !isCurrent && (e.currentTarget.style.background = 'var(--green-50)')}
+                  onMouseLeave={e => hlStyle ? (e.currentTarget.style.background = hlStyle.bg) : !isCurrent && (e.currentTarget.style.background = 'none')}
+                >
+                  {item.label}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
