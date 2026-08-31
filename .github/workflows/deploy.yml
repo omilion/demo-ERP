@@ -123,6 +123,9 @@ jobs:
              npx prisma generate
              node scripts/deduplicate-cliente-emails.mjs
              npx prisma migrate resolve --rolled-back 20260526102000_cliente_email_unique_guard || true
+             # La version inicial intento un indice UNIQUE sobre codigos historicos duplicados.
+             # La migracion actual ya usa un indice no unico y puede reintentarse con seguridad.
+             npx prisma migrate resolve --rolled-back 20260828_SB_codigo_barra_unico || true
              npx prisma migrate deploy
              node --input-type=module -e "import(\"./src/app.js\").then(async ({ buildApp }) => { const app = buildApp({ logger: false }); await app.ready(); await app.close(); console.log(\"API module ready\") })"
              npm prune --omit=dev

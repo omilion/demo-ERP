@@ -281,7 +281,6 @@ function EditUsuarioModal({ user, sucursales, onClose }) {
                         sirven para dar UNA sin abrir el modulo entero. */}
                     {funciones.map(([fn, fnLabel]) => {
                       const clave = `${mod}.${fn}`
-                      const cubiertaPorModulo = (permisos[mod] || []).length > 0
                       return <tr key={clave} style={{ borderTop: '1px solid var(--border)' }}>
                         <td style={{ padding: '5px 12px 5px 30px', fontSize: 12, color: 'var(--text-2)' }}>{fnLabel}</td>
                         {PERMS.map(p => (

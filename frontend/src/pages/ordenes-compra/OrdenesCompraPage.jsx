@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast, confirmDialog } from '../../store/notif'
-import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table } from '../../components/shared'
+import { Badge, KpiCard, PageHeader, SearchBar, Table } from '../../components/shared'
 import { useOrdenesCompra, useUpdateOrdenCompra, ordenesCompraExportUrl } from '../../api/ordenesCompra'
 import { downloadFromBackend } from '../../utils/csv'
 import BotonExportar from '../../components/BotonExportar'

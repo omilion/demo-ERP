@@ -102,7 +102,10 @@ describe('facturacion/engine', () => {
     it('emitir() assigns a folio, builds signed XML and marks the document emitido', async () => {
       const doc = await db.documentos.create({
         tipoDte: 33,
-        receptor: { rut: '11111111-1', razonSocial: 'Cliente Prueba SpA' },
+        receptor: {
+          rut: '11111111-1', razonSocial: 'Cliente Prueba SpA', giro: 'Comercio',
+          direccion: 'Av. Prueba 123', comuna: 'Santiago',
+        },
         items: [{ nombre: 'Tela acabada', cantidad: 10, precio: 5000, unidad: 'MT' }]
       })
       const emitido = await engine.emitir(doc.id)
@@ -131,7 +134,10 @@ describe('facturacion/engine', () => {
     it('emitir() throws when there are no folios left for the tipoDte/ambiente', async () => {
       const doc = await db.documentos.create({
         tipoDte: 34, // Factura exenta: sin CAF cargado en este ambiente QA aislado
-        receptor: { rut: '11111111-1', razonSocial: 'Cliente Prueba' },
+        receptor: {
+          rut: '11111111-1', razonSocial: 'Cliente Prueba', giro: 'Comercio',
+          direccion: 'Av. Prueba 123', comuna: 'Santiago',
+        },
         items: [{ nombre: 'Ajuste', cantidad: 1, precio: 1000 }]
       })
       await expect(engine.emitir(doc.id)).rejects.toThrow(/No hay folios disponibles/)

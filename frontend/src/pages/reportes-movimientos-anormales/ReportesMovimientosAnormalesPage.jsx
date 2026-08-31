@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Badge, Btn, KpiCard, PageHeader, Pager, Table } from '../../components/shared'
+import { Badge, KpiCard, PageHeader, Pager, Table } from '../../components/shared'
 import { useReporteMovimientosAnormales } from '../../api/reportesGerenciales'
 import { downloadFromBackend } from '../../utils/csv'
 import BotonExportar from '../../components/BotonExportar'

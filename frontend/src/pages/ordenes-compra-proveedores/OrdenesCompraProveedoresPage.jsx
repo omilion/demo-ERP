@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs, Icon } from '../../components/shared'
 import {
   useOrdenesCompraProveedores,
@@ -8,13 +7,14 @@ import {
   useEnviarOCProveedor,
   useRecepcionarOCProveedor,
   useCreateOCProveedor,
+  useTiemposBodega,
 } from '../../api/ordenesCompraProveedores'
 import { useProveedores } from '../../api/proveedores'
 import { useProductos } from '../../api/productos'
 import { toast, confirmDialog } from '../../store/notif'
 import { useAuthStore } from '../../store/auth'
 import { can, hasRole } from '../../utils/permissions'
-import { downloadFromBackend } from '../../utils/csv'
+import BotonExportar from '../../components/BotonExportar'
 import SugerenciaOCSection from './SugerenciaOCSection'
 
 function money(value) {
@@ -25,6 +25,10 @@ function formatDate(iso) {
   if (!iso) return '-'
   const d = new Date(iso)
   return isNaN(d.getTime()) ? '-' : d.toLocaleDateString('es-CL')
+}
+
+function formatDays(value) {
+  return value == null ? '—' : `${Number(value).toLocaleString('es-CL', { maximumFractionDigits: 1 })} días`
 }
 
 function estadoBadgeTone(estado) {
@@ -38,7 +42,6 @@ function estadoBadgeTone(estado) {
 }
 
 export default function OrdenesCompraProveedoresPage({ embedded = false }) {
-  const navigate = useNavigate()
   const { user } = useAuthStore()
   const isAdminOrGerencia = hasRole(user, ['admin']) || user?.role === 'admin'
   const canWriteBodega = can(user, 'bodega', 'write')
@@ -60,12 +63,12 @@ export default function OrdenesCompraProveedoresPage({ embedded = false }) {
     return q
   }, [search, estado, proveedorId])
 
-  const { data = { items: [], total: 0, kpis: {} }, isLoading } = useOrdenesCompraProveedores(queryParams)
+  const { data = { items: [], total: 0, kpis: {} } } = useOrdenesCompraProveedores(queryParams)
+  const { data: tiemposBodega = {} } = useTiemposBodega()
   const { data: proveedoresData = { items: [] } } = useProveedores()
   const proveedoresList = proveedoresData.items || []
 
   const aprobarMutation = useAprobarOCProveedor()
-  const rechazarMutation = useRechazarOCProveedor()
   const enviarMutation = useEnviarOCProveedor()
 
   const handleAprobar = async (oc) => {
@@ -299,14 +302,10 @@ export default function OrdenesCompraProveedoresPage({ embedded = false }) {
           breadcrumb={['Inicio', 'Bodega', 'Órdenes de Compra Proveedores']}
           actions={
             <>
-              <Btn
-                variant="secondary"
-                icon="download"
-                size="sm"
-                onClick={() => downloadFromBackend('/ordenes-compra-proveedores/export', `ordenes_compra_${new Date().toISOString().slice(0, 10)}.${archivo}`, { archivo })}
-              >
-                Exportar Excel
-              </Btn>
+              <BotonExportar
+                url="/ordenes-compra-proveedores/export"
+                nombre={`ordenes_compra_${new Date().toISOString().slice(0, 10)}`}
+              />
               {canWriteBodega && (
                 <Btn
                   variant="primary"
@@ -365,6 +364,26 @@ export default function OrdenesCompraProveedoresPage({ embedded = false }) {
               onClick={() => setEstado('Enviada a Proveedor')}
             />
           </div>
+
+          <div className="kpi-strip" style={{ marginBottom: 8 }}>
+            <KpiCard
+              label="OC → recepción"
+              value={formatDays(tiemposBodega.ocARecepcion?.promedioDias)}
+              icon="clock"
+              tone="blue"
+              sublabel={`${tiemposBodega.ocARecepcion?.muestras ?? 0} OCs con ambas fechas`}
+            />
+            <KpiCard
+              label="Interno → despacho entregado"
+              value={formatDays(tiemposBodega.internoADespacho?.promedioDias)}
+              icon="truck"
+              tone="green"
+              sublabel={`${tiemposBodega.internoADespacho?.muestras ?? 0} despachos con ambas fechas`}
+            />
+          </div>
+          <p style={{ margin: '0 0 16px', color: 'var(--text-3)', fontSize: 12 }}>
+            El tiempo completo OC → recepción → interno → despacho se habilitará cuando exista una relación explícita entre la compra al proveedor y la venta despachada.
+          </p>
 
           {/* Tabla de Órdenes */}
           <div style={{

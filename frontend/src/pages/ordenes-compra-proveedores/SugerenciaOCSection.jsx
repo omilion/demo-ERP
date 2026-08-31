@@ -1,9 +1,8 @@
 import { useState, useMemo } from 'react'
-import { Badge, KpiCard, Btn, SearchBar, Icon } from '../../components/shared'
+import { Badge, KpiCard, Btn, SearchBar } from '../../components/shared'
 import { useSugerenciasOC, useCreateOCProveedor } from '../../api/ordenesCompraProveedores'
 import { useProveedores } from '../../api/proveedores'
 import { toast } from '../../store/notif'
-import { downloadFromBackend } from '../../utils/csv'
 
 function money(value) {
   return '$' + Number(value || 0).toLocaleString('es-CL')
@@ -51,7 +50,7 @@ export default function SugerenciaOCSection({ onCreatedOC }) {
     enabled: true,
   })
 
-  const rawItems = data.items || []
+  const rawItems = useMemo(() => data.items || [], [data.items])
   const kpis = data.kpis || {}
 
   // Merge server items with local overrides

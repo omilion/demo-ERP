@@ -21,6 +21,7 @@ function withCurrentValue(options, current) {
   return [...options, current]
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- helper compartido por los formularios de cliente.
 export function sucursalToPayload(form) {
   return Object.fromEntries(
     Object.entries(form).map(([k, v]) => [k, typeof v === 'string' && !v.trim() ? undefined : v])

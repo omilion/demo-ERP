@@ -163,6 +163,7 @@ describe('subcategorias catalogo legacy parity', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: {
         codigoInterno: `${marker}-ok`,
+        codigoBarra: `789${Date.now()}123`,
         nombre: 'Producto OK',
         categoriaId: categoriaA.id,
         subcategoriaId: subA.id,
