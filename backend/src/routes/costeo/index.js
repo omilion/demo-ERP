@@ -25,6 +25,50 @@ export default async function costeoRoutes(fastify) {
     return reply.send(history);
   });
 
+  // Cobertura de la carga de recetas.
+  //
+  // Las recetas entran por un script que lee el Excel de MK, no por pantalla:
+  // es una operacion de una vez cada varios meses y su valor esta en el informe
+  // de simulacion, que no cabe en un boton. Pero el RESULTADO si tiene que
+  // verse: cuantos productos quedaron con receta y cuales no, para poder
+  // completarlos con el editor que ya existe.
+  fastify.get('/cobertura', { preHandler: readAuth }, async (request, reply) => {
+    const [total, conRecetaRows, sinReceta] = await Promise.all([
+      fastify.prisma.producto.count({ where: { codigoInterno: { startsWith: 'MK', mode: 'insensitive' } } }),
+      // Solo las recetas de productos MK: contar todas daba porcentajes sobre
+      // 100 cuando hay recetas de productos fuera de ese catalogo.
+      fastify.prisma.$queryRaw`
+        SELECT COUNT(*)::int AS n
+          FROM taller.producto_recetas r
+          JOIN catalogo.productos p ON p.id = r.producto_id
+         WHERE r.activo = true AND p.codigo_interno ILIKE 'MK%'
+      `,
+      fastify.prisma.$queryRaw`
+        SELECT p.id, p.codigo_interno AS "codigoInterno", p.nombre, p.activo
+          FROM catalogo.productos p
+          LEFT JOIN taller.producto_recetas r ON r.producto_id = p.id
+         WHERE p.codigo_interno ILIKE 'MK%' AND r.id IS NULL
+         ORDER BY p.activo DESC, p.codigo_interno
+         LIMIT 200
+      `,
+    ])
+
+    // Sin tarifas el motor calcula la mano de obra en cero y el costo queda
+    // corto sin avisar, asi que se informa junto a la cobertura.
+    const conReceta = Number(conRecetaRows?.[0]?.n || 0)
+
+    const tarifas = await fastify.prisma.tarifaProceso.count({ where: { activo: true } })
+
+    return reply.send({
+      productosMk: total,
+      conReceta,
+      sinReceta: Math.max(0, total - conReceta),
+      porcentaje: total > 0 ? Math.round((conReceta / total) * 1000) / 10 : 0,
+      tarifasActivas: tarifas,
+      pendientes: sinReceta,
+    })
+  });
+
   // ── TARIFAS DE MANO DE OBRA ──────────────────────────────────────────
   fastify.get('/tarifas', { preHandler: readAuth }, async (request, reply) => {
     const tallerId = request.query.tallerId ? parseInt(request.query.tallerId, 10) : undefined;

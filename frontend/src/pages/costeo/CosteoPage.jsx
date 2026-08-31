@@ -5,6 +5,7 @@ import { useBodegaTaller, useUpdateBodegaTaller, useCreateBodegaTaller } from '.
 import { useTalleres } from '../../api/pasarTaller';
 import { EditorRecetaModal } from './components/EditorRecetaModal';
 import { toast, confirmDialog } from '../../store/notif';
+import PanelCobertura from './components/PanelCobertura'
 
 const toArray = (value) => {
   if (Array.isArray(value)) return value;
@@ -76,6 +77,7 @@ export default function CosteoPage() {
         </button>
       </div>
 
+      {activeTab === 'recetas' && <PanelCobertura />}
       {activeTab === 'recetas' && <RecetasTab />}
       {activeTab === 'materias' && <MateriasPrimasTab />}
       {activeTab === 'tarifas' && <TarifasTab />}

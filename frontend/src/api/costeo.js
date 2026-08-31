@@ -101,3 +101,13 @@ export const useMaterialesHistorialPrecios = (id) =>
     queryFn: () => api.get(`/costeo/materiales/${id}/historial-precios`).then((r) => r.data),
     enabled: !!id,
   });
+
+// Cobertura de la carga de recetas. Las recetas entran por script -es una
+// operación de una vez cada varios meses- pero el resultado tiene que verse:
+// cuántos productos quedaron cubiertos y cuáles faltan, para completarlos con
+// el editor que ya existe.
+export const useCoberturaRecetas = () =>
+  useQuery({
+    queryKey: ['costeo', 'cobertura'],
+    queryFn: () => api.get('/costeo/cobertura').then((r) => r.data),
+  });
