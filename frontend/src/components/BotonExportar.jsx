@@ -17,10 +17,18 @@ const OPCIONES = [
   { formato: 'csv', etiqueta: 'CSV (.csv)', detalle: 'Texto separado por ;' },
 ]
 
+// Dos formas de usarlo:
+//
+//   url + nombre        cuando la exportación es directa
+//   onExportar(formato) cuando la pantalla ya tiene un handler con lógica
+//                       propia —parámetros calculados, varias pestañas, manejo
+//                       de error—. Convertir esos a url/params obligaría a
+//                       reescribir esa lógica, que es donde se rompen cosas.
 export default function BotonExportar({
   url,
   nombre,
   params = {},
+  onExportar,
   label = 'Exportar',
   size = 'sm',
   variant = 'secondary',
@@ -48,9 +56,10 @@ export default function BotonExportar({
     setAbierto(false)
     setBajando(formato)
     try {
+      if (onExportar) await onExportar(formato)
       // El parámetro se llama `archivo`: en algunas vistas `formato` ya elige
       // QUÉ se exporta, que es otra decisión.
-      await downloadFromBackend(url, `${nombre}.${formato}`, { ...params, archivo: formato })
+      else await downloadFromBackend(url, `${nombre}.${formato}`, { ...params, archivo: formato })
     } catch (error) {
       toast.error(error.response?.data?.error || 'No se pudo exportar')
     } finally {

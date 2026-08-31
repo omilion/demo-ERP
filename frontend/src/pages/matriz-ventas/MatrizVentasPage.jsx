@@ -8,6 +8,7 @@ import { useAnularVenta } from '../../api/ventas'
 import { useAuthStore } from '../../store/auth'
 import { downloadFromBackend } from '../../utils/csv'
 import { can, ventaPath } from '../../utils/permissions'
+import BotonExportar from '../../components/BotonExportar'
 
 const TABS = [
   { id: 'all', label: 'Todos' },
@@ -296,9 +297,10 @@ export default function MatrizVentasPage() {
     setPage(1)
   }
 
-  function exportar(formato) {
-    const exportParams = { ...params, page: undefined, formato }
-    downloadFromBackend('/matriz-ventas/export', `matriz_ventas_${formato}_${suffix}.csv`, exportParams)
+  // `formato` elige QUE se exporta (resumen, guias, notas); `archivo`, el tipo.
+  function exportar(formato, archivo = 'csv') {
+    const exportParams = { ...params, page: undefined, formato, archivo }
+    downloadFromBackend('/matriz-ventas/export', `matriz_ventas_${formato}_${suffix}.${archivo}`, exportParams)
   }
 
   const toneEntrega = v => v === 'Entregada' ? 'green' : v === 'Parcial' ? 'amber' : v === 'En despacho' ? 'blue' : 'gray'
@@ -459,13 +461,17 @@ export default function MatrizVentasPage() {
         breadcrumb={['Inicio', 'Ventas', 'Matriz']}
         actions={(
           <>
-            <Btn variant="primary" icon="download" size="sm" onClick={() => exportar('resumen')}>
-              Exportar vista actual
-            </Btn>
+            <BotonExportar
+              label="Exportar vista actual"
+              variant="primary"
+              onExportar={archivo => exportar('resumen', archivo)}
+            />
             {EXPORTS.map(exp => (
-              <Btn key={exp.formato} variant="secondary" icon="download" size="sm" onClick={() => exportar(exp.formato)}>
-                {exp.label}
-              </Btn>
+              <BotonExportar
+                key={exp.formato}
+                label={exp.label}
+                onExportar={archivo => exportar(exp.formato, archivo)}
+              />
             ))}
           </>
         )}

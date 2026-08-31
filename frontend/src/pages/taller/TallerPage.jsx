@@ -7,6 +7,7 @@ import { useOdts, useOdtKanban, useOdtEstado, useAddBitacora, useDeleteBitacora,
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import BotonExportar from '../../components/BotonExportar'
 
 const ESTADO_TONE = {
   Prioritaria: 'red',
@@ -717,8 +718,8 @@ export default function TallerPage() {
     handleEstadoChange(odt.id, estado)
   }
 
-  function handleExport() {
-    downloadFromBackend('/reportes/export/odts', `odts-${new Date().toISOString().slice(0,10)}.csv`, filterParams)
+  function handleExport(archivo) {
+    downloadFromBackend('/reportes/export/odts', `odts-${new Date().toISOString().slice(0,10)}.${archivo}`, { ...filterParams, archivo })
   }
 
   const crmToggle = (
@@ -735,7 +736,7 @@ export default function TallerPage() {
         subtitle={`${total.toLocaleString('es-CL')} OTs en total`}
         breadcrumb={['Inicio', 'Taller', 'OTs']}
         actions={<>
-          <Btn variant="secondary" icon="download" size="sm" onClick={handleExport}>Exportar</Btn>
+          <BotonExportar onExportar={handleExport} />
           {canWriteTaller && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/taller/nueva')}>Nueva OT</Btn>}
         </>}
       />

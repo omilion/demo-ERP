@@ -4,6 +4,7 @@ import { toast, confirmDialog } from '../../store/notif'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table } from '../../components/shared'
 import { useOrdenesCompra, useUpdateOrdenCompra, ordenesCompraExportUrl } from '../../api/ordenesCompra'
 import { downloadFromBackend } from '../../utils/csv'
+import BotonExportar from '../../components/BotonExportar'
 
 const ESTADO_TONE = {
   'Procesada':  'green', 'Pendiente':  'amber', 'Entregada': 'green',
@@ -104,7 +105,9 @@ export default function OrdenesCompraPage() {
         title="Órdenes de Compra Online"
         subtitle={`${total.toLocaleString('es-CL')} órdenes desde el sitio web`}
         breadcrumb={['Inicio', 'Ventas', 'OC Online']}
-        actions={<Btn variant="secondary" icon="download" size="sm" onClick={() => downloadFromBackend(ordenesCompraExportUrl(), `ordenes_compra_online_${new Date().toISOString().slice(0, 10)}.csv`, params)}>Exportar CSV</Btn>}
+        actions={<BotonExportar
+          onExportar={archivo => downloadFromBackend(ordenesCompraExportUrl(), `ordenes_compra_online_${new Date().toISOString().slice(0, 10)}.${archivo}`, { ...params, archivo })}
+        />}
       />
       <div className="kpi-strip">
         <KpiCard label="Total OC" value={total.toLocaleString('es-CL')} icon="shoppingCart" sublabel="Histórico" />

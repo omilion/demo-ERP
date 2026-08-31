@@ -4,6 +4,7 @@ import { useComisionesMeta } from '../../api/admin'
 import { useUsuarios } from '../../api/usuarios'
 import { useReporteComisiones } from '../../api/reportesGerenciales'
 import { downloadFromBackend } from '../../utils/csv'
+import BotonExportar from '../../components/BotonExportar'
 
 const DEFAULT_TIPOS = ['Todos', 'Venta sala', 'Venta directa', 'Normal', 'Venta Web', 'Convenio Marco', 'Licitaci\u00f3n']
 const money = value => Number(value || 0).toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })
@@ -72,9 +73,9 @@ export default function ReportesComisionesPage() {
     setPage(1)
   }
 
-  const exportCsv = () => {
+  const exportCsv = archivo => {
     const exportParams = cleanParams(filters)
-    downloadFromBackend('/reportes/export/comisiones', `comisiones_${new Date().toISOString().slice(0, 10)}.csv`, exportParams)
+    downloadFromBackend('/reportes/export/comisiones', `comisiones_${new Date().toISOString().slice(0, 10)}.${archivo}`, { ...exportParams, archivo })
   }
 
   const columns = [
@@ -100,7 +101,7 @@ export default function ReportesComisionesPage() {
         breadcrumb={['Inicio', 'Reportes', 'Comisiones']}
         actions={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Btn variant="secondary" icon="download" size="sm" onClick={exportCsv}>Exportar CSV</Btn>
+            <BotonExportar onExportar={exportCsv} />
             <Btn variant="secondary" icon="refreshCw" size="sm" onClick={resetFilters}>Limpiar filtros</Btn>
           </div>
         }

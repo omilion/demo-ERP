@@ -6,6 +6,7 @@ import { useTurnoActivo, useAbrirTurno, useCerrarTurno, useCajaHistorico, useCaj
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can, ventaPath } from '../../utils/permissions'
+import BotonExportar from '../../components/BotonExportar'
 
 const MEDIOS_PAGO = ['Todos', 'Efectivo', 'Debito', 'Credito', 'Transferencia', 'Cheque dia', 'Cheque fecha', 'Webpay', 'Transbank', 'Referencial']
 const TIPOS_VENTA = ['', 'Normal', 'Venta Directa', 'Venta Web', 'Convenio Marco', 'Licitacion']
@@ -121,12 +122,12 @@ export default function CajaPage() {
   const countedTotal = CIERRE_FIELDS.reduce((sum, [key]) => sum + Number(cierreForm.conteo?.[key] || 0), 0)
   const cierreDiferencia = countedTotal - saldo
 
-  const handleExport = () => {
+  const handleExport = archivo => {
     if (tab === 'hoy' && !turno?.id) {
       toast.warning('No hay turno activo para exportar')
       return
     }
-    downloadFromBackend('/reportes/export/caja', `caja_${new Date().toISOString().slice(0, 10)}.csv`, exportParams)
+    downloadFromBackend('/reportes/export/caja', `caja_${new Date().toISOString().slice(0, 10)}.${archivo}`, { ...exportParams, archivo })
       .catch(err => toast.error(err?.response?.data?.error || 'No se pudo exportar caja'))
   }
 
@@ -272,9 +273,7 @@ export default function CajaPage() {
         subtitle={turno ? `Turno abierto · Caja ${turno.caja?.nombre ?? ''}` : 'Sin turno activo'}
         breadcrumb={['Inicio', 'Caja']}
         actions={<>
-          <Btn variant="secondary" icon="download" size="sm"
-            onClick={handleExport}
-          >Exportar CSV</Btn>
+          <BotonExportar onExportar={handleExport} />
           {turno ? (
             <>
               {canWriteCaja && <Btn variant="secondary" icon="printer" size="sm" onClick={handleCerrarTurno} disabled={cerrarTurno.isPending}>Cerrar Turno</Btn>}

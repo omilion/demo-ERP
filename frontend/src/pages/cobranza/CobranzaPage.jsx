@@ -9,6 +9,7 @@ import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can, ventaPath } from '../../utils/permissions'
 import CobranzaGestionPanel from './CobranzaGestionPanel'
+import BotonExportar from '../../components/BotonExportar'
 
 const MEDIOS_PAGO = ['Efectivo', 'Debito', 'Credito', 'Transferencia', 'Cheque dia', 'Cheque fecha', 'Webpay', 'Transbank']
 
@@ -520,8 +521,8 @@ export default function CobranzaPage() {
             : 'Seguimiento de compromisos y conciliación bancaria'}
         breadcrumb={['Inicio', 'Caja', 'Cobranza']}
         actions={mainTab !== 'gestion' ? <>
-          <Btn variant="secondary" icon="download" size="sm"
-            onClick={() => {
+          <BotonExportar
+            onExportar={archivo => {
               if (mainTab === 'activo') {
                 const params = { estadoPago: estadoTab }
                 if (debounced) params.search = debounced
@@ -532,7 +533,7 @@ export default function CobranzaPage() {
                 if (documento) params.documento = documento
                 if (nDoc) params.nDoc = nDoc
                 if (creador) params.creador = creador
-                downloadFromBackend('/reportes/export/cobranza-activa', `cobranza_${new Date().toISOString().slice(0,10)}.csv`, params)
+                downloadFromBackend('/reportes/export/cobranza-activa', `cobranza_${new Date().toISOString().slice(0,10)}.${archivo}`, { ...params, archivo })
                   .catch(err => toast.error(err?.response?.data?.error || 'No se pudo exportar cobranza activa'))
               } else {
                 const params = {}
@@ -547,11 +548,11 @@ export default function CobranzaPage() {
                 if (histInterno) params.interno = histInterno
                 if (histRut) params.rut = histRut
                 if (histCliente) params.cliente = histCliente
-                downloadFromBackend('/reportes/export/cobranza', `cobranza_historico_${new Date().toISOString().slice(0,10)}.csv`, params)
+                downloadFromBackend('/reportes/export/cobranza', `cobranza_historico_${new Date().toISOString().slice(0,10)}.${archivo}`, { ...params, archivo })
                   .catch(err => toast.error(err?.response?.data?.error || 'No se pudo exportar historico de cobranza'))
               }
             }}
-          >Exportar</Btn>
+          />
         </> : null}
       />
 

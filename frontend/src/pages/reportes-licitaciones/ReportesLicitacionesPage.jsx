@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 import { downloadFromBackend } from '../../utils/csv'
 import { plazoLabel } from '../../utils/licitacionFields'
+import BotonExportar from '../../components/BotonExportar'
 
 const ESTADOS = ['', 'Pendiente', 'Adjudicada', 'No Adjudicada', 'En proceso', 'Rechazada', 'Cerrada']
 const ESTADO_TONE = {
@@ -107,11 +108,12 @@ export default function ReportesLicitacionesPage() {
     setPage(1)
   }
 
-  const exportar = formato => {
+  // `formato` elige QUE se exporta -resumen o detalle-; `archivo`, el tipo.
+  const exportar = (formato, archivo = 'csv') => {
     downloadFromBackend(
       '/cotizaciones/reportes/export',
-      `licitaciones_${formato}_${today()}.csv`,
-      { ...exportParams, formato },
+      `licitaciones_${formato}_${today()}.${archivo}`,
+      { ...exportParams, formato, archivo },
     )
   }
 
@@ -169,8 +171,8 @@ export default function ReportesLicitacionesPage() {
         subtitle={`${Number(data.total || 0).toLocaleString('es-CL')} registros encontrados`}
         breadcrumb={['Inicio', 'Reportes', 'Licitaciones']}
         actions={<div className="no-print" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <Btn variant="secondary" icon="download" size="sm" onClick={() => exportar('resumen')}>Excel Resumen</Btn>
-          <Btn variant="secondary" icon="download" size="sm" onClick={() => exportar('detalle')}>Excel Detalle</Btn>
+          <BotonExportar label="Resumen" onExportar={archivo => exportar('resumen', archivo)} />
+          <BotonExportar label="Detalle" onExportar={archivo => exportar('detalle', archivo)} />
           <Btn variant="secondary" icon="printer" size="sm" onClick={() => setPrintAll(true)} disabled={isFetchingPrint}>
             {isFetchingPrint ? 'Preparando...' : 'PDF/Imprimir'}
           </Btn>

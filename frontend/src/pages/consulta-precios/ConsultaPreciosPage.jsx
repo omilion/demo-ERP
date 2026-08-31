@@ -9,6 +9,7 @@ import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../u
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import BotonExportar from '../../components/BotonExportar'
 
 const SEARCH_MODES = [
   { id: 'general', label: 'Todos' },
@@ -100,8 +101,8 @@ export default function ConsultaPreciosPage() {
     setPage(1)
   }
 
-  function exportarPrecios() {
-    downloadFromBackend('/reportes/export/productos', `precios_${new Date().toISOString().slice(0, 10)}.csv`, exportParams)
+  function exportarPrecios(archivo) {
+    downloadFromBackend('/reportes/export/productos', `precios_${new Date().toISOString().slice(0, 10)}.${archivo}`, { ...exportParams, archivo })
       .catch(err => toast.error(err?.response?.data?.error || 'No se pudo exportar precios'))
   }
 
@@ -182,7 +183,7 @@ export default function ConsultaPreciosPage() {
         subtitle="Vista operativa de precios y stock"
         breadcrumb={['Inicio', 'Bodega', 'Consulta Precios']}
         actions={<>
-          <Btn variant="secondary" icon="download" size="sm" onClick={exportarPrecios}>Exportar Excel</Btn>
+          <BotonExportar onExportar={exportarPrecios} />
           <Btn variant="secondary" icon="printer" size="sm" onClick={() => window.print()}>PDF/Imprimir</Btn>
         </>}
       />

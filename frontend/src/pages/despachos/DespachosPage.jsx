@@ -12,6 +12,7 @@ import { useDocumentos } from '../../api/facturacion'
 import { downloadDteXml, openDtePdf } from '../../utils/dteDocuments'
 import { trackingTone, formatDays, showError, linkButton, btnSm, checkLabel } from './shared'
 import { Mono, PackingProgress } from './shared-ui'
+import BotonExportar from '../../components/BotonExportar'
 
 const TABS = [
   { id: 'matriz', label: 'Matriz despacho' },
@@ -341,19 +342,19 @@ export default function DespachosPage() {
 
   const columns = tab === 'matriz' ? colsMatriz : tab === 'registros' ? colsDespacho : tab === 'taller' ? colsTaller : colsGuia
 
-  const exportar = async () => {
+  const exportar = async archivo => {
     if (tab === 'matriz') {
       const exportParams = { ...matrixParams }
       delete exportParams.page
-      await downloadFromBackend('/despachos/matriz/export', `despacho_matriz_${new Date().toISOString().slice(0, 10)}.csv`, exportParams)
+      await downloadFromBackend('/despachos/matriz/export', `despacho_matriz_${new Date().toISOString().slice(0, 10)}.${archivo}`, { ...exportParams, archivo })
     } else if (tab === 'registros') {
       const exportParams = { ...registroParams }
       delete exportParams.page
-      await downloadFromBackend('/despachos/export/registros', `despachos_${new Date().toISOString().slice(0, 10)}.csv`, exportParams)
+      await downloadFromBackend('/despachos/export/registros', `despachos_${new Date().toISOString().slice(0, 10)}.${archivo}`, { ...exportParams, archivo })
     } else if (tab === 'guias') {
       const exportParams = { ...guiaParams }
       delete exportParams.page
-      await downloadFromBackend('/despachos/guias/export', `guias_${new Date().toISOString().slice(0, 10)}.csv`, exportParams)
+      await downloadFromBackend('/despachos/guias/export', `guias_${new Date().toISOString().slice(0, 10)}.${archivo}`, { ...exportParams, archivo })
     }
   }
 
@@ -451,7 +452,7 @@ export default function DespachosPage() {
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
             <Btn variant="secondary" size="sm" onClick={() => window.print()}>Imprimir</Btn>
-            <Btn variant="secondary" size="sm" onClick={exportar}>Exportar CSV</Btn>
+            <BotonExportar onExportar={exportar} />
             {canWriteDespacho && (tab === 'guias'
               ? <Btn variant="primary" size="sm" onClick={() => navigate(`/despachos/guias/nueva?ordenId=${ordenIdParam}&odtId=${odtIdParam}`)}>Nueva guia</Btn>
               : <Btn variant="primary" size="sm" onClick={() => navigate('/despachos/nuevo')}>Nuevo despacho</Btn>)}

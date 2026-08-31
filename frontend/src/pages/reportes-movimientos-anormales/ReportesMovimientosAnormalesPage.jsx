@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Badge, Btn, KpiCard, PageHeader, Pager, Table } from '../../components/shared'
 import { useReporteMovimientosAnormales } from '../../api/reportesGerenciales'
 import { downloadFromBackend } from '../../utils/csv'
+import BotonExportar from '../../components/BotonExportar'
 
 const num = value => Number(value || 0).toLocaleString('es-CL')
 const date = value => value ? new Date(value).toLocaleDateString('es-CL') : '-'
@@ -41,8 +42,8 @@ export default function ReportesMovimientosAnormalesPage() {
     setPage(1)
   }
 
-  const exportCsv = () => {
-    downloadFromBackend('/reportes/export/movimientos-anormales', `movimientos_anormales_${new Date().toISOString().slice(0, 10)}.csv`, cleanParams({ ...filters, soloLicitacion: filters.soloLicitacion ? 'true' : '' }))
+  const exportCsv = archivo => {
+    downloadFromBackend('/reportes/export/movimientos-anormales', `movimientos_anormales_${new Date().toISOString().slice(0, 10)}.${archivo}`, cleanParams({ ...filters, soloLicitacion: filters.soloLicitacion ? 'true' : '', archivo }))
   }
 
   const columns = [
@@ -77,7 +78,7 @@ export default function ReportesMovimientosAnormalesPage() {
         title="Movimientos de Stock Anormales"
         subtitle="Ventas registradas bajo un código distinto al del producto real que rebajó el inventario (licitaciones, paquetes consolidados)"
         breadcrumb={['Inicio', 'Reportes', 'Movimientos anormales']}
-        actions={<Btn variant="secondary" icon="download" size="sm" onClick={exportCsv}>Exportar CSV</Btn>}
+        actions={<BotonExportar onExportar={exportCsv} />}
       />
 
       <div style={{ padding: '10px 12px', marginBottom: 16, borderRadius: 8, background: 'var(--bg)', color: 'var(--text-2)', fontSize: 13 }}>

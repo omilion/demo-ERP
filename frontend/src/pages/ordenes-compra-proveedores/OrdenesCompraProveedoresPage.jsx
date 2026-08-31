@@ -303,7 +303,7 @@ export default function OrdenesCompraProveedoresPage({ embedded = false }) {
                 variant="secondary"
                 icon="download"
                 size="sm"
-                onClick={() => downloadFromBackend('/ordenes-compra-proveedores/export', `ordenes_compra_${new Date().toISOString().slice(0, 10)}.csv`)}
+                onClick={() => downloadFromBackend('/ordenes-compra-proveedores/export', `ordenes_compra_${new Date().toISOString().slice(0, 10)}.${archivo}`, { archivo })}
               >
                 Exportar Excel
               </Btn>

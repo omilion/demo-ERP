@@ -12,6 +12,7 @@ import {
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import BotonExportar from '../../components/BotonExportar'
 
 const getErrorMessage = err => err?.response?.data?.error || err?.message || 'No se pudo completar la accion'
 
@@ -126,11 +127,11 @@ export default function BitacoraTallerPage() {
     })
   }
 
-  const exportar = () => {
+  const exportar = archivo => {
     const exportParams = { ...params }
     delete exportParams.page
     delete exportParams.limit
-    downloadFromBackend('/bitacora-taller/export', `bitacora_actividades_${todayInputDate()}.csv`, exportParams)
+    downloadFromBackend('/bitacora-taller/export', `bitacora_actividades_${todayInputDate()}.${archivo}`, { ...exportParams, archivo })
       .catch(err => toast.error(getErrorMessage(err)))
   }
 
@@ -157,7 +158,7 @@ export default function BitacoraTallerPage() {
         breadcrumb={['Inicio', 'Taller', 'Bitacora']}
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
-            <Btn variant="secondary" size="sm" icon="download" onClick={exportar}>Exportar CSV</Btn>
+            <BotonExportar onExportar={exportar} />
             {canWriteTaller && <Btn variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)}>Nueva entrada</Btn>}
           </div>
         }

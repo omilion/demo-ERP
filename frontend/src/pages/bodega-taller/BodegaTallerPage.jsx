@@ -8,7 +8,6 @@ import { useProveedores } from '../../api/proveedores'
 import { useSucursales } from '../../api/locations'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
-import { downloadFromBackend } from '../../utils/csv'
 import BotonExportar from '../../components/BotonExportar'
 
 const TABS = [

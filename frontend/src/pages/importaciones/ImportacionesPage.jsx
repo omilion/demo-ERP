@@ -289,7 +289,7 @@ export default function ImportacionesPage({ embedded = false }) {
                 variant="secondary"
                 icon="download"
                 size="sm"
-                onClick={() => downloadFromBackend('/importaciones/export', `importaciones_${new Date().toISOString().slice(0, 10)}.csv`)}
+                onClick={() => downloadFromBackend('/importaciones/export', `importaciones_${new Date().toISOString().slice(0, 10)}.${archivo}`, { archivo })}
               >
                 Exportar Excel
               </Btn>

@@ -6,6 +6,7 @@ import { useDeleteHistorialMaterial, useDeleteManyHistorialMaterial, useHistoria
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import BotonExportar from '../../components/BotonExportar'
 
 const mono = { fontFamily: "'DM Mono', monospace" }
 
@@ -125,10 +126,10 @@ export default function HistorialMaterialesPage() {
     }] : []),
   ]
 
-  const exportar = () => {
+  const exportar = archivo => {
     const exportParams = { ...params }
     delete exportParams.page
-    downloadFromBackend('/historial-materiales/export', `historial_materiales_${new Date().toISOString().slice(0, 10)}.csv`, exportParams)
+    downloadFromBackend('/historial-materiales/export', `historial_materiales_${new Date().toISOString().slice(0, 10)}.${archivo}`, { ...exportParams, archivo })
   }
 
   return (
@@ -139,7 +140,7 @@ export default function HistorialMaterialesPage() {
         breadcrumb={['Inicio', 'Taller', 'Historial']}
         actions={<>
           {canDelete && selectedIds.length > 0 && <Btn variant="danger" size="sm" icon="trash" onClick={deleteSelected} disabled={delManyMut.isPending}>Eliminar seleccion</Btn>}
-          <Btn variant="secondary" size="sm" icon="download" onClick={exportar}>Exportar CSV</Btn>
+          <BotonExportar onExportar={exportar} />
         </>}
       />
       <div className="kpi-strip">

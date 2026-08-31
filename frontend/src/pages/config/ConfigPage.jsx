@@ -21,6 +21,7 @@ import { gastosExportUrl } from '../../api/gastos'
 import api from '../../api/client'
 import { downloadFromBackend } from '../../utils/csv'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import BotonExportar from '../../components/BotonExportar'
 
 const TABS = [
   { id: 'empresa', label: 'Empresa' },
@@ -86,9 +87,9 @@ function CargoTransporteSection() {
     <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
         <div style={{ fontWeight: 600 }}>Nuevo cargo</div>
-        <Btn size="sm" variant="secondary" icon="download" onClick={() => downloadFromBackend(cargoTransporteExportUrl(), `cargo_transporte_${new Date().toISOString().slice(0, 10)}.csv`)}>
-          Exportar CSV
-        </Btn>
+        <BotonExportar
+          onExportar={archivo => downloadFromBackend(cargoTransporteExportUrl(), `cargo_transporte_${new Date().toISOString().slice(0, 10)}.${archivo}`, { archivo })}
+        />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 8, alignItems: 'end', marginBottom: 16 }}>
         <FormField label="Nombre"><Input value={nuevo.nombre} onChange={v => setNuevo(s => ({ ...s, nombre: v }))} /></FormField>
@@ -190,9 +191,9 @@ function GastosSection() {
     <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
         <div style={{ fontWeight: 600 }}>Nuevo nombre de gasto</div>
-        <Btn size="sm" variant="secondary" icon="download" onClick={() => downloadFromBackend(gastosExportUrl(), `gastos_${new Date().toISOString().slice(0, 10)}.csv`)}>
-          Exportar CSV
-        </Btn>
+        <BotonExportar
+          onExportar={archivo => downloadFromBackend(gastosExportUrl(), `gastos_${new Date().toISOString().slice(0, 10)}.${archivo}`, { archivo })}
+        />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end', marginBottom: 16 }}>
         <FormField label="Nombre"><Input value={nuevo} onChange={setNuevo} /></FormField>
