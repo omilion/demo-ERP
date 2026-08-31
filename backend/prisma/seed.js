@@ -56,17 +56,20 @@ async function main() {
   })
 
   for (const role of ROLES) {
+    // La cuenta técnica admin se usa para revisar la copia completa de
+    // producción: no debe ocultar ventas/OTs de otra sucursal.
+    const sucursalId = role === 'admin' ? null : 1
     await prisma.user.upsert({
       where: { email: `${role}@plastimar.cl` },
       // A production clone can already contain these technical accounts with
       // production-only credentials. Keep the test login contract deterministic.
-      update: { passwordHash, role, sucursalId: 1, activo: true },
+      update: { passwordHash, role, sucursalId, activo: true },
       create: {
         email: `${role}@plastimar.cl`,
         passwordHash,
         role,
         nombre: role.charAt(0).toUpperCase() + role.slice(1).replace('_', ' '),
-        sucursalId: 1,
+        sucursalId,
       },
     })
   }

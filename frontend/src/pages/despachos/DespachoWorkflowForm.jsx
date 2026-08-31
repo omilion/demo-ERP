@@ -20,6 +20,7 @@ export default function DespachoWorkflowForm({ isEdit, initial, onDone, onCancel
   const loadedOrder = useRef(null)
   const cola = useDespachoColaOperativa({ search })
   const selected = (cola.data?.items || []).find(item => Number(item.ordenId) === Number(form.ordenId)) || null
+  const tallerPendientes = (cola.data?.items || []).filter(item => Number(item.preparacion?.pendienteTaller || 0) > 0)
   const esManual = form.origenTipo === 'manual'
   const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
 
@@ -75,6 +76,12 @@ export default function DespachoWorkflowForm({ isEdit, initial, onDone, onCancel
       <Header title="1. Selecciona la venta que saldrá" text="La cola muestra ventas activas aún pendientes de entrega. No se escribe el ID a mano." />
       <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar por interno, cliente o RUT…" style={{ ...input, marginBottom: 10 }} />
       <Field label="Venta activa"><select value={form.ordenId || ''} onChange={event => { loadedOrder.current = null; set('ordenId', event.target.value) }} style={input} disabled={cola.isLoading}><option value="">{cola.isLoading ? 'Cargando cola…' : 'Seleccionar venta para picking…'}</option>{(cola.data?.items || []).map(item => <option key={item.ordenId} value={String(item.ordenId)}>#{item.nInterno || item.ordenId} · {item.clienteNombre || 'Sin cliente'} · {preparacionLabel(item.preparacion)} · {item.estadoLogistico.label}</option>)}</select></Field>
+      {tallerPendientes.length > 0 && <div style={{ marginTop: 12, padding: 12, border: '1px solid var(--amber-200, #f5d58a)', borderRadius: 10, background: 'var(--amber-50, #fffbeb)' }}>
+        <strong style={{ fontSize: 13 }}>Taller pendiente · {tallerPendientes.length} ventas visibles</strong>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+          {tallerPendientes.slice(0, 8).map(item => <a key={item.ordenId} href={`/pasar-taller?ordenId=${item.ordenId}`} style={{ fontSize: 12, color: 'var(--amber-700, #a16207)', fontWeight: 700 }}>#{item.nInterno || item.ordenId} · {item.preparacion.pendienteTaller} u.</a>)}
+        </div>
+      </div>}
       {selected && <VentaResumen item={selected} />}
     </section>}
 

@@ -956,23 +956,51 @@ export default async function despachosRoutes(fastify) {
   }, async (request) => {
     const sucursalId = parsePositiveInt(request.user?.sucursalId)
     const search = cleanText(request.query?.search)
+    // `estado_entrega` es nullable en datos heredados aunque el cliente Prisma
+    // lo declare obligatorio. Se resuelve el universo operativo en SQL
+    // parametrizado y Prisma sigue cargando todas las relaciones de la vista.
+    const pendientes = sucursalId
+      ? await fastify.prisma.$queryRaw`
+          SELECT o.id
+          FROM ventas.ordenes o
+          WHERE NOT o.eliminada
+            AND o.estado = 'Activa'
+            AND (o.estado_entrega IS NULL OR o.estado_entrega NOT IN ('Entregada', 'Entregado'))
+            AND EXISTS (SELECT 1 FROM ventas.orden_items oi WHERE oi.orden_id = o.id AND NOT oi.eliminado)
+            AND (o.sucursal_id = ${sucursalId} OR o.sucursal_id IS NULL)
+          ORDER BY o.created_at ASC
+          LIMIT 500
+        `
+      : await fastify.prisma.$queryRaw`
+          SELECT o.id
+          FROM ventas.ordenes o
+          WHERE NOT o.eliminada
+            AND o.estado = 'Activa'
+            AND (o.estado_entrega IS NULL OR o.estado_entrega NOT IN ('Entregada', 'Entregado'))
+            AND EXISTS (SELECT 1 FROM ventas.orden_items oi WHERE oi.orden_id = o.id AND NOT oi.eliminado)
+          ORDER BY o.created_at ASC
+          LIMIT 500
+        `
+    const ordenIdsPendientes = pendientes.map(row => Number(row.id)).filter(Number.isInteger)
+    if (!ordenIdsPendientes.length) return { items: [] }
     const where = {
+      id: { in: ordenIdsPendientes },
       eliminada: false,
       estado: 'Activa',
-      estadoEntrega: { notIn: ['Entregada', 'Entregado'] },
       items: { some: { eliminado: false } },
+      AND: [],
     }
     if (sucursalId) where.OR = [{ sucursalId }, { sucursalId: null }]
     if (search) {
       const numeric = parsePositiveInt(search)
-      where.AND = [{
+      where.AND.push({
         OR: [
           { rutCliente: { contains: search, mode: 'insensitive' } },
           { cliente: { is: { nombre: { contains: search, mode: 'insensitive' } } } },
           { cliente: { is: { razonSocial: { contains: search, mode: 'insensitive' } } } },
           ...(numeric ? [{ id: numeric }, { nInterno: numeric }] : []),
         ],
-      }]
+      })
     }
     const ordenes = await fastify.prisma.orden.findMany({
       where,
