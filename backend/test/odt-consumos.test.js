@@ -59,6 +59,10 @@ describe('ODT consumos helpers', () => {
       cantidad: 2,
       motivo: 'Corte ODT',
       taller: 'Espumas',
+      loteId: null,
+      calidad: 'aprobado',
+      mermaCantidad: 0,
+      mermaMotivo: null,
     })
 
     expect(parseConsumoRequest({ tipo: 'otro', id: 1, cantidad: 1, motivo: 'x' })).toEqual({
@@ -102,6 +106,10 @@ describe('ODT consumos helpers', () => {
       fecha: NOW,
       taller: 'Espumas',
       sucursalId: 4,
+      loteCodigo: null,
+      calidad: null,
+      mermaCantidad: 0,
+      mermaMotivo: null,
     })
 
     expect(buildHistorialMaterialData({
@@ -275,6 +283,7 @@ describe('ODT consumos helpers', () => {
         unidadMedida: true,
         stock: true,
         sucursalId: true,
+        densidadKgM3: true,
       },
     })
     expect(tx.bodegaTaller.updateMany).toHaveBeenCalledWith({
@@ -342,6 +351,7 @@ describe('ODT consumos helpers', () => {
         unidadMedida: true,
         stock: true,
         sucursalId: true,
+        densidadKgM3: true,
       },
     })
     expect(tx.bodegaTaller.updateMany).toHaveBeenCalledWith({

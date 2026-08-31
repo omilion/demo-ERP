@@ -179,6 +179,7 @@ export default async function bodegaTallerRoutes(fastify) {
       tallerId,
       proveedorId,
       sucursalId,
+      densidadKgM3, espesorMm, formato,
     } = request.body || {}
     const codigoFinal = cleanText(codigoInterno)
     const nombreFinal = cleanText(nombre)
@@ -192,6 +193,8 @@ export default async function bodegaTallerRoutes(fastify) {
     const parsedStock = parseOptionalNumber(stock, 'stock', { min: 0 })
     const parsedStockCritico = parseOptionalNumber(stockCritico, 'stockCritico', { min: 0 })
     const parsedPrecio = parseOptionalNumber(precio, 'precio', { min: 0 })
+    const parsedDensidad = parseOptionalNumber(densidadKgM3, 'densidadKgM3', { min: 0 })
+    const parsedEspesor = parseOptionalNumber(espesorMm, 'espesorMm', { min: 0 })
     if (parsedCategoria.error) return reply.code(400).send({ error: 'categoriaId invalido' })
     if (parsedSubcategoria.error) return reply.code(400).send({ error: 'subcategoriaId invalido' })
     if (parsedTaller.error) return reply.code(400).send({ error: 'tallerId invalido' })
@@ -200,6 +203,8 @@ export default async function bodegaTallerRoutes(fastify) {
     if (parsedStock.error) return reply.code(400).send({ error: parsedStock.error })
     if (parsedStockCritico.error) return reply.code(400).send({ error: parsedStockCritico.error })
     if (parsedPrecio.error) return reply.code(400).send({ error: parsedPrecio.error })
+    if (parsedDensidad.error) return reply.code(400).send({ error: parsedDensidad.error })
+    if (parsedEspesor.error) return reply.code(400).send({ error: parsedEspesor.error })
 
     const categoriaFinal = parsedCategoria.value ?? null
     const subcategoriaFinal = parsedSubcategoria.value ?? null
@@ -238,6 +243,9 @@ export default async function bodegaTallerRoutes(fastify) {
           stock: parsedStock.value ?? 0,
           stockCritico: parsedStockCritico.value ?? 0,
           precio: parsedPrecio.value ?? 0,
+          densidadKgM3: parsedDensidad.provided ? parsedDensidad.value || null : null,
+          espesorMm: parsedEspesor.provided ? parsedEspesor.value || null : null,
+          formato: cleanText(formato),
         },
       })
       return reply.code(201).send(await enrichOne(fastify.prisma, item))
@@ -272,13 +280,14 @@ export default async function bodegaTallerRoutes(fastify) {
     }
     if (body.nombre !== undefined && !data.nombre) return reply.code(400).send({ error: 'nombre requerido' })
     if (body.activo !== undefined) data.activo = Boolean(body.activo)
-    for (const field of ['stockCritico', 'stock', 'precio']) {
+    for (const field of ['stockCritico', 'stock', 'precio', 'densidadKgM3', 'espesorMm']) {
       if (body[field] !== undefined) {
         const parsed = parseOptionalNumber(body[field], field, { min: 0 })
         if (parsed.error) return reply.code(400).send({ error: parsed.error })
         data[field] = parsed.value
       }
     }
+    if (body.formato !== undefined) data.formato = cleanText(body.formato)
 
     const parsedCategoria = parseOptionalPositiveInt(body.categoriaId)
     const parsedSubcategoria = parseOptionalPositiveInt(body.subcategoriaId)
@@ -368,5 +377,26 @@ export default async function bodegaTallerRoutes(fastify) {
     if (!current) return reply.code(404).send({ error: 'No encontrado' })
     await fastify.prisma.bodegaTaller.update({ where: { id }, data: { activo: false } })
     return reply.code(204).send()
+  })
+
+  fastify.get('/:id/lotes', { preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')] }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10)
+    if (!Number.isInteger(id)) return reply.code(400).send({ error: 'ID invalido' })
+    return { items: await fastify.prisma.bodegaTallerLote.findMany({ where: { bodegaTallerId: id }, orderBy: { recibidoAt: 'asc' } }) }
+  })
+
+  fastify.post('/:id/lotes', { preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')] }, async (request, reply) => {
+    const bodegaTallerId = parseInt(request.params.id, 10)
+    const codigo = cleanText(request.body?.codigo)
+    const cantidad = Number(request.body?.cantidad)
+    if (!Number.isInteger(bodegaTallerId) || !codigo || !Number.isFinite(cantidad) || cantidad <= 0) return reply.code(400).send({ error: 'codigo y cantidad positiva requeridos' })
+    const estadoCalidad = String(request.body?.estadoCalidad || 'aprobado').toLowerCase()
+    if (!['aprobado', 'observado', 'rechazado'].includes(estadoCalidad)) return reply.code(400).send({ error: 'estadoCalidad invalido' })
+    const lote = await fastify.prisma.$transaction(async tx => {
+      const created = await tx.bodegaTallerLote.create({ data: { bodegaTallerId, codigo, cantidadInicial: cantidad, cantidadDisponible: estadoCalidad === 'aprobado' ? cantidad : 0, estadoCalidad, observacion: cleanText(request.body?.observacion) } })
+      if (estadoCalidad === 'aprobado') await tx.bodegaTaller.update({ where: { id: bodegaTallerId }, data: { stock: { increment: cantidad } } })
+      return created
+    })
+    return reply.code(201).send(lote)
   })
 }

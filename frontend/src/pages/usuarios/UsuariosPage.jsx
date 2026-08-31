@@ -1,6 +1,6 @@
 import { toast, confirmDialog } from '../../store/notif'
 import { Fragment, useState } from 'react'
-import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table } from '../../components/shared'
+import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, FilterSelect } from '../../components/shared'
 import { useDeleteUsuario, useUsuarios, useCreateUsuario, useUpdateUsuario, useUpdatePermisos } from '../../api/usuarios'
 import { useSucursales } from '../../api/locations'
 import { useAuthStore } from '../../store/auth'
@@ -114,6 +114,77 @@ export default function UsuariosPage() {
   const admins = usuarios.filter(u => u.role === 'admin').length
   const conExtra = usuarios.filter(u => u.permisosExtra).length
 
+  const hasActiveFilters = Boolean(roleFilter || estadoFilter !== 'all' || search)
+
+  const resetAllFilters = () => {
+    setRoleFilter('')
+    setEstadoFilter('all')
+    setSearch('')
+  }
+
+  const roleOptions = [
+    { value: '', label: 'Todos' },
+    ...ROLES.map(r => ({ value: r, label: r })),
+  ]
+
+  const estadoOptions = [
+    { value: 'all', label: 'Todos' },
+    { value: 'activo', label: 'Activos' },
+    { value: 'inactivo', label: 'Inactivos' },
+  ]
+
+  const toolbarExtra = (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', width: '100%', padding: '2px 0' }}>
+      <FilterSelect
+        value={roleFilter}
+        onChange={setRoleFilter}
+        options={roleOptions}
+        placeholder="Nivel"
+        active={Boolean(roleFilter)}
+        minMenuWidth={210}
+      />
+      <FilterSelect
+        value={estadoFilter}
+        onChange={setEstadoFilter}
+        options={estadoOptions}
+        placeholder="Estado"
+        active={estadoFilter !== 'all'}
+        minMenuWidth={160}
+      />
+      {hasActiveFilters && (
+        <button
+          type="button"
+          onClick={resetAllFilters}
+          style={{
+            height: 28,
+            padding: '0 10px',
+            borderRadius: 6,
+            border: '1px solid var(--amber-300, #fcd34d)',
+            background: 'var(--amber-50, #fffbeb)',
+            color: 'var(--amber-900, #78350f)',
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            transition: 'background 0.15s',
+          }}
+        >
+          Limpiar filtros
+        </button>
+      )}
+      <div style={{ marginLeft: 'auto' }}>
+        <SearchBar
+          placeholder="Buscar usuario, RUT, vendedor o sucursal..."
+          value={search}
+          onChange={setSearch}
+          style={{ width: 320, height: 28 }}
+        />
+      </div>
+    </div>
+  )
+
   return (
     <main className="page page-wide">
       <PageHeader
@@ -129,21 +200,18 @@ export default function UsuariosPage() {
         <KpiCard label="Con permisos extra" value={conExtra} icon="settings" tone="amber" sublabel="Granulares" />
       </div>
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <SearchBar placeholder="Buscar usuario, RUT, vendedor o sucursal" value={search} onChange={setSearch} style={{ width: 320 }} />
-          <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} style={inputStyle}>
-            <option value="">Todos los niveles</option>
-            {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-          <select value={estadoFilter} onChange={e => setEstadoFilter(e.target.value)} style={inputStyle}>
-            <option value="all">Todos los estados</option>
-            <option value="activo">Activos</option>
-            <option value="inactivo">Inactivos</option>
-          </select>
-        </div>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={filtered} emptyMessage="Sin usuarios" keyboard onRowDoubleClick={row => setEditing(row)} ariaLabel="Usuarios" getRowKey={row => row.id} />
+          : <Table
+              columns={cols}
+              rows={filtered}
+              emptyMessage="Sin usuarios"
+              keyboard
+              onRowDoubleClick={row => setEditing(row)}
+              ariaLabel="Usuarios"
+              getRowKey={row => row.id}
+              toolbarExtra={toolbarExtra}
+            />
         }
       </div>
 

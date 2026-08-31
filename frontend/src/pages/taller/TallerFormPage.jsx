@@ -586,6 +586,10 @@ function OdtConsumosSection({ odtId }) {
   const [cantidad, setCantidad] = useState('')
   const [taller, setTaller] = useState('')
   const [motivo, setMotivo] = useState('')
+  const [loteId, setLoteId] = useState('')
+  const [calidad, setCalidad] = useState('aprobado')
+  const [mermaCantidad, setMermaCantidad] = useState('')
+  const [mermaMotivo, setMermaMotivo] = useState('')
   const createConsumo = useCreateOdtConsumo()
   const deleteMaterial = useDeleteOdtMaterial()
 
@@ -629,6 +633,10 @@ function OdtConsumosSection({ odtId }) {
       cantidad: parsedCantidad,
       taller: taller.trim() || undefined,
       motivo: motivo.trim() || undefined,
+      loteId: loteId ? Number(loteId) : undefined,
+      calidad,
+      mermaCantidad: mermaCantidad || undefined,
+      mermaMotivo: mermaMotivo.trim() || undefined,
       codigoInterno: consumoCodigo(tipo, selectedItem) || undefined,
       nombre: consumoNombre(tipo, selectedItem) || undefined,
       unidad: consumoUnidad(tipo, selectedItem) || undefined,
@@ -639,6 +647,9 @@ function OdtConsumosSection({ odtId }) {
         setItemId('')
         setCantidad('')
         setMotivo('')
+        setLoteId('')
+        setMermaCantidad('')
+        setMermaMotivo('')
       },
       onError: (error) => toast.error(error?.response?.data?.error || 'Error al registrar consumo'),
     })
@@ -678,6 +689,18 @@ function OdtConsumosSection({ odtId }) {
           <FormField label="Motivo">
             <Input value={motivo} onChange={setMotivo} placeholder="Produccion OT" disabled={createConsumo.isPending} />
           </FormField>
+          {tipo === 'material_taller' && <FormField label="Lote de espuma">
+            <Input type="number" value={loteId} onChange={setLoteId} placeholder="ID lote" disabled={createConsumo.isPending} />
+          </FormField>}
+          {tipo === 'material_taller' && <FormField label="Control calidad">
+            <Select value={calidad} onChange={setCalidad} options={[{ value: 'aprobado', label: 'Aprobado' }, { value: 'reproceso', label: 'Reproceso' }, { value: 'rechazado', label: 'Rechazado' }]} disabled={createConsumo.isPending} />
+          </FormField>}
+          {tipo === 'material_taller' && <FormField label="Merma">
+            <Input type="number" value={mermaCantidad} onChange={setMermaCantidad} placeholder="0" disabled={createConsumo.isPending} />
+          </FormField>}
+          {tipo === 'material_taller' && <FormField label="Motivo merma">
+            <Input value={mermaMotivo} onChange={setMermaMotivo} placeholder="Corte, defecto..." disabled={createConsumo.isPending} />
+          </FormField>}
           <div style={{ marginBottom: 18 }}>
             <button
               type="button"

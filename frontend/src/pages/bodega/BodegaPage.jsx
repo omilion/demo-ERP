@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast, confirmDialog } from '../../store/notif'
-import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs } from '../../components/shared'
+import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Tabs, FilterSelect } from '../../components/shared'
 import { useDeleteProducto, useProductos } from '../../api/productos'
 import { useCategorias } from '../../api/categorias'
 import { useProveedores } from '../../api/proveedores'
@@ -169,52 +169,128 @@ export default function BodegaPage() {
     ? 'Sin acceso'
     : '$' + Math.round(valorInventario / 1_000_000 * 10) / 10 + 'M'
 
+  const hasActiveFilters = Boolean(
+    filter !== 'all' ||
+    visibleWeb !== 'all' ||
+    categoriaId ||
+    subcategoriaId ||
+    estadoInventario ||
+    estadoOperativo ||
+    proveedorId ||
+    ubicacionId ||
+    search
+  )
+
+  const resetAllFilters = () => {
+    setFilter('all')
+    setVisibleWeb('all')
+    setCategoriaId('')
+    setSubcategoriaId('')
+    setEstadoInventario('')
+    setEstadoOperativo('')
+    setProveedorId('')
+    setUbicacionId('')
+    setSearch('')
+    setDebouncedSearch('')
+  }
+
+  const filterOptions = [
+    { value: 'all', label: 'Todos' },
+    { value: 'critico', label: 'Solo críticos' },
+    { value: 'sin-stock', label: 'Sin stock' },
+    { value: 'sin_codigo_barra', label: 'Sin código de barra' },
+    { value: 'sin_codigo_interno', label: 'Sin código interno' },
+    { value: 'sin_categoria', label: 'Sin categoría' },
+    { value: 'sin_proveedor', label: 'Sin proveedor' },
+  ]
+  const categoriaOptions = [
+    { value: '', label: 'Todas' },
+    ...categoriasApi.map(c => ({ value: String(c.id), label: c.nombre })),
+  ]
+  const subcategoriaOptions = [
+    { value: '', label: 'Todas' },
+    ...subcategorias.map(sc => ({ value: String(sc.id), label: sc.nombre })),
+  ]
+  const estadoInventarioOptionsList = [
+    { value: '', label: 'Todos' },
+    ...estadoInventarioOptions.filter(Boolean).map(v => ({ value: v, label: v })),
+  ]
+  const estadoOperativoOptionsList = [
+    { value: '', label: 'Todos' },
+    ...estadoOperativoOptions.filter(Boolean).map(v => ({ value: v, label: v === 'Reserva' ? 'Reservado' : v })),
+  ]
+  const proveedorOptions = [
+    { value: '', label: 'Todos' },
+    ...(proveedoresResult.items || []).map(p => ({ value: String(p.id), label: p.nombre })),
+  ]
+  const ubicacionOptions = [
+    { value: '', label: 'Todas' },
+    ...(ubicacionesResult.items || []).map(u => ({ value: String(u.id), label: u.nombre })),
+  ]
+
   const toolbarExtra = (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <select value={filter} onChange={e => setFilter(e.target.value)} style={selectStyle}>
-          <option value="all">Todos los estados</option>
-          <option value="critico">Solo críticos</option>
-          <option value="sin-stock">Sin stock</option>
-          <option value="sin_codigo_barra">Sin código de barra</option>
-          <option value="sin_codigo_interno">Sin código interno</option>
-          <option value="sin_categoria">Sin categoría</option>
-          <option value="sin_proveedor">Sin proveedor</option>
-        </select>
-        <select value={visibleWeb} onChange={e => setVisibleWeb(e.target.value)} style={selectStyle}>
-          <option value="all">Web: todos</option>
-          <option value="true">Web: si</option>
-          <option value="false">Web: no</option>
-        </select>
-        <select value={categoriaId} onChange={e => { setCategoriaId(e.target.value); setSubcategoriaId('') }} style={selectStyle}>
-          <option value="">Todas las categorías</option>
-          {categoriasApi.map(c => <option key={c.id || c.nombre} value={c.id}>{c.nombre}</option>)}
-        </select>
-        <select value={subcategoriaId} onChange={e => setSubcategoriaId(e.target.value)} style={selectStyle} disabled={!subcategorias.length}>
-          <option value="">Todas las subcategorías</option>
-          {subcategorias.map(sc => <option key={sc.id} value={sc.id}>{sc.nombre}</option>)}
-        </select>
-        <select value={estadoInventario} onChange={e => setEstadoInventario(e.target.value)} style={selectStyle}>
-          <option value="">Estado inventario</option>
-          {estadoInventarioOptions.filter(Boolean).map(v => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select value={estadoOperativo} onChange={e => setEstadoOperativo(e.target.value)} style={selectStyle}>
-          <option value="">Estado operativo</option>
-          {estadoOperativoOptions.filter(Boolean).map(v => <option key={v} value={v}>{v === 'Reserva' ? 'Reservado' : v}</option>)}
-        </select>
-        <select value={proveedorId} onChange={e => setProveedorId(e.target.value)} style={{ ...selectStyle, minWidth: 180 }}>
-          <option value="">Todos los proveedores</option>
-          {(proveedoresResult.items || []).map(p => (
-            <option key={p.id} value={p.id}>{p.nombre}</option>
-          ))}
-        </select>
-        <select value={ubicacionId} onChange={e => setUbicacionId(e.target.value)} style={{ ...selectStyle, minWidth: 170 }}>
-          <option value="">Todas las ubicaciones</option>
-          {(ubicacionesResult.items || []).map(u => (
-            <option key={u.id} value={u.id}>{u.nombre}</option>
-          ))}
-        </select>
-        <SearchBar placeholder="Buscar código, barra o producto..." value={search} onChange={setSearch} style={{ width: 260 }} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', padding: '2px 0' }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <FilterSelect value={filter} onChange={setFilter} options={filterOptions} placeholder="Estado" active={filter !== 'all'} minMenuWidth={200} />
+        <label
+          style={{
+            height: 28,
+            padding: '0 10px',
+            borderRadius: 6,
+            border: visibleWeb === 'true' ? '1px solid var(--green-600, #16a34a)' : '1px solid var(--border)',
+            background: visibleWeb === 'true' ? 'var(--green-50, #f0fdf4)' : '#fff',
+            color: visibleWeb === 'true' ? 'var(--green-800, #166534)' : 'var(--text-2)',
+            fontWeight: visibleWeb === 'true' ? 700 : 500,
+            fontSize: 12,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            userSelect: 'none',
+            boxSizing: 'border-box',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={visibleWeb === 'true'}
+            onChange={e => setVisibleWeb(e.target.checked ? 'true' : 'all')}
+            style={{ accentColor: 'var(--green-600)', width: 14, height: 14, cursor: 'pointer', margin: 0 }}
+          />
+          <span>Solo Web</span>
+        </label>
+        <FilterSelect value={categoriaId} onChange={v => { setCategoriaId(v); setSubcategoriaId('') }} options={categoriaOptions} placeholder="Categorías" active={Boolean(categoriaId)} minMenuWidth={220} />
+        <FilterSelect value={subcategoriaId} onChange={setSubcategoriaId} options={subcategoriaOptions} placeholder="Subcategorías" active={Boolean(subcategoriaId)} minMenuWidth={220} />
+        <FilterSelect value={estadoInventario} onChange={setEstadoInventario} options={estadoInventarioOptionsList} placeholder="Estado inventario" active={Boolean(estadoInventario)} minMenuWidth={180} />
+        <FilterSelect value={estadoOperativo} onChange={setEstadoOperativo} options={estadoOperativoOptionsList} placeholder="Estado operativo" active={Boolean(estadoOperativo)} minMenuWidth={180} />
+        <FilterSelect value={proveedorId} onChange={setProveedorId} options={proveedorOptions} placeholder="Proveedores" active={Boolean(proveedorId)} minMenuWidth={310} />
+        <FilterSelect value={ubicacionId} onChange={setUbicacionId} options={ubicacionOptions} placeholder="Ubicaciones" active={Boolean(ubicacionId)} minMenuWidth={240} />
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={resetAllFilters}
+            style={{
+              height: 28,
+              padding: '0 10px',
+              borderRadius: 6,
+              border: '1px solid var(--amber-300, #fcd34d)',
+              background: 'var(--amber-50, #fffbeb)',
+              color: 'var(--amber-900, #78350f)',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              transition: 'background 0.15s',
+            }}
+          >
+            Limpiar filtros
+          </button>
+        )}
+        <div style={{ marginLeft: 'auto' }}>
+          <SearchBar placeholder="Buscar código, barra o producto..." value={search} onChange={setSearch} style={{ width: 250, height: 28 }} />
+        </div>
       </div>
     </div>
   )

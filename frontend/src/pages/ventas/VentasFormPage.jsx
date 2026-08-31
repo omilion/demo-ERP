@@ -1278,7 +1278,29 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
     })
   }
 
+  const crmOptions = [
+    { value: 'Cotización simple CRM', label: 'Cotización simple CRM' },
+    { value: 'Licitación', label: 'Licitación' },
+    { value: 'Compra Ágil', label: 'Compra Ágil' },
+  ]
+  const currentCrmValue = isSimpleCrmQuote
+    ? 'Cotización simple CRM'
+    : (forceTipo || data.tipo)
+
   async function handleTipoChange(nextTipo) {
+    if (crmMode) {
+      const crmId = searchParams.get('crmId')
+      const query = crmId ? `?crmId=${crmId}` : ''
+      if (nextTipo === 'Cotización simple CRM' || nextTipo === 'cotizacion-simple') {
+        if (!isSimpleCrmQuote) navigate(`/crm/nueva/cotizacion-simple${query}`)
+      } else if (nextTipo === 'Licitación') {
+        if (forceTipo !== 'Licitación') navigate(`/crm/nueva/licitacion${query}`)
+      } else if (nextTipo === 'Compra Ágil') {
+        if (forceTipo !== 'Compra Ágil') navigate(`/crm/nueva/compra-agil${query}`)
+      }
+      return
+    }
+
     if (nextTipo === data.tipo) return
     const hasCommercialData = items.length > 0 || data.descuentoPct !== '' || data.licitacion || data.marketplaceCanal
     if (hasCommercialData) {
@@ -1453,10 +1475,10 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       onCancel={() => navigate(isEdit ? `/ventas/${id}` : crmMode ? '/crm' : '/ventas')}
       typeControl={(
         <Select
-          value={data.tipo}
+          value={crmMode ? currentCrmValue : data.tipo}
           onChange={handleTipoChange}
-          options={crmMode ? [{ value: forceTipo, label: isSimpleCrmQuote ? 'Cotizacion simple CRM' : forceTipo }] : (isEdit ? (TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS]) : TIPOS_VENTA_DIRECTA)}
-          disabled={crmMode}
+          options={crmMode ? crmOptions : (isEdit ? (TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS]) : TIPOS_VENTA_DIRECTA)}
+          disabled={isEdit}
           aria-label="Tipo de venta"
           style={{ backgroundColor: '#fffbeb', borderColor: '#fcd34d', fontWeight: 700, color: '#78350f' }}
         />
@@ -1507,10 +1529,10 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         <FormDivider label="Tipo de Venta" />
       <FormField label="Tipo de Venta">
         <Select
-          value={data.tipo}
+          value={crmMode ? currentCrmValue : data.tipo}
           onChange={handleTipoChange}
-          options={crmMode ? [{ value: forceTipo, label: isSimpleCrmQuote ? 'Cotización simple · Prospección directa' : forceTipo }] : (isEdit ? (TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS]) : TIPOS_VENTA_DIRECTA)}
-          disabled={crmMode}
+          options={crmMode ? crmOptions : (isEdit ? (TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS]) : TIPOS_VENTA_DIRECTA)}
+          disabled={isEdit}
           style={{ 
             backgroundColor: '#fffbeb', // Soft yellow background
             borderColor: '#fcd34d',     // Warm golden border

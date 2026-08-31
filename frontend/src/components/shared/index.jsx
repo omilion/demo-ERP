@@ -260,6 +260,126 @@ export const SearchBar = ({ placeholder, value, onChange, style }) => (
   </div>
 )
 
+// ── FilterSelect ──────────────────────────────────────────────────────────────
+export const FilterSelect = ({ value, onChange, options, placeholder, active, minMenuWidth = 260, maxWidth, style }) => {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [open])
+
+  const isDefault = value === '' || value === 'all'
+  const selectedOption = !isDefault ? options.find(o => String(typeof o === 'string' ? o : o.value) === String(value)) : null
+  const displayLabel = selectedOption
+    ? (typeof selectedOption === 'string' ? selectedOption : selectedOption.label)
+    : (placeholder || (typeof options[0] === 'string' ? options[0] : options[0]?.label) || 'Seleccionar')
+
+  const isFilterActive = active != null ? active : !isDefault
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block', ...style }}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        style={{
+          height: 28,
+          padding: '0 8px 0 10px',
+          borderRadius: 6,
+          border: isFilterActive ? '1px solid var(--green-600, #16a34a)' : '1px solid var(--border)',
+          background: isFilterActive ? 'var(--green-50, #f0fdf4)' : '#fff',
+          color: isFilterActive ? 'var(--green-800, #166534)' : 'var(--text-2)',
+          fontWeight: isFilterActive ? 700 : 500,
+          fontSize: 12,
+          fontFamily: 'inherit',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 6,
+          maxWidth: maxWidth || 'none',
+          boxSizing: 'border-box',
+          whiteSpace: 'nowrap',
+          transition: 'all 0.15s ease',
+        }}
+        title={displayLabel}
+      >
+        <span style={{ whiteSpace: 'nowrap', overflow: maxWidth ? 'hidden' : 'visible', textOverflow: maxWidth ? 'ellipsis' : 'clip' }}>
+          {displayLabel}
+        </span>
+        <Icon name="chevronDown" size={12} style={{ flexShrink: 0, opacity: 0.6, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            minWidth: minMenuWidth,
+            maxWidth: 380,
+            maxHeight: 320,
+            overflowY: 'auto',
+            background: '#fff',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            boxShadow: '0 12px 30px oklch(0 0 0 / 0.16)',
+            zIndex: 999,
+            padding: 4,
+          }}
+        >
+          {options.map((opt) => {
+            const val = typeof opt === 'string' ? opt : opt.value
+            const lbl = typeof opt === 'string' ? opt : opt.label
+            const isSelected = String(value) === String(val)
+            return (
+              <div
+                key={String(val)}
+                onClick={() => {
+                  onChange(val)
+                  setOpen(false)
+                }}
+                style={{
+                  padding: '7px 10px',
+                  fontSize: 12,
+                  fontWeight: isSelected ? 600 : 400,
+                  color: isSelected ? 'var(--green-800, #166534)' : 'var(--text-1)',
+                  background: isSelected ? 'var(--green-50, #f0fdf4)' : 'transparent',
+                  borderRadius: 5,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSelected) e.currentTarget.style.background = 'var(--bg, #f8fafc)'
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected) e.currentTarget.style.background = 'transparent'
+                }}
+              >
+                <span>{lbl}</span>
+                {isSelected && <Icon name="check" size={13} style={{ color: 'var(--green-600)' }} />}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Table ─────────────────────────────────────────────────────────────────────
 const TABLE_ZOOM_KEY = 'plastimar.tableZoom'
 const TABLE_ZOOM_MIN = 0.8
