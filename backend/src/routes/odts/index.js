@@ -28,6 +28,24 @@ export default async function odtsRoutes(fastify) {
   fastify.register(itemWorkflowRoute)
   fastify.register(consumosRoute)
 
+  fastify.get('/meta/centros-costo', {
+    preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
+  }, async () => ({ items: await fastify.prisma.centroCosto.findMany({ where: { activo: true }, orderBy: [{ codigo: 'asc' }, { nombre: 'asc' }] }) }))
+
+  fastify.post('/meta/centros-costo', {
+    preHandler: [fastify.authenticate, fastify.rbac('taller.gestion', 'write')],
+  }, async (request, reply) => {
+    const codigo = String(request.body?.codigo || '').trim()
+    const nombre = String(request.body?.nombre || '').trim()
+    if (!codigo || !nombre) return reply.code(400).send({ error: 'codigo y nombre requeridos' })
+    try {
+      return reply.code(201).send(await fastify.prisma.centroCosto.create({ data: { codigo, nombre, descripcion: String(request.body?.descripcion || '').trim() || null } }))
+    } catch (error) {
+      if (error.code === 'P2002') return reply.code(409).send({ error: 'Ya existe un centro de costo con ese codigo' })
+      throw error
+    }
+  })
+
   fastify.get('/taller-items', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
   }, async (request, reply) => {

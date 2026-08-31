@@ -16,7 +16,8 @@ const Schema = z.object({
   estado: z.enum(ODT_ESTADOS).optional(),
   prioridad: z.string().optional(),
   operarioId: z.number().int().nullable().optional(),
-  ordenId: z.union([z.number().int(), z.string()]).optional(),
+  ordenId: z.union([z.number().int(), z.string()]).nullable().optional(),
+  centroCostoId: z.union([z.number().int(), z.string()]).nullable().optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'El cuerpo no puede estar vacio' })
 
 const LifecycleSchema = z.object({
@@ -71,15 +72,27 @@ export default async function updateOdt(fastify) {
       }
       const current = await fastify.prisma.odt.findFirst({
         where: scopedOdtWhere(id, request.user),
-        select: { id: true, estado: true, operarioId: true, fechaInicio: true, fechaTermino: true, sucursalId: true },
+        select: { id: true, estado: true, operarioId: true, fechaInicio: true, fechaTermino: true, sucursalId: true, ordenId: true, centroCostoId: true },
       })
       if (!current) return reply.code(404).send({ error: 'ODT no encontrada' })
-      if (data.ordenId !== undefined) {
+      if (data.ordenId !== undefined && data.ordenId !== null && data.ordenId !== '') {
         const resolved = await resolveOrdenForWrite(fastify.prisma, { ordenId: data.ordenId }, { user: request.user })
         if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
         data.ordenId = resolved.orden.id
         data.sucursalId = resolved.orden.sucursalId ?? current.sucursalId ?? request.user?.sucursalId ?? null
       }
+      if (data.ordenId === null || data.ordenId === '') data.ordenId = null
+      if (data.centroCostoId !== undefined) {
+        data.centroCostoId = data.centroCostoId === null || data.centroCostoId === '' ? null : Number(data.centroCostoId)
+        if (data.centroCostoId && (!Number.isInteger(data.centroCostoId) || data.centroCostoId < 1)) return reply.code(400).send({ error: 'centroCostoId invalido' })
+        if (data.centroCostoId) {
+          const centro = await fastify.prisma.centroCosto.findFirst({ where: { id: data.centroCostoId, activo: true }, select: { id: true } })
+          if (!centro) return reply.code(400).send({ error: 'Centro de costo no disponible' })
+        }
+      }
+      const ordenFinal = data.ordenId === undefined ? current.ordenId : data.ordenId
+      const centroFinal = data.centroCostoId === undefined ? current.centroCostoId : data.centroCostoId
+      if (!ordenFinal && !centroFinal) return reply.code(400).send({ error: 'centroCostoId requerido para una OT interna' })
       const operario = await validateOperario(fastify.prisma, data.operarioId)
       if (operario?.error) return reply.code(400).send({ error: operario.error })
       if (data.plazo) data.plazo = new Date(data.plazo)

@@ -26,6 +26,22 @@ export const useOdtOperarios = (params = {}) =>
     staleTime: 5 * 60_000,
   })
 
+export const useCentrosCosto = () =>
+  useQuery({
+    queryKey: ['odts', 'centros-costo'],
+    queryFn: () => api.get('/odts/meta/centros-costo').then(r => r.data),
+    placeholderData: { items: [] },
+    staleTime: 60_000,
+  })
+
+export const useCreateCentroCosto = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: data => api.post('/odts/meta/centros-costo', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['odts', 'centros-costo'] }),
+  })
+}
+
 export const useOdtCargaOperarios = () =>
   useQuery({
     queryKey: ['odts', 'carga-operarios'],

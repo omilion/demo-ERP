@@ -166,14 +166,25 @@ describe('POST /api/odts', () => {
     await app.prisma.orden.delete({ where: { id: orden.id } }).catch(() => {})
   })
 
-  it('rejects standalone odts without linked orden', async () => {
+  it('requires a cost center for standalone OTs and creates it when supplied', async () => {
     const res = await app.inject({
       method: 'POST', url: '/api/odts',
       headers: { authorization: `Bearer ${token}` },
       payload: { tipo: 'Espumas', clienteNombre: 'Test Cliente', descripcion: 'Prueba', estado: 'Pendiente' },
     })
     expect(res.statusCode).toBe(400)
-    expect(JSON.parse(res.body).error).toMatch(/ordenId/)
+    expect(JSON.parse(res.body).error).toMatch(/centroCostoId/)
+
+    const centro = await app.prisma.centroCosto.create({ data: { codigo: `TEST-INT-${Date.now()}`, nombre: 'Prueba interna' } })
+    const interna = await app.inject({
+      method: 'POST', url: '/api/odts',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { tipo: 'Espumas', descripcion: 'Trabajo para uso interno', centroCostoId: centro.id },
+    })
+    expect(interna.statusCode).toBe(201)
+    expect(interna.json()).toMatchObject({ ordenId: null, centroCostoId: centro.id, clienteNombre: 'Trabajo interno' })
+    await app.prisma.odt.delete({ where: { id: interna.json().id } })
+    await app.prisma.centroCosto.delete({ where: { id: centro.id } })
   })
 })
 
