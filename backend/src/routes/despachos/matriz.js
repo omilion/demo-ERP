@@ -6,6 +6,7 @@ import {
   GRAFIAS_LICITACION,
   GRAFIAS_VENTA_DIRECTA,
   GRAFIAS_VENTA_SALA,
+  attachEstadoFlujo,
 } from '../ventas/estados-normalize.js'
 
 const LIMIT = 100
@@ -337,7 +338,7 @@ function mapOrderRows(ordenes, { odtsByOrden, cotizByOrden, clientesById }) {
     const odts = odtsByOrden[orden.id] || []
     const cotizaciones = cotizByOrden[orden.id] || []
     const packing = buildPackingResumen(orden.items || [])
-    return {
+    return attachEstadoFlujo({
       id: orden.id,
       ordenId: orden.id,
       nInterno: orden.nInterno,
@@ -402,7 +403,7 @@ function mapOrderRows(ordenes, { odtsByOrden, cotizByOrden, clientesById }) {
       region: despachoPrincipal?.region || sucursal?.region || null,
       comuna: despachoPrincipal?.comuna || sucursal?.comuna || null,
       ciudad: sucursal?.ciudad || null,
-    }
+    })
   })
 }
 

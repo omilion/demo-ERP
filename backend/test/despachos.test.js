@@ -127,6 +127,7 @@ describe('despachos legacy matrix parity', () => {
         nInterno: fixture.orden.nInterno,
         estadoPago: 'No pagada',
         estadoEntrega: 'Pendiente entrega',
+        estadoFlujo: { codigo: 'ACTIVA', label: 'Activa', terminal: false },
         region: 'Region Test',
         comuna: 'Comuna Test',
       })

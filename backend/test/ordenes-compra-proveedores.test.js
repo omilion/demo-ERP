@@ -1,13 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app.js'
 
-async function loginAs(app, role = 'admin') {
-  const res = await app.inject({
-    method: 'POST',
-    url: '/api/auth/login',
-    payload: { email: `${role}@plastimar.cl`, password: 'dev1234' },
+function tokenFor(app, role = 'admin') {
+  return app.jwt.sign({
+    id: 1, role, nombre: `QA ${role}`, permisosExtra: null,
+    scope: 'erp', aud: 'plastimar:erp', tokenType: 'access',
   })
-  return JSON.parse(res.body).accessToken
 }
 
 function testCode(prefix = 'TEST') {
@@ -20,7 +18,7 @@ describe('Módulo de Sugerencias de OC y Órdenes de Compra a Proveedores', () =
   beforeAll(async () => {
     app = buildApp({ logger: false })
     await app.ready()
-    token = await loginAs(app)
+    token = tokenFor(app)
     prisma = app.prisma
 
     // Crear proveedor
@@ -217,5 +215,13 @@ describe('Módulo de Sugerencias de OC y Órdenes de Compra a Proveedores', () =
     expect(mov).toBeDefined()
     expect(mov.tipo).toBe('INGRESO')
     expect(mov.cantidad).toBe(40)
+
+    const tiempos = await app.inject({
+      method: 'GET',
+      url: '/api/ordenes-compra-proveedores/metricas/tiempos',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(tiempos.statusCode).toBe(200)
+    expect(JSON.parse(tiempos.body).ocARecepcion.muestras).toBeGreaterThanOrEqual(1)
   })
 })

@@ -1,6 +1,7 @@
 import { rowsToCsv, sendCsv } from '../../utils/csv.js'
 import { parseDate, parsePagination, parsePositiveInt } from '../operational-utils.js'
 import { calcularSugerenciasOC } from './sugerencias.js'
+import { buildTiemposBodegaKpis } from './metricas.js'
 
 const ESTADOS_VALIDOS = new Set([
   'Borrador',
@@ -180,6 +181,28 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
     } catch (err) {
       fastify.log.error(err)
       return reply.code(500).send({ error: 'Error al listar órdenes de compra: ' + err.message })
+    }
+  })
+
+  // Una OC de proveedor no está relacionada con una venta/despacho. Por eso
+  // exponemos solo las etapas que tienen fechas propias y declaramos la brecha
+  // de trazabilidad, en vez de emparejar productos o fechas por inferencia.
+  fastify.get('/metricas/tiempos', { preHandler: readGuard }, async (request, reply) => {
+    try {
+      const [ordenesCompra, despachos] = await Promise.all([
+        prisma.ordenCompraProveedor.findMany({
+          where: { fechaRecepcion: { not: null } },
+          select: { fechaEmision: true, fechaRecepcion: true },
+        }),
+        prisma.despacho.findMany({
+          where: { eliminado: false, fechaEntrega: { not: null } },
+          select: { createdAt: true, fechaInterno: true, fechaEntrega: true },
+        }),
+      ])
+      return buildTiemposBodegaKpis({ ordenesCompra, despachos })
+    } catch (err) {
+      fastify.log.error(err)
+      return reply.code(500).send({ error: 'Error al calcular tiempos de bodega: ' + err.message })
     }
   })
 
@@ -588,7 +611,7 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
         const nextEstado = allCompleted ? 'Completada' : 'Recepcionada Parcial'
         const updated = await tx.ordenCompraProveedor.update({
           where: { id },
-          data: { estado: nextEstado },
+          data: { estado: nextEstado, ...(oc.fechaRecepcion ? {} : { fechaRecepcion: new Date() }) },
           include: { items: true, proveedor: true },
         })
 

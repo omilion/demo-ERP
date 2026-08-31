@@ -12,13 +12,14 @@ function tokenFor(app, role = 'admin') {
 }
 
 describe('routes /api/facturacion', () => {
-  let app, token
+  let app, token, empresaOriginal
   const qaCafIds = []
 
   beforeAll(async () => {
     app = buildApp({ logger: false })
     await app.ready()
     token = tokenFor(app)
+    empresaOriginal = await app.prisma.factEmpresa.findUnique({ where: { id: 1 } })
   })
 
   afterAll(async () => {
@@ -27,6 +28,7 @@ describe('routes /api/facturacion', () => {
       await app.prisma.factFolioAjuste.deleteMany({ where: { cafId: { in: qaCafIds } } })
       await app.prisma.factCaf.deleteMany({ where: { id: { in: qaCafIds } } })
     }
+    if (empresaOriginal) await app.prisma.factEmpresa.update({ where: { id: 1 }, data: empresaOriginal })
     await app.close()
   })
 
@@ -177,6 +179,10 @@ describe('routes /api/facturacion', () => {
   })
 
   it('rechaza reanudar un CAF de certificacion anterior a la resolucion vigente', async () => {
+    await app.prisma.factEmpresa.update({
+      where: { id: 1 },
+      data: { ambiente: 'certificacion', fchResol: '2026-07-01' },
+    })
     const caf = await app.prisma.factCaf.create({
       data: {
         tipoDte: 43,

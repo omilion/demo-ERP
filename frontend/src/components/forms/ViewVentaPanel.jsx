@@ -50,8 +50,22 @@ const ESTADO_TONE = {
   Parcial: 'amber', 'En despacho': 'amber',
   'No pagada': 'red', 'Pendiente entrega': 'red',
 }
+const ESTADO_FLUJO_TONE = {
+  CERRADA: 'green',
+  ANULADA: 'red',
+  EN_DESPACHO: 'blue',
+  ENTREGA_PARCIAL: 'amber',
+  ENTREGADA_PENDIENTE_PAGO: 'amber',
+  PAGO_PARCIAL: 'amber',
+  PAGO_WEBPAY_PENDIENTE: 'amber',
+  PAGO_WEBPAY_RECHAZADO: 'red',
+}
 function EstadoBadge({ v }) {
   return <Badge tone={ESTADO_TONE[v] ?? 'gray'}>{v || '—'}</Badge>
+}
+function EstadoFlujoBadge({ estado }) {
+  if (!estado) return <EstadoBadge v="—" />
+  return <Badge tone={ESTADO_FLUJO_TONE[estado.codigo] ?? 'gray'}>{estado.label}</Badge>
 }
 
 const ODT_TONE = { Prioritaria: 'red', 'En proceso': 'blue', Pendiente: 'amber', Terminada: 'green' }
@@ -113,11 +127,11 @@ function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespac
       </div>
 
       {/* Estados */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 14 }}>
-        {[['Pago', v.estadoPago], ['Entrega', v.estadoEntrega], ['Estado', v.estado]].map(([label, val], i) => (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 14 }}>
+        {[['Pago', v.estadoPago], ['Entrega', v.estadoEntrega], ['Estado', v.estado], ['Flujo', v.estadoFlujo]].map(([label, val], i) => (
           <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', textAlign: 'center', border: '1px solid var(--border)' }}>
             <div style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 5 }}>{label}</div>
-            <EstadoBadge v={val} />
+            {label === 'Flujo' ? <EstadoFlujoBadge estado={val} /> : <EstadoBadge v={val} />}
           </div>
         ))}
       </div>

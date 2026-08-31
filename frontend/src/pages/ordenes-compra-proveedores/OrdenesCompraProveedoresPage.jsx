@@ -8,6 +8,7 @@ import {
   useEnviarOCProveedor,
   useRecepcionarOCProveedor,
   useCreateOCProveedor,
+  useTiemposBodega,
 } from '../../api/ordenesCompraProveedores'
 import { useProveedores } from '../../api/proveedores'
 import { useProductos } from '../../api/productos'
@@ -25,6 +26,10 @@ function formatDate(iso) {
   if (!iso) return '-'
   const d = new Date(iso)
   return isNaN(d.getTime()) ? '-' : d.toLocaleDateString('es-CL')
+}
+
+function formatDays(value) {
+  return value == null ? '—' : `${Number(value).toLocaleString('es-CL', { maximumFractionDigits: 1 })} días`
 }
 
 function estadoBadgeTone(estado) {
@@ -61,6 +66,7 @@ export default function OrdenesCompraProveedoresPage({ embedded = false }) {
   }, [search, estado, proveedorId])
 
   const { data = { items: [], total: 0, kpis: {} }, isLoading } = useOrdenesCompraProveedores(queryParams)
+  const { data: tiemposBodega = {} } = useTiemposBodega()
   const { data: proveedoresData = { items: [] } } = useProveedores()
   const proveedoresList = proveedoresData.items || []
 
@@ -365,6 +371,26 @@ export default function OrdenesCompraProveedoresPage({ embedded = false }) {
               onClick={() => setEstado('Enviada a Proveedor')}
             />
           </div>
+
+          <div className="kpi-strip" style={{ marginBottom: 8 }}>
+            <KpiCard
+              label="OC → recepción"
+              value={formatDays(tiemposBodega.ocARecepcion?.promedioDias)}
+              icon="clock"
+              tone="blue"
+              sublabel={`${tiemposBodega.ocARecepcion?.muestras ?? 0} OCs con ambas fechas`}
+            />
+            <KpiCard
+              label="Interno → despacho entregado"
+              value={formatDays(tiemposBodega.internoADespacho?.promedioDias)}
+              icon="truck"
+              tone="green"
+              sublabel={`${tiemposBodega.internoADespacho?.muestras ?? 0} despachos con ambas fechas`}
+            />
+          </div>
+          <p style={{ margin: '0 0 16px', color: 'var(--text-3)', fontSize: 12 }}>
+            El tiempo completo OC → recepción → interno → despacho se habilitará cuando exista una relación explícita entre la compra al proveedor y la venta despachada.
+          </p>
 
           {/* Tabla de Órdenes */}
           <div style={{

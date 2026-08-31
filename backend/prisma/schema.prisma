@@ -10,26 +10,26 @@ datasource db {
 // ── AUTH ──────────────────────────────────────────────────────────────
 
 model User {
-  id                   Int             @id @default(autoincrement())
-  email                String          @unique
-  passwordHash         String          @map("password_hash")
-  role                 Role
-  nombre               String
-  rut                  String?
-  codigoVendedor       String?         @unique @map("codigo_vendedor")
-  cargo                String?
-  permisoDescuentos    Boolean         @default(false) @map("permiso_descuentos")
-  permisoAprobarDescuentos Boolean      @default(false) @map("permiso_aprobar_descuentos")
-  permisosExtra        Json?           @map("permisos_extra")
-  sucursalId           Int?            @map("sucursal_id")
-  activo               Boolean         @default(true)
-  createdAt            DateTime        @default(now()) @map("created_at")
-  sessions             Session[]
-  accesos              AccesoLog[]
-  comisionReglas       ComisionRegla[]
-  odtResponsabilidades OdtItemTaller[] @relation("OdtResponsable")
-  trabajador           Trabajador?     @relation("TrabajadorUsuario")
-  reglasDescuentoCreadas DescuentoRegla[] @relation("DescuentoReglaCreadaPor")
+  id                         Int              @id @default(autoincrement())
+  email                      String           @unique
+  passwordHash               String           @map("password_hash")
+  role                       Role
+  nombre                     String
+  rut                        String?
+  codigoVendedor             String?          @unique @map("codigo_vendedor")
+  cargo                      String?
+  permisoDescuentos          Boolean          @default(false) @map("permiso_descuentos")
+  permisoAprobarDescuentos   Boolean          @default(false) @map("permiso_aprobar_descuentos")
+  permisosExtra              Json?            @map("permisos_extra")
+  sucursalId                 Int?             @map("sucursal_id")
+  activo                     Boolean          @default(true)
+  createdAt                  DateTime         @default(now()) @map("created_at")
+  sessions                   Session[]
+  accesos                    AccesoLog[]
+  comisionReglas             ComisionRegla[]
+  odtResponsabilidades       OdtItemTaller[]  @relation("OdtResponsable")
+  trabajador                 Trabajador?      @relation("TrabajadorUsuario")
+  reglasDescuentoCreadas     DescuentoRegla[] @relation("DescuentoReglaCreadaPor")
   reglasDescuentoModificadas DescuentoRegla[] @relation("DescuentoReglaModificadaPor")
 
   @@index([codigoVendedor])
@@ -635,16 +635,16 @@ model CobranzaHistorico {
 }
 
 model CobranzaGestion {
-  id                   Int      @id @default(autoincrement())
-  ordenId              Int?     @map("orden_id")
-  cobranzaHistoricoId  Int?     @map("cobranza_historico_id")
-  tipo                 String
-  canal                String?
-  resultado            String?
-  detalle              String
-  usuarioId            Int?     @map("usuario_id")
-  usuarioNombre        String?  @map("usuario_nombre")
-  createdAt            DateTime @default(now()) @map("created_at")
+  id                  Int      @id @default(autoincrement())
+  ordenId             Int?     @map("orden_id")
+  cobranzaHistoricoId Int?     @map("cobranza_historico_id")
+  tipo                String
+  canal               String?
+  resultado           String?
+  detalle             String
+  usuarioId           Int?     @map("usuario_id")
+  usuarioNombre       String?  @map("usuario_nombre")
+  createdAt           DateTime @default(now()) @map("created_at")
 
   @@index([ordenId, createdAt])
   @@index([cobranzaHistoricoId, createdAt])
@@ -653,19 +653,19 @@ model CobranzaGestion {
 }
 
 model CobranzaCompromisoPago {
-  id                   Int       @id @default(autoincrement())
-  gestionId            Int?      @unique @map("gestion_id")
-  ordenId              Int?      @map("orden_id")
-  cobranzaHistoricoId  Int?      @map("cobranza_historico_id")
-  fechaCompromiso      DateTime   @map("fecha_compromiso")
-  monto                Float
-  estado               String    @default("PENDIENTE")
-  observacion          String?
-  usuarioId            Int?      @map("usuario_id")
-  usuarioNombre        String?   @map("usuario_nombre")
-  cumplidoAt           DateTime? @map("cumplido_at")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  id                  Int       @id @default(autoincrement())
+  gestionId           Int?      @unique @map("gestion_id")
+  ordenId             Int?      @map("orden_id")
+  cobranzaHistoricoId Int?      @map("cobranza_historico_id")
+  fechaCompromiso     DateTime  @map("fecha_compromiso")
+  monto               Float
+  estado              String    @default("PENDIENTE")
+  observacion         String?
+  usuarioId           Int?      @map("usuario_id")
+  usuarioNombre       String?   @map("usuario_nombre")
+  cumplidoAt          DateTime? @map("cumplido_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
   @@index([estado, fechaCompromiso])
   @@index([ordenId])
@@ -675,25 +675,25 @@ model CobranzaCompromisoPago {
 }
 
 model CobranzaCartolaMovimiento {
-  id                   Int       @id @default(autoincrement())
-  fingerprint          String    @unique
-  fecha                DateTime
-  descripcion          String
-  referencia           String?
-  monto                Float
-  moneda               String    @default("CLP")
-  banco                String?
-  cuenta               String?
-  estado               String    @default("PENDIENTE")
-  ordenId              Int?      @map("orden_id")
-  cobranzaHistoricoId  Int?      @map("cobranza_historico_id")
-  movimientoCajaId     Int?      @map("movimiento_caja_id")
-  conciliadoPorId      Int?      @map("conciliado_por_id")
-  conciliadoPorNombre  String?   @map("conciliado_por_nombre")
-  conciliadoAt         DateTime? @map("conciliado_at")
-  observacion          String?
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  id                  Int       @id @default(autoincrement())
+  fingerprint         String    @unique
+  fecha               DateTime
+  descripcion         String
+  referencia          String?
+  monto               Float
+  moneda              String    @default("CLP")
+  banco               String?
+  cuenta              String?
+  estado              String    @default("PENDIENTE")
+  ordenId             Int?      @map("orden_id")
+  cobranzaHistoricoId Int?      @map("cobranza_historico_id")
+  movimientoCajaId    Int?      @map("movimiento_caja_id")
+  conciliadoPorId     Int?      @map("conciliado_por_id")
+  conciliadoPorNombre String?   @map("conciliado_por_nombre")
+  conciliadoAt        DateTime? @map("conciliado_at")
+  observacion         String?
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
   @@index([estado, fecha])
   @@index([ordenId])
@@ -991,54 +991,54 @@ model HistorialEmail {
 }
 
 model CrmRegistro {
-  id                     Int                  @id @default(autoincrement())
-  ncotizacion            String?              @map("n_cotizacion")
+  id                     Int                   @id @default(autoincrement())
+  ncotizacion            String?               @map("n_cotizacion")
   fecha                  DateTime?
   accion                 String?
-  competencia            Boolean              @default(false)
-  fechaProximo           DateTime?            @map("fecha_proximo")
+  competencia            Boolean               @default(false)
+  fechaProximo           DateTime?             @map("fecha_proximo")
   prioridad              String?
   rut                    String?
   nombre                 String?
-  rsocial                String?              @map("r_social")
+  rsocial                String?               @map("r_social")
   email                  String?
   telefono               String?
   ejecutiva              String?
-  fechaCotizacion        DateTime?            @map("fecha_cotizacion")
+  fechaCotizacion        DateTime?             @map("fecha_cotizacion")
   resultado              String?
   comentarios            String?
   estado                 String?
   usuario                String?
-  vendedorId             Int?                 @map("vendedor_id")
-  asignadoAt             DateTime?            @map("asignado_at")
-  asignacionOrigen       String?              @map("asignacion_origen")
-  etapaComercial         String?              @map("etapa_comercial")
-  subestadoEspera        String?              @map("subestado_espera")
-  canalVenta             String?              @map("canal_venta")
-  tipoVenta              String?              @map("tipo_venta")
-  resultadoCierre        String?              @map("resultado_cierre")
-  motivoPerdida          String?              @map("motivo_perdida")
-  motivoPerdidaDetalle   String?              @map("motivo_perdida_detalle")
-  ultimaGestionAt        DateTime?            @map("ultima_gestion_at")
-  estadoCambiadoAt       DateTime?            @map("estado_cambiado_at")
-  ventaAprobadaAt        DateTime?            @map("venta_aprobada_at")
-  cerradoAt              DateTime?            @map("cerrado_at")
-  confirmacionTipo       String?              @map("confirmacion_tipo")
-  confirmacionReferencia String?              @map("confirmacion_referencia")
-  clienteId              Int?                 @map("cliente_id")
-  ordenId                Int?                 @map("orden_id")
-  ordenCompraOnlineId    Int?                 @unique @map("orden_compra_online_id")
-  cotizacionLicitacionId Int?                @unique @map("cotizacion_licitacion_id")
-  origenDato             String?              @map("origen_dato")
-  codigoVendedorLegacy   String?              @map("codigo_vendedor_legacy")
-  esHistorico            Boolean              @default(false) @map("es_historico")
-  createdAt              DateTime             @default(now()) @map("created_at")
-  updatedAt              DateTime             @updatedAt @map("updated_at")
-  cliente                Cliente?             @relation(fields: [clienteId], references: [id], onDelete: SetNull)
-  orden                  Orden?               @relation(fields: [ordenId], references: [id], onDelete: SetNull)
-  ordenCompraOnline      OrdenCompraOnline?   @relation("CrmOcOnlineSource", fields: [ordenCompraOnlineId], references: [id], onDelete: SetNull)
+  vendedorId             Int?                  @map("vendedor_id")
+  asignadoAt             DateTime?             @map("asignado_at")
+  asignacionOrigen       String?               @map("asignacion_origen")
+  etapaComercial         String?               @map("etapa_comercial")
+  subestadoEspera        String?               @map("subestado_espera")
+  canalVenta             String?               @map("canal_venta")
+  tipoVenta              String?               @map("tipo_venta")
+  resultadoCierre        String?               @map("resultado_cierre")
+  motivoPerdida          String?               @map("motivo_perdida")
+  motivoPerdidaDetalle   String?               @map("motivo_perdida_detalle")
+  ultimaGestionAt        DateTime?             @map("ultima_gestion_at")
+  estadoCambiadoAt       DateTime?             @map("estado_cambiado_at")
+  ventaAprobadaAt        DateTime?             @map("venta_aprobada_at")
+  cerradoAt              DateTime?             @map("cerrado_at")
+  confirmacionTipo       String?               @map("confirmacion_tipo")
+  confirmacionReferencia String?               @map("confirmacion_referencia")
+  clienteId              Int?                  @map("cliente_id")
+  ordenId                Int?                  @map("orden_id")
+  ordenCompraOnlineId    Int?                  @unique @map("orden_compra_online_id")
+  cotizacionLicitacionId Int?                  @unique @map("cotizacion_licitacion_id")
+  origenDato             String?               @map("origen_dato")
+  codigoVendedorLegacy   String?               @map("codigo_vendedor_legacy")
+  esHistorico            Boolean               @default(false) @map("es_historico")
+  createdAt              DateTime              @default(now()) @map("created_at")
+  updatedAt              DateTime              @updatedAt @map("updated_at")
+  cliente                Cliente?              @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  orden                  Orden?                @relation(fields: [ordenId], references: [id], onDelete: SetNull)
+  ordenCompraOnline      OrdenCompraOnline?    @relation("CrmOcOnlineSource", fields: [ordenCompraOnlineId], references: [id], onDelete: SetNull)
   cotizacionLicitacion   CotizacionLicitacion? @relation("CrmLicitacionSource", fields: [cotizacionLicitacionId], references: [id], onDelete: SetNull)
-  cotizacionComercial    CrmCotizacion?       @relation("CrmRegistroCotizacion")
+  cotizacionComercial    CrmCotizacion?        @relation("CrmRegistroCotizacion")
   gestiones              CrmGestion[]
   estadosHistorial       CrmEstadoHistorial[]
 
@@ -1057,43 +1057,43 @@ model CrmRegistro {
 // Cotizacion comercial creada desde CRM. Es deliberadamente independiente de
 // Orden: una Orden entra a Matriz solo cuando la oportunidad es aprobada.
 model CrmCotizacion {
-  id                     Int                  @id @default(autoincrement())
-  crmId                  Int                  @unique @map("crm_id")
-  tipo                   String
-  clienteSucursalId      Int?                 @map("cliente_sucursal_id")
-  vendedorId             Int?                 @map("vendedor_id")
-  licitacion             String?
-  licitacionFecha        DateTime?            @map("licitacion_fecha")
-  licitacionPlazo        String?              @map("licitacion_plazo")
-  licitacionReferencia   String?              @map("licitacion_referencia")
-  licitacionOC           String?              @map("licitacion_oc")
-  observaciones          String?
-  descuentoPct           Float                @default(0) @map("descuento_pct")
-  enviosParciales        Boolean              @default(false) @map("envios_parciales")
-  montoDespacho          Float                @default(0) @map("monto_despacho")
-  fechaPlazo             DateTime?            @map("fecha_plazo")
-  plazoEntregaDias       Int?                 @map("plazo_entrega_dias")
-  plazoEntregaTipo       String?              @map("plazo_entrega_tipo")
-  direccionDespacho      String?              @map("direccion_despacho")
-  direccionDespachoExtra String?              @map("direccion_despacho_extra")
-  contactoDespacho       String?              @map("contacto_despacho")
-  telefonoContactoDespacho String?            @map("telefono_contacto_despacho")
-  emailContactoDespacho  String?              @map("email_contacto_despacho")
-  regionDespacho         String?              @map("region_despacho")
-  comunaDespacho         String?              @map("comuna_despacho")
-  createdAt              DateTime             @default(now()) @map("created_at")
-  updatedAt              DateTime             @updatedAt @map("updated_at")
+  id                        Int                    @id @default(autoincrement())
+  crmId                     Int                    @unique @map("crm_id")
+  tipo                      String
+  clienteSucursalId         Int?                   @map("cliente_sucursal_id")
+  vendedorId                Int?                   @map("vendedor_id")
+  licitacion                String?
+  licitacionFecha           DateTime?              @map("licitacion_fecha")
+  licitacionPlazo           String?                @map("licitacion_plazo")
+  licitacionReferencia      String?                @map("licitacion_referencia")
+  licitacionOC              String?                @map("licitacion_oc")
+  observaciones             String?
+  descuentoPct              Float                  @default(0) @map("descuento_pct")
+  enviosParciales           Boolean                @default(false) @map("envios_parciales")
+  montoDespacho             Float                  @default(0) @map("monto_despacho")
+  fechaPlazo                DateTime?              @map("fecha_plazo")
+  plazoEntregaDias          Int?                   @map("plazo_entrega_dias")
+  plazoEntregaTipo          String?                @map("plazo_entrega_tipo")
+  direccionDespacho         String?                @map("direccion_despacho")
+  direccionDespachoExtra    String?                @map("direccion_despacho_extra")
+  contactoDespacho          String?                @map("contacto_despacho")
+  telefonoContactoDespacho  String?                @map("telefono_contacto_despacho")
+  emailContactoDespacho     String?                @map("email_contacto_despacho")
+  regionDespacho            String?                @map("region_despacho")
+  comunaDespacho            String?                @map("comuna_despacho")
+  createdAt                 DateTime               @default(now()) @map("created_at")
+  updatedAt                 DateTime               @updatedAt @map("updated_at")
   // Aceptacion del cliente (CU-06). Se guarda contra que version acepto: si
   // despues se edita la cotizacion, queda a la vista que lo aceptado cambio.
-  aceptadaAt             DateTime?            @map("aceptada_at")
-  aceptadaVersion        Int?                 @map("aceptada_version")
-  aceptadaPor            String?              @map("aceptada_por")
-  aceptacionMedio        String?              @map("aceptacion_medio")
-  aceptacionReferencia   String?              @map("aceptacion_referencia")
-  aceptacionRegistradaPorId Int?              @map("aceptacion_registrada_por_id")
-  crm                    CrmRegistro          @relation("CrmRegistroCotizacion", fields: [crmId], references: [id], onDelete: Cascade)
-  items                  CrmCotizacionItem[]
-  versiones              CrmCotizacionVersion[]
+  aceptadaAt                DateTime?              @map("aceptada_at")
+  aceptadaVersion           Int?                   @map("aceptada_version")
+  aceptadaPor               String?                @map("aceptada_por")
+  aceptacionMedio           String?                @map("aceptacion_medio")
+  aceptacionReferencia      String?                @map("aceptacion_referencia")
+  aceptacionRegistradaPorId Int?                   @map("aceptacion_registrada_por_id")
+  crm                       CrmRegistro            @relation("CrmRegistroCotizacion", fields: [crmId], references: [id], onDelete: Cascade)
+  items                     CrmCotizacionItem[]
+  versiones                 CrmCotizacionVersion[]
 
   @@index([tipo])
   @@map("crm_cotizaciones")
@@ -1101,17 +1101,17 @@ model CrmCotizacion {
 }
 
 model CrmCotizacionItem {
-  id              Int             @id @default(autoincrement())
-  cotizacionId    Int             @map("cotizacion_id")
-  productoId      Int             @map("producto_id")
-  codigoInterno   String?         @map("codigo_interno")
+  id              Int           @id @default(autoincrement())
+  cotizacionId    Int           @map("cotizacion_id")
+  productoId      Int           @map("producto_id")
+  codigoInterno   String?       @map("codigo_interno")
   nombre          String?
   descripcion     String?
   cantidad        Int
   // null = adjudicacion no registrada (se vende lo cotizado); 0 = no adjudicada.
-  cantAdjudicados Int?            @map("cant_adjudicados")
-  precioUnitario  Float           @map("precio_unitario")
-  cotizacion      CrmCotizacion   @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+  cantAdjudicados Int?          @map("cant_adjudicados")
+  precioUnitario  Float         @map("precio_unitario")
+  cotizacion      CrmCotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
 
   @@index([cotizacionId])
   @@index([productoId])
@@ -1793,10 +1793,10 @@ model MovimientoBodega {
   cantidad        Int
   stockAnterior   Int?           @map("stock_anterior")
   stockPosterior  Int?           @map("stock_posterior")
-  reservadoDelta Int             @default(0) @map("reservado_delta")
-  danadoDelta     Int             @default(0) @map("danado_delta")
-  reservadoFinal Int?            @map("reservado_final")
-  danadoFinal     Int?            @map("danado_final")
+  reservadoDelta  Int            @default(0) @map("reservado_delta")
+  danadoDelta     Int            @default(0) @map("danado_delta")
+  reservadoFinal  Int?           @map("reservado_final")
+  danadoFinal     Int?           @map("danado_final")
   motivo          String
   userId          Int            @map("user_id")
   ordenId         Int?           @map("orden_id")
@@ -2055,6 +2055,7 @@ model OrdenCompraProveedor {
   aprobadorId           Int?                       @map("aprobador_id")
   aprobadorNombre       String?                    @map("aprobador_nombre")
   fechaAprobacion       DateTime?                  @map("fecha_aprobacion")
+  fechaRecepcion        DateTime?                  @map("fecha_recepcion")
   createdAt             DateTime                   @default(now()) @map("created_at")
   updatedAt             DateTime                   @updatedAt @map("updated_at")
   items                 OrdenCompraProveedorItem[]
@@ -2063,6 +2064,7 @@ model OrdenCompraProveedor {
   @@index([proveedorId])
   @@index([estado])
   @@index([fechaEmision])
+  @@index([fechaRecepcion])
   @@map("ordenes_compra_proveedores")
   @@schema("bodega")
 }
