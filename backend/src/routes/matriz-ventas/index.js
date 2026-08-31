@@ -5,7 +5,7 @@ import { parseDate, parsePage, parsePositiveInt } from '../operational-utils.js'
 import { computeVentaFinancialState } from '../ventas/financial.js'
 import { deriveEstadoFlujo, GRAFIAS_CONVENIO_MARCO, TIPOS_VENTA_MOSTRADOR, grafiasDeTipoVenta } from '../ventas/estados-normalize.js'
 import { transitionEstadoFlujoFormal } from '../ventas/estado-flujo-formal.js'
-import { deriveEstadoLogistico } from '../despachos/estado-logistico.js'
+import { deriveEstadoLogistico, resumenPreparacion } from '../despachos/estado-logistico.js'
 
 const LIMIT = 100
 const MAX_PAGE_SIZE = 500
@@ -403,14 +403,15 @@ async function getOrdenRowsByWhere(fastify, where) {
   })
   const ruts = [...new Set(ordenes.map(o => o.rutCliente).filter(Boolean))]
   const ordenIds = ordenes.map(o => o.id)
-  const [clientesArr, odtsArr, cotizArr, guiasArr, movsArr, multasArr, despachosArr] = await Promise.all([
+  const allProductIds = [...new Set(ordenes.flatMap(o => (o.items || []).map(i => i.productoId)).filter(Boolean))]
+  const [clientesArr, odtsArr, cotizArr, guiasArr, movsArr, multasArr, despachosArr, productosArr] = await Promise.all([
     ruts.length ? fastify.prisma.cliente.findMany({
       where: { rut: { in: ruts } },
       select: { rut: true, razonSocial: true, nombre: true, email: true, conflictivo: true, conflictivoDetalle: true },
     }) : [],
     ordenIds.length ? fastify.prisma.odt.findMany({
       where: { ordenId: { in: ordenIds }, eliminado: false },
-      select: { id: true, ordenId: true, estado: true },
+      include: { items: { where: { eliminado: false }, include: { talleres: true } } },
     }) : [],
     ordenIds.length ? fastify.prisma.cotizacionLicitacion.findMany({
       where: { ordenId: { in: ordenIds } },
@@ -448,9 +449,14 @@ async function getOrdenRowsByWhere(fastify, where) {
       select: { id: true, ordenId: true, createdAt: true, fechaEntrega: true, tipoDespacho: true, transporte: true, parcial: true, tieneMulta: true },
       orderBy: { createdAt: 'desc' },
     }) : [],
+    allProductIds.length ? fastify.prisma.producto.findMany({
+      where: { id: { in: allProductIds } },
+      select: { id: true, estadoInventario: true },
+    }) : [],
   ])
   const clienteMap = Object.fromEntries(clientesArr.map(c => [c.rut, c]))
-  const odtMap = {}; for (const o of odtsArr) (odtMap[o.ordenId] ||= []).push({ id: o.id, estado: o.estado })
+  const productoInvMap = new Map(productosArr.map(p => [p.id, p.estadoInventario]))
+  const odtMap = {}; for (const o of odtsArr) (odtMap[o.ordenId] ||= []).push(o)
   const guiaIds = guiasArr.map(guia => guia.id)
   const despachoIds = despachosArr.map(despacho => despacho.id)
   const [dtesGuias, trackingArr] = await Promise.all([
@@ -488,12 +494,14 @@ async function getOrdenRowsByWhere(fastify, where) {
     const ncTotal = documentos.filter(isNcMovimiento).reduce((s, d) => s + signedAmount(d), 0)
     const ndTotal = documentos.filter(isNdMovimiento).reduce((s, d) => s + signedAmount(d), 0)
     const cliente = clienteMap[o.rutCliente] || null
-    const abono = financialState.abono
-    const saldo = financialState.saldo
     const odts = odtMap[o.id] || []
     const guias = guiasMap[o.id] || []
     const despachos = despachosMap[o.id] || []
-    const estadoLogistico = deriveEstadoLogistico({ items: o.items || [], despachos, guias, tracking: trackingByOrden.get(o.id) || null })
+    const itemsWithInv = (o.items || []).map(i => ({ ...i, estadoInventario: productoInvMap.get(i.productoId) }))
+    const preparacion = resumenPreparacion(itemsWithInv, odts)
+    const estadoLogistico = deriveEstadoLogistico({ items: itemsWithInv, preparacion, despachos, guias, tracking: trackingByOrden.get(o.id) || null })
+    const abono = financialState.abono
+    const saldo = financialState.saldo
     const documentosLegacy = documentos.map(documentoResumen).join(' | ')
     return {
       fuente: 'orden',

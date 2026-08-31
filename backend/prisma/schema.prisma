@@ -1871,6 +1871,7 @@ model GuiaDespacho {
   origenTipo        String?         @map("origen_tipo")
   origenId          Int?            @map("origen_id")
   despachoId        Int?            @map("despacho_id")
+  items             Json?           @default("[]")
   eliminado         Boolean         @default(false)
   userMod           String?         @map("user_mod")
   fecham            DateTime?
@@ -1880,6 +1881,7 @@ model GuiaDespacho {
   odt               Odt?            @relation(fields: [odtId], references: [id], onDelete: SetNull)
   despacho          Despacho?       @relation(fields: [despachoId], references: [id], onDelete: SetNull)
   packingEventos    PackingEvento[]
+  documentos        FactDocumento[]
 
   @@index([nInterno])
   @@index([ordenId])
@@ -1909,6 +1911,11 @@ model Despacho {
   emailContacto     String?                  @map("email_contacto")
   region            String?
   comuna            String?
+  ciudad            String?
+  receptorRut       String?                  @map("receptor_rut")
+  receptorRazonSocial String?                @map("receptor_razon_social")
+  receptorGiro      String?                  @map("receptor_giro")
+  items             Json?                    @default("[]")
   parcial           Boolean                  @default(false)
   tieneMulta        Boolean                  @default(false) @map("tiene_multa")
   origenTipo        String?                  @map("origen_tipo")
@@ -2668,12 +2675,14 @@ model FactDocumento {
   trackId        String?  @map("track_id")
   ambiente       String?
   xml            String?
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  guiaDespacho   GuiaDespacho? @relation(fields: [guiaDespachoId], references: [id], onDelete: SetNull)
 
   @@index([tipoDte, folio])
   @@index([clienteId])
   @@index([ordenId])
+  @@index([guiaDespachoId])
   @@map("documentos")
   @@schema("facturacion")
 }

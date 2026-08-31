@@ -127,14 +127,30 @@ function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespac
       </div>
 
       {/* Estados */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 14 }}>
-        {[['Pago', v.estadoPago], ['Entrega', v.estadoEntrega], ['Estado', v.estado], ['Flujo', v.estadoFlujo]].map(([label, val], i) => (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8, marginBottom: 14 }}>
+        {[['Pago', v.estadoPago], ['Entrega', v.estadoEntrega], ['Logística', v.estadoLogistico?.label || '—', v.estadoLogistico?.tone], ['Estado', v.estado], ['Flujo', v.estadoFlujo]].map(([label, val, customTone], i) => (
           <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', textAlign: 'center', border: '1px solid var(--border)' }}>
             <div style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 5 }}>{label}</div>
-            {label === 'Flujo' ? <EstadoFlujoBadge estado={val} /> : <EstadoBadge v={val} />}
+            {label === 'Flujo' ? <EstadoFlujoBadge estado={val} /> : (label === 'Logística' ? <Badge tone={customTone || 'gray'}>{val}</Badge> : <EstadoBadge v={val} />)}
           </div>
         ))}
       </div>
+
+      {/* Resumen de Preparación Logística */}
+      {v.preparacion && (
+        <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, border: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>Preparación Bodega:</span>
+          {Number(v.preparacion.disponibleInventario || 0) > 0 && (
+            <Badge tone="blue">Stock: {v.preparacion.disponibleInventario} u.</Badge>
+          )}
+          {Number(v.preparacion.disponibleTaller || 0) > 0 && (
+            <Badge tone="green">Taller Listo: {v.preparacion.disponibleTaller} u.</Badge>
+          )}
+          {Number(v.preparacion.pendienteTaller || 0) > 0 && (
+            <Badge tone="amber">Taller Pendiente: {v.preparacion.pendienteTaller} u.</Badge>
+          )}
+        </div>
+      )}
 
       {/* Líneas */}
       {items.length > 0 && (

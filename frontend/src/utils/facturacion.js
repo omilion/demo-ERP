@@ -53,11 +53,6 @@ export const hasActiveSalesDte = (dtes = []) => dtes.some(doc =>
   && !['borrador', 'rechazado', 'error', 'anulado'].includes(doc.estado)
 )
 
-// Catalogo TpoDocRef del SII para el bloque <Referencia>: los tipos de DTE
-// que Plastimar emite (mismos codigos que TIPOS_DTE) mas los codigos no-DTE
-// mas usados (orden de compra del cliente, etc.). Numeracion 801-806
-// verificada 2026-07 contra el manual "Formato Documentos Tributarios
-// Electronicos" del SII (cruzada con 4 fuentes independientes tras detectar
 // que la version anterior tenia 801/802/803/805/806 mal asignados).
 export const REFERENCIA_TIPOS = {
   33: 'Factura Electrónica',
@@ -112,8 +107,12 @@ export const buildReferenciaInternaRow = (documento = {}) => ({
   razon: '',
 })
 
+export function normalizeRut(value) {
+  return String(value || '').replace(/[^0-9kK]/g, '').toUpperCase()
+}
+
 export function isValidRut(value) {
-  const rut = String(value || '').replace(/[^0-9kK]/g, '').toUpperCase()
+  const rut = normalizeRut(value)
   if (rut.length < 2) return false
   const body = rut.slice(0, -1)
   const verifier = rut.slice(-1)

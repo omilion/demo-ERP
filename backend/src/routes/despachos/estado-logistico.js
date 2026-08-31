@@ -8,10 +8,11 @@ export const ESTADO_LOGISTICO = Object.freeze({
   PICKING: { codigo: 'PICKING', label: 'Picking', tone: 'blue' },
   PACKING: { codigo: 'PACKING', label: 'Packing', tone: 'amber' },
   LISTA_DESPACHO: { codigo: 'LISTA_DESPACHO', label: 'Lista para despacho', tone: 'green' },
-  GUIA_SII_PENDIENTE: { codigo: 'GUIA_SII_PENDIENTE', label: 'Guía creada · SII pendiente', tone: 'amber' },
+  GUIA_PREPARADA: { codigo: 'GUIA_PREPARADA', label: 'Guía preparada', tone: 'amber' },
+  GUIA_SII_PENDIENTE: { codigo: 'GUIA_PREPARADA', label: 'Guía preparada', tone: 'amber' },
   GUIA_SII_EMITIDA: { codigo: 'GUIA_SII_EMITIDA', label: 'Guía SII emitida', tone: 'blue' },
   PREPARADO: { codigo: 'PREPARADO', label: 'Preparado', tone: 'blue' },
-  PATIO: { codigo: 'PATIO', label: 'Patio', tone: 'blue' },
+  PATIO: { codigo: 'PATIO', label: 'Patio / Despacho', tone: 'blue' },
   DIDACTICO: { codigo: 'DIDACTICO', label: 'Didáctico', tone: 'blue' },
   REPARTO: { codigo: 'REPARTO', label: 'Reparto', tone: 'blue' },
   ENTREGADO: { codigo: 'ENTREGADO', label: 'Entregado', tone: 'green' },
@@ -109,8 +110,8 @@ export function deriveEstadoLogistico({ items = [], despachos = [], guias = [], 
   const resumen = preparacion || resumenPreparacion(items)
   const guiaSii = guias.find(guia => DTE_GUIA_EMITIDA.has(String(guia?.dteEstado || '').toLowerCase()))
   if (guiaSii) return ESTADO_LOGISTICO.GUIA_SII_EMITIDA
-  if (guias.length) return ESTADO_LOGISTICO.GUIA_SII_PENDIENTE
-  if (packing.completo) return ESTADO_LOGISTICO.LISTA_DESPACHO
+  if (guias.length) return ESTADO_LOGISTICO.GUIA_PREPARADA
+  if (packing.completo && Number(resumen.pendienteTaller || 0) === 0) return ESTADO_LOGISTICO.LISTA_DESPACHO
   if (packing.preparados > 0) return ESTADO_LOGISTICO.PACKING
   if (despachos.some(despacho => !despacho.eliminado)) return ESTADO_LOGISTICO.PICKING
   if (resumen.pendienteTaller > 0 && resumen.disponiblePicking > 0) return ESTADO_LOGISTICO.PICKING_PARCIAL

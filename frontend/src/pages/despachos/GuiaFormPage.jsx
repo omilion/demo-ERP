@@ -1,18 +1,16 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from '../../store/notif'
-import { PageHeader, Btn } from '../../components/shared'
-import { useCreateDespacho, useCreateGuia, useUpdateGuia, useUpdateDespachoPacking, useDeleteGuia, useDespachos, useDespachoPacking, useGuiaDetalle } from '../../api/despachos'
+import { PageHeader, Btn, Badge } from '../../components/shared'
+import { useCreateGuia, useUpdateGuia, useUpdateDespachoPacking, useDespachos, useDespachoPacking, useGuiaDetalle } from '../../api/despachos'
 import { useVenta } from '../../api/ventas'
-import { useEmitirDte, useEnviarDocumento } from '../../api/facturacion'
-import { IND_TRASLADO, TIPO_DESPACHO, buildReceptor, mapVentaItems } from '../../utils/facturacion'
-import { emptyDespacho, DESPACHO_MODO_OPTS, cardStyle, input, grid } from './shared'
-import { DespachoCamposFields, Field, Footer, Mono } from './shared-ui'
+import { IND_TRASLADO, TIPO_DESPACHO, normalizeRut, isValidRut } from '../../utils/facturacion'
+import { cardStyle, input, grid } from './shared'
+import { Field } from './shared-ui'
+import api from '../../api/client'
+import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
 
-// Guia de despacho: elegir que enviar del pedido, generar el documento SII, y
-// resolver el despacho (orden de transporte) sin salir del flujo. Pagina
-// propia (antes modal popup) para que el link/recarga no pierda el contexto
-// y "Nueva guia"/"Editar guia" tengan una URL real en vez de estado volatil.
 export default function GuiaFormPage() {
   const navigate = useNavigate()
   const { id } = useParams()
@@ -22,14 +20,28 @@ export default function GuiaFormPage() {
 
   const guiaDetalle = useGuiaDetalle(isEdit ? Number(id) : undefined)
   if (isEdit && guiaDetalle.isLoading) {
-    return <main className="page page-wide"><PageHeader title="Editar guía" breadcrumb={['Inicio', 'Logistica', 'Despachos', 'Guías', 'Editar']} /><div style={cardStyle}>Cargando...</div></main>
+    return (
+      <main className="page page-wide">
+        <PageHeader title="Editar guía de despacho" breadcrumb={['Inicio', 'Logística', 'Despachos', 'Guías', 'Editar']} />
+        <div style={cardStyle}>Cargando datos de la guía...</div>
+      </main>
+    )
   }
+
   if (isEdit && !guiaDetalle.data?.guia) {
-    return <main className="page page-wide"><PageHeader title="Editar guía" breadcrumb={['Inicio', 'Logistica', 'Despachos', 'Guías', 'Editar']} /><div style={cardStyle}>Guía no encontrada. <Btn variant="ghost" onClick={volver}>Volver</Btn></div></main>
+    return (
+      <main className="page page-wide">
+        <PageHeader title="Editar guía de despacho" breadcrumb={['Inicio', 'Logística', 'Despachos', 'Guías', 'Editar']} />
+        <div style={cardStyle}>
+          Guía no encontrada. <Btn variant="ghost" onClick={volver}>Volver</Btn>
+        </div>
+      </main>
+    )
   }
 
   const initial = isEdit ? guiaDetalle.data.guia : {
     ordenId: searchParams.get('ordenId') || '',
+    despachoId: searchParams.get('despachoId') || '',
     odtId: searchParams.get('odtId') || '',
     nInterno: searchParams.get('nInterno') || '',
     nGuia: '',
@@ -40,224 +52,407 @@ export default function GuiaFormPage() {
   return (
     <main className="page page-wide">
       <PageHeader
-        title={isEdit ? `Editar guía #${id}` : 'Nueva guía'}
-        breadcrumb={['Inicio', 'Logistica', 'Despachos', 'Guías', isEdit ? 'Editar' : 'Nueva']}
+        title={isEdit ? `Editar guía #${id}` : 'Preparar Guía de Despacho (DTE 52)'}
+        breadcrumb={['Inicio', 'Logística', 'Despachos', 'Guías', isEdit ? 'Editar' : 'Nueva']}
       />
-      <GuiaForm key={id || 'nueva'} isEdit={isEdit} initial={initial} onDone={volver} onCancel={volver} />
+      <GuiaForm
+        key={id || 'nueva'}
+        isEdit={isEdit}
+        initial={initial}
+        existingDoc={guiaDetalle.data?.documentoDte}
+        existingDespacho={guiaDetalle.data?.despacho}
+        onDone={volver}
+        onCancel={volver}
+      />
     </main>
   )
 }
 
-function GuiaForm({ isEdit, initial, onDone, onCancel }) {
+function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCancel }) {
+  const { user } = useAuthStore()
+  const canEmitir = can(user, 'facturacion.emitir', 'write') || can(user, 'facturacion', 'write')
+
   const [form, setForm] = useState(() => ({
     ordenId: '',
     odtId: '',
     nInterno: '',
     nGuia: '',
     origen: '',
+    despachoId: '',
     ...initial,
-    fechaGuia: initial.fechaGuia ? String(initial.fechaGuia).slice(0, 10) : '',
+    fechaGuia: initial.fechaGuia ? String(initial.fechaGuia).slice(0, 10) : new Date().toISOString().slice(0, 10),
   }))
   const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
 
-  const [despachoModo, setDespachoModo] = useState(initial.despachoId ? 'existente' : 'ninguno')
-  const [despachoIdExistente, setDespachoIdExistente] = useState(initial.despachoId ? String(initial.despachoId) : '')
-  const [despachoNuevo, setDespachoNuevo] = useState(() => ({ ...emptyDespacho, ordenId: initial.ordenId || '' }))
-  const setDespachoNuevoField = (key, value) => setDespachoNuevo(prev => ({ ...prev, [key]: value }))
-  const despachosOrden = useDespachos(form.ordenId ? { ordenId: form.ordenId } : {})
-  const despachos = form.ordenId ? (despachosOrden.data?.items || []) : []
+  const despachoId = initial.despachoId ? String(initial.despachoId) : (form.despachoId ? String(form.despachoId) : '')
 
-  const packing = useDespachoPacking(form.ordenId || undefined, undefined, !isEdit && !!form.ordenId)
+  const despachosQuery = useDespachos(form.ordenId ? { ordenId: form.ordenId } : (form.despachoId ? { id: form.despachoId } : {}))
+  const selectedDespacho = despachos.find(d => String(d.id) === String(despachoId || form.despachoId)) || existingDespacho || null
+  const esManual = form.origenTipo === 'manual' || selectedDespacho?.origenTipo === 'manual'
+
+  // Venta data if linked
+  const ventaQuery = useVenta(!esManual && form.ordenId ? form.ordenId : undefined)
+  const ventaData = ventaQuery.data || null
+
+  // Fiscal receptor state
+  const [receptor, setReceptor] = useState(() => {
+    const r = existingDoc?.receptor || {}
+    return {
+      rut: r.rut || selectedDespacho?.receptorRut || ventaData?.rutCliente || '',
+      razonSocial: r.razonSocial || selectedDespacho?.receptorRazonSocial || ventaData?.cliente?.razonSocial || ventaData?.nombreCliente || '',
+      giro: r.giro || selectedDespacho?.receptorGiro || ventaData?.cliente?.giro || '',
+      direccion: r.direccion || selectedDespacho?.direccion || ventaData?.direccionDespacho || ventaData?.clienteSucursal?.direccion || '',
+      comuna: r.comuna || selectedDespacho?.comuna || ventaData?.comunaDespacho || ventaData?.clienteSucursal?.comuna || '',
+      ciudad: r.ciudad || selectedDespacho?.ciudad || ventaData?.ciudadDespacho || ventaData?.clienteSucursal?.ciudad || '',
+      contacto: r.contacto || selectedDespacho?.contacto || ventaData?.contactoDespacho || '',
+      email: r.email || selectedDespacho?.emailContacto || ventaData?.emailContactoDespacho || '',
+    }
+  })
+  const setReceptorField = (key, value) => setReceptor(prev => ({ ...prev, [key]: value }))
+
+  // Traslado & Tipo despacho
+  const [indTraslado, setIndTraslado] = useState(existingDoc?.extra?.indTraslado ? String(existingDoc.extra.indTraslado) : '1')
+  const [tipoDespacho, setTipoDespacho] = useState(existingDoc?.extra?.tipoDespacho ? String(existingDoc.extra.tipoDespacho) : '2')
+
+  // Items
+  const packing = useDespachoPacking(form.ordenId || undefined, undefined, !isEdit && !esManual && !!form.ordenId)
   const [envios, setEnvios] = useState({})
-  const items = (packing.data?.items || []).map(item => {
+
+  // Manual items for isolated dispatch
+  const [itemsManuales, setItemsManuales] = useState(() => {
+    if (existingDoc?.items && Array.isArray(existingDoc.items)) return existingDoc.items
+    if (selectedDespacho?.items && Array.isArray(selectedDespacho.items)) return selectedDespacho.items
+    return []
+  })
+  const [nuevoItemDesc, setNuevoItemDesc] = useState('')
+  const [nuevoItemCant, setNuevoItemCant] = useState('1')
+  const [nuevoItemUnidad, setNuevoItemUnidad] = useState('UN')
+
+  const itemsVenta = (packing.data?.items || []).map(item => {
     const pendiente = Math.max(0, Number(item.cantidad || 0) - Number(item.nEntregados || 0))
-    const envio = Math.min(pendiente, Math.max(0, Number.parseInt(envios[item.id] || '0', 10) || 0))
+    const envio = isEdit ? Number(item.enviado || item.cantidad || 0) : Math.min(pendiente, Math.max(0, Number.parseInt(envios[item.id] || '0', 10) || 0))
     return { ...item, pendiente, envio }
   })
-  const hayItemsSeleccionados = items.some(i => i.envio > 0)
-  // La guia siempre se emite como DTE-52 al crearla (no debe existir un
-  // registro de guia sin folio SII real): estos dos codigos los exige el SII
-  // y no tienen default seguro, los define quien despacha.
-  const [indTraslado, setIndTraslado] = useState('')
-  const [tipoDespacho, setTipoDespacho] = useState('')
-  const ventaParaDte = useVenta(!isEdit ? form.ordenId : undefined)
 
-  const createDespachoMut = useCreateDespacho()
+  const itemsFinales = useMemo(() => {
+    if (esManual) return itemsManuales
+    if (isEdit) return itemsVenta.filter(i => (i.envio > 0 || i.cantidad > 0))
+    return itemsVenta.filter(i => i.envio > 0)
+  }, [esManual, isEdit, itemsManuales, itemsVenta])
+
+  // Validation
+  const validacion = useMemo(() => {
+    const faltantes = []
+    const indNum = Number(indTraslado || 1)
+    const rutClean = normalizeRut(receptor.rut)
+    if (indNum !== 5) {
+      if (!rutClean || !isValidRut(rutClean)) faltantes.push('RUT del receptor válido')
+      if (!String(receptor.razonSocial || '').trim()) faltantes.push('Razón Social del receptor')
+      if (!String(receptor.giro || '').trim()) faltantes.push('Giro comercial del receptor')
+      if (!String(receptor.direccion || '').trim()) faltantes.push('Dirección de destino')
+      if (!String(receptor.comuna || '').trim()) faltantes.push('Comuna de destino')
+      if (!String(receptor.ciudad || '').trim()) faltantes.push('Ciudad de destino')
+    }
+    if (!IND_TRASLADO[indNum]) faltantes.push('Indicador de traslado')
+    if (!TIPO_DESPACHO[Number(tipoDespacho || 2)]) faltantes.push('Tipo de despacho')
+    if (itemsFinales.length === 0) faltantes.push('Al menos un producto a trasladar con cantidad > 0')
+
+    return {
+      valido: faltantes.length === 0,
+      faltantes,
+    }
+  }, [indTraslado, receptor, tipoDespacho, itemsFinales])
+
   const createGuiaMut = useCreateGuia()
   const updateGuiaMut = useUpdateGuia()
   const updatePackingMut = useUpdateDespachoPacking()
-  const emitirMut = useEmitirDte()
-  const enviarMut = useEnviarDocumento()
-  const deleteGuiaMut = useDeleteGuia()
-  const saving = createDespachoMut.isPending || createGuiaMut.isPending || updateGuiaMut.isPending
-    || updatePackingMut.isPending || emitirMut.isPending || enviarMut.isPending || deleteGuiaMut.isPending
+  const [emitidoResult, setEmitidoResult] = useState(null)
+  const saving = createGuiaMut.isPending || updateGuiaMut.isPending || updatePackingMut.isPending
 
-  const guardar = async () => {
-    if (isEdit && !form.nGuia.trim()) { toast.error('Indica el N° de guia.'); return }
-    if (despachoModo === 'existente' && !despachoIdExistente) { toast.error('Elige el despacho.'); return }
-    if (!isEdit) {
-      if (!form.ordenId) { toast.error('Indica el N° de Orden: la guía se emite como documento SII y necesita una venta real.'); return }
-      if (!hayItemsSeleccionados) { toast.error('Selecciona al menos un producto y una cantidad para enviar.'); return }
-      if (!indTraslado || !tipoDespacho) { toast.error('Indica el motivo del traslado y el tipo de despacho (los exige el SII).'); return }
-      if (ventaParaDte.isLoading || !ventaParaDte.data) { toast.error('Espera a que cargue la venta antes de guardar.'); return }
+  const agregarItemManual = () => {
+    if (!nuevoItemDesc.trim()) return
+    const cant = Math.max(1, Number(nuevoItemCant) || 1)
+    setItemsManuales(prev => [...prev, { nombre: nuevoItemDesc.trim(), cantidad: cant, unidad: nuevoItemUnidad || 'UN' }])
+    setNuevoItemDesc('')
+    setNuevoItemCant('1')
+  }
+
+  const eliminarItemManual = idx => {
+    setItemsManuales(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const guardar = async (emitirSii = false) => {
+    if (emitirSii && !validacion.valido) {
+      toast.error(`No se puede emitir al SII: faltan ${validacion.faltantes.length} campos obligatorios.`)
+      return
     }
+
     try {
-      let despachoId = null
-      if (despachoModo === 'existente') {
-        despachoId = Number(despachoIdExistente)
-      } else if (despachoModo === 'nuevo') {
-        const nuevo = await createDespachoMut.mutateAsync({ ...despachoNuevo, ordenId: form.ordenId })
-        despachoId = nuevo.id
+      const targetDespachoId = despachoId ? Number(despachoId) : (form.despachoId ? Number(form.despachoId) : null)
+
+      const payload = {
+        ordenId: esManual ? undefined : (form.ordenId || undefined),
+        odtId: esManual ? undefined : (form.odtId || undefined),
+        nInterno: esManual ? undefined : (form.nInterno || undefined),
+        nGuia: form.nGuia || undefined,
+        fechaGuia: form.fechaGuia || undefined,
+        origen: form.origen || undefined,
+        origenTipo: esManual ? 'manual' : 'orden',
+        despachoId: targetDespachoId || undefined,
+        indTraslado: Number(indTraslado),
+        tipoDespacho: Number(tipoDespacho),
+        receptor,
+        items: itemsFinales.map(i => ({ nombre: i.nombre || i.descripcion, cantidad: i.envio || i.cantidad, unidad: i.unidad || 'UN' })),
+        borrador: !emitirSii,
+        emitirSii,
       }
 
       if (isEdit) {
-        await updateGuiaMut.mutateAsync({ id: initial.id, data: { nGuia: form.nGuia, fechaGuia: form.fechaGuia, origen: form.origen, despachoId } })
+        await updateGuiaMut.mutateAsync({ id: initial.id, data: payload })
         toast.success('Guía actualizada.')
         onDone()
-        return
-      }
-
-      const guia = await createGuiaMut.mutateAsync({ ordenId: form.ordenId, odtId: form.odtId, nInterno: form.nInterno, nGuia: form.nGuia, fechaGuia: form.fechaGuia, origen: form.origen, despachoId })
-      const itemsAEnviar = items.filter(i => i.envio > 0)
-      try {
-        await updatePackingMut.mutateAsync({
-          ordenId: form.ordenId,
-          guiaDespachoId: guia.id,
-          despachoId: despachoId || undefined,
-          items: itemsAEnviar.map(i => ({ itemId: i.id, nEntregados: Number(i.nEntregados || 0) + i.envio })),
-        })
-        const cantidadPorItemId = Object.fromEntries(itemsAEnviar.map(i => [i.id, i.envio]))
-        const dteItems = mapVentaItems(ventaParaDte.data, cantidadPorItemId, { includeCargos: false })
-        const receptor = buildReceptor(ventaParaDte.data.cliente)
-        const { emitido } = await emitirMut.mutateAsync({
-          ordenId: guia.ordenId ?? Number(form.ordenId),
-          clienteId: ventaParaDte.data.clienteId || ventaParaDte.data.cliente?.id,
-          guiaDespachoId: guia.id,
-          tipoDte: 52,
-          receptor,
-          items: dteItems,
-          extra: { indTraslado: Number(indTraslado), tipoDespacho: Number(tipoDespacho) },
-        })
-        // El folio ya quedo consumido y el XML firmado: si el envio al SII
-        // falla aca (SII caido, red, etc.) NO se deshace la guia — queda
-        // 'emitido' y se puede reintentar el envio desde Documentos, igual
-        // que cualquier otro DTE emitido manualmente.
-        try {
-          await enviarMut.mutateAsync(emitido.id)
-          toast.success(`Guía enviada al SII: folio ${emitido?.folio}.`)
-        } catch (enviarError) {
-          toast.error(`Guía emitida (folio ${emitido?.folio}) pero no se pudo enviar al SII automáticamente: ${enviarError?.response?.data?.error || enviarError?.message || 'error desconocido'}. Reintenta desde Documentos.`)
+      } else {
+        const res = await createGuiaMut.mutateAsync(payload)
+        toast.success(emitirSii ? 'Guía DTE 52 emitida al SII con éxito.' : 'Guía guardada como borrador.')
+        if (emitirSii && res?.documento?.folio) {
+          setEmitidoResult(res.documento)
+        } else {
+          onDone()
         }
-        onDone()
-      } catch (dteError) {
-        // La guia no puede quedar como simple registro local sin su DTE: si la
-        // emision falla (packing o SII), se deshace la guia recien creada en
-        // vez de dejarla huerfana sin folio.
-        try {
-          const motivo = `Emisión SII fallida al crear: ${dteError?.response?.data?.error || dteError?.message || 'error desconocido'}`
-          await deleteGuiaMut.mutateAsync({ id: guia.id, motivo })
-        } catch { /* best-effort */ }
-        throw dteError
       }
-    } catch (cause) {
-      toast.error(cause?.response?.data?.error || cause?.message || 'No se pudo guardar la guia.')
+    } catch (err) {
+      toast.error(err?.response?.data?.error || err.message || 'Error al guardar guía')
     }
   }
 
-  return (
-    <div style={cardStyle}>
-      {!isEdit && (
-        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 14, lineHeight: 1.5 }}>
-          1. Elige abajo qué productos y cuánto enviar de este pedido. 2. Indica el motivo/tipo de despacho que exige el SII. 3. Resuelve el despacho (o déjalo pendiente). 4. Guarda: se emite y se envía al SII en el mismo paso — si la emisión falla, no queda un registro suelto (si solo falla el envío, queda emitida y se reintenta desde Documentos).
-        </div>
-      )}
-      <div style={grid}>
-        <Field label="N guia">
-          <input value={form.nGuia} onChange={e => set('nGuia', e.target.value)} style={input} placeholder={isEdit ? '' : 'Automático si lo dejas vacío'} />
-        </Field>
-        <Field label="Orden ID"><input value={form.ordenId} onChange={e => set('ordenId', e.target.value)} style={input} disabled={isEdit} /></Field>
-        <Field label="OT ID"><input value={form.odtId} onChange={e => set('odtId', e.target.value)} style={input} /></Field>
-        <Field label="N interno"><input value={form.nInterno} disabled style={{ ...input, background: 'var(--bg)', color: 'var(--text-3)' }} title="Es el numero interno de la venta, no se edita aca" /></Field>
-        <Field label="Fecha"><input type="date" value={form.fechaGuia} onChange={e => set('fechaGuia', e.target.value)} style={input} /></Field>
-      </div>
-      <Field label="Origen"><input value={form.origen} onChange={e => set('origen', e.target.value)} style={input} /></Field>
+  const emitirGuiaDirecta = async () => {
+    if (!initial.id) return
+    try {
+      const res = await api.post(`/despachos/guias/${initial.id}/emitir-sii`)
+      toast.success(`Guía emitida al SII con Folio ${res.data.folio}`)
+      setEmitidoResult(res.data.documento)
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Error al emitir guía al SII')
+    }
+  }
 
-      {!isEdit && form.ordenId && (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Qué enviar en esta guía</div>
-          {packing.isLoading ? (
-            <div style={{ color: 'var(--text-3)', fontSize: 12 }}>Cargando ítems...</div>
-          ) : !items.length ? (
-            <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}>Sin ítems de venta.</div>
-          ) : (
-            <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg)' }}>
-                    {['Producto', 'Pendiente', 'Enviar ahora'].map((h, i) => (
-                      <th key={h} style={{ padding: '6px 10px', textAlign: i ? 'right' : 'left', fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map(item => (
-                    <tr key={item.id} style={{ borderTop: '1px solid var(--border)' }}>
-                      <td style={{ padding: '6px 10px' }}>{item.nombre}</td>
-                      <td style={{ padding: '6px 10px', textAlign: 'right' }}><Mono>{item.pendiente}</Mono></td>
-                      <td style={{ padding: '4px 10px', textAlign: 'right' }}>
-                        <input
-                          type="number" min="0" max={item.pendiente} value={envios[item.id] ?? ''} placeholder="0"
-                          onChange={event => setEnvios(prev => ({ ...prev, [item.id]: event.target.value }))}
-                          style={{ width: 70, padding: '4px 6px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, textAlign: 'right' }}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+  if (emitidoResult) {
+    return (
+      <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 24, maxWidth: 650, margin: '0 auto', textAlign: 'center' }}>
+        <div style={{ fontSize: 40, marginBottom: 10 }}>📄</div>
+        <h3 style={{ margin: '0 0 8px' }}>Guía DTE 52 emitida al SII</h3>
+        <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--blue)', marginBottom: 8 }}>
+          Folio asignado: {emitidoResult.folio}
+        </p>
+        <p style={{ color: 'var(--text-3)', fontSize: 13, marginBottom: 20 }}>
+          Estado en SII: {emitidoResult.estado}. El documento cuenta con timbre electrónico y XML firmado.
+        </p>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+          <Btn variant="primary" onClick={onDone}>
+            Ir a Lista de Guías
+          </Btn>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 24, maxWidth: 960 }}>
+      {/* Banner de estado DTE */}
+      {existingDoc && (
+        <div style={{ padding: 12, borderRadius: 8, background: existingDoc.estado === 'borrador' ? 'var(--amber-50, #fffbeb)' : 'var(--green-50, #f0fdf4)', border: '1px solid var(--border)', marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <strong>Documento DTE 52: </strong>
+            <Badge tone={existingDoc.estado === 'borrador' ? 'amber' : 'green'}>
+              {existingDoc.estado === 'borrador' ? 'Borrador / Preparada (Sin emitir)' : `Emitido (Folio ${existingDoc.folio})`}
+            </Badge>
+          </div>
+          {existingDoc.estado === 'borrador' && canEmitir && (
+            <Btn variant="primary" size="sm" onClick={emitirGuiaDirecta} disabled={!validacion.valido}>
+              Emitir al SII ahora
+            </Btn>
           )}
         </div>
       )}
 
-      {!isEdit && form.ordenId && (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Documento SII (obligatorio para emitir la guía)</div>
-          <div style={grid}>
-            <Field label="Motivo del traslado">
-              <select value={indTraslado} onChange={e => setIndTraslado(e.target.value)} style={input}>
-                <option value="">Seleccionar...</option>
-                {Object.entries(IND_TRASLADO).map(([code, text]) => <option key={code} value={code}>{code} — {text}</option>)}
-              </select>
-            </Field>
-            <Field label="Tipo de despacho">
-              <select value={tipoDespacho} onChange={e => setTipoDespacho(e.target.value)} style={input}>
-                <option value="">Seleccionar...</option>
-                {Object.entries(TIPO_DESPACHO).map(([code, text]) => <option key={code} value={code}>{code} — {text}</option>)}
-              </select>
-            </Field>
-          </div>
-          {ventaParaDte.isLoading && <div style={{ color: 'var(--text-3)', fontSize: 12, marginTop: 4 }}>Cargando datos del receptor...</div>}
+      {/* Checklist de validacion DTE 52 */}
+      {!validacion.valido && (
+        <div style={{ padding: 14, borderRadius: 8, background: 'var(--amber-50, #fffbeb)', border: '1px solid var(--amber-200, #fde68a)', marginBottom: 20 }}>
+          <strong style={{ fontSize: 13, color: 'var(--amber-800, #92400e)' }}>
+            ⚠️ Campos obligatorios pendientes para emisión SII (puedes guardar como borrador):
+          </strong>
+          <ul style={{ margin: '8px 0 0', paddingLeft: 20, fontSize: 12, color: 'var(--amber-900, #78350f)' }}>
+            {validacion.faltantes.map((f, i) => (
+              <li key={i}>{f}</li>
+            ))}
+          </ul>
         </div>
       )}
 
-      <div style={{ marginTop: 16 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Despacho (orden de transporte)</div>
-        <select value={despachoModo} onChange={e => setDespachoModo(e.target.value)} style={{ ...input, marginBottom: 10 }}>
-          {DESPACHO_MODO_OPTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-        {despachoModo === 'existente' && (
-          <select value={despachoIdExistente} onChange={e => setDespachoIdExistente(e.target.value)} style={input}>
-            <option value="">Seleccionar despacho...</option>
-            {despachos.map(d => (
-              <option key={d.id} value={String(d.id)}>#{d.id} {d.transporte || ''} {d.numeroSeguimiento ? `· ${d.numeroSeguimiento}` : ''}</option>
-            ))}
-          </select>
-        )}
-        {despachoModo === 'nuevo' && <DespachoCamposFields form={despachoNuevo} set={setDespachoNuevoField} />}
-      </div>
+      {/* Origen y vinculacion */}
+      <section style={{ marginBottom: 20 }}>
+        <h4 style={{ margin: '0 0 12px' }}>1. Origen y Despacho</h4>
+        <div style={grid}>
+          {!esManual && (
+            <Field label="N° Interno (Venta)">
+              <input value={form.interno || form.nInterno || (form.ordenId ? `#${form.ordenId}` : '')} disabled style={{ ...input, background: 'var(--bg)' }} />
+            </Field>
+          )}
+          {esManual && (
+            <Field label="Origen">
+              <input value="Despacho aislado de bodega" disabled style={{ ...input, background: 'var(--bg)' }} />
+            </Field>
+          )}
+          <Field label="Fecha de la Guía *">
+            <input type="date" value={form.fechaGuia} onChange={e => set('fechaGuia', e.target.value)} style={input} />
+          </Field>
+          <Field label="N° Folio / Guía manual (opcional)">
+            <input value={form.nGuia} onChange={e => set('nGuia', e.target.value)} placeholder="Autogenerado o asignado" style={input} />
+          </Field>
+        </div>
+      </section>
 
-      <Footer saving={saving} onClose={onCancel} onSave={guardar} />
+      {/* Datos Fiscales del Receptor */}
+      <section style={{ marginBottom: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+        <h4 style={{ margin: '0 0 12px' }}>2. Datos del Receptor (Destinatario)</h4>
+        <div style={grid}>
+          <Field label="RUT Receptor *">
+            <input value={receptor.rut} onChange={e => setReceptorField('rut', e.target.value)} placeholder="76.123.456-7" style={input} />
+          </Field>
+          <Field label="Razón Social *">
+            <input value={receptor.razonSocial} onChange={e => setReceptorField('razonSocial', e.target.value)} placeholder="Nombre o Razón Social" style={input} />
+          </Field>
+          <Field label="Giro Comercial *">
+            <input value={receptor.giro} onChange={e => setReceptorField('giro', e.target.value)} placeholder="Giro" style={input} />
+          </Field>
+          <Field label="Dirección de Destino *">
+            <input value={receptor.direccion} onChange={e => setReceptorField('direccion', e.target.value)} placeholder="Dirección" style={input} />
+          </Field>
+          <Field label="Comuna *">
+            <input value={receptor.comuna} onChange={e => setReceptorField('comuna', e.target.value)} placeholder="Comuna" style={input} />
+          </Field>
+          <Field label="Ciudad *">
+            <input value={receptor.ciudad} onChange={e => setReceptorField('ciudad', e.target.value)} placeholder="Ciudad" style={input} />
+          </Field>
+        </div>
+      </section>
+
+      {/* Motivo de traslado y Tipo de despacho */}
+      <section style={{ marginBottom: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+        <h4 style={{ margin: '0 0 12px' }}>3. Parámetros de Traslado SII</h4>
+        <div style={grid}>
+          <Field label="Motivo del traslado (IndTraslado) *">
+            <select value={indTraslado} onChange={e => setIndTraslado(e.target.value)} style={input}>
+              {Object.entries(IND_TRASLADO).map(([val, desc]) => (
+                <option key={val} value={val}>{val} - {desc}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Tipo de despacho *">
+            <select value={tipoDespacho} onChange={e => setTipoDespacho(e.target.value)} style={input}>
+              {Object.entries(TIPO_DESPACHO).map(([val, desc]) => (
+                <option key={val} value={val}>{val} - {desc}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      </section>
+
+      {/* Ítems a trasladar */}
+      <section style={{ marginBottom: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+        <h4 style={{ margin: '0 0 12px' }}>4. Productos a Trasladar</h4>
+        {!esManual && (
+          <div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+                  <th style={{ padding: '8px 10px', textAlign: 'left' }}>Producto</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right', width: 90 }}>Pedido</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right', width: 90 }}>Pendiente</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right', width: 110 }}>A Enviar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {itemsVenta.map(it => (
+                  <tr key={it.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '8px 10px' }}>{it.nombre}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>{it.cantidad}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>{it.pendiente}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                      <input
+                        type="number"
+                        min="0"
+                        max={it.pendiente}
+                        value={envios[it.id] ?? (isEdit ? it.enviado : it.pendiente)}
+                        onChange={e => setEnvios({ ...envios, [it.id]: e.target.value })}
+                        style={{ ...input, width: 80, textAlign: 'right', padding: '4px 8px' }}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {esManual && (
+          <div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'flex-end' }}>
+              <div style={{ flex: 2 }}>
+                <label style={{ fontSize: 11, color: 'var(--text-3)' }}>Descripción</label>
+                <input value={nuevoItemDesc} onChange={e => setNuevoItemDesc(e.target.value)} placeholder="Descripción del producto a trasladar" style={input} />
+              </div>
+              <div style={{ width: 90 }}>
+                <label style={{ fontSize: 11, color: 'var(--text-3)' }}>Cantidad</label>
+                <input type="number" min="1" value={nuevoItemCant} onChange={e => setNuevoItemCant(e.target.value)} style={input} />
+              </div>
+              <div style={{ width: 80 }}>
+                <label style={{ fontSize: 11, color: 'var(--text-3)' }}>Unidad</label>
+                <input value={nuevoItemUnidad} onChange={e => setNuevoItemUnidad(e.target.value)} style={input} />
+              </div>
+              <Btn variant="secondary" onClick={agregarItemManual}>Agregar</Btn>
+            </div>
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+                  <th style={{ padding: '8px 10px', textAlign: 'left' }}>Producto</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right', width: 90 }}>Cantidad</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'center', width: 80 }}>Unidad</th>
+                  <th style={{ width: 40 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {itemsManuales.map((it, idx) => (
+                  <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '8px 10px' }}>{it.nombre}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>{it.cantidad}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'center' }}>{it.unidad || 'UN'}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                      <button type="button" onClick={() => eliminarItemManual(idx)} style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontWeight: 'bold' }}>×</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* Botones de accion */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+        <Btn variant="ghost" onClick={onCancel}>Cancelar</Btn>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Btn variant="secondary" onClick={() => guardar(false)} disabled={saving}>
+            Guardar Borrador / Preparada
+          </Btn>
+          {canEmitir && (
+            <Btn variant="primary" onClick={() => guardar(true)} disabled={saving || !validacion.valido}>
+              Guardar y Emitir al SII
+            </Btn>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

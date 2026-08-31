@@ -11,6 +11,8 @@ import VentaPrintPage from './pages/ventas/VentaPrintPage'
 import AsistentePage from './pages/asistente/AsistentePage'
 import BodegaPage from './pages/bodega/BodegaPage'
 import BodegaFormPage from './pages/bodega/BodegaFormPage'
+import PanelPickingPage from './pages/bodega/PanelPickingPage'
+import PanelPackingPage from './pages/bodega/PanelPackingPage'
 import TallerPage from './pages/taller/TallerPage'
 import TallerFormPage from './pages/taller/TallerFormPage'
 import TallerOperarioPage from './pages/taller/TallerOperarioPage'
@@ -95,6 +97,8 @@ export const router = createBrowserRouter([
       { path: 'ventas/:id/imprimir', element: protect(<VentaPrintPage />, { module: 'ventas' }) },
       { path: 'asistente', element: protect(<AsistentePage />, { allowedRoles: ALL }) },
       { path: 'bodega', element: protect(<BodegaPage />, { module: 'bodega' }) },
+      { path: 'bodega/picking', element: protect(<PanelPickingPage />, { module: 'bodega' }) },
+      { path: 'bodega/packing', element: protect(<PanelPackingPage />, { module: 'bodega' }) },
       { path: 'bodega/nuevo', element: protect(<BodegaFormPage />, { module: 'bodega', permission: 'write' }) },
       { path: 'bodega/:id/editar', element: protect(<BodegaFormPage />, { module: 'bodega', permission: 'write' }) },
       { path: 'importaciones', element: protect(<ImportacionesPage />, { module: 'bodega' }) },
