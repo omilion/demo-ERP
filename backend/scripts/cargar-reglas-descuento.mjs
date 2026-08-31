@@ -22,9 +22,9 @@ import 'dotenv/config'
 const APPLY = process.argv.includes('--apply')
 const DESACTIVAR_PRUEBAS = process.argv.includes('--desactivar-pruebas')
 const dbArg = process.argv.find(a => a.startsWith('--db='))
-const URL = dbArg ? dbArg.slice(5) : process.env.DATABASE_URL
+const CONEXION = dbArg ? dbArg.slice(5) : process.env.DATABASE_URL
 
-if (!URL) {
+if (!CONEXION) {
   console.error('Falta la base: define DATABASE_URL o pasa --db=<url>')
   process.exit(1)
 }
@@ -70,11 +70,11 @@ const REGLAS = [
   },
 ]
 
-const c = new pg.Client({ connectionString: URL })
+const c = new pg.Client({ connectionString: CONEXION })
 await c.connect()
 
 console.log(APPLY ? '=== CARGANDO REGLAS ===' : '=== SIMULACION (nada se escribe) ===')
-console.log('Base:', URL.replace(/:[^:@]*@/, ':***@'))
+console.log('Base:', CONEXION.replace(/:[^:@]*@/, ':***@'))
 
 // Reglas de prueba olvidadas: una con prioridad alta gana sobre las reales y
 // autoaprueba en silencio. En la copia de produccion hay una de agosto.

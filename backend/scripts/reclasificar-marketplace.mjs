@@ -33,9 +33,9 @@ import 'dotenv/config'
 const APPLY = process.argv.includes('--apply')
 const INCLUIR_MEDIA = process.argv.includes('--incluir-media')
 const dbArg = process.argv.find(a => a.startsWith('--db='))
-const URL = dbArg ? dbArg.slice(5) : process.env.DATABASE_URL
+const CONEXION = dbArg ? dbArg.slice(5) : process.env.DATABASE_URL
 
-if (!URL) {
+if (!CONEXION) {
   console.error('Falta la base: define DATABASE_URL o pasa --db=<url>')
   process.exit(1)
 }
@@ -104,11 +104,11 @@ function parsearLiquidacion(observaciones) {
   return { canal: detectarCanal(frag[1]), neto, total, comision, logistica, bloque }
 }
 
-const c = new pg.Client({ connectionString: URL })
+const c = new pg.Client({ connectionString: CONEXION })
 await c.connect()
 
 console.log(APPLY ? '=== RECLASIFICANDO ===' : '=== SIMULACION (nada se escribe) ===')
-console.log('Base:', URL.replace(/:[^:@]*@/, ':***@'))
+console.log('Base:', CONEXION.replace(/:[^:@]*@/, ':***@'))
 console.log('Nivel:', APPLY && INCLUIR_MEDIA ? 'ALTA + MEDIA' : 'solo ALTA')
 
 const { rows } = await c.query(

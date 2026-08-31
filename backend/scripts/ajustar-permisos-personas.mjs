@@ -32,9 +32,9 @@ function passwordDeUnUso() {
   return `Pl-${crypto.randomBytes(9).toString('base64url')}`
 }
 const dbArg = process.argv.find(a => a.startsWith('--db='))
-const URL = dbArg ? dbArg.slice(5) : process.env.DATABASE_URL
+const CONEXION = dbArg ? dbArg.slice(5) : process.env.DATABASE_URL
 
-if (!URL) {
+if (!CONEXION) {
   console.error('Falta la base: define DATABASE_URL o pasa --db=<url>')
   process.exit(1)
 }
@@ -49,7 +49,7 @@ function esBaseLocal(url) {
   } catch { return false }
 }
 
-if (CREAR && APPLY && !esBaseLocal(URL)) {
+if (CREAR && APPLY && !esBaseLocal(CONEXION)) {
   console.error('--crear --apply solo se permite contra una base local.')
   console.error('Para una base remota, crea las cuentas desde la pantalla de Usuarios.')
   process.exit(1)
@@ -103,11 +103,11 @@ function describir(extra) {
   return Object.keys(extra).sort().map(k => `${k}:${[...(extra[k] || [])].sort().join('/')}`).join(', ')
 }
 
-const c = new pg.Client({ connectionString: URL })
+const c = new pg.Client({ connectionString: CONEXION })
 await c.connect()
 
 console.log(APPLY ? '=== AJUSTANDO PERMISOS ===' : '=== SIMULACION (nada se escribe) ===')
-console.log('Base:', URL.replace(/:[^:@]*@/, ':***@'))
+console.log('Base:', CONEXION.replace(/:[^:@]*@/, ':***@'))
 
 const resumen = []
 const noEncontradas = []
