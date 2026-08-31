@@ -58,7 +58,9 @@ async function main() {
   for (const role of ROLES) {
     await prisma.user.upsert({
       where: { email: `${role}@plastimar.cl` },
-      update: { sucursalId: 1 },
+      // A production clone can already contain these technical accounts with
+      // production-only credentials. Keep the test login contract deterministic.
+      update: { passwordHash, role, sucursalId: 1, activo: true },
       create: {
         email: `${role}@plastimar.cl`,
         passwordHash,
@@ -135,15 +137,16 @@ async function main() {
     const nInterno = 15001 + index
     const clienteId = clienteMap[o.clienteRut]
     const existing = await prisma.orden.findFirst({ where: { clienteId, creadorNombre: o.creadorNombre, facturado: o.facturado } })
+    const nInternoOcupado = await prisma.orden.findFirst({ where: { nInterno }, select: { id: true } })
     if (existing) {
       await prisma.orden.update({
         where: { id: existing.id },
         data: {
           sucursalId: existing.sucursalId ?? 1,
-          nInterno: existing.nInterno ?? nInterno,
+          nInterno: existing.nInterno ?? (nInternoOcupado ? undefined : nInterno),
         },
       })
-    } else if (firstProducto) {
+    } else if (!nInternoOcupado && firstProducto) {
       await prisma.orden.create({
         data: {
           nInterno,
