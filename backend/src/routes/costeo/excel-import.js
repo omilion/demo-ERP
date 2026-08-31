@@ -424,6 +424,14 @@ function buildProcesses(sheet, XLSX, mainRow, workshopIds) {
     .map(({ key, tallerId, horas }) => ({ proceso: key, tallerId, horas }));
 }
 
+function primaryWorkshopForProcesses(processes, workshopIds) {
+  if (processes.some(process => process.proceso === 'corte')) return workshopIds.espumas;
+  if (processes.some(process => ['confeccion', 'enfundado'].includes(process.proceso))) {
+    return workshopIds.confecciones;
+  }
+  return null;
+}
+
 export function analyzeCosteoWorkbook({ workbook, XLSX, products = [], materials = [], workshops = [], tariffs = [] }) {
   const sheet = workbook.Sheets.MK ?? workbook.Sheets[workbook.SheetNames[0]];
   if (!sheet) throw new Error("No se encontro la hoja 'MK' en el Excel");
@@ -529,7 +537,7 @@ export function analyzeCosteoWorkbook({ workbook, XLSX, products = [], materials
 
     const recipe = product && margin.margin !== null ? {
       productoId: product.id,
-      tallerId: workshopIds.espumas,
+      tallerId: primaryWorkshopForProcesses(processes, workshopIds),
       margenTransferencia: margin.margin,
       ajusteGlobalPct: 3,
       accesoriosMonto: accessories,

@@ -253,7 +253,7 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
       });
 
       await aplicarCosteo.mutateAsync(producto.id);
-      toast.success('Snapshot generado y precio costo actualizado correctamente');
+      toast.success('Snapshot generado y precio lista actualizado correctamente');
       onClose();
     } catch (e) {
       toast.error(e.response?.data?.error || e.message || 'Error al aplicar el costeo');
@@ -523,7 +523,7 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
                 Guardar Borrador Receta
               </Btn>
               <Btn onClick={handleAplicarCosteo} variant="primary" style={{ width: '100%', background: '#0284c7' }}>
-                Aplicar a Precio Costo
+                Aplicar a Precio Lista
               </Btn>
             </div>
           </div>

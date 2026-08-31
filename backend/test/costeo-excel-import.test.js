@@ -100,6 +100,7 @@ describe('importador de recetas MK', () => {
     expect(result.eligible).toBe(true);
     expect(result.margin.margin).toBe(60);
     expect(result.sourceCalculation.costoFabricacion).toBe(22152);
+    expect(result.recipe.tallerId).toBe(1);
     expect(result.recipe.materialesMonto).toBeCloseTo(0, 6);
     expect(result.breakdown.lines.map(line => line.source.materialCode)).toEqual([
       'MP-TREVIRA-ESTAMPADO',
@@ -170,6 +171,28 @@ describe('importador de recetas MK', () => {
     expect(result.breakdown.lines).toHaveLength(0);
     expect(result.breakdown.foamResidualLines).toBe(1);
     expect(result.recipe.materialesMonto).toBe(100);
+    expect(result.recipe.tallerId).toBeNull();
+  });
+
+  it('asigna Espumas como taller principal cuando la receta tiene corte', () => {
+    const { workbook, set } = workbookFixture();
+    setMain(set, 11, { code: 'MK-CORTE', name: 'Producto con corte', foam: 100, cut: 1, ak: 3900, marginFormula: '+AL11*20%+AL11' });
+
+    const analysis = analyzeCosteoWorkbook({
+      workbook,
+      XLSX,
+      products: [{ id: 1, codigoInterno: 'MK-CORTE', nombre: 'Producto con corte' }],
+      materials,
+      workshops,
+      tariffs,
+    });
+    const result = analysis.results.find(item => item.code === 'MK-CORTE');
+
+    expect(result.eligible).toBe(true);
+    expect(result.recipe.tallerId).toBe(2);
+    expect(result.recipe.procesos).toEqual([
+      expect.objectContaining({ proceso: 'corte', tallerId: 2, horas: 1 }),
+    ]);
   });
 
   it('bloquea costos que no cuadran con AK y margen sin formula', () => {
