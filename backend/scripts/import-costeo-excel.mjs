@@ -10,6 +10,8 @@ import { analyzeCosteoWorkbook, summarizeUnresolvedMaterials } from '../src/rout
 const args = process.argv.slice(2);
 const isApply = args.includes('--apply');
 const allowProduction = args.includes('--allow-production');
+const limitArg = args.find(argument => argument.startsWith('--limit='));
+const applyLimit = limitArg ? Number.parseInt(limitArg.slice('--limit='.length), 10) : null;
 const fileArg = args.find(argument => /\.xlsx?$/i.test(argument));
 const defaultPath = path.resolve(process.cwd(), 'NUEVOS CALCULOS_PRECIOS_MK_14-07-2026.xls');
 const targetFile = fileArg ? path.resolve(process.cwd(), fileArg) : defaultPath;
@@ -130,10 +132,13 @@ async function loadReferenceData(prisma) {
 
 async function applyEligibleRecipes(prisma, analysis) {
   const eligible = analysis.results.filter(result => result.eligible && result.recipe);
+  const selected = Number.isInteger(applyLimit) && applyLimit > 0
+    ? eligible.slice(0, applyLimit)
+    : eligible;
   let applied = 0;
   const failures = [];
 
-  for (const result of eligible) {
+  for (const result of selected) {
     try {
       await upsertReceta(prisma, result.recipe.productoId, result.recipe);
       applied += 1;
@@ -142,7 +147,7 @@ async function applyEligibleRecipes(prisma, analysis) {
     }
   }
 
-  return { requested: eligible.length, applied, failures };
+  return { requested: selected.length, applied, failures };
 }
 
 function assertApplyPrerequisites(reference, analysis) {
