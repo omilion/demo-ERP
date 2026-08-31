@@ -177,6 +177,11 @@ describe('routes /api/facturacion', () => {
   })
 
   it('rechaza reanudar un CAF de certificacion anterior a la resolucion vigente', async () => {
+    const empresaOriginal = await app.prisma.factEmpresa.findUnique({ where: { id: 1 } })
+    await app.prisma.factEmpresa.update({
+      where: { id: 1 },
+      data: { ambiente: 'certificacion', fchResol: '2026-07-23' },
+    })
     const caf = await app.prisma.factCaf.create({
       data: {
         tipoDte: 43,
@@ -190,27 +195,37 @@ describe('routes /api/facturacion', () => {
     })
     qaCafIds.push(caf.id)
 
-    const listado = await app.inject({
-      method: 'GET',
-      url: '/api/facturacion/cafs',
-      headers: { authorization: `Bearer ${token}` },
-    })
-    const cafListado = JSON.parse(listado.body).cafs.find(item => item.id === caf.id)
-    expect(cafListado).toMatchObject({ disponibles: 0, vigenteResolucion: false })
-    expect(cafListado.bloqueo).toMatch(/anterior a la resolucion vigente/)
+    try {
+      const listado = await app.inject({
+        method: 'GET',
+        url: '/api/facturacion/cafs',
+        headers: { authorization: `Bearer ${token}` },
+      })
+      const cafListado = JSON.parse(listado.body).cafs.find(item => item.id === caf.id)
+      expect(cafListado).toMatchObject({ disponibles: 0, vigenteResolucion: false })
+      expect(cafListado.bloqueo).toMatch(/anterior a la resolucion vigente/)
 
-    const res = await app.inject({
-      method: 'POST',
-      url: `/api/facturacion/cafs/${caf.id}/reanudar-certificacion`,
-      headers: { authorization: `Bearer ${token}` },
-      payload: {
-        motivo: 'Intento controlado sobre CAF historico',
-        confirmacion: 'REANUDAR CAF CERTIFICACION',
-      },
-    })
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/facturacion/cafs/${caf.id}/reanudar-certificacion`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          motivo: 'Intento controlado sobre CAF historico',
+          confirmacion: 'REANUDAR CAF CERTIFICACION',
+        },
+      })
 
-    expect(res.statusCode).toBe(409)
-    expect(JSON.parse(res.body).error).toMatch(/anterior a la resolucion vigente/)
+      expect(res.statusCode).toBe(409)
+      expect(JSON.parse(res.body).error).toMatch(/anterior a la resolucion vigente/)
+    } finally {
+      await app.prisma.factEmpresa.update({
+        where: { id: 1 },
+        data: {
+          ambiente: empresaOriginal.ambiente,
+          fchResol: empresaOriginal.fchResol,
+        },
+      })
+    }
   })
 
   it('rechaza reanudar un CAF de produccion', async () => {

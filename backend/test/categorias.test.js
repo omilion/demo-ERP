@@ -138,6 +138,7 @@ describe('subcategorias catalogo legacy parity', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: {
         codigoInterno: `${marker}-mismatch`,
+        codigoBarra: `${marker}-mismatch-bar`,
         nombre: 'Producto mismatch',
         categoriaId: categoriaB.id,
         subcategoriaId: subA.id,
@@ -151,6 +152,7 @@ describe('subcategorias catalogo legacy parity', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: {
         codigoInterno: `${marker}-text-only`,
+        codigoBarra: `${marker}-text-only-bar`,
         nombre: 'Producto categoria texto',
         categoria: categoriaA.nombre,
       },
@@ -163,6 +165,7 @@ describe('subcategorias catalogo legacy parity', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: {
         codigoInterno: `${marker}-ok`,
+        codigoBarra: `${marker}-ok-bar`,
         nombre: 'Producto OK',
         categoriaId: categoriaA.id,
         subcategoriaId: subA.id,

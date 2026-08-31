@@ -46,19 +46,29 @@ function writeThrowawayTestCert(dataDir, password) {
 }
 
 describe('facturacion/engine', () => {
-  let prisma, db, dataDir, empresaOriginal
+  let prisma, db, dataDir, empresaTest
   const ambienteQa = `qa-engine-${process.pid}-${Date.now()}`
 
   beforeAll(async () => {
     const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
     prisma = new PrismaClient({ adapter })
-    db = createFacturacionDb(prisma)
-    empresaOriginal = await db.getEmpresa()
+    const realDb = createFacturacionDb(prisma)
+    empresaTest = { ...await realDb.getEmpresa() }
+    // La empresa tributaria es un singleton productivo. Mantener su configuracion
+    // en memoria evita que esta suite contamine otros archivos ejecutados en
+    // paralelo mientras conserva documentos, CAF y clientes en PostgreSQL.
+    db = {
+      ...realDb,
+      getEmpresa: async () => ({ ...empresaTest }),
+      saveEmpresa: async data => {
+        empresaTest = { ...empresaTest, ...data }
+        return { ...empresaTest }
+      },
+    }
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'facturacion-engine-test-'))
   })
 
   afterAll(async () => {
-    await db.saveEmpresa(empresaOriginal)
     fs.rmSync(dataDir, { recursive: true, force: true })
     await prisma.$disconnect()
   })
@@ -71,7 +81,7 @@ describe('facturacion/engine', () => {
     const engine = createFacturacionEngine({ db, dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'no-cert-')) })
     const doc = await db.documentos.create({
       tipoDte: 33,
-      receptor: { rut: '11111111-1', razonSocial: 'Cliente Prueba' },
+      receptor: { rut: '11111111-1', razonSocial: 'Cliente Prueba', giro: 'Textiles', direccion: 'Ruta 68 km 10', comuna: 'Santiago' },
       items: [{ nombre: 'Tela', cantidad: 1, precio: 1000 }]
     })
     await expect(engine.emitir(doc.id)).rejects.toThrow(/No hay certificado digital cargado/)
@@ -102,7 +112,7 @@ describe('facturacion/engine', () => {
     it('emitir() assigns a folio, builds signed XML and marks the document emitido', async () => {
       const doc = await db.documentos.create({
         tipoDte: 33,
-        receptor: { rut: '11111111-1', razonSocial: 'Cliente Prueba SpA' },
+        receptor: { rut: '11111111-1', razonSocial: 'Cliente Prueba SpA', giro: 'Textiles', direccion: 'Ruta 68 km 10', comuna: 'Santiago' },
         items: [{ nombre: 'Tela acabada', cantidad: 10, precio: 5000, unidad: 'MT' }]
       })
       const emitido = await engine.emitir(doc.id)
@@ -131,7 +141,7 @@ describe('facturacion/engine', () => {
     it('emitir() throws when there are no folios left for the tipoDte/ambiente', async () => {
       const doc = await db.documentos.create({
         tipoDte: 34, // Factura exenta: sin CAF cargado en este ambiente QA aislado
-        receptor: { rut: '11111111-1', razonSocial: 'Cliente Prueba' },
+        receptor: { rut: '11111111-1', razonSocial: 'Cliente Prueba', giro: 'Textiles', direccion: 'Ruta 68 km 10', comuna: 'Santiago' },
         items: [{ nombre: 'Ajuste', cantidad: 1, precio: 1000 }]
       })
       await expect(engine.emitir(doc.id)).rejects.toThrow(/No hay folios disponibles/)
