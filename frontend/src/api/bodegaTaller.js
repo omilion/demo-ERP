@@ -23,6 +23,13 @@ export const useBodegaTallerAutocomplete = (q, enabled = true) =>
     staleTime: 30_000,
   })
 
+export const useBodegaTallerLotes = (id) =>
+  useQuery({
+    queryKey: ['bodega-taller', id, 'lotes'],
+    queryFn: () => api.get(`/bodega-taller/${id}/lotes`).then(r => r.data),
+    enabled: !!id,
+  })
+
 export const useCreateBodegaTaller = () => {
   const qc = useQueryClient()
   return useMutation({
@@ -44,5 +51,16 @@ export const useDeleteBodegaTaller = () => {
   return useMutation({
     mutationFn: (id) => api.delete(`/bodega-taller/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['bodega-taller'] }),
+  })
+}
+
+export const useCreateBodegaTallerLote = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }) => api.post(`/bodega-taller/${id}/lotes`, data).then(r => r.data),
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: ['bodega-taller'] })
+      qc.invalidateQueries({ queryKey: ['bodega-taller', variables.id, 'lotes'] })
+    },
   })
 }

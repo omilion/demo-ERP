@@ -423,7 +423,7 @@ const UNIDADES = ['kg', 'mt', 'm2', 'm3', 'lt', 'plancha', 'rollo', 'unidad'];
 function NuevaMateriaPrimaModal({ talleres, onClose }) {
   const crear = useCreateBodegaTaller();
   const [form, setForm] = useState({
-    codigoInterno: '', nombre: '', detalle: '', unidadMedida: 'kg', precio: '', tallerId: '',
+    codigoInterno: '', nombre: '', detalle: '', unidadMedida: 'kg', precio: '', tallerId: '', densidadKgM3: '', espesorMm: '', formato: '',
   });
   const set = (campo, valor) => setForm((f) => ({ ...f, [campo]: valor }));
 
@@ -440,6 +440,9 @@ function NuevaMateriaPrimaModal({ talleres, onClose }) {
         unidadMedida: form.unidadMedida || undefined,
         precio: Number(form.precio) || 0,
         tallerId: form.tallerId ? Number(form.tallerId) : undefined,
+        densidadKgM3: form.densidadKgM3 === '' ? undefined : Number(form.densidadKgM3),
+        espesorMm: form.espesorMm === '' ? undefined : Number(form.espesorMm),
+        formato: form.formato.trim() || undefined,
       });
       toast.success('Materia prima creada');
       onClose();
@@ -469,6 +472,25 @@ function NuevaMateriaPrimaModal({ talleres, onClose }) {
                 {talleres.map((t) => <option key={t.id} value={String(t.id)}>{t.label || t.nombre}</option>)}
               </select>
             </div>
+          </div>
+
+          <div style={{ paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>EspecificaciÃ³n de espuma</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={etiqueta}>Densidad (kg/mÂ³)</label>
+                <input type="number" min="0" value={form.densidadKgM3} onChange={(e) => set('densidadKgM3', e.target.value)} placeholder="ej. 25" style={campo} />
+              </div>
+              <div>
+                <label style={etiqueta}>Espesor (mm)</label>
+                <input type="number" min="0" value={form.espesorMm} onChange={(e) => set('espesorMm', e.target.value)} placeholder="ej. 50" style={campo} />
+              </div>
+            </div>
+            <div>
+              <label style={etiqueta}>Formato</label>
+              <input value={form.formato} onChange={(e) => set('formato', e.target.value)} placeholder="ej. plancha 2 x 1 m" style={campo} />
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6 }}>La densidad identifica la espuma y obliga a seleccionar un lote aprobado al consumirla en taller.</div>
           </div>
 
           <div>

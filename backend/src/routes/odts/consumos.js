@@ -40,8 +40,16 @@ export function parseConsumoRequest(body = {}) {
   if (!motivo) return { error: 'motivo requerido' }
 
   const taller = typeof body.taller === 'string' ? body.taller.trim() : ''
+  const loteId = body.loteId == null || body.loteId === '' ? null : parsePositiveInt(body.loteId)
+  if (body.loteId != null && !loteId) return { error: 'loteId invalido' }
+  const calidad = typeof body.calidad === 'string' ? body.calidad.trim().toLowerCase() : 'aprobado'
+  if (!['aprobado', 'reproceso', 'rechazado'].includes(calidad)) return { error: 'calidad invalida' }
+  const mermaCantidad = body.mermaCantidad == null || body.mermaCantidad === '' ? 0 : Number(body.mermaCantidad)
+  if (!Number.isFinite(mermaCantidad) || mermaCantidad < 0) return { error: 'mermaCantidad invalida' }
+  const mermaMotivo = typeof body.mermaMotivo === 'string' ? body.mermaMotivo.trim() : ''
+  if (mermaCantidad > 0 && !mermaMotivo) return { error: 'mermaMotivo requerido' }
 
-  return { tipo, id, cantidad, motivo, taller: taller || null }
+  return { tipo, id, cantidad, motivo, taller: taller || null, loteId, calidad, mermaCantidad, mermaMotivo: mermaMotivo || null }
 }
 
 function stockError(item, cantidad) {
@@ -53,7 +61,7 @@ function stockError(item, cantidad) {
   }
 }
 
-export function buildHistorialMaterialData({ odt, item, cantidad, usuario, taller = null, now = new Date() }) {
+export function buildHistorialMaterialData({ odt, item, cantidad, usuario, taller = null, lote = null, calidad = null, mermaCantidad = 0, mermaMotivo = null, now = new Date() }) {
   return {
     odtId: odt.id,
     codigoInterno: item.codigoInterno ?? item.codigo ?? null,
@@ -65,6 +73,7 @@ export function buildHistorialMaterialData({ odt, item, cantidad, usuario, talle
     fecha: now,
     taller,
     sucursalId: item.sucursalId ?? odt.sucursalId ?? null,
+    loteCodigo: lote?.codigo ?? null, calidad, mermaCantidad, mermaMotivo,
   }
 }
 
@@ -151,7 +160,7 @@ function scopedResourceWhere(id, sucursalId) {
   }
 }
 
-export async function consumirMaterialTaller({ tx, odt, itemId, cantidad, motivo, userId, usuario, taller, sucursalId, now = new Date() }) {
+export async function consumirMaterialTaller({ tx, odt, itemId, cantidad, motivo, userId, usuario, taller, sucursalId, loteId, calidad, mermaCantidad = 0, mermaMotivo, now = new Date() }) {
   const scopeSucursalId = sucursalId ?? odt.sucursalId ?? null
   const material = await tx.bodegaTaller.findFirst({
     where: scopedResourceWhere(itemId, scopeSucursalId),
@@ -161,23 +170,29 @@ export async function consumirMaterialTaller({ tx, odt, itemId, cantidad, motivo
       nombre: true,
       unidadMedida: true,
       stock: true,
-      sucursalId: true,
+      sucursalId: true, densidadKgM3: true,
     },
   })
   if (!material) return { status: 404, error: 'Material de taller no encontrado' }
-  const insufficient = stockError(material, cantidad)
+  const totalEgreso = cantidad + mermaCantidad
+  if (material.densidadKgM3 != null && !loteId) return { status: 400, error: 'loteId requerido para consumir espuma' }
+  const lote = loteId ? await tx.bodegaTallerLote.findFirst({ where: { id: loteId, bodegaTallerId: material.id, estadoCalidad: 'aprobado' } }) : null
+  if (loteId && !lote) return { status: 409, error: 'Lote no disponible o no aprobado' }
+  if (lote && lote.cantidadDisponible < totalEgreso) return { status: 409, error: 'Stock insuficiente en el lote', stockDisponible: lote.cantidadDisponible }
+  const insufficient = stockError(material, totalEgreso)
   if (insufficient) return insufficient
 
   const decrement = await tx.bodegaTaller.updateMany({
-    where: { ...scopedResourceWhere(material.id, scopeSucursalId), stock: { gte: cantidad } },
-    data: { stock: { decrement: cantidad } },
+    where: { ...scopedResourceWhere(material.id, scopeSucursalId), stock: { gte: totalEgreso } },
+    data: { stock: { decrement: totalEgreso } },
   })
   if (decrement.count !== 1) return { status: 409, error: 'Stock insuficiente', stockDisponible: Number(material.stock ?? 0) }
+  if (lote) await tx.bodegaTallerLote.update({ where: { id: lote.id }, data: { cantidadDisponible: { decrement: totalEgreso } } })
   const movimiento = await tx.bodegaTallerMovimiento.create({
     data: {
       bodegaTallerId: material.id,
       tipo: 'egreso',
-      cantidad: -cantidad,
+      cantidad: -totalEgreso,
       motivo,
       userId,
       origenTipo: 'odt_consumo',
@@ -185,14 +200,14 @@ export async function consumirMaterialTaller({ tx, odt, itemId, cantidad, motivo
     },
   })
   const historial = await tx.tallerHistorialMaterial.create({
-    data: buildHistorialMaterialData({ odt, item: material, cantidad, usuario, taller, now }),
+    data: buildHistorialMaterialData({ odt, item: material, cantidad, usuario, taller, lote, calidad, mermaCantidad, mermaMotivo, now }),
   })
   const materialAsignado = await upsertTallerMaterial({ tx, odt, item: material, cantidad, taller })
 
   return {
     tipo: 'material_taller',
     id: material.id,
-    stockFinal: material.stock - cantidad,
+    stockFinal: material.stock - totalEgreso,
     movimiento,
     historial,
     materialAsignado,
@@ -256,6 +271,10 @@ export async function applyOdtConsumo({ tx, odt, consumo, userId, usuario, sucur
     userId,
     usuario,
     sucursalId,
+    loteId: consumo.loteId,
+    calidad: consumo.calidad,
+    mermaCantidad: consumo.mermaCantidad,
+    mermaMotivo: consumo.mermaMotivo,
     now,
   }
 

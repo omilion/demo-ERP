@@ -1457,15 +1457,37 @@ model BodegaTaller {
   proveedorId     Int?                          @map("proveedor_id")
   sucursalId      Int?                          @map("sucursal_id")
   precio          Float                         @default(0)
+  densidadKgM3    Float?                        @map("densidad_kg_m3")
+  espesorMm       Float?                        @map("espesor_mm")
+  formato         String?
   tallerId        Int?                          @map("taller_id")
   activo          Boolean                       @default(true)
   taller          Taller?                       @relation(fields: [tallerId], references: [id], onDelete: SetNull)
   movimientos     BodegaTallerMovimiento[]
   recetaLineas    RecetaMaterial[]
   precioHistorial BodegaTallerPrecioHistorial[]
+  lotes           BodegaTallerLote[]
 
   @@index([tallerId])
   @@map("bodega_taller")
+  @@schema("taller")
+}
+
+model BodegaTallerLote {
+  id                 Int          @id @default(autoincrement())
+  bodegaTallerId     Int          @map("bodega_taller_id")
+  codigo             String
+  cantidadInicial    Float        @map("cantidad_inicial")
+  cantidadDisponible Float        @map("cantidad_disponible")
+  estadoCalidad      String       @default("aprobado") @map("estado_calidad")
+  observacion        String?
+  recibidoAt         DateTime     @default(now()) @map("recibido_at")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  item               BodegaTaller @relation(fields: [bodegaTallerId], references: [id], onDelete: Restrict)
+
+  @@unique([bodegaTallerId, codigo])
+  @@index([bodegaTallerId, estadoCalidad])
+  @@map("bodega_taller_lotes")
   @@schema("taller")
 }
 
@@ -1516,6 +1538,10 @@ model TallerHistorialMaterial {
   fecha         DateTime
   taller        String?
   sucursalId    Int?     @map("sucursal_id")
+  loteCodigo    String?  @map("lote_codigo")
+  calidad       String?
+  mermaCantidad Float    @default(0) @map("merma_cantidad")
+  mermaMotivo   String?  @map("merma_motivo")
 
   @@index([odtId])
   @@map("taller_historial_materiales")
