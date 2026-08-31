@@ -431,6 +431,7 @@ export default function MatrizVentasPage() {
           {row.fechaEstadoEntrega && <span style={{ ...mono, fontSize: 10, color: 'var(--text-3)' }}>{formatDate(row.fechaEstadoEntrega)}</span>}
         </div>
       ) : '-' },
+    { key: 'estadoLogistico', label: 'Operación', render: value => value ? <Badge tone={value.tone || 'gray'}>{value.label}</Badge> : '-' },
     { key: 'regionDespacho', label: 'Región Desp.', render: v => <span style={{ fontSize: 12 }}>{v || '—'}</span> },
     { key: 'detalleProductos', label: 'Detalle', width: 430, wrap: true, render: (_, row) => renderDetalle(row) },
     { key: 'fecha', label: 'Fecha Creacion', render: v => <span style={{ ...mono, fontSize: 11 }}>{formatDateTime(v)}</span> },

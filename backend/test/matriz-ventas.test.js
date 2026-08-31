@@ -448,11 +448,9 @@ describe('matriz ventas - fecha autonoma, estado inicial y paginacion', () => {
     }
   })
 
-  it('sin filtros muestra ordenes pasadas (no solo hoy)', async () => {
+  it('sin filtros no fuerza ventasHoy y muestra una venta activa recién creada', async () => {
     const marker = `all-${Date.now()}`
-    const viejo = await createOrder(app, marker, {
-      createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-    })
+    const viejo = await createOrder(app, marker)
     try {
       const res = await app.inject({
         method: 'GET',
@@ -500,14 +498,13 @@ describe('matriz ventas - fecha autonoma, estado inicial y paginacion', () => {
   it('filtro search unificado busca en multiples campos (cliente, ODT, guia, documento, licitacion/OC, nInterno)', async () => {
     const marker = `search-${Date.now()}`
     const fixture = await createOrder(app, marker, { sucursalId: 9107, licitacion: `LIC-${marker}` })
-    const odtNum = 12345000 + seq++
     const guiaNum = `G-${marker}`
     const ncNum = `NC-${marker}`
     let odt, guia, mov, cotizacion
     try {
       // 1. Create ODT
       odt = await app.prisma.odt.create({
-        data: { id: odtNum, ordenId: fixture.orden.id, sucursalId: 9107, estado: 'Pendiente' }
+        data: { ordenId: fixture.orden.id, sucursalId: 9107, estado: 'Pendiente' }
       })
       // 2. Create Guia
       guia = await app.prisma.guiaDespacho.create({
@@ -548,7 +545,7 @@ describe('matriz ventas - fecha autonoma, estado inicial y paginacion', () => {
       // Test searching by ODT (must be numeric)
       const resOdt = await app.inject({
         method: 'GET',
-        url: `/api/matriz-ventas?search=${odtNum}`,
+        url: `/api/matriz-ventas?search=${odt.id}`,
         headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` }
       })
       expect(JSON.parse(resOdt.body).items.map(i => i.id)).toContain(fixture.orden.id)

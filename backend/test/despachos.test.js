@@ -886,4 +886,43 @@ describe('despachos legacy matrix parity', () => {
       await cleanupFixture(app, fixture)
     }
   })
+
+  it('registra un despacho aislado sin vincular ni modificar una venta', async () => {
+    let despachoId
+    try {
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/despachos',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          origenTipo: 'manual',
+          motivoOperacion: 'Traslado interno autorizado para prueba',
+          tipoDespacho: 'Traslado interno',
+          transporte: 'Camioneta bodega',
+        },
+      })
+      expect(created.statusCode, created.body).toBe(200)
+      const despacho = JSON.parse(created.body)
+      despachoId = despacho.id
+      expect(despacho).toMatchObject({
+        ordenId: null,
+        odtId: null,
+        interno: null,
+        origenTipo: 'manual',
+        origenId: null,
+        motivoOperacion: 'Traslado interno autorizado para prueba',
+      })
+
+      const sinMotivo = await app.inject({
+        method: 'POST',
+        url: '/api/despachos',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { origenTipo: 'manual' },
+      })
+      expect(sinMotivo.statusCode).toBe(400)
+      expect(JSON.parse(sinMotivo.body).error).toContain('motivoOperacion requerido')
+    } finally {
+      if (despachoId) await app.prisma.despacho.delete({ where: { id: despachoId } }).catch(() => {})
+    }
+  })
 })

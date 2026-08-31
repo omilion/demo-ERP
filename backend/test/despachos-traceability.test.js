@@ -15,6 +15,7 @@ import {
   resolveDispatchTraceability,
   validateDispatchFilterCoherence,
 } from '../src/routes/despachos/index.js'
+import { deriveEstadoLogistico, resumenPreparacion } from '../src/routes/despachos/estado-logistico.js'
 
 function prismaMock({
   orden = { id: 10, nInterno: 9001, clienteId: 1 },
@@ -489,6 +490,46 @@ describe('packing and dispatch timing helpers', () => {
       despachoDias: 1,
       pendiente: true,
     })
+  })
+})
+
+describe('estado logístico derivado', () => {
+  it('prioriza evidencia de tracking, SII, packing y despacho en ese orden', () => {
+    expect(deriveEstadoLogistico({ items: [{ cantidad: 2, nEntregados: 0 }] })).toMatchObject({ codigo: 'LISTA_PICKING' })
+    expect(deriveEstadoLogistico({ items: [{ cantidad: 2, nEntregados: 0 }], despachos: [{ id: 1 }] })).toMatchObject({ codigo: 'PICKING' })
+    expect(deriveEstadoLogistico({ items: [{ cantidad: 2, nEntregados: 1 }], despachos: [{ id: 1 }] })).toMatchObject({ codigo: 'PACKING' })
+    expect(deriveEstadoLogistico({ items: [{ cantidad: 2, nEntregados: 2 }], despachos: [{ id: 1 }] })).toMatchObject({ codigo: 'LISTA_DESPACHO' })
+    expect(deriveEstadoLogistico({ items: [{ cantidad: 2, nEntregados: 2 }], guias: [{ id: 2, dteEstado: 'emitido' }] })).toMatchObject({ codigo: 'GUIA_SII_EMITIDA' })
+    expect(deriveEstadoLogistico({ tracking: { estado: 'Reparto' } })).toMatchObject({ codigo: 'REPARTO' })
+  })
+
+  it('separa inventario listo de fabricación pendiente en una venta mixta', () => {
+    const items = [
+      { id: 1, productoId: 10, cantidad: 3, nEntregados: 0, estadoInventario: 'inventariado' },
+      { id: 2, productoId: 20, cantidad: 2, nEntregados: 0, estadoInventario: 'transitorio' },
+    ]
+    const preparacion = resumenPreparacion(items, [{
+      id: 9,
+      items: [{ productoId: 20, cantidad: 2, talleres: [{ estado: 'en_proceso' }] }],
+    }])
+    expect(preparacion).toMatchObject({
+      disponiblePicking: 3,
+      disponibleInventario: 3,
+      disponibleTaller: 0,
+      pendienteTaller: 2,
+      esMixta: true,
+    })
+    expect(deriveEstadoLogistico({ items, preparacion })).toMatchObject({ codigo: 'PICKING_PARCIAL' })
+  })
+
+  it('habilita para picking una línea transitoria sólo al quedar lista en todos sus talleres', () => {
+    const items = [{ id: 2, productoId: 20, cantidad: 2, nEntregados: 0, estadoInventario: 'transitorio' }]
+    const preparacion = resumenPreparacion(items, [{
+      id: 9,
+      items: [{ productoId: 20, cantidad: 2, talleres: [{ estado: 'listo' }, { estado: 'listo' }] }],
+    }])
+    expect(preparacion).toMatchObject({ disponiblePicking: 2, disponibleTaller: 2, pendienteTaller: 0 })
+    expect(deriveEstadoLogistico({ items, preparacion })).toMatchObject({ codigo: 'LISTA_PICKING' })
   })
 })
 

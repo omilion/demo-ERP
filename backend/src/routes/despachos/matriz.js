@@ -7,6 +7,7 @@ import {
   TIPOS_VENTA_MOSTRADOR,
   attachEstadoFlujo,
 } from '../ventas/estados-normalize.js'
+import { deriveEstadoLogistico } from './estado-logistico.js'
 
 const LIMIT = 100
 const EXPORT_LIMIT = 10000
@@ -324,7 +325,7 @@ export async function buildDespachoMatrizWhere(prisma, query = {}, user = {}) {
   return { where }
 }
 
-function mapOrderRows(ordenes, { odtsByOrden, cotizByOrden, clientesById }) {
+function mapOrderRows(ordenes, { odtsByOrden, cotizByOrden, clientesById, trackingByOrden, dteByGuia }) {
   return ordenes.map(orden => {
     const clienteDirecto = clientesById[orden.clienteId] || null
     const cliente = orden.clienteSucursal?.cliente || clienteDirecto
@@ -336,6 +337,32 @@ function mapOrderRows(ordenes, { odtsByOrden, cotizByOrden, clientesById }) {
     const odts = odtsByOrden[orden.id] || []
     const cotizaciones = cotizByOrden[orden.id] || []
     const packing = buildPackingResumen(orden.items || [])
+    const guias = (orden.guiasDespacho || []).map(guia => ({
+      id: guia.id,
+      nGuia: guia.nGuia,
+      fechaGuia: guia.fechaGuia,
+      odtId: guia.odtId,
+      dteEstado: dteByGuia.get(guia.id)?.estado || null,
+      dteFolio: dteByGuia.get(guia.id)?.folio || null,
+    }))
+    const despachos = (orden.despachos || []).map(d => ({
+      id: d.id,
+      fechaEntrega: d.fechaEntrega,
+      tipoDespacho: d.tipoDespacho,
+      transporte: d.transporte,
+      direccion: d.direccion,
+      region: d.region,
+      comuna: d.comuna,
+      parcial: d.parcial,
+      tieneMulta: d.tieneMulta,
+      tiempoDespachoDias: buildDespachoDias(d),
+    }))
+    const estadoLogistico = deriveEstadoLogistico({
+      items: orden.items || [],
+      despachos,
+      guias,
+      tracking: trackingByOrden.get(orden.id) || null,
+    })
     return attachEstadoFlujo({
       id: orden.id,
       ordenId: orden.id,
@@ -363,14 +390,10 @@ function mapOrderRows(ordenes, { odtsByOrden, cotizByOrden, clientesById }) {
         entregados: item.nEntregados,
       })),
       packing,
+      estadoLogistico,
       odts,
       odtCount: odts.length,
-      guias: (orden.guiasDespacho || []).map(guia => ({
-        id: guia.id,
-        nGuia: guia.nGuia,
-        fechaGuia: guia.fechaGuia,
-        odtId: guia.odtId,
-      })),
+      guias,
       guiasLegacy: orden.guias || null,
       guiasCount: (orden.guiasDespacho || []).length,
       documentos: (orden.movimientosCaja || []).map(doc => ({
@@ -384,19 +407,8 @@ function mapOrderRows(ordenes, { odtsByOrden, cotizByOrden, clientesById }) {
         numeroNCInterna: doc.numeroNCInterna,
       })),
       documentosCount: (orden.movimientosCaja || []).length,
-      despachos: (orden.despachos || []).map(d => ({
-        id: d.id,
-        fechaEntrega: d.fechaEntrega,
-        tipoDespacho: d.tipoDespacho,
-        transporte: d.transporte,
-        direccion: d.direccion,
-        region: d.region,
-        comuna: d.comuna,
-        parcial: d.parcial,
-        tieneMulta: d.tieneMulta,
-        tiempoDespachoDias: buildDespachoDias(d),
-      })),
-      despachoCount: (orden.despachos || []).length,
+      despachos,
+      despachoCount: despachos.length,
       direccion: despachoPrincipal?.direccion || sucursal?.direccion || null,
       region: despachoPrincipal?.region || sucursal?.region || null,
       comuna: despachoPrincipal?.comuna || sucursal?.comuna || null,
@@ -467,7 +479,29 @@ export async function fetchDespachoMatriz(fastify, query = {}, user = {}, option
   const cotizByOrden = {}
   for (const cotizacion of cotizaciones) (cotizByOrden[cotizacion.ordenId] ||= []).push(cotizacion)
   const clientesById = Object.fromEntries(clientes.map(cliente => [cliente.id, cliente]))
-  const items = mapOrderRows(ordenes, { odtsByOrden, cotizByOrden, clientesById })
+  const guiaIds = ordenes.flatMap(orden => (orden.guiasDespacho || []).map(guia => guia.id))
+  const despachoIds = ordenes.flatMap(orden => (orden.despachos || []).map(despacho => despacho.id))
+  const [documentosGuias, trackingEventos] = await Promise.all([
+    guiaIds.length ? fastify.prisma.factDocumento.findMany({
+      where: { guiaDespachoId: { in: guiaIds }, tipoDte: 52 },
+      select: { guiaDespachoId: true, estado: true, folio: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    }) : [],
+    despachoIds.length ? fastify.prisma.despachoTrackingEvento.findMany({
+      where: { despachoId: { in: despachoIds } },
+      select: { despachoId: true, estado: true, fechaEvento: true, id: true },
+      orderBy: [{ fechaEvento: 'desc' }, { id: 'desc' }],
+    }) : [],
+  ])
+  const dteByGuia = new Map()
+  for (const documento of documentosGuias) if (!dteByGuia.has(documento.guiaDespachoId)) dteByGuia.set(documento.guiaDespachoId, documento)
+  const despachoToOrden = new Map(ordenes.flatMap(orden => (orden.despachos || []).map(despacho => [despacho.id, orden.id])))
+  const trackingByOrden = new Map()
+  for (const evento of trackingEventos) {
+    const ordenId = despachoToOrden.get(evento.despachoId)
+    if (ordenId && !trackingByOrden.has(ordenId)) trackingByOrden.set(ordenId, evento)
+  }
+  const items = mapOrderRows(ordenes, { odtsByOrden, cotizByOrden, clientesById, trackingByOrden, dteByGuia })
 
   return {
     items,

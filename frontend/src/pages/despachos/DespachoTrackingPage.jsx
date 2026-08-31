@@ -76,12 +76,13 @@ function TrackingForm({ row, canWrite, onCancel }) {
     <div style={cardStyle}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700 }}>{row.interno ? `Interno ${row.interno}` : `Orden #${row.ordenId || '-'}`}</div>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>{row.origenTipo === 'manual' ? 'Despacho aislado de bodega' : row.interno ? `Interno ${row.interno}` : `Orden #${row.ordenId || '-'}`}</div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{row.tipoDespacho || 'Despacho'} {row.transporte ? `- ${row.transporte}` : ''}</div>
         </div>
         <Badge tone={trackingTone(latest?.estado)}>{latest?.estado || 'Sin tracking'}</Badge>
       </div>
       <div style={{ margin: '-4px 0 12px', fontSize: 12, color: 'var(--text-3)' }}>Flujo operativo: Patio → Didáctico → Reparto → Entregado.</div>
+      {row.origenTipo === 'manual' && row.motivoOperacion && <div style={{ margin: '-5px 0 12px', fontSize: 12, color: 'var(--text-2)' }}>Motivo: <strong>{row.motivoOperacion}</strong></div>}
       {trace.estadoFlujoFormal && <div style={{ margin: '-5px 0 12px', fontSize: 12, color: 'var(--text-2)' }}>Estado formal de la orden: <strong>{trace.estadoFlujoFormal}</strong></div>}
 
       {canWrite && (

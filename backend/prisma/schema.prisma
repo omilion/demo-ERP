@@ -1863,6 +1863,7 @@ model GuiaDespacho {
   id                Int             @id @default(autoincrement())
   ordenId           Int?            @map("orden_id")
   odtId             Int?            @map("odt_id")
+  sucursalId        Int?            @map("sucursal_id")
   nInterno          Int?            @map("n_interno")
   nGuia             String          @map("n_guia")
   fechaGuia         DateTime        @map("fecha_guia")
@@ -1883,6 +1884,7 @@ model GuiaDespacho {
   @@index([nInterno])
   @@index([ordenId])
   @@index([odtId])
+  @@index([sucursalId])
   @@index([despachoId])
   @@index([origenTipo, origenId])
   @@map("guias_despachos")
@@ -1893,6 +1895,7 @@ model Despacho {
   id                Int                      @id @default(autoincrement())
   ordenId           Int?                     @map("orden_id")
   odtId             Int?                     @map("odt_id")
+  sucursalId        Int?                     @map("sucursal_id")
   interno           String?
   plazoEntrega      String?                  @map("plazo_entrega")
   fechaInterno      DateTime?                @map("fecha_interno")
@@ -1910,6 +1913,7 @@ model Despacho {
   tieneMulta        Boolean                  @default(false) @map("tiene_multa")
   origenTipo        String?                  @map("origen_tipo")
   origenId          Int?                     @map("origen_id")
+  motivoOperacion   String?                  @map("motivo_operacion")
   usuario           String?
   eliminado         Boolean                  @default(false)
   userMod           String?                  @map("user_mod")
@@ -1925,6 +1929,7 @@ model Despacho {
 
   @@index([ordenId])
   @@index([odtId])
+  @@index([sucursalId])
   @@index([origenTipo, origenId])
   @@map("despachos")
   @@schema("bodega")
