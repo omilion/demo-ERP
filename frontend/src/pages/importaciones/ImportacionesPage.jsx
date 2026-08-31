@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
 import {
   useImportaciones,
@@ -13,7 +12,7 @@ import { useProductos } from '../../api/productos'
 import { toast, confirmDialog } from '../../store/notif'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
-import { downloadFromBackend } from '../../utils/csv'
+import BotonExportar from '../../components/BotonExportar'
 
 function money(value) {
   return '$' + Number(value || 0).toLocaleString('es-CL')
@@ -43,7 +42,6 @@ function estadoBadgeTone(estado) {
 }
 
 export default function ImportacionesPage({ embedded = false }) {
-  const navigate = useNavigate()
   const { user } = useAuthStore()
   const canWriteBodega = can(user, 'bodega', 'write')
   const canDeleteBodega = can(user, 'bodega', 'delete')
@@ -66,7 +64,7 @@ export default function ImportacionesPage({ embedded = false }) {
     return q
   }, [search, estado, tipoTransporte, proveedorId])
 
-  const { data = { items: [], total: 0, kpis: {} }, isLoading } = useImportaciones(queryParams)
+  const { data = { items: [], total: 0, kpis: {} } } = useImportaciones(queryParams)
   const { data: proveedoresData = { items: [] } } = useProveedores()
   const proveedoresList = proveedoresData.items || []
 
@@ -285,14 +283,10 @@ export default function ImportacionesPage({ embedded = false }) {
           breadcrumb={['Inicio', 'Bodega', 'Importaciones']}
           actions={
             <>
-              <Btn
-                variant="secondary"
-                icon="download"
-                size="sm"
-                onClick={() => downloadFromBackend('/importaciones/export', `importaciones_${new Date().toISOString().slice(0, 10)}.${archivo}`, { archivo })}
-              >
-                Exportar Excel
-              </Btn>
+              <BotonExportar
+                url="/importaciones/export"
+                nombre={`importaciones_${new Date().toISOString().slice(0, 10)}`}
+              />
               {canWriteBodega && (
                 <Btn
                   variant="primary"
@@ -467,7 +461,7 @@ function ImportacionFormModal({ item, proveedores = [], onClose }) {
   const [navieraAgencia, setNavieraAgencia] = useState(item?.navieraAgencia || '')
   const [fechaEmbarque, setFechaEmbarque] = useState(item?.fechaEmbarque ? item.fechaEmbarque.slice(0, 10) : '')
   const [fechaEta, setFechaEta] = useState(item?.fechaEta ? item.fechaEta.slice(0, 10) : '')
-  const [documentoAduana, setDocumentoAduana] = useState(item?.documentoAduana || '')
+  const [documentoAduana] = useState(item?.documentoAduana || '')
   const [costoFlete, setCostoFlete] = useState(item?.costoFlete || 0)
   const [costoSeguro, setCostoSeguro] = useState(item?.costoSeguro || 0)
   const [costoAduana, setCostoAduana] = useState(item?.costoAduana || 0)

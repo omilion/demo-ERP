@@ -18,6 +18,13 @@ export const useOrdenesCompraProveedores = (params = {}) =>
     staleTime: 30_000,
   })
 
+export const useTiemposBodega = () =>
+  useQuery({
+    queryKey: ['ordenes-compra-proveedores', 'metricas', 'tiempos'],
+    queryFn: () => api.get('/ordenes-compra-proveedores/metricas/tiempos').then(r => r.data),
+    staleTime: 60_000,
+  })
+
 export const useOrdenCompraProveedor = (id) =>
   useQuery({
     queryKey: ['ordenes-compra-proveedores', id],
@@ -88,6 +95,7 @@ export const useRecepcionarOCProveedor = () => {
     onSuccess: (_, variables) => {
       qc.invalidateQueries({ queryKey: ['ordenes-compra-proveedores'] })
       qc.invalidateQueries({ queryKey: ['ordenes-compra-proveedores', variables.id] })
+      qc.invalidateQueries({ queryKey: ['ordenes-compra-proveedores', 'metricas', 'tiempos'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
     },
   })

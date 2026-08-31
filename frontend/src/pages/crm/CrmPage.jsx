@@ -329,7 +329,7 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
   const crearGestion = useCrmGestionCreate()
   const { data: catalogos } = useCrmCatalogos()
   const { data: detalle } = useCrmDetalle(item.id)
-  const [detailTab, setDetailTab] = useState('resumen')
+  const detailTab = 'resumen'
   const ocOnline = detalle?.ordenCompraOnline
 
   const [form, setForm] = useState(() => ({
@@ -688,6 +688,7 @@ function TableView({ items, total, limit, onOpen }) {
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────────
+// eslint-disable-next-line no-unused-vars -- queda disponible para el flujo de alta directa de leads.
 function NuevoLeadModal({ onClose }) {
   const [form, setForm] = useState({ nombre: '', rsocial: '', rut: '', email: '', telefono: '', prioridad: 'Media', canalVenta: 'WEB', tipoVenta: 'VENTA_WEB', comentarios: '' })
   const { data: catalogos } = useCrmCatalogos()
@@ -730,8 +731,8 @@ export default function CrmPage() {
   const [portfolio, setPortfolio]     = useState('ACTIVOS')
   const [ejecutiva, setEjecutiva]     = useState('')
   const [prioridad, setPrioridad]     = useState('')
-  const [canalVenta, setCanalVenta]   = useState('')
-  const [tipoVenta, setTipoVenta]     = useState('')
+  const [canalVenta]                  = useState('')
+  const [tipoVenta]                    = useState('')
   const [origen, setOrigen]           = useState('')
   const [semaforo, setSemaforo]       = useState('')
   const [estadoFiltro, setEstadoFiltro] = useState('')
@@ -798,7 +799,7 @@ export default function CrmPage() {
 
   // Las cantidades del selector deben responder a los mismos filtros de la
   // grilla. Se omite solo la propia ejecutiva para no esconder alternativas.
-  const { ejecutiva: _ejecutivaSeleccionada, ...ejecutivasParams } = params
+  const ejecutivasParams = Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'ejecutiva'))
   const { data: ejecutivas = [] } = useCrmEjecutivas(ejecutivasParams)
 
   const { data: result = { items: [], total: 0, limit: 500 }, isLoading } = useCrm(params)

@@ -1,8 +1,7 @@
 import { toast, confirmDialog } from '../../store/notif'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
-import { FormField, Input } from '../../components/forms'
+import { Badge, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { useMatrizVentas, useMatrizTotales } from '../../api/matrizVentas'
 import { useAnularVenta } from '../../api/ventas'
 import { useAuthStore } from '../../store/auth'
@@ -19,13 +18,6 @@ const TABS = [
   { id: 'trato-directo', label: 'Trato directo' },
   { id: 'licitacion', label: 'Licitaciones' },
   { id: 'compra-agil', label: 'Compra ágil' },
-]
-
-const QUICK_FILTERS = [
-  { id: 'ventasHoy', label: 'Ventas hoy' },
-  { id: 'noPagada', label: 'No pagadas' },
-  { id: 'pendienteEntrega', label: 'Pendiente entrega' },
-  { id: 'entregada', label: 'Entregadas no pagadas' },
 ]
 
 const ESTADO_PAGO_OPTS = ['', 'No pagada', 'Pagada', 'Parcial']
@@ -628,18 +620,6 @@ const operationBtn = background => ({
 const detailHeadCell = { padding: '3px 4px', borderRight: '1px solid oklch(1 0 0 / 0.25)', lineHeight: 1.1 }
 const detailCell = { padding: '4px', fontSize: 7, borderRight: '1px solid var(--border)', lineHeight: 1.15 }
 const pagerBtn = disabled => ({ padding: '5px 10px', fontSize: 12, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1 })
-const exportFilteredBtn = disabled => ({
-  padding: '5px 10px',
-  fontSize: 12,
-  borderRadius: 5,
-  border: `1px solid ${disabled ? 'var(--border)' : 'var(--green-600)'}`,
-  background: disabled ? 'oklch(0.96 0.002 220)' : 'var(--green-600)',
-  color: disabled ? 'var(--text-3)' : '#fff',
-  cursor: disabled ? 'not-allowed' : 'pointer',
-  fontWeight: 700,
-})
-const quickBtn = active => ({ padding: '7px 12px', fontSize: 12, borderRadius: 6, border: `1px solid ${active ? 'var(--green-600)' : 'var(--border)'}`, background: active ? 'var(--green-50)' : '#fff', cursor: 'pointer', color: active ? 'var(--green-800)' : 'var(--text-2)', fontWeight: active ? 700 : 500 })
-const selectStyle = { width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', background: '#fff', boxSizing: 'border-box' }
 const compactInputStyle = { height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff', color: 'var(--text-1)', boxSizing: 'border-box' }
 const compactSelectStyle = { height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff', color: 'var(--text-1)', boxSizing: 'border-box' }
 const compactClearBtn = { height: 28, padding: '0 10px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: '1px solid #fca5a5', background: '#fee2e2', color: '#991b1b', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }

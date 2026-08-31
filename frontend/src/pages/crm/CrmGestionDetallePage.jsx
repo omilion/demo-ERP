@@ -138,6 +138,7 @@ export default function CrmGestionDetallePage() {
   const [form, setForm] = useState({})
   const [items, setItems] = useState([])
   const [gestion, setGestion] = useState({ tipo: 'LLAMADA', resultado: '', siguienteAccion: '', fechaProximo: '' })
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- se inicializa el formulario editable al cambiar de registro CRM.
   useEffect(() => { if (crm) { setForm({ prioridad: crm.prioridad || '', fechaProximo: crm.fechaProximo?.slice(0, 10) || '', accion: crm.accion || '', resultado: crm.resultado || '', comentarios: crm.comentarios || '', nombre: crm.nombre || '', rsocial: crm.rsocial || '', email: crm.email || '', telefono: crm.telefono || '' }); setItems(crm.ordenCompraOnline?.items || (crm.cotizacionComercial?.items || []).map(item => ({ ...item, precio: item.precioUnitario })) || crm.cotizacionLicitacion?.items || []) } }, [crm])
   if (isLoading) return <main className="page"><div style={{ padding: 32 }}>Cargando gestión CRM…</div></main>
   if (!crm) return <main className="page"><Btn variant="secondary" onClick={() => navigate('/crm')}>← Volver al CRM</Btn><div style={{ paddingTop: 24 }}>Registro CRM no encontrado.</div></main>
