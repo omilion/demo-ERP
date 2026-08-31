@@ -1,7 +1,7 @@
 import { toast, promptDialog } from '../../store/notif'
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
+import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs, FilterSelect } from '../../components/shared'
 import { useDespachoMatriz, useDespachoConsolidadoTaller, useDespachos, useGuias, useDeleteDespacho, useDeleteGuia } from '../../api/despachos'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
@@ -373,8 +373,38 @@ export default function DespachosPage() {
     if (ordenIdParam || odtIdParam) setSearchParams({})
   }
 
+  const hasActiveFilters = Boolean(
+    desde || hasta || search || odtId || nInterno || rut || cliente || oc ||
+    idLicitacion || guia || nc || nd || region || comuna || ciudad ||
+    estadoPago || estadoEntrega || tipoVenta || estadoLogistico ||
+    ventasHoy || conIncidencia || includeEliminados
+  )
+
+  const tipoVentaOptions = TIPO_VENTA_OPTS.map(([val, label]) => ({
+    value: val,
+    label: val === '' ? 'Todos' : label,
+  }))
+
+  const estadoPagoOptions = ESTADO_PAGO_OPTS.map(v => ({
+    value: v,
+    label: v === '' ? 'Todos' : v,
+  }))
+
+  const estadoEntregaOptions = ESTADO_ENTREGA_OPTS.map(v => ({
+    value: v,
+    label: v === '' ? 'Todos' : v,
+  }))
+
+  const estadoLogisticoOptions = [
+    { value: '', label: 'Todos' },
+    { value: 'pendiente', label: 'Pendiente' },
+    { value: 'entregada', label: 'Entregada' },
+    { value: 'parcial', label: 'Parcial' },
+    { value: 'multa', label: 'Con multa' },
+  ]
+
   const toolbarExtra = (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
       <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <Tabs tabs={TABS} active={tab} onChange={value => { setTab(value); setPage(1) }} style={{ marginBottom: 0 }} />
@@ -383,62 +413,97 @@ export default function DespachosPage() {
               onClick={() => setFilter(setEstadoLogistico)(estadoLogistico === 'pendiente' ? '' : 'pendiente')}
               style={quickFilterBtn(estadoLogistico === 'pendiente')}
             >
-              Pendientes{estadoLogistico === 'pendiente' ? ' · mas antiguos primero' : ''}
+              Pendientes{estadoLogistico === 'pendiente' ? ' · más antiguos primero' : ''}
             </button>
           )}
         </div>
-        <SearchBar placeholder="Buscar cliente, documento, guia o interno..." value={search} onChange={setFilter(setSearch)} style={{ width: 320 }} />
+        <SearchBar placeholder="Buscar cliente, documento, guía o interno..." value={search} onChange={setFilter(setSearch)} style={{ width: 320, height: 28 }} />
       </div>
-      <div style={filterGrid}>
-        <FilterField label="Desde"><input type="date" value={desde} onChange={e => setFilter(setDesde)(e.target.value)} style={inputFilter} /></FilterField>
-        <FilterField label="Hasta"><input type="date" value={hasta} onChange={e => setFilter(setHasta)(e.target.value)} style={inputFilter} /></FilterField>
-        <FilterField label="N interno"><input value={nInterno} onChange={e => setFilter(setNInterno)(e.target.value)} style={inputFilter} /></FilterField>
-        <FilterField label="RUT"><input value={rut} onChange={e => setFilter(setRut)(e.target.value)} style={inputFilter} /></FilterField>
-        <FilterField label="Cliente"><input value={cliente} onChange={e => setFilter(setCliente)(e.target.value)} style={inputFilter} /></FilterField>
-        <FilterField label="OC"><input value={oc} onChange={e => setFilter(setOc)(e.target.value)} style={inputFilter} /></FilterField>
-        <FilterField label="ID licitacion"><input value={idLicitacion} onChange={e => setFilter(setIdLicitacion)(e.target.value)} style={inputFilter} /></FilterField>
-        <FilterField label="Guia"><input value={guia} onChange={e => setFilter(setGuia)(e.target.value)} style={inputFilter} /></FilterField>
-        <FilterField label="NC"><input value={nc} onChange={e => setFilter(setNc)(e.target.value)} style={inputFilter} /></FilterField>
-        <FilterField label="ND"><input value={nd} onChange={e => setFilter(setNd)(e.target.value)} style={inputFilter} /></FilterField>
-        <FilterField label="OT"><input value={odtId} onChange={e => setFilter(setOdtId)(e.target.value)} style={inputFilter} /></FilterField>
-        <FilterField label="Tipo venta">
-          <select value={tipoVenta} onChange={e => setFilter(setTipoVenta)(e.target.value)} style={inputFilter}>
-            {TIPO_VENTA_OPTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-        </FilterField>
-        <FilterField label="Pago">
-          <select value={estadoPago} onChange={e => setFilter(setEstadoPago)(e.target.value)} style={inputFilter}>
-            {ESTADO_PAGO_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
-          </select>
-        </FilterField>
-        <FilterField label="Entrega">
-          <select value={estadoEntrega} onChange={e => setFilter(setEstadoEntrega)(e.target.value)} style={inputFilter}>
-            {ESTADO_ENTREGA_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
-          </select>
-        </FilterField>
-        <FilterField label="Estado despacho">
-          <select value={estadoLogistico} onChange={e => setFilter(setEstadoLogistico)(e.target.value)} style={inputFilter}>
-            <option value="">Todos</option>
-            <option value="pendiente">Pendiente</option>
-            <option value="entregada">Entregada</option>
-            <option value="parcial">Parcial</option>
-            <option value="multa">Con multa</option>
-          </select>
-        </FilterField>
-        <FilterField label="Region"><input value={region} onChange={e => setFilter(setRegion)(e.target.value)} style={inputFilter} /></FilterField>
-        <FilterField label="Comuna"><input value={comuna} onChange={e => setFilter(setComuna)(e.target.value)} style={inputFilter} /></FilterField>
-        <FilterField label="Ciudad"><input value={ciudad} onChange={e => setFilter(setCiudad)(e.target.value)} style={inputFilter} /></FilterField>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-          <label style={checkLabel}><input type="checkbox" checked={ventasHoy} onChange={e => { setVentasHoy(e.target.checked); setPage(1) }} /> Ventas hoy</label>
-          {tab === 'registros' && (
-            <label style={checkLabel}><input type="checkbox" checked={conIncidencia} onChange={e => { setConIncidencia(e.target.checked); setPage(1) }} /> Con incidencia</label>
-          )}
-          {canDeleteDespacho && tab !== 'matriz' && (
-            <label style={checkLabel}><input type="checkbox" checked={includeEliminados} onChange={e => { setIncludeEliminados(e.target.checked); setPage(1) }} /> Ver eliminados</label>
-          )}
-          <button onClick={clearFilters} style={smallButton}>Limpiar</button>
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)' }}>Desde</span>
+          <input type="date" value={desde} onChange={e => setFilter(setDesde)(e.target.value)} style={{ ...inputFilter, height: 28, width: 130 }} />
         </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)' }}>Hasta</span>
+          <input type="date" value={hasta} onChange={e => setFilter(setHasta)(e.target.value)} style={{ ...inputFilter, height: 28, width: 130 }} />
+        </div>
+
+        <FilterSelect
+          value={tipoVenta}
+          onChange={setFilter(setTipoVenta)}
+          options={tipoVentaOptions}
+          placeholder="Tipo venta"
+          active={Boolean(tipoVenta)}
+          minMenuWidth={180}
+        />
+        <FilterSelect
+          value={estadoPago}
+          onChange={setFilter(setEstadoPago)}
+          options={estadoPagoOptions}
+          placeholder="Pago"
+          active={Boolean(estadoPago)}
+          minMenuWidth={160}
+        />
+        <FilterSelect
+          value={estadoEntrega}
+          onChange={setFilter(setEstadoEntrega)}
+          options={estadoEntregaOptions}
+          placeholder="Entrega"
+          active={Boolean(estadoEntrega)}
+          minMenuWidth={170}
+        />
+        <FilterSelect
+          value={estadoLogistico}
+          onChange={setFilter(setEstadoLogistico)}
+          options={estadoLogisticoOptions}
+          placeholder="Estado despacho"
+          active={Boolean(estadoLogistico)}
+          minMenuWidth={180}
+        />
+
+        <label style={{ ...checkLabel, height: 28, display: 'inline-flex', alignItems: 'center', margin: 0, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', background: ventasHoy ? 'var(--green-50, #f0fdf4)' : '#fff', cursor: 'pointer' }}>
+          <input type="checkbox" checked={ventasHoy} onChange={e => { setVentasHoy(e.target.checked); setPage(1) }} style={{ marginRight: 6 }} /> Ventas hoy
+        </label>
+
+        {tab === 'registros' && (
+          <label style={{ ...checkLabel, height: 28, display: 'inline-flex', alignItems: 'center', margin: 0, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', background: conIncidencia ? 'var(--red-50, #fef2f2)' : '#fff', cursor: 'pointer' }}>
+            <input type="checkbox" checked={conIncidencia} onChange={e => { setConIncidencia(e.target.checked); setPage(1) }} style={{ marginRight: 6 }} /> Con incidencia
+          </label>
+        )}
+
+        {canDeleteDespacho && tab !== 'matriz' && (
+          <label style={{ ...checkLabel, height: 28, display: 'inline-flex', alignItems: 'center', margin: 0, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', background: includeEliminados ? 'var(--amber-50, #fffbeb)' : '#fff', cursor: 'pointer' }}>
+            <input type="checkbox" checked={includeEliminados} onChange={e => { setIncludeEliminados(e.target.checked); setPage(1) }} style={{ marginRight: 6 }} /> Ver eliminados
+          </label>
+        )}
+
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            style={{
+              height: 28,
+              padding: '0 10px',
+              borderRadius: 6,
+              border: '1px solid var(--amber-300, #fcd34d)',
+              background: 'var(--amber-50, #fffbeb)',
+              color: 'var(--amber-900, #78350f)',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              transition: 'background 0.15s',
+            }}
+          >
+            Limpiar filtros
+          </button>
+        )}
       </div>
+
       {ordenIdParam && <div><Badge tone="blue">Orden #{ordenIdParam}</Badge></div>}
     </div>
   )
