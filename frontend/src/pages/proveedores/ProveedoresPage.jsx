@@ -7,13 +7,6 @@ import { can } from '../../utils/permissions'
 import ProveedorFormModal from './ProveedorFormModal'
 import BotonExportar from '../../components/BotonExportar'
 
-const SEARCH_MODES = [
-  { id: 'general', label: 'Todos', placeholder: 'Nombre, RUT, razon social o codigo...' },
-  { id: 'nombre', label: 'Nombre', placeholder: 'Nombre proveedor' },
-  { id: 'rut', label: 'RUT', placeholder: 'RUT proveedor' },
-  { id: 'codigoProveedor', label: 'Codigo', placeholder: 'Codigo proveedor' },
-]
-
 const fmt = n => n ? `${n}%` : '—'
 
 // ── Main Page ───────────────────────────────────────────────────────────────────
@@ -22,7 +15,6 @@ export default function ProveedoresPage() {
   const user = useAuthStore(s => s.user)
   const canWriteProveedores = can(user, 'proveedores', 'write')
   const [search, setSearch] = useState('')
-  const [searchMode, setSearchMode] = useState('general')
   const [debounced, setDebounced] = useState('')
   const [creating, setCreating] = useState(false)
   const ref = useRef(null)
@@ -34,15 +26,14 @@ export default function ProveedoresPage() {
   }, [search])
 
   const params = {}
-  if (debounced) {
-    if (searchMode === 'general') params.search = debounced
-    else params[searchMode] = debounced
-  }
-  const selectedSearchMode = SEARCH_MODES.find(m => m.id === searchMode) ?? SEARCH_MODES[0]
+  if (debounced) params.search = debounced
 
   const { data: result = { items: [], total: 0 }, isLoading } = useProveedores(params)
   const proveedores = result.items ?? []
   const total = result.total ?? 0
+
+  const hasActiveFilters = Boolean(search)
+  const clearFilters = () => setSearch('')
 
   const cols = [
     {
@@ -113,47 +104,39 @@ export default function ProveedoresPage() {
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>
             {total.toLocaleString('es-CL')} proveedores
           </span>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              {SEARCH_MODES.map(mode => (
-                <button
-                  key={mode.id}
-                  onClick={() => { setSearchMode(mode.id); setSearch('') }}
-                  style={searchModeButtonStyle(searchMode === mode.id)}
-                >
-                  {mode.label}
-                </button>
-              ))}
-            </div>
-            <SearchBar placeholder={selectedSearchMode.placeholder} value={search} onChange={setSearch} style={{ width: 300 }} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                style={{
+                  height: 28,
+                  padding: '0 10px',
+                  borderRadius: 6,
+                  border: '1px solid var(--amber-300, #fcd34d)',
+                  background: 'var(--amber-50, #fffbeb)',
+                  color: 'var(--amber-900, #78350f)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  transition: 'background 0.15s',
+                }}
+              >
+                Limpiar
+              </button>
+            )}
+            <SearchBar placeholder="Buscar por nombre, RUT, razón social o código..." value={search} onChange={setSearch} style={{ width: 300, height: 28 }} />
           </div>
         </div>
         {isLoading
           ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
           : <Table columns={cols} rows={proveedores} emptyMessage="Sin proveedores" onRowClick={row => navigate(`/proveedores/${row.id}`)} ariaLabel="Proveedores" getRowKey={row => row.id} />
         }
-        {total > (result.limit ?? 100) && (
-          <div style={{ padding: '10px 20px', textAlign: 'center', fontSize: 12, color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>
-            Mostrando {result.limit} de {total.toLocaleString('es-CL')}. Usa el buscador para filtrar.
-          </div>
-        )}
       </div>
-
       {creating && <ProveedorFormModal onClose={() => setCreating(false)} />}
     </main>
   )
-}
-
-function searchModeButtonStyle(active) {
-  return {
-    padding: '6px 10px',
-    borderRadius: 7,
-    border: active ? '1px solid var(--green-600)' : '1px solid var(--border)',
-    background: active ? 'var(--green-50)' : '#fff',
-    color: active ? 'var(--green-700)' : 'var(--text-2)',
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  }
 }
