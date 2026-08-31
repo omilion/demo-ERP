@@ -1,6 +1,6 @@
 import { toast, confirmDialog } from '../../store/notif'
 import { useEffect, useRef, useState } from 'react'
-import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
+import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs, FilterSelect } from '../../components/shared'
 import { FormField, Input, Select } from '../../components/forms'
 import { useBodegaTaller, useBodegaTallerLotes, useCreateBodegaTaller, useCreateBodegaTallerLote, useDeleteBodegaTaller, useUpdateBodegaTaller } from '../../api/bodegaTaller'
 import { useCategoriasBodegaTaller } from '../../api/categoriasBodegaTaller'
@@ -119,6 +119,66 @@ export default function BodegaTallerPage() {
     ) },
   ]
 
+  const toolbarExtra = (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', width: '100%', padding: '2px 0' }}>
+      <FilterSelect
+        value={categoriaId}
+        onChange={v => { setCategoriaId(v); setSubcategoriaId(''); setPage(1) }}
+        options={categoriaOptions}
+        placeholder="Categorías"
+        active={Boolean(categoriaId)}
+        minMenuWidth={220}
+      />
+      <FilterSelect
+        value={subcategoriaId}
+        onChange={v => { setSubcategoriaId(v); setPage(1) }}
+        options={subcategoriaOptions}
+        placeholder="Subcategorías"
+        active={Boolean(subcategoriaId)}
+        minMenuWidth={220}
+      />
+      <FilterSelect
+        value={sucursalId}
+        onChange={v => { setSucursalId(v); setPage(1) }}
+        options={sucursalOptions}
+        placeholder="Sucursales"
+        active={Boolean(sucursalId)}
+        minMenuWidth={200}
+      />
+      {hasActiveFilters && (
+        <button
+          type="button"
+          onClick={resetAllFilters}
+          style={{
+            height: 28,
+            padding: '0 10px',
+            borderRadius: 6,
+            border: '1px solid var(--amber-300, #fcd34d)',
+            background: 'var(--amber-50, #fffbeb)',
+            color: 'var(--amber-900, #78350f)',
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            transition: 'background 0.15s',
+          }}
+        >
+          Limpiar filtros
+        </button>
+      )}
+      <div style={{ marginLeft: 'auto' }}>
+        <SearchBar
+          placeholder="Buscar código, nombre o proveedor..."
+          value={search}
+          onChange={setSearch}
+          style={{ width: 280, height: 28 }}
+        />
+      </div>
+    </div>
+  )
+
   return (
     <main className="page page-wide">
       <PageHeader
@@ -142,27 +202,8 @@ export default function BodegaTallerPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid var(--border)' }}>
           <Tabs tabs={TABS} active={tab} onChange={t => { setTab(t); setPage(1) }} />
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
-            <select value={categoriaId} onChange={e => { setCategoriaId(e.target.value); setSubcategoriaId(''); setPage(1) }} style={selectStyle}>
-              <option value="">Todas las categorías</option>
-              {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-            </select>
-            <select value={subcategoriaId} onChange={e => { setSubcategoriaId(e.target.value); setPage(1) }} disabled={!categoriaId} style={selectStyle}>
-              <option value="">Todas las subcategorías</option>
-              {subcategorias.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-            </select>
-            <select value={sucursalId} onChange={e => { setSucursalId(e.target.value); setPage(1) }} style={selectStyle}>
-              <option value="">Todas las sucursales</option>
-              {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-            </select>
-            <input value={proveedor} onChange={e => { setProveedor(e.target.value); setPage(1) }} placeholder="Proveedor" style={miniInput} />
-            <input value={codigoInterno} onChange={e => { setCodigoInterno(e.target.value); setPage(1) }} placeholder="Cód. interno" style={miniInput} />
-            <input value={codigoBarra} onChange={e => { setCodigoBarra(e.target.value); setPage(1) }} placeholder="Cód. barra" style={miniInput} />
-            <SearchBar placeholder="Buscar código, nombre o proveedor" value={search} onChange={setSearch} style={{ width: 280 }} />
-            <Btn variant="secondary" size="sm" onClick={clearFilters}>Limpiar</Btn>
-          </div>
         </div>
         <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
           <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={pagerBtn(page <= 1)}>Anterior</button>
@@ -179,6 +220,7 @@ export default function BodegaTallerPage() {
               autoFocus
               ariaLabel="Materiales de bodega taller"
               getRowKey={row => row.id}
+              toolbarExtra={toolbarExtra}
             />
         }
       </div>
