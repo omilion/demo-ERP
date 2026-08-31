@@ -20,7 +20,6 @@ export default function PanelPackingPage() {
 
   const { data: colaData, isLoading, refetch } = useDespachoColaOperativa({ etapa: 'packing', search })
   const items = colaData?.items || []
-  const stats = colaData?.stats || {}
 
   const filtrados = items.filter(item => {
     if (filtroEstado === 'iniciado') return (item.packing?.preparados > 0 && !item.packing?.completo)
@@ -31,8 +30,9 @@ export default function PanelPackingPage() {
 
   const columns = [
     {
-      header: 'Venta',
-      render: row => (
+      key: 'venta',
+      label: 'Venta',
+      render: (_, row) => (
         <div>
           <button
             type="button"
@@ -46,8 +46,9 @@ export default function PanelPackingPage() {
       ),
     },
     {
-      header: 'Cliente / Contacto',
-      render: row => (
+      key: 'cliente',
+      label: 'Cliente / Contacto',
+      render: (_, row) => (
         <div>
           <div style={{ fontWeight: 600, fontSize: 13 }}>{row.clienteNombre || 'Sin cliente'}</div>
           <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{row.contacto || row.clienteRut || '-'}</div>
@@ -55,8 +56,9 @@ export default function PanelPackingPage() {
       ),
     },
     {
-      header: 'Destino / Transporte',
-      render: row => (
+      key: 'destino',
+      label: 'Destino / Transporte',
+      render: (_, row) => (
         <div style={{ fontSize: 12 }}>
           <div>{row.comuna ? `${row.comuna}, ${row.region || ''}` : row.direccion || 'Retiro'}</div>
           {row.transporte && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{row.transporte}</div>}
@@ -64,22 +66,25 @@ export default function PanelPackingPage() {
       ),
     },
     {
-      header: 'Estado',
-      render: row => (
+      key: 'estado',
+      label: 'Estado',
+      render: (_, row) => (
         <Badge tone={tone(row.estadoLogistico)}>
           {row.estadoLogistico?.label || 'En packing'}
         </Badge>
       ),
     },
     {
-      header: 'Progreso Packing',
-      render: row => (
+      key: 'progreso',
+      label: 'Progreso Packing',
+      render: (_, row) => (
         <PackingProgress row={{ packing: row.packing }} />
       ),
     },
     {
-      header: 'Bultos Registrados',
-      render: row => (
+      key: 'bultos',
+      label: 'Bultos Registrados',
+      render: (_, row) => (
         <div style={{ fontSize: 12 }}>
           {row.bultosCount ? (
             <Badge tone="blue">{row.bultosCount} bultos</Badge>
@@ -90,8 +95,9 @@ export default function PanelPackingPage() {
       ),
     },
     {
-      header: 'Acciones',
-      render: row => (
+      key: '_acc',
+      label: 'Acciones',
+      render: (_, row) => (
         <div style={{ display: 'flex', gap: 6 }}>
           {canWriteDespacho && (
             <Btn
@@ -157,7 +163,7 @@ export default function PanelPackingPage() {
 
       <Table
         columns={columns}
-        data={filtrados}
+        rows={filtrados}
         loading={isLoading}
         emptyMessage="No hay pedidos en cola de packing."
       />

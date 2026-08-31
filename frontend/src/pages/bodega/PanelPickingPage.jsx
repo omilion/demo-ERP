@@ -19,7 +19,7 @@ export default function PanelPickingPage() {
   const [filtroTipo, setFiltroTipo] = useState('todos')
 
   const { data: colaData, isLoading, refetch } = useDespachoColaOperativa({ etapa: 'picking', search })
-  const items = colaData?.items || []
+  const items = useMemo(() => colaData?.items || [], [colaData])
   const stats = colaData?.stats || {}
 
   const filtrados = useMemo(() => {
@@ -39,8 +39,9 @@ export default function PanelPickingPage() {
 
   const columns = [
     {
-      header: 'Venta',
-      render: row => (
+      key: 'venta',
+      label: 'Venta',
+      render: (_, row) => (
         <div>
           <button
             type="button"
@@ -54,8 +55,9 @@ export default function PanelPickingPage() {
       ),
     },
     {
-      header: 'Cliente',
-      render: row => (
+      key: 'cliente',
+      label: 'Cliente',
+      render: (_, row) => (
         <div>
           <div style={{ fontWeight: 600, fontSize: 13 }}>{row.clienteNombre || 'Sin cliente'}</div>
           {row.clienteRut && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{row.clienteRut}</div>}
@@ -63,8 +65,9 @@ export default function PanelPickingPage() {
       ),
     },
     {
-      header: 'Destino',
-      render: row => (
+      key: 'destino',
+      label: 'Destino',
+      render: (_, row) => (
         <div style={{ fontSize: 12 }}>
           <div>{row.comuna ? `${row.comuna}, ${row.region || ''}` : row.direccion || 'Retiro en bodega'}</div>
           {row.transporte && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Transporte: {row.transporte}</div>}
@@ -72,16 +75,18 @@ export default function PanelPickingPage() {
       ),
     },
     {
-      header: 'Estado Logístico',
-      render: row => (
+      key: 'estadoLogistico',
+      label: 'Estado Logístico',
+      render: (_, row) => (
         <Badge tone={tone(row.estadoLogistico)}>
           {row.estadoLogistico?.label || 'En preparación'}
         </Badge>
       ),
     },
     {
-      header: 'Disponibilidad Picking',
-      render: row => {
+      key: 'disponibilidad',
+      label: 'Disponibilidad Picking',
+      render: (_, row) => {
         const prep = row.preparacion || {}
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -108,14 +113,16 @@ export default function PanelPickingPage() {
       },
     },
     {
-      header: 'Packing / Bultos',
-      render: row => (
+      key: 'packing',
+      label: 'Packing / Bultos',
+      render: (_, row) => (
         <PackingProgress row={{ packing: row.packing }} />
       ),
     },
     {
-      header: 'Acciones',
-      render: row => (
+      key: '_acc',
+      label: 'Acciones',
+      render: (_, row) => (
         <div style={{ display: 'flex', gap: 6 }}>
           {canWriteDespacho && (
             <Btn
@@ -181,7 +188,7 @@ export default function PanelPickingPage() {
 
       <Table
         columns={columns}
-        data={filtrados}
+        rows={filtrados}
         loading={isLoading}
         emptyMessage="No hay pedidos pendientes de picking con los filtros seleccionados."
       />

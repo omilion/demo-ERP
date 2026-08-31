@@ -1070,7 +1070,7 @@ export default async function despachosRoutes(fastify) {
     }
     const ordenes = await fastify.prisma.orden.findMany({
       where,
-      take: 100,
+      take: 500, // debe igualar el LIMIT de la query raw de arriba, si no trunca antes del filtro por etapa
       orderBy: { createdAt: 'asc' },
       include: {
         items: { where: { eliminado: false }, select: { id: true, productoId: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true }, orderBy: { id: 'asc' } },

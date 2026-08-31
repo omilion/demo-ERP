@@ -87,6 +87,7 @@ function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCa
   const despachoId = initial.despachoId ? String(initial.despachoId) : (form.despachoId ? String(form.despachoId) : '')
 
   const despachosQuery = useDespachos(form.ordenId ? { ordenId: form.ordenId } : (form.despachoId ? { id: form.despachoId } : {}))
+  const despachos = despachosQuery.data?.items || []
   const selectedDespacho = despachos.find(d => String(d.id) === String(despachoId || form.despachoId)) || existingDespacho || null
   const esManual = form.origenTipo === 'manual' || selectedDespacho?.origenTipo === 'manual'
 

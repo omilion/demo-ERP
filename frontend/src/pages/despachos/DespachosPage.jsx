@@ -431,7 +431,7 @@ export default function DespachosPage({ defaultTab }) {
       {tab === 'salidas' && (
         <Table
           columns={colsSalidas}
-          data={colaSalidas.data?.items || []}
+          rows={colaSalidas.data?.items || []}
           loading={colaSalidas.isLoading}
           emptyMessage="No hay pedidos listos para salida en este momento."
         />
@@ -440,7 +440,7 @@ export default function DespachosPage({ defaultTab }) {
       {tab === 'aislados' && (
         <Table
           columns={colsAislados}
-          data={despachosAisladosQuery.data?.items || []}
+          rows={despachosAisladosQuery.data?.items || []}
           loading={despachosAisladosQuery.isLoading}
           emptyMessage="No hay despachos aislados registrados."
         />
@@ -449,7 +449,7 @@ export default function DespachosPage({ defaultTab }) {
       {tab === 'guias' && (
         <Table
           columns={colsGuias}
-          data={guiasQuery.data?.items || []}
+          rows={guiasQuery.data?.items || []}
           loading={guiasQuery.isLoading}
           emptyMessage="No hay guías de despacho registradas."
         />
@@ -458,7 +458,7 @@ export default function DespachosPage({ defaultTab }) {
       {tab === 'registros' && (
         <Table
           columns={colsRegistros}
-          data={registrosQuery.data?.items || []}
+          rows={registrosQuery.data?.items || []}
           loading={registrosQuery.isLoading}
           emptyMessage="No hay registros históricos de despacho."
         />
@@ -467,7 +467,7 @@ export default function DespachosPage({ defaultTab }) {
       {tab === 'taller' && (
         <Table
           columns={colsTaller}
-          data={tallerQuery.data?.items || []}
+          rows={tallerQuery.data?.items || []}
           loading={tallerQuery.isLoading}
           emptyMessage="No hay carga consolidada de taller."
         />
@@ -476,7 +476,7 @@ export default function DespachosPage({ defaultTab }) {
       {tab === 'admin' && (
         <Table
           columns={colsAdmin}
-          data={colaAdmin.data?.items || []}
+          rows={colaAdmin.data?.items || []}
           loading={colaAdmin.isLoading}
           emptyMessage="No hay ventas activas en el embudo logístico."
         />
