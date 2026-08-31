@@ -8,6 +8,8 @@ import {
   useCreateOdt,
   useUpdateOdt,
   useOdtOperarios,
+  useCentrosCosto,
+  useCreateCentroCosto,
   useOdtItemTallerEstado,
   useOdtTallerEstadoMasivo,
   useCreateOdtConsumo,
@@ -201,8 +203,10 @@ export default function TallerFormPage() {
 
   const { data: found } = useOdt(isEdit ? Number(id) : null)
   const { data: operariosMeta = { items: [] } } = useOdtOperarios()
+  const { data: centrosCostoMeta = { items: [] } } = useCentrosCosto()
   const createOdt = useCreateOdt()
   const updateOdt = useUpdateOdt()
+  const createCentroCosto = useCreateCentroCosto()
 
   const cambiarEstado = useOdtEstado()
   const cerrarOdt = useCerrarOdt()
@@ -215,7 +219,7 @@ export default function TallerFormPage() {
   const { data, set, errors, validate } = useForm({
     tipo: 'Espumas', clienteNombre: '', descripcion: '',
     obsGeneral: '', estado: 'Pendiente', prioridad: 'normal', plazo: '', fechaIngreso: '',
-    fechaInicio: '', fechaTermino: '', ordenId: ordenIdParam, operarioId: '',
+    fechaInicio: '', fechaTermino: '', ordenId: ordenIdParam, operarioId: '', centroCostoId: '',
   })
 
   const initializedRef = useRef(false)
@@ -232,6 +236,7 @@ export default function TallerFormPage() {
       set('fechaInicio', found.fechaInicio ? new Date(found.fechaInicio).toISOString().slice(0, 10) : '')
       set('fechaTermino', found.fechaTermino ? new Date(found.fechaTermino).toISOString().slice(0, 10) : '')
       set('ordenId', found.ordenId ? String(found.ordenId) : '')
+      set('centroCostoId', found.centroCostoId ? String(found.centroCostoId) : '')
       set('operarioId', found.operarioId ? String(found.operarioId) : '')
       initializedRef.current = true
     }
@@ -253,7 +258,7 @@ export default function TallerFormPage() {
   ]
 
   const handleSave = () => {
-    if (!validate({ ordenId: { required: true }, descripcion: { required: true } })) return
+    if (!validate({ descripcion: { required: true }, ...(data.ordenId ? {} : { centroCostoId: { required: true } }) })) return
     const payload = {
       tipo: data.tipo,
       clienteNombre: data.clienteNombre,
@@ -261,7 +266,8 @@ export default function TallerFormPage() {
       obsGeneral: data.obsGeneral || null,
       estado: data.estado,
       prioridad: data.prioridad,
-      ordenId: Number(data.ordenId),
+      ordenId: data.ordenId ? Number(data.ordenId) : null,
+      centroCostoId: data.centroCostoId ? Number(data.centroCostoId) : null,
       operarioId: data.operarioId ? Number(data.operarioId) : null,
       plazo: data.plazo ? new Date(data.plazo).toISOString() : undefined,
       fechaIngreso: data.fechaIngreso ? new Date(data.fechaIngreso).toISOString() : null,
@@ -298,6 +304,7 @@ export default function TallerFormPage() {
       set('fechaInicio', found.fechaInicio ? new Date(found.fechaInicio).toISOString().slice(0, 10) : '')
       set('fechaTermino', found.fechaTermino ? new Date(found.fechaTermino).toISOString().slice(0, 10) : '')
       set('ordenId', found.ordenId ? String(found.ordenId) : '')
+      set('centroCostoId', found.centroCostoId ? String(found.centroCostoId) : '')
       set('operarioId', found.operarioId ? String(found.operarioId) : '')
       setIsEditMode(false)
       navigate(`/taller/${id}`)
@@ -427,8 +434,12 @@ export default function TallerFormPage() {
 
       <FormDivider label="Resumen OT" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
-        <FormField label="Orden vinculada" required error={errors.ordenId}>
-          <Input type="number" value={data.ordenId} onChange={v => set('ordenId', v)} placeholder="ID de venta/orden" error={errors.ordenId} disabled={!isEditMode} />
+        <FormField label="Orden vinculada (opcional)" error={errors.ordenId}>
+          <Input type="number" value={data.ordenId} onChange={v => set('ordenId', v)} placeholder="ID de venta/orden; vacío para trabajo interno" error={errors.ordenId} disabled={!isEditMode} />
+        </FormField>
+        <FormField label="Centro de costo" required={!data.ordenId} error={errors.centroCostoId}>
+          <Select value={data.centroCostoId} onChange={v => set('centroCostoId', v)} options={[{ value: '', label: data.ordenId ? 'Sin imputación' : 'Selecciona centro de costo' }, ...(centrosCostoMeta.items || []).map(c => ({ value: String(c.id), label: `${c.codigo} — ${c.nombre}` }))]} disabled={!isEditMode} />
+          {isEditMode && <Btn size="sm" variant="ghost" onClick={async () => { const codigo = await promptDialog({ title: 'Nuevo centro de costo', detail: 'Código corto y único.' }); if (!codigo?.trim()) return; const nombre = await promptDialog({ title: 'Nombre del centro de costo' }); if (!nombre?.trim()) return; createCentroCosto.mutate({ codigo: codigo.trim(), nombre: nombre.trim() }, { onSuccess: centro => set('centroCostoId', String(centro.id)), onError: err => toast.error(getErrorMessage(err)) }) }}>Agregar centro</Btn>}
         </FormField>
         <FormField label="Tipo de Trabajo">
               <Select value={data.tipo} onChange={v => set('tipo', v)} options={['Corte', 'Espumas', 'Confecciones', 'Madera', 'Externo']} disabled={!isEditMode} />

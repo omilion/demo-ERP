@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
 import {
   useTrabajadores, useTrabajador, useCreateTrabajador, useUpdateTrabajador, useDeleteTrabajador,
-  useRrhhCargos, useRrhhOperativo, useResumenRRHH, useCuentasDisponibles,
+  useRrhhCargos, useRrhhOperativo, useCumplimientoPrevisional, useResumenRRHH, useCuentasDisponibles,
   contratos, liquidaciones, anticipos, licencias, vacaciones, epps, useUploadRrhhDocumento,
   subcontratos, certificadosAntecedentes, vacunas,
 } from '../../api/rrhh'
@@ -721,6 +721,7 @@ export default function RrhhPage() {
   if (empresa) operativoParams.empresa = empresa
   if (cargo) operativoParams.cargo = cargo
   const { data: operativo = { alertas: {}, dotacionPorCargo: [], totalActivos: 0 } } = useRrhhOperativo(operativoParams)
+  const { data: prevision = { total: 0, listosParaPrevision: 0, pendientes: 0 } } = useCumplimientoPrevisional(empresa ? { empresa } : {})
   const trabajadores = result.items ?? []
   const total = result.total ?? 0
   const cargoSource = Array.isArray(cargosResult) ? cargosResult : (cargosResult.items ?? [])
@@ -782,6 +783,8 @@ export default function RrhhPage() {
         <KpiCard label="Plastimar" value={plastimarCount} icon="warehouse" sublabel="Empresa principal" />
         <KpiCard label="Allegro" value={allegroCount} icon="warehouse" tone="warning" sublabel="Filial" />
         <KpiCard label="Mostrando" value={trabajadores.length} icon="filter" sublabel={debounced ? `Filtro: ${debounced}` : 'Sin filtro'} />
+        <KpiCard label="Previsión lista" value={`${prevision.listosParaPrevision}/${prevision.total}`} icon="checkCircle" sublabel="Liquidaciones con AFP y salud" />
+        <KpiCard label="Datos previsionales" value={prevision.pendientes} icon="alertTriangle" tone={prevision.pendientes ? 'warning' : 'success'} sublabel="Pendientes para F30/pensiones" />
       </div>
 
       <RrhhOperativoPanel

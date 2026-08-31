@@ -224,4 +224,27 @@ describe('Trabajador <-> cuenta de login (usuarioId)', () => {
       await app.prisma.orden.delete({ where: { id: orden.id } })
     }
   })
+
+  it('da de baja la cuenta vinculada al registrar un término de contrato ya cumplido', async () => {
+    const marker = Date.now()
+    const cuenta = await app.prisma.user.create({
+      data: { email: `baja-${marker}@plastimar.cl`, passwordHash: 'x', role: 'taller', nombre: 'Cuenta baja prueba', activo: true },
+    })
+    const trabajador = await app.prisma.trabajador.create({
+      data: { empresa: 'plastimar', nombres: 'Baja', apellidoPaterno: 'Automatica', apellidoMaterno: '', rut: `BAJA-${marker}`, usuarioId: cuenta.id },
+    })
+    try {
+      const res = await app.inject({
+        method: 'PUT', url: `/api/rrhh/trabajadores/${trabajador.id}`,
+        headers: { authorization: `Bearer ${tokenRrhh}` },
+        payload: { fechaTermino: '2020-01-01' },
+      })
+      expect(res.statusCode).toBe(200)
+      expect((await app.prisma.trabajador.findUnique({ where: { id: trabajador.id } })).estado).toBe(false)
+      expect((await app.prisma.user.findUnique({ where: { id: cuenta.id } })).activo).toBe(false)
+    } finally {
+      await app.prisma.trabajador.deleteMany({ where: { id: trabajador.id } })
+      await app.prisma.user.deleteMany({ where: { id: cuenta.id } })
+    }
+  })
 })

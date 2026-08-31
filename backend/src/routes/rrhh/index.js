@@ -172,7 +172,9 @@ export default async function rrhhRoutes(fastify) {
       if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
       const data = pickTrabajador(request.body || {}, true)
       try {
-        return await f.prisma.trabajador.update({ where: { id }, data })
+        const updated = await f.prisma.trabajador.update({ where: { id }, data })
+        await aplicarBajaAutomatica(f.prisma, id)
+        return updated
       } catch (e) {
         if (e.code === 'P2025') return reply.code(404).send({ error: 'No encontrado' })
         if (e.code === 'P2002') {
@@ -228,6 +230,40 @@ export default async function rrhhRoutes(fastify) {
     registerSubResource(f, 'subcontratos', 'subcontrato', pickSubcontrato)
     registerSubResource(f, 'certificados-antecedentes', 'certificadoAntecedentes', pickCertificadoAntecedentes)
     registerSubResource(f, 'vacunas', 'vacuna', pickVacuna)
+
+    // Consolidado operacional: no reemplaza la declaración legal ante la DT,
+    // pero deja visibles las liquidaciones y datos previsionales faltantes antes
+    // de generar F30 o pagar cotizaciones.
+    f.get('/cumplimiento-previsional', {
+      preHandler: [f.authenticate, f.rbac('rrhh', 'read')],
+    }, async (request) => {
+      const anio = String(request.query?.anio || new Date().getFullYear())
+      const mes = String(request.query?.mes || new Date().getMonth() + 1)
+      const empresa = queryText(request.query?.empresa)
+      const rows = await f.prisma.liquidacion.findMany({
+        where: { anio, mes, trabajador: empresa ? { empresa } : undefined },
+        include: { trabajador: { select: trabajadorOperativoSelect } },
+        orderBy: [{ trabajador: { apellidoPaterno: 'asc' } }, { trabajador: { nombres: 'asc' } }],
+        take: 2000,
+      })
+      const items = rows.map(row => ({
+        trabajador: trabajadorOperativoMini(row.trabajador),
+        sueldoBase: row.sueldoBase,
+        imponible: row.totalImponible,
+        liquido: row.liquidoPagar,
+        afp: row.trabajador.afp || null,
+        salud: row.trabajador.salud || null,
+        listoParaPrevision: Boolean(row.totalImponible != null && row.trabajador.afp && row.trabajador.salud),
+      }))
+      return {
+        periodo: { anio, mes, empresa: empresa || null },
+        total: items.length,
+        listosParaPrevision: items.filter(item => item.listoParaPrevision).length,
+        pendientes: items.filter(item => !item.listoParaPrevision).length,
+        totalImponible: items.reduce((total, item) => total + (item.imponible || 0), 0),
+        items,
+      }
+    })
 
     // ── Asistencias (sin trabajadorId en path para reportería masiva) ───
     f.get('/asistencias', {
@@ -371,7 +407,9 @@ function registerSubResource(f, path, model, picker) {
     const trabajadorId = parseInt(request.params.id)
     if (isNaN(trabajadorId)) return reply.code(400).send({ error: 'ID inválido' })
     const data = { ...picker(request.body || {}), trabajadorId }
-    return reply.code(201).send(await f.prisma[model].create({ data }))
+    const created = await f.prisma[model].create({ data })
+    if (model === 'contrato') await aplicarBajaAutomatica(f.prisma, trabajadorId, created.termino)
+    return reply.code(201).send(created)
   })
 
   f.put(`/${path}/:itemId`, {
@@ -380,7 +418,9 @@ function registerSubResource(f, path, model, picker) {
     const id = parseInt(request.params.itemId)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
     try {
-      return await f.prisma[model].update({ where: { id }, data: picker(request.body || {}, true) })
+      const updated = await f.prisma[model].update({ where: { id }, data: picker(request.body || {}, true) })
+      if (model === 'contrato') await aplicarBajaAutomatica(f.prisma, updated.trabajadorId, updated.termino)
+      return updated
     } catch (e) {
       if (e.code === 'P2025') return reply.code(404).send({ error: 'No encontrado' })
       throw e
@@ -435,6 +475,21 @@ const trabajadorOperativoSelect = {
   tipoContrato: true,
   sueldoLiquido: true,
   estado: true,
+}
+
+async function aplicarBajaAutomatica(prisma, trabajadorId, terminoExplicito) {
+  const trabajador = await prisma.trabajador.findUnique({
+    where: { id: trabajadorId },
+    select: { id: true, fechaTermino: true, usuarioId: true, estado: true },
+  })
+  if (!trabajador) return false
+  const termino = terminoExplicito || trabajador.fechaTermino
+  if (!termino || new Date(termino).getTime() > Date.now()) return false
+  await prisma.$transaction(async tx => {
+    await tx.trabajador.update({ where: { id: trabajador.id }, data: { estado: false } })
+    if (trabajador.usuarioId) await tx.user.update({ where: { id: trabajador.usuarioId }, data: { activo: false } })
+  })
+  return true
 }
 
 function uploadsRoot() {

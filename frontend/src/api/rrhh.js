@@ -44,6 +44,13 @@ export const useRrhhOperativo = (params = {}) =>
     staleTime: 60_000,
   })
 
+export const useCumplimientoPrevisional = (params = {}) =>
+  useQuery({
+    queryKey: ['rrhh', 'cumplimiento-previsional', params],
+    queryFn: () => api.get('/rrhh/cumplimiento-previsional', { params }).then(r => r.data),
+    placeholderData: { total: 0, listosParaPrevision: 0, pendientes: 0, totalImponible: 0, items: [] },
+  })
+
 export const useTrabajador = (id) =>
   useQuery({
     queryKey: ['rrhh', 'trabajadores', id],

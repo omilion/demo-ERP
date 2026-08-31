@@ -1308,6 +1308,7 @@ model Odt {
   fechaInicio            DateTime?          @map("fecha_inicio")
   fechaTermino           DateTime?          @map("fecha_termino")
   ordenId                Int?               @map("orden_id")
+  centroCostoId          Int?               @map("centro_costo_id")
   sucursalId             Int?               @map("sucursal_id")
   legacyNInterno         Int?               @unique @map("legacy_n_interno")
   estado                 String             @default("Pendiente")
@@ -1324,8 +1325,25 @@ model Odt {
   movimientosBodega      MovimientoBodega[]
   despachos              Despacho[]
   guiasDespacho          GuiaDespacho[]
+  centroCosto            CentroCosto?       @relation(fields: [centroCostoId], references: [id], onDelete: Restrict)
 
+  @@index([centroCostoId])
   @@map("odts")
+  @@schema("taller")
+}
+
+model CentroCosto {
+  id          Int       @id @default(autoincrement())
+  codigo      String    @unique
+  nombre      String
+  descripcion String?
+  activo      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  odts        Odt[]
+
+  @@index([activo])
+  @@map("centros_costo")
   @@schema("taller")
 }
 
