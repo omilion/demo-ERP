@@ -2,7 +2,7 @@ import { getUserSucursalId } from '../caja/scope.js'
 import { applyVentaStockDeltas, buildReplacementStockDeltas, buildStockDeltasFromItems, isVentaDirectaStockTipo } from '../ventas/stock.js'
 import { computeVentaFinancialState } from '../ventas/financial.js'
 import { can as canAccess } from '../../middleware/rbac.js'
-import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import { sendExport } from '../../utils/export.js'
 import { calculateDeliveryDate, normalizeLicitacionPlazo, sanitizeCommercialIdentifier } from '../ventas/operational-rules.js'
 import {
   assertDiscountAuthorizationForDraft,
@@ -473,8 +473,12 @@ export default async function cotizacionesRoutes(fastify) {
         ]
       : reportSummaryColumns()
     const exportRows = formato === 'detalle' ? reportDetailRows(hydrated) : hydrated
-    const csv = rowsToCsv(exportRows, columns)
-    return sendCsv(reply, `licitaciones_${formato}_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `licitaciones_${formato}_${new Date().toISOString().slice(0, 10)}`,
+      rows: exportRows,
+      columns: columns,
+    })
   })
 
   // ── Ficha Técnica y Económica ─────────────────────────────────────────────
@@ -875,12 +879,12 @@ export default async function cotizacionesRoutes(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('licitaciones', 'read')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
-    if (isNaN(id)) return reply.code(400).send({ error: 'ID invÃ¡lido' })
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
     const cot = await fastify.prisma.cotizacionLicitacion.findFirst({
       where: scopedWhere(request.user, { id }),
       include: { items: true },
     })
-    if (!cot) return reply.code(404).send({ error: 'CotizaciÃ³n no encontrada' })
+    if (!cot) return reply.code(404).send({ error: 'Cotización no encontrada' })
     const payload = await buildCotizacionDiscountPayload(fastify.prisma, cot, request.user, request.body || {})
     return evaluateDiscountRules(fastify.prisma, payload, request.user)
   })
@@ -889,7 +893,7 @@ export default async function cotizacionesRoutes(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('licitaciones', 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
-    if (isNaN(id)) return reply.code(400).send({ error: 'ID invÃ¡lido' })
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID inválido' })
     const reglaId = parseInt(request.body?.reglaId, 10)
     if (!Number.isInteger(reglaId) || reglaId <= 0) return reply.code(400).send({ error: 'reglaId requerido' })
     try {
@@ -898,7 +902,7 @@ export default async function cotizacionesRoutes(fastify) {
           where: scopedWhere(request.user, { id }),
           include: { items: true },
         })
-        if (!cot) throw httpError(404, 'CotizaciÃ³n no encontrada')
+        if (!cot) throw httpError(404, 'Cotización no encontrada')
         const payload = await buildCotizacionDiscountPayload(tx, cot, request.user, { ...(request.body || {}), reglaId })
         const evaluation = await evaluateDiscountRules(tx, payload, request.user)
         const selected = evaluation.selected

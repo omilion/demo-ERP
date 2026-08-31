@@ -1,4 +1,4 @@
-import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import { sendExport } from '../../utils/export.js'
 
 function parseId(value) {
   const id = parseInt(value, 10)
@@ -31,7 +31,7 @@ export default async function gastosRoutes(fastify) {
     return fastify.prisma.gasto.findMany({ orderBy: { nombre: 'asc' } })
   })
 
-  fastify.get('/export', { preHandler: [fastify.authenticate, adminOnly] }, async (_request, reply) => {
+  fastify.get('/export', { preHandler: [fastify.authenticate, adminOnly] }, async (request, reply) => {
     const gastos = await fastify.prisma.gasto.findMany({
       orderBy: { nombre: 'asc' },
       include: { _count: { select: { movimientos: true } } },
@@ -42,13 +42,17 @@ export default async function gastosRoutes(fastify) {
       activo: g.activo ? 'Si' : 'No',
       movimientos: g._count.movimientos,
     }))
-    const csv = rowsToCsv(rows, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `gastos_${new Date().toISOString().slice(0, 10)}`,
+      rows: rows,
+      columns: [
       { key: 'numero', label: '#' },
       { key: 'nombre', label: 'Nombre' },
       { key: 'activo', label: 'Activo' },
       { key: 'movimientos', label: 'Movimientos caja' },
-    ])
-    return sendCsv(reply, `gastos_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 
   fastify.post('/', { preHandler: [fastify.authenticate, adminOnly] }, async (request, reply) => {

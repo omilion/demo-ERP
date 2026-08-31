@@ -1,4 +1,4 @@
-import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import { sendExport } from '../../utils/export.js'
 import { parseDate, parsePage, parsePositiveInt } from '../operational-utils.js'
 import { computeTotal } from '../ventas/helpers.js'
 import {
@@ -507,7 +507,11 @@ export function registerDespachoMatrizRoutes(fastify) {
   }, async (request, reply) => {
     const result = await fetchDespachoMatriz(fastify, request.query, request.user, { exportAll: true })
     if (result.error) return reply.code(400).send({ error: result.error })
-    const csv = rowsToCsv(rowsForCsv(result.items), [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `despacho_matriz_${new Date().toISOString().slice(0, 10)}`,
+      rows: rowsForCsv(result.items),
+      columns: [
       { key: 'nInterno', label: 'N Interno' },
       { key: 'fechaCreacion', label: 'Fecha Creacion' },
       { key: 'tipoVenta', label: 'Tipo Venta' },
@@ -532,7 +536,7 @@ export function registerDespachoMatrizRoutes(fastify) {
       { key: 'comuna', label: 'Comuna' },
       { key: 'ciudad', label: 'Ciudad' },
       { key: 'creadorNombre', label: 'Creada Por' },
-    ])
-    return sendCsv(reply, `despacho_matriz_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 }

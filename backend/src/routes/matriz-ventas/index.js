@@ -1,4 +1,4 @@
-import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import { sendExport } from '../../utils/export.js'
 import { getUserSucursalId } from '../caja/scope.js'
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenScope } from '../historico/corte.js'
 import { parseDate, parsePage, parsePositiveInt } from '../operational-utils.js'
@@ -849,7 +849,7 @@ async function getMatrizRows(fastify, query, user) {
   return { rows, ctx }
 }
 
-async function exportDetalleProductos(fastify, query, user, reply) {
+async function exportDetalleProductos(fastify, query, user, reply, archivo) {
   const ctx = await buildContext(fastify, query, user)
   if (ctx.error) return reply.code(400).send({ error: ctx.error })
   const where = await buildOrdenWhere(fastify, ctx, user)
@@ -885,7 +885,11 @@ async function exportDetalleProductos(fastify, query, user, reply) {
       fecha: o.createdAt,
     }
   }))
-  const csv = rowsToCsv(rows, [
+  return sendExport(reply, {
+    archivo,
+    nombre: `matriz_ventas_detalle_productos_${todayIso()}`,
+    rows: rows,
+    columns: [
     { key: 'nInterno', label: 'N Interno' },
     { key: 'codigoInterno', label: 'Codigo Interno' },
     { key: 'producto', label: 'Producto' },
@@ -896,11 +900,11 @@ async function exportDetalleProductos(fastify, query, user, reply) {
     { key: 'total', label: 'Total' },
     { key: 'entregados', label: 'Entregados' },
     { key: 'fecha', label: 'Fecha' },
-  ])
-  return sendCsv(reply, `matriz_ventas_detalle_productos_${todayIso()}.csv`, csv)
+  ],
+  })
 }
 
-async function exportGuias(fastify, user, reply) {
+async function exportGuias(fastify, user, reply, archivo) {
   const where = { eliminado: false }
   const sucursalId = getUserSucursalId(user)
   if (sucursalId) where.orden = { is: { sucursalId } }
@@ -909,17 +913,21 @@ async function exportGuias(fastify, user, reply) {
     orderBy: { fechaGuia: 'desc' },
     take: 10000,
   })
-  const csv = rowsToCsv(guias, [
+  return sendExport(reply, {
+    archivo,
+    nombre: `matriz_ventas_guias_${todayIso()}`,
+    rows: guias,
+    columns: [
     { key: 'nInterno', label: 'N Interno' },
     { key: 'nGuia', label: 'N Guia' },
     { key: 'createdAt', label: 'Fecha Creacion' },
     { key: 'origen', label: 'Origen' },
     { key: 'fechaGuia', label: 'Fecha Guia' },
-  ])
-  return sendCsv(reply, `matriz_ventas_guias_${todayIso()}.csv`, csv)
+  ],
+  })
 }
 
-async function exportNdNc(fastify, user, reply) {
+async function exportNdNc(fastify, user, reply, archivo) {
   const where = scopedMovimientoCajaWhere(user, {
     eliminado: false,
   })
@@ -929,7 +937,11 @@ async function exportNdNc(fastify, user, reply) {
     orderBy: { fecha: 'desc' },
     take: 10000,
   })
-  const csv = rowsToCsv(docs, [
+  return sendExport(reply, {
+    archivo,
+    nombre: `matriz_ventas_nc_nd_${todayIso()}`,
+    rows: docs,
+    columns: [
     { key: 'ordenId', label: 'Orden ID' },
     { key: 'documento', label: 'Documento' },
     { key: 'nDoc', label: 'N Documento' },
@@ -941,8 +953,8 @@ async function exportNdNc(fastify, user, reply) {
     { key: 'fecha', label: 'Fecha Creacion' },
     { key: 'medioPago', label: 'Medio de Pago' },
     { key: 'estadoDoc', label: 'Estado' },
-  ])
-  return sendCsv(reply, `matriz_ventas_nc_nd_${todayIso()}.csv`, csv)
+  ],
+  })
 }
 
 export default async function matrizVentasRoutes(fastify) {
@@ -965,12 +977,16 @@ export default async function matrizVentasRoutes(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request, reply) => {
     const formato = String(request.query.formato || 'resumen')
-    if (formato === 'detalle-productos') return exportDetalleProductos(fastify, request.query, request.user, reply)
-    if (formato === 'guias') return exportGuias(fastify, request.user, reply)
-    if (formato === 'ndnc') return exportNdNc(fastify, request.user, reply)
+    if (formato === 'detalle-productos') return exportDetalleProductos(fastify, request.query, request.user, reply, request.query?.archivo)
+    if (formato === 'guias') return exportGuias(fastify, request.user, reply, request.query?.archivo)
+    if (formato === 'ndnc') return exportNdNc(fastify, request.user, reply, request.query?.archivo)
     const result = await getMatrizRows(fastify, request.query, request.user)
     if (result.error) return reply.code(400).send({ error: result.error })
-    const csv = rowsToCsv(result.rows, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `matriz_ventas_resumen_${todayIso()}`,
+      rows: result.rows,
+      columns: [
       { key: 'nInterno', label: 'N Interno' },
       { key: 'ref', label: 'ID licitacion / OC' },
       { key: 'total', label: 'Total Venta' },
@@ -990,8 +1006,8 @@ export default async function matrizVentasRoutes(fastify) {
       { key: 'tipo', label: 'Tipo' },
       { key: 'documentosLegacy', label: 'Documentos' },
       { key: 'emailCliente', label: 'Email' },
-    ])
-    return sendCsv(reply, `matriz_ventas_resumen_${todayIso()}.csv`, csv)
+      ],
+    })
   })
 
   fastify.get('/totales', {

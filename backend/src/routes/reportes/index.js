@@ -1,4 +1,4 @@
-import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import { sendExport } from '../../utils/export.js'
 import { can } from '../../middleware/rbac.js'
 import { normalizeTipoMovimiento, parseDate, parsePositiveInt } from '../operational-utils.js'
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenScope } from '../historico/corte.js'
@@ -159,7 +159,7 @@ async function buildProductosExportWhere(fastify, query = {}) {
   if (idMarco) where.idMarco = { contains: idMarco, mode: 'insensitive' }
   if (ubicacionId) {
     const parsedUbicacionId = Number.parseInt(ubicacionId, 10)
-    if (Number.isNaN(parsedUbicacionId)) return { error: 'ubicacionId invÃ¡lido' }
+    if (Number.isNaN(parsedUbicacionId)) return { error: 'ubicacionId inválido' }
     const selectedUbicacion = await fastify.prisma.ubicacion.findFirst({
       where: { id: parsedUbicacionId, activo: true },
       select: { nombre: true },
@@ -890,10 +890,10 @@ async function buildGerencialXlsx(reportes, query = {}) {
   workbook.creator = 'Plastimar Sisgestion'
   workbook.created = new Date()
   const resumen = workbook.addWorksheet('Resumen gerencial')
-  styleGerencialWorksheet(resumen, 'ReporterÃ­a gerencial Plastimar')
-  resumen.getCell('A2').value = `PerÃ­odo: ${query.desde || 'Inicio'} a ${query.hasta || 'Hoy'}`
+  styleGerencialWorksheet(resumen, 'Reportería gerencial Plastimar')
+  resumen.getCell('A2').value = `Período: ${query.desde || 'Inicio'} a ${query.hasta || 'Hoy'}`
   resumen.getCell('A2').font = { italic: true, color: { argb: 'FF475569' } }
-  resumen.getRow(3).values = ['SecciÃ³n', 'Indicador', 'Valor', 'Detalle']
+  resumen.getRow(3).values = ['Sección', 'Indicador', 'Valor', 'Detalle']
   const rows = buildGerencialExportRows(reportes, query)
   rows.forEach(row => resumen.addRow([row.seccion, row.indicador, row.valor, row.detalle]))
   resumen.getColumn(3).numFmt = '#,##0'
@@ -903,10 +903,10 @@ async function buildGerencialXlsx(reportes, query = {}) {
   if (ventas) {
     const sheet = workbook.addWorksheet('Comercial')
     styleGerencialWorksheet(sheet, 'Comercial')
-    sheet.getRow(3).values = ['Indicador', 'Valor', 'PerÃ­odo anterior', 'VariaciÃ³n']
+    sheet.getRow(3).values = ['Indicador', 'Valor', 'Período anterior', 'Variación']
     const previous = ventas.comparativo?.periodoAnterior || {}
     sheet.addRows([
-      ['Ventas del perÃ­odo', ventas.total || 0, previous.total || 0, ventas.comparativo?.variacionVentas ?? null],
+      ['Ventas del período', ventas.total || 0, previous.total || 0, ventas.comparativo?.variacionVentas ?? null],
       ['Operaciones', ventas.count || 0, previous.count || 0, ventas.comparativo?.variacionOperaciones ?? null],
     ])
     sheet.getColumn(2).numFmt = '#,##0'
@@ -925,7 +925,7 @@ async function buildGerencialXlsx(reportes, query = {}) {
     sheet.addRows([
       ['OT pendientes', operaciones.taller?.pendientes || 0],
       ['OT vencidas', operaciones.taller?.vencidas || 0],
-      ['OT en riesgo (7 dÃ­as)', operaciones.taller?.enRiesgo || 0],
+      ['OT en riesgo (7 días)', operaciones.taller?.enRiesgo || 0],
       ['Despachos pendientes', operaciones.despachos?.pendientes || 0],
       ['Despachos vencidos', operaciones.despachos?.vencidos || 0],
     ])
@@ -936,12 +936,12 @@ async function buildGerencialXlsx(reportes, query = {}) {
   riesgos.getRow(3).values = ['Indicador', 'Valor', 'Detalle']
   const cobranza = reportes.cobranzaCaja
   if (cobranza) {
-    riesgos.addRow(['CxC pendiente', cobranza.cuentasPorCobrar?.porCobrar || 0, 'Cuentas pendientes del perÃ­odo'])
-    Object.entries(cobranza.cuentasPorCobrar?.antiguedad || {}).forEach(([label, value]) => riesgos.addRow([`CxC ${label} dÃ­as`, value.total || 0, `${value.count || 0} documentos`]))
+    riesgos.addRow(['CxC pendiente', cobranza.cuentasPorCobrar?.porCobrar || 0, 'Cuentas pendientes del período'])
+    Object.entries(cobranza.cuentasPorCobrar?.antiguedad || {}).forEach(([label, value]) => riesgos.addRow([`CxC ${label} días`, value.total || 0, `${value.count || 0} documentos`]))
     riesgos.addRow(['Caja neta', Number(cobranza.caja?.ingresos || 0) - Number(cobranza.caja?.egresos || 0), 'Ingresos menos egresos'])
   }
-  if (reportes.stock) riesgos.addRow(['Stock crÃ­tico', Number(reportes.stock.stockCritico?.totales?.productosCriticos || 0) + Number(reportes.stock.stockCritico?.totales?.materialesCriticos || 0), 'Productos y materiales'])
-  if (reportes.licitaciones) riesgos.addRow(['Licitaciones pendientes', reportes.licitaciones.byResultado?.pendiente?.count || 0, 'Pendientes de resoluciÃ³n'])
+  if (reportes.stock) riesgos.addRow(['Stock crítico', Number(reportes.stock.stockCritico?.totales?.productosCriticos || 0) + Number(reportes.stock.stockCritico?.totales?.materialesCriticos || 0), 'Productos y materiales'])
+  if (reportes.licitaciones) riesgos.addRow(['Licitaciones pendientes', reportes.licitaciones.byResultado?.pendiente?.count || 0, 'Pendientes de resolución'])
   riesgos.getColumn(2).numFmt = '#,##0'
   return workbook.xlsx.writeBuffer()
 }
@@ -1060,13 +1060,17 @@ export default async function reportesRoutes(fastify) {
 
     const rows = buildGerencialExportRows(reportes, request.query)
     if (rows.length <= 3) return reply.code(403).send({ error: 'Sin permisos para exportar reportes gerenciales' })
-    const csv = rowsToCsv(rows, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `reporte_gerencial_${new Date().toISOString().slice(0, 10)}`,
+      rows: rows,
+      columns: [
       { key: 'seccion', label: 'Seccion' },
       { key: 'indicador', label: 'Indicador' },
       { key: 'valor', label: 'Valor' },
       { key: 'detalle', label: 'Detalle' },
-    ])
-    return sendCsv(reply, `reporte_gerencial_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 
   fastify.get('/export/gerencial.xlsx', {
@@ -1091,7 +1095,11 @@ export default async function reportesRoutes(fastify) {
   }, async (request, reply) => {
     const productos = await buildPreciosExport(fastify, request.query)
     if (productos.error) return reply.code(400).send({ error: productos.error })
-    const csv = rowsToCsv(productos, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `productos_${new Date().toISOString().slice(0, 10)}`,
+      rows: productos,
+      columns: [
       { key: 'fotoUrl', label: 'Foto' },
       { key: 'codigoInterno', label: 'Cod Interno' },
       { key: 'idMarco', label: 'ID Marco' },
@@ -1117,15 +1125,19 @@ export default async function reportesRoutes(fastify) {
       { key: 'edad', label: 'Edad' },
       { key: 'materialidad', label: 'Materialidad' },
       { key: 'estado', label: 'Estado Stock' },
-    ])
-    return sendCsv(reply, `productos_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 
   fastify.get('/export/clientes', {
     preHandler: [fastify.authenticate, fastify.rbac('clientes', 'read')],
   }, async (request, reply) => {
     const clientes = await buildClientesExport(fastify, request.query)
-    const csv = rowsToCsv(clientes, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `clientes_${new Date().toISOString().slice(0, 10)}`,
+      rows: clientes,
+      columns: [
       { key: 'rut', label: 'RUT' },
       { key: 'nombre', label: 'Nombre' },
       { key: 'razonSocial', label: 'Razón Social' },
@@ -1140,8 +1152,8 @@ export default async function reportesRoutes(fastify) {
       { key: 'telefono', label: 'Teléfono' },
       { key: 'email', label: 'Email' },
       { key: 'giro', label: 'Giro' },
-    ])
-    return sendCsv(reply, `clientes_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 
   fastify.get('/export/proveedores', {
@@ -1151,7 +1163,11 @@ export default async function reportesRoutes(fastify) {
       where: buildProveedorWhere(request.query),
       orderBy: proveedorOrderBy(),
     })
-    const csv = rowsToCsv(proveedores, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `proveedores_${new Date().toISOString().slice(0, 10)}`,
+      rows: proveedores,
+      columns: [
       { key: 'codigoProveedor', label: 'Cod proveedor' },
       { key: 'nombre', label: 'Nombre' },
       { key: 'rut', label: 'RUT' },
@@ -1165,8 +1181,8 @@ export default async function reportesRoutes(fastify) {
       { key: 'porcVentaSala', label: 'Porcentaje Venta Sala' },
       { key: 'porcMarco', label: 'Porcentaje Convenio Marco' },
       { key: 'porcLicitacion', label: 'Porcentaje Licitación' },
-    ])
-    return sendCsv(reply, `proveedores_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 
   fastify.get('/export/ventas', {
@@ -1239,7 +1255,11 @@ export default async function reportesRoutes(fastify) {
         saldo: Math.max(0, total - Number(o.abono || 0)),
       }
     })
-    const csv = rowsToCsv(rows, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `ventas_${new Date().toISOString().slice(0, 10)}`,
+      rows: rows,
+      columns: [
       { key: 'nInterno', label: 'N° Interno' },
       { key: 'createdAt', label: 'Fecha' },
       { key: 'tipo', label: 'Tipo' },
@@ -1254,8 +1274,8 @@ export default async function reportesRoutes(fastify) {
       { key: 'estadoEntrega', label: 'Entrega' },
       { key: 'licitacion', label: 'OC / Ref' },
       { key: 'observaciones', label: 'Observaciones' },
-    ])
-    return sendCsv(reply, `ventas_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 
   fastify.get('/export/cobranza', {
@@ -1268,7 +1288,11 @@ export default async function reportesRoutes(fastify) {
     const items = await fastify.prisma.cobranzaHistorico.findMany({
       where, orderBy: { fechaFactura: 'desc' },
     })
-    const csv = rowsToCsv(items, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `cobranza_historico_${new Date().toISOString().slice(0, 10)}`,
+      rows: items,
+      columns: [
       { key: 'fechaFactura', label: 'Fecha Factura' },
       { key: 'ndoc', label: 'N° Doc' },
       { key: 'cliente', label: 'Cliente' },
@@ -1290,8 +1314,8 @@ export default async function reportesRoutes(fastify) {
       { key: 'reclamo', label: 'Reclamo' },
       { key: 'observacion', label: 'Observacion' },
       { key: 'mesAnio', label: 'Período' },
-    ])
-    return sendCsv(reply, `cobranza_historico_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 
   fastify.get('/export/cobranza-activa', {
@@ -1344,7 +1368,11 @@ export default async function reportesRoutes(fastify) {
         pagosRegistrados,
       }
     })
-    const csv = rowsToCsv(rows, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `cobranza_activa_${new Date().toISOString().slice(0, 10)}`,
+      rows: rows,
+      columns: [
       { key: 'nInterno', label: 'N Interno' },
       { key: 'id', label: 'ID Venta' },
       { key: 'createdAt', label: 'Fecha' },
@@ -1359,8 +1387,8 @@ export default async function reportesRoutes(fastify) {
       { key: 'pagosRegistrados', label: 'Pagos Registrados' },
       { key: 'creadorNombre', label: 'Vendedor' },
       { key: 'observaciones', label: 'Observaciones' },
-    ])
-    return sendCsv(reply, `cobranza_activa_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 
   fastify.get('/export/caja', {
@@ -1374,7 +1402,11 @@ export default async function reportesRoutes(fastify) {
       orderBy: { fecha: 'desc' },
       include: { gastoTipo: { select: { nombre: true } } },
     })
-    const csv = rowsToCsv(movs, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `caja_${new Date().toISOString().slice(0, 10)}`,
+      rows: movs,
+      columns: [
       { key: 'fecha', label: 'Fecha' },
       { key: 'tipo', label: 'Tipo' },
       { key: 'gastoTipo', label: 'Gasto', format: (_v, row) => row.gastoTipo?.nombre || '' },
@@ -1389,8 +1421,8 @@ export default async function reportesRoutes(fastify) {
       { key: 'ordenId', label: 'Orden ID' },
       { key: 'usuario', label: 'Usuario' },
       { key: 'eliminado', label: 'Anulado', format: v => v ? 'Si' : 'No' },
-    ])
-    return sendCsv(reply, `caja_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 
   fastify.get('/export/odts', {
@@ -1409,7 +1441,11 @@ export default async function reportesRoutes(fastify) {
         ? [o.operario.nombres, o.operario.apellidoPaterno, o.operario.apellidoMaterno].filter(Boolean).join(' ')
         : '',
     }))
-    const csv = rowsToCsv(rows, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `odts_${new Date().toISOString().slice(0, 10)}`,
+      rows: rows,
+      columns: [
       { key: 'id', label: 'ID' },
       { key: 'nInterno', label: 'N Interno' },
       { key: 'tipo', label: 'Tipo' },
@@ -1425,8 +1461,8 @@ export default async function reportesRoutes(fastify) {
       { key: 'fechaInicio', label: 'Inicio' },
       { key: 'fechaTermino', label: 'Termino' },
       { key: 'ordenId', label: 'Orden' },
-    ])
-    return sendCsv(reply, `odts_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 
   fastify.get('/export/bodega-taller', {
@@ -1443,7 +1479,11 @@ export default async function reportesRoutes(fastify) {
       fastify.prisma,
       filter.stockCritico ? filterStockCriticoItems(rawItems) : rawItems,
     )
-    const csv = rowsToCsv(items, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `bodega_taller_${new Date().toISOString().slice(0, 10)}`,
+      rows: items,
+      columns: [
       { key: 'categoriaNombre', label: 'Categoría' },
       { key: 'codigoBarra', label: 'Cod Barra' },
       { key: 'codigoInterno', label: 'Cod Interno' },
@@ -1455,7 +1495,7 @@ export default async function reportesRoutes(fastify) {
       { key: 'unidadMedida', label: 'Unid. Medida' },
       { key: 'sucursalNombre', label: 'Sucursal' },
       { key: 'precio', label: 'Precio' },
-    ])
-    return sendCsv(reply, `bodega_taller_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 }

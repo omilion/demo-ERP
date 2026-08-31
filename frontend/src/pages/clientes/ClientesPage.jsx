@@ -6,6 +6,7 @@ import { useClienteActivo, useClientes } from '../../api/clientes'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import BotonExportar from '../../components/BotonExportar'
 
 export default function ClientesPage() {
   const navigate = useNavigate()
@@ -213,14 +214,12 @@ export default function ClientesPage() {
         subtitle={`${shown.length} de ${totalClientes.toLocaleString('es-CL')} clientes`}
         breadcrumb={['Inicio', 'Clientes']}
         actions={<>
-          <Btn
-            variant="secondary"
-            icon="download"
-            size="sm"
-            onClick={() => downloadFromBackend('/reportes/export/clientes', `clientes_${new Date().toISOString().slice(0, 10)}.csv`, filterParams)}
-          >
-            Exportar CSV
-          </Btn>
+          <BotonExportar
+            url="/reportes/export/clientes"
+            nombre={`clientes_${new Date().toISOString().slice(0, 10)}`}
+            params={filterParams}
+            label="Exportar"
+          />
           {canWriteClientes && (
             <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/clientes/nuevo')}>
               Nuevo Cliente

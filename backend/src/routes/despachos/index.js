@@ -1,7 +1,7 @@
 // Gestion de despachos y guias.
 import { z } from 'zod'
 import { can } from '../../middleware/rbac.js'
-import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import { buildExport, sendExport } from '../../utils/export.js'
 import { applyDateRange, parseDate, parseOptionalInt, parsePage, parsePositiveInt } from '../operational-utils.js'
 import { resolveOdtForWrite, resolveOrdenForWrite } from '../relation-guards.js'
 import { registerDespachoMatrizRoutes } from './matriz.js'
@@ -867,7 +867,7 @@ export default async function despachosRoutes(fastify) {
       orderBy: resolveDespachoOrderBy(request.query),
     })
     const trackedItems = await attachLatestDespachoTracking(fastify.prisma, items)
-    const csv = rowsToCsv(trackedItems.map(row => {
+    const datosExport = buildExport(trackedItems.map(row => {
       const tiempos = buildDespachoTiempoMetrics(row)
       return {
         ...row,
@@ -913,7 +913,7 @@ export default async function despachosRoutes(fastify) {
       { key: 'userMod', label: 'Usuario Modificacion' },
       { key: 'fecham', label: 'Fecha Modificacion' },
     ])
-    return sendCsv(reply, `despachos_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    return sendExport(reply, { archivo: request.query?.archivo, nombre: `despachos_${new Date().toISOString().slice(0, 10)}`, ...datosExport })
   })
 
   fastify.get('/:id', {
@@ -1376,7 +1376,7 @@ export default async function despachosRoutes(fastify) {
       where: listWhere.where,
       orderBy: { fechaGuia: 'desc' },
     })
-    const csv = rowsToCsv(items.map(row => ({ ...row, fechaGuia: formatDate(row.fechaGuia), fecham: formatDate(row.fecham) })), [
+    const datosExport = buildExport(items.map(row => ({ ...row, fechaGuia: formatDate(row.fechaGuia), fecham: formatDate(row.fecham) })), [
       { key: 'fechaGuia', label: 'Fecha Guia' },
       { key: 'nGuia', label: 'N Guia' },
       { key: 'nInterno', label: 'N Interno' },
@@ -1390,7 +1390,7 @@ export default async function despachosRoutes(fastify) {
       { key: 'userMod', label: 'Usuario Modificacion' },
       { key: 'fecham', label: 'Fecha Modificacion' },
     ])
-    return sendCsv(reply, `guias_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    return sendExport(reply, { archivo: request.query?.archivo, nombre: `guias_${new Date().toISOString().slice(0, 10)}`, ...datosExport })
   })
 
   fastify.post('/guias', {

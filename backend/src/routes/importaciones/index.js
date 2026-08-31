@@ -1,4 +1,4 @@
-import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import { sendExport } from '../../utils/export.js'
 import { parseDate, parsePagination, parsePositiveInt } from '../operational-utils.js'
 import { computePrecioWeb, resolvePorcVentaSala } from '../productos/pricing.js'
 
@@ -657,8 +657,17 @@ export default async function importacionesRoutes(fastify) {
         }
       }
 
-      const csv = rowsToCsv(rows)
-      return sendCsv(reply, csv, `importaciones_${new Date().toISOString().slice(0, 10)}.csv`)
+      // Las filas traen la etiqueta como clave, asi que las columnas salen de
+      // la primera. Antes se llamaba rowsToCsv(rows) sin columnas -que devuelve
+      // cadena vacia- y sendCsv con los argumentos invertidos: el archivo salia
+      // vacio y con el contenido por nombre.
+      const columns = Object.keys(rows[0] || {}).map(key => ({ key, label: key }))
+      return sendExport(reply, {
+        archivo: request.query?.archivo,
+        nombre: `importaciones_${new Date().toISOString().slice(0, 10)}`,
+        rows,
+        columns,
+      })
     } catch (err) {
       fastify.log.error(err)
       return reply.code(500).send({ error: 'Error al exportar importaciones: ' + err.message })

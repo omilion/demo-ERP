@@ -6,6 +6,7 @@ import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 import ProveedorFormModal from './ProveedorFormModal'
+import BotonExportar from '../../components/BotonExportar'
 
 const SEARCH_MODES = [
   { id: 'general', label: 'Todos', placeholder: 'Nombre, RUT, razon social o codigo...' },
@@ -90,9 +91,12 @@ export default function ProveedoresPage() {
         subtitle={`${total.toLocaleString('es-CL')} proveedores registrados`}
         breadcrumb={['Inicio', 'Catálogo', 'Proveedores']}
         actions={<div style={{ display: 'flex', gap: 8 }}>
-          <Btn variant="secondary" icon="download" size="sm"
-            onClick={() => downloadFromBackend('/reportes/export/proveedores', `proveedores_${new Date().toISOString().slice(0, 10)}.csv`, params)}
-          >Exportar CSV</Btn>
+          <BotonExportar
+            url="/reportes/export/proveedores"
+            nombre={`proveedores_${new Date().toISOString().slice(0, 10)}`}
+            params={params}
+            label="Exportar"
+          />
           <Btn variant="secondary" icon="printer" size="sm" onClick={() => window.print()}>PDF/Imprimir</Btn>
           {canWriteProveedores && <Btn variant="primary" icon="plus" size="sm" onClick={() => setCreating(true)}>Nuevo proveedor</Btn>}
         </div>}

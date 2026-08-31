@@ -1,4 +1,4 @@
-import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import { sendExport } from '../../utils/export.js'
 
 function parseId(value) {
   const id = Number.parseInt(value, 10)
@@ -43,7 +43,7 @@ export default async function cargoTransporteRoutes(fastify) {
 
   fastify.get('/export', {
     preHandler: [fastify.authenticate, adminOnly],
-  }, async (_request, reply) => {
+  }, async (request, reply) => {
     const cargos = await fastify.prisma.cargoTransporte.findMany({ orderBy: { nombre: 'asc' } })
     const rows = cargos.map((c, idx) => ({
       numero: idx + 1,
@@ -51,13 +51,17 @@ export default async function cargoTransporteRoutes(fastify) {
       valor: c.valor,
       activo: c.activo ? 'Si' : 'No',
     }))
-    const csv = rowsToCsv(rows, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `cargo_transporte_${new Date().toISOString().slice(0, 10)}`,
+      rows: rows,
+      columns: [
       { key: 'numero', label: '#' },
       { key: 'nombre', label: 'Nombre Zona' },
       { key: 'valor', label: 'Valor en % aplicado a la Venta' },
       { key: 'activo', label: 'Activo' },
-    ])
-    return sendCsv(reply, `cargo_transporte_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 
   fastify.post('/', {

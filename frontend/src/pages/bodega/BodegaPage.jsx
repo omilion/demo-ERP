@@ -15,6 +15,7 @@ import { can } from '../../utils/permissions'
 import { useResumenTransito } from '../../api/importaciones'
 import ImportacionesPage from '../importaciones/ImportacionesPage'
 import OrdenesCompraProveedoresPage from '../ordenes-compra-proveedores/OrdenesCompraProveedoresPage'
+import BotonExportar from '../../components/BotonExportar'
 
 const estadoInventarioOptions = ['', 'Inventariado', 'Externo', 'Transitorio']
 const estadoOperativoOptions = ['', 'Disponible', 'Stock crítico', 'Sin stock', 'Incompleto', 'Descontinuado', 'Transitorio', 'En transito', 'Reserva']
@@ -232,9 +233,12 @@ export default function BodegaPage() {
         subtitle="Control de existencias físicas, importaciones en tránsito y compras por ritmo de ventas"
         breadcrumb={['Inicio', 'Bodega']}
         actions={<>
-          <Btn variant="secondary" icon="download" size="sm"
-            onClick={() => downloadFromBackend('/reportes/export/productos', `productos_${new Date().toISOString().slice(0, 10)}.csv`, queryParams)}
-          >Exportar Excel</Btn>
+          <BotonExportar
+            url="/reportes/export/productos"
+            nombre={`productos_${new Date().toISOString().slice(0, 10)}`}
+            params={queryParams}
+            label="Exportar"
+          />
           {canWriteBodega && <Btn variant="secondary" icon="upload" size="sm" onClick={() => setImporting(true)}>Importar</Btn>}
           {canWriteCatalogo && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate('/bodega/nuevo')}>Crear nuevo</Btn>}
         </>}

@@ -9,6 +9,7 @@ import { useSucursales } from '../../api/locations'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 import { downloadFromBackend } from '../../utils/csv'
+import BotonExportar from '../../components/BotonExportar'
 
 const TABS = [
   { id: 'all', label: 'Todos' },
@@ -120,7 +121,12 @@ export default function BodegaTallerPage() {
         subtitle={`${total.toLocaleString('es-CL')} materiales de taller`}
         breadcrumb={['Inicio', 'Taller', 'Bodega']}
         actions={<>
-          <Btn variant="secondary" icon="download" size="sm" onClick={() => downloadFromBackend('/reportes/export/bodega-taller', `bodega_taller_${new Date().toISOString().slice(0, 10)}.csv`, exportParams)}>Exportar Excel</Btn>
+          <BotonExportar
+            url="/reportes/export/bodega-taller"
+            nombre={`bodega_taller_${new Date().toISOString().slice(0, 10)}`}
+            params={exportParams}
+            label="Exportar"
+          />
           {canWrite && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => setCreating(true)}>Nuevo material</Btn>}
         </>}
       />

@@ -1,4 +1,4 @@
-import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import { sendExport } from '../../utils/export.js'
 import { parseDate } from '../operational-utils.js'
 import { computeTotal } from '../ventas/helpers.js'
 import { GRAFIAS_CONVENIO_MARCO, GRAFIAS_LICITACION, LICITACION_MOJIBAKE } from '../ventas/estados-normalize.js'
@@ -442,7 +442,11 @@ export function registerComisionesReportRoutes(fastify) {
   }, async (request, reply) => {
     const reporte = await buildComisionesReporte(fastify, request.query, { exportAll: true })
     if (reporte.error) return reply.code(400).send({ error: reporte.error })
-    const csv = rowsToCsv(reporte.rows, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `comisiones_${new Date().toISOString().slice(0, 10)}`,
+      rows: reporte.rows,
+      columns: [
       { key: 'nInterno', label: 'N Interno' },
       { key: 'fecha', label: 'Fecha' },
       { key: 'tipoVenta', label: 'Tipo venta' },
@@ -460,7 +464,7 @@ export function registerComisionesReportRoutes(fastify) {
       { key: 'estadoPago', label: 'Estado pago' },
       { key: 'estadoEntrega', label: 'Estado entrega' },
       { key: 'isEligible', label: 'Elegible' },
-    ])
-    return sendCsv(reply, `comisiones_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 }

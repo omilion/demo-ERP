@@ -5,7 +5,7 @@
 // codigo distinto a mano (paquete de licitacion, codigo alterado). Esta
 // vista junta esos casos: lo que quedo escrito en la venta vs. el producto
 // real cuyo stock efectivamente se movio.
-import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import { sendExport } from '../../utils/export.js'
 import { parseDate, parsePositiveInt } from '../operational-utils.js'
 
 const DIA_MS = 24 * 60 * 60 * 1000
@@ -119,7 +119,11 @@ export function registerMovimientosAnormalesReportRoutes(fastify) {
   }, async (request, reply) => {
     const reporte = await buildMovimientosAnormales(fastify, { ...request.query, limit: '500', offset: '0' })
     if (reporte.error) return reply.code(400).send({ error: reporte.error })
-    const csv = rowsToCsv(reporte.items, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `movimientos_anormales_${new Date().toISOString().slice(0, 10)}`,
+      rows: reporte.items,
+      columns: [
       { key: 'nInterno', label: 'N Interno' },
       { key: 'fechaOrden', label: 'Fecha' },
       { key: 'tipo', label: 'Tipo venta' },
@@ -132,7 +136,7 @@ export function registerMovimientosAnormalesReportRoutes(fastify) {
       { key: 'cantidad', label: 'Cantidad' },
       { key: 'stockActual', label: 'Stock actual producto real' },
       { key: 'motivo', label: 'Motivo del descuadre' },
-    ])
-    return sendCsv(reply, `movimientos_anormales_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 }

@@ -1,4 +1,4 @@
-import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import { sendExport } from '../../utils/export.js'
 import { getUserSucursalId } from '../caja/scope.js'
 import { computeTotal } from '../ventas/helpers.js'
 import { applyVentaStockDeltas, buildStockDeltasFromItems, isVentaDirectaStockTipo } from '../ventas/stock.js'
@@ -146,7 +146,11 @@ export default async function ordenesCompraRoutes(fastify) {
       where: buildWhere(request.user, request.query),
       orderBy: { fechaHora: 'desc' },
     })
-    const csv = rowsToCsv(items, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `ordenes_compra_online_${new Date().toISOString().slice(0, 10)}`,
+      rows: items,
+      columns: [
       { key: 'nCompra', label: 'N Compra' },
       { key: 'fechaHora', label: 'Fecha' },
       { key: 'emailComprador', label: 'Email comprador' },
@@ -158,8 +162,8 @@ export default async function ordenesCompraRoutes(fastify) {
       { key: 'costoEnvio', label: 'Costo envio' },
       { key: 'cargoServicio', label: 'Cargo servicio' },
       { key: 'obsCliente', label: 'Observacion cliente' },
-    ])
-    return sendCsv(reply, `ordenes_compra_online_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 
   fastify.get('/:id', {

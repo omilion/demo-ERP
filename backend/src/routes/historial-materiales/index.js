@@ -1,4 +1,4 @@
-import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import { buildExport, sendExport } from '../../utils/export.js'
 import { getUserSucursalId } from '../caja/scope.js'
 import { isOpenOdtEstado } from '../odts/operations.js'
 import { parseDate, parsePagination, parsePositiveInt } from '../operational-utils.js'
@@ -147,7 +147,7 @@ export default async function historialMaterialesRoutes(fastify) {
       take: MAX_EXPORT_ROWS,
     })
     const items = await attachUbicaciones(fastify.prisma, itemsRaw)
-    const csv = rowsToCsv(items.map(row => ({
+    const datosExport = buildExport(items.map(row => ({
       ...row,
       saldo: Number(row.ingreso || 0) - Number(row.egreso || 0),
     })), [
@@ -164,7 +164,7 @@ export default async function historialMaterialesRoutes(fastify) {
       { key: 'unidad', label: 'Unidad' },
       { key: 'id', label: 'ID Movimiento' },
     ])
-    return sendCsv(reply, `historial_materiales_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    return sendExport(reply, { archivo: request.query?.archivo, nombre: `historial_materiales_${new Date().toISOString().slice(0, 10)}`, ...datosExport })
   })
 
   fastify.post('/', {

@@ -1,4 +1,4 @@
-import { rowsToCsv, sendCsv } from '../../utils/csv.js'
+import { sendExport } from '../../utils/export.js'
 import { getUserSucursalId } from '../caja/scope.js'
 import { parseDate, parsePagination, parsePositiveInt } from '../operational-utils.js'
 import { resolveOdtForWrite } from '../relation-guards.js'
@@ -265,14 +265,18 @@ export default async function bitacoraTallerRoutes(fastify) {
       take: EXPORT_LIMIT,
     })
     const rows = await attachSucursalNames(fastify.prisma, items)
-    const csv = rowsToCsv(rows, [
+    return sendExport(reply, {
+      archivo: request.query?.archivo,
+      nombre: `bitacora_actividades_${new Date().toISOString().slice(0, 10)}`,
+      rows: rows,
+      columns: [
       { key: 'usuarioLabel', label: 'Operario' },
       { key: 'fechaReporte', label: 'Fecha reporte', format: formatDateOnly },
       { key: 'texto', label: 'Detalle Actividades' },
       { key: 'usuarioReporta', label: 'Reporta Encargado' },
       { key: 'sucursalNombre', label: 'Sucursal' },
-    ])
-    return sendCsv(reply, `bitacora_actividades_${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    ],
+    })
   })
 
   fastify.post('/', {
