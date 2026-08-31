@@ -4,6 +4,7 @@ import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenS
 import { parseDate, parsePage, parsePositiveInt } from '../operational-utils.js'
 import { computeVentaFinancialState } from '../ventas/financial.js'
 import { deriveEstadoFlujo, GRAFIAS_CONVENIO_MARCO, TIPOS_VENTA_MOSTRADOR, grafiasDeTipoVenta } from '../ventas/estados-normalize.js'
+import { transitionEstadoFlujoFormal } from '../ventas/estado-flujo-formal.js'
 
 const LIMIT = 100
 const MAX_PAGE_SIZE = 500
@@ -958,6 +959,43 @@ async function exportNdNc(fastify, user, reply, archivo) {
 }
 
 export default async function matrizVentasRoutes(fastify) {
+  // El cierre es explícito: pago y entrega son precondiciones, pero no cambian
+  // por sí solos el estado formal ni dejan quién autorizó el cierre.
+  fastify.get('/:id/estado-flujo', {
+    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
+  }, async (request, reply) => {
+    const id = parsePositiveInt(request.params.id)
+    if (!id) return reply.code(400).send({ error: 'id invalido' })
+    const orden = await fastify.prisma.orden.findFirst({
+      where: scopedWhere(request.user, { id, eliminada: false }),
+      select: { id: true, estadoFlujoFormal: true, fechaEstadoFlujo: true },
+    })
+    if (!orden) return reply.code(404).send({ error: 'Orden no encontrada' })
+    const historial = await fastify.prisma.ordenEstadoFlujoHistorial.findMany({
+      where: { ordenId: id }, orderBy: { createdAt: 'desc' }, take: 100,
+    })
+    return { orden, historial }
+  })
+
+  fastify.post('/:id/estado-flujo', {
+    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'write')],
+  }, async (request, reply) => {
+    const id = parsePositiveInt(request.params.id)
+    const estado = String(request.body?.estado || '').trim()
+    const motivo = String(request.body?.motivo || '').trim() || null
+    if (!id || !estado) return reply.code(400).send({ error: 'id y estado requeridos' })
+    const visible = await fastify.prisma.orden.findFirst({
+      where: scopedWhere(request.user, { id, eliminada: false }), select: { id: true },
+    })
+    if (!visible) return reply.code(404).send({ error: 'Orden no encontrada' })
+    const result = await fastify.prisma.$transaction(async (tx) => {
+      const orden = await tx.orden.findUnique({ where: { id } })
+      return transitionEstadoFlujoFormal(tx, orden, estado, request.user, { motivo })
+    })
+    if (result.error) return reply.code(409).send({ error: result.error })
+    return result
+  })
+
   fastify.get('/', {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request, reply) => {

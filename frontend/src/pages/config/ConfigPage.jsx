@@ -274,6 +274,7 @@ function empresaPayload(form) {
     codigoEmpresa: form.codigoEmpresa || undefined,
     logoUrl: form.logoUrl || '',
     textoPie: form.textoPie || '',
+    escaneoCodigoBarrasObligatorio: form.escaneoCodigoBarrasObligatorio === true,
   }
 }
 
@@ -398,6 +399,10 @@ function EmpresaSection() {
         <div style={{ marginTop: 10 }}>
           <FormField label="Texto pie"><Textarea value={form.textoPie || ''} onChange={v => set('textoPie', v)} rows={3} /></FormField>
         </div>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 12, fontSize: 13, cursor: 'pointer' }}>
+          <input type="checkbox" checked={form.escaneoCodigoBarrasObligatorio === true} onChange={e => set('escaneoCodigoBarrasObligatorio', e.target.checked)} />
+          <span><strong>Exigir escaneo de código de barras</strong><br /><span style={{ color: 'var(--text-3)', fontSize: 12 }}>Bloquea recepciones y packing sin una lectura válida. Mantener apagado hasta completar la carga de códigos.</span></span>
+        </label>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 14 }}>
           <div>
             {selected && !creating && (

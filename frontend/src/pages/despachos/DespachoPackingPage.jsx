@@ -52,11 +52,13 @@ function PackingForm({ row, onDone, onCancel }) {
   const [bultoNumero, setBultoNumero] = useState('')
   const [observacion, setObservacion] = useState('')
   const [drafts, setDrafts] = useState({})
+  const [codigosBarrasLeidos, setCodigosBarrasLeidos] = useState({})
   const updatePackingMut = useUpdateDespachoPacking()
   const sourceLines = trace.items?.length
     ? trace.items.map(item => ({
       ...item,
       codigo: item.codigoInterno,
+      codigoBarra: item.codigoBarra || '',
       entregados: item.nEntregados,
     }))
     : (row.itemsDetalle || [])
@@ -87,6 +89,7 @@ function PackingForm({ row, onDone, onCancel }) {
         despachoId: despachoId || undefined,
         bultoNumero: bultoNumero.trim() || undefined,
         observacion: observacion.trim() || undefined,
+        codigosBarrasLeidos,
         items,
       },
       { onSuccess: onDone, onError: showError },
@@ -131,7 +134,7 @@ function PackingForm({ row, onDone, onCancel }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
-                {['Producto', 'Cant.', 'Entregados', 'Pendiente', ''].map((h, i) => (
+                {['Producto', 'Cant.', 'Entregados', 'Pendiente', 'Código escaneado', ''].map((h, i) => (
                   <th key={h} style={{ padding: '8px 10px', textAlign: i >= 1 && i <= 3 ? 'right' : 'left', fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>{h}</th>
                 ))}
               </tr>
@@ -160,6 +163,14 @@ function PackingForm({ row, onDone, onCancel }) {
                     </td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', color: pendiente > 0 ? 'var(--amber)' : 'var(--green-600)', fontWeight: 700 }}>
                       <Mono strong>{pendiente}</Mono>
+                    </td>
+                    <td style={{ padding: '5px 10px' }}>
+                      <input
+                        value={codigosBarrasLeidos[line.id] || ''}
+                        onChange={event => setCodigosBarrasLeidos(prev => ({ ...prev, [line.id]: event.target.value }))}
+                        placeholder="Escanear"
+                        style={{ width: 115, padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono', monospace" }}
+                      />
                     </td>
                     <td style={{ padding: '8px 10px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>

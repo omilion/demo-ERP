@@ -8,6 +8,8 @@ import {
   normalizeTipoVenta,
   deriveEstadoFlujo,
   attachEstadoFlujo,
+  ESTADO_FLUJO_FORMAL,
+  validateEstadoFlujoFormalTransition,
 } from '../src/routes/ventas/estados-normalize.js'
 
 // Contexto: el ERP convive con el legacy MySQL, que escribe otra grafia de los
@@ -101,5 +103,19 @@ describe('flujo transversal de venta', () => {
   it('normaliza las grafias legacy al adjuntar el estado consolidado', () => {
     const orden = attachEstadoFlujo({ estado: 'Activa', estadoPago: 'pagada', estadoEntrega: 'Entregado' })
     expect(orden).toMatchObject({ estadoPago: 'Pagada', estadoEntrega: 'Entregada', estadoFlujo: { codigo: 'CERRADA', terminal: true } })
+  })
+})
+
+describe('flujo formal persistido', () => {
+  it('declara una cadena sin saltos desde creación hasta cierre', () => {
+    expect(validateEstadoFlujoFormalTransition('CREADA', 'PREPARACION')).toMatchObject({ from: 'CREADA', to: 'PREPARACION' })
+    expect(validateEstadoFlujoFormalTransition('PATIO', 'DIDACTICO')).toMatchObject({ from: 'PATIO', to: 'DIDACTICO' })
+    expect(validateEstadoFlujoFormalTransition('REPARTO', 'ENTREGADA')).toMatchObject({ from: 'REPARTO', to: 'ENTREGADA' })
+    expect(ESTADO_FLUJO_FORMAL.CERRADA.terminal).toBe(true)
+  })
+
+  it('rechaza saltar etapas o reabrir un cierre', () => {
+    expect(validateEstadoFlujoFormalTransition('CREADA', 'REPARTO').error).toContain('inválida')
+    expect(validateEstadoFlujoFormalTransition('CERRADA', 'PREPARACION').error).toContain('inválida')
   })
 })

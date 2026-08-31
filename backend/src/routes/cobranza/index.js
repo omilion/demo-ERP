@@ -1,6 +1,7 @@
 import { parseDate, parsePage, parsePositiveInt } from '../operational-utils.js'
 import { buildCobranzaHistoricoScopeWhere, mergeCobranzaWhere } from './scope.js'
 import cobranzaGestionRoutes from './gestion.js'
+import { normalizeEstadoCobranza } from './estados.js'
 
 const FECHA_FIELDS = {
   factura: 'fechaFactura',
@@ -28,7 +29,11 @@ export function buildCobranzaHistoricoFilters(query = {}) {
   } = query
   const filters = {}
   if (ejecutiva) filters.ejecutiva = { contains: ejecutiva, mode: 'insensitive' }
-  if (estado) filters.estado = { equals: estado, mode: 'insensitive' }
+  if (estado) {
+    const canonical = normalizeEstadoCobranza(estado)
+    if (!canonical) return { error: 'estado de cobranza invalido' }
+    filters.estado = canonical
+  }
   if (mes) filters.mesAnio = { contains: mes, mode: 'insensitive' }
   if (rut) filters.rut = { contains: rut, mode: 'insensitive' }
   if (cliente) filters.cliente = { contains: cliente, mode: 'insensitive' }

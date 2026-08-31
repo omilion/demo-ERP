@@ -648,6 +648,7 @@ function OCRecepcionModal({ oc, onClose }) {
       return acc
     }, {})
   )
+  const [codigosBarrasLeidos, setCodigosBarrasLeidos] = useState({})
 
   const handleQtyChange = (itemId, val) => {
     setCantidades((prev) => ({
@@ -658,7 +659,7 @@ function OCRecepcionModal({ oc, onClose }) {
 
   const handleConfirm = () => {
     recepcionarMutation.mutate(
-      { id: oc.id, cantidadesRecibidas: cantidades },
+      { id: oc.id, cantidadesRecibidas: cantidades, codigosBarrasLeidos },
       {
         onSuccess: (data) => {
           toast.success(data.message || 'Mercadería ingresada al inventario de bodega')
@@ -695,6 +696,7 @@ function OCRecepcionModal({ oc, onClose }) {
                 <th style={{ padding: '8px 10px', textAlign: 'right' }}>Total Pedido</th>
                 <th style={{ padding: '8px 10px', textAlign: 'right' }}>Ya Recibido</th>
                 <th style={{ padding: '8px 10px', textAlign: 'right' }}>Cantidad a Ingresar</th>
+                <th style={{ padding: '8px 10px' }}>Código escaneado</th>
               </tr>
             </thead>
             <tbody>
@@ -711,6 +713,14 @@ function OCRecepcionModal({ oc, onClose }) {
                       value={cantidades[it.id] ?? Math.max(0, it.cantidadPedida - it.cantidadRecepcionada)}
                       onChange={(e) => handleQtyChange(it.id, e.target.value)}
                       style={{ width: 90, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', textAlign: 'right', fontWeight: 600, fontSize: 12 }}
+                    />
+                  </td>
+                  <td style={{ padding: '6px 10px' }}>
+                    <input
+                      value={codigosBarrasLeidos[it.id] || ''}
+                      onChange={(e) => setCodigosBarrasLeidos(prev => ({ ...prev, [it.id]: e.target.value }))}
+                      placeholder="Escanear"
+                      style={{ width: 120, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', fontFamily: "'DM Mono', monospace", fontSize: 12 }}
                     />
                   </td>
                 </tr>

@@ -2,6 +2,7 @@ import { sendExport } from '../../utils/export.js'
 import { parseDate, parsePagination, parsePositiveInt } from '../operational-utils.js'
 import { calcularSugerenciasOC } from './sugerencias.js'
 import { buildTiemposBodegaKpis } from './metricas.js'
+import { codigoBarrasObligatorio, validateBarcodeScans } from './barcode-policy.js'
 
 const ESTADOS_VALIDOS = new Set([
   'Borrador',
@@ -127,7 +128,7 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
             items: {
               include: {
                 producto: {
-                  select: { id: true, codigoInterno: true, nombre: true, stock: true },
+                  select: { id: true, codigoInterno: true, codigoBarra: true, nombre: true, stock: true },
                 },
               },
             },
@@ -221,6 +222,7 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
                 select: {
                   id: true,
                   codigoInterno: true,
+                  codigoBarra: true,
                   nombre: true,
                   stock: true,
                   stockCritico: true,
@@ -345,7 +347,7 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
 
     const existing = await prisma.ordenCompraProveedor.findUnique({
       where: { id },
-      include: { items: true },
+      include: { items: { include: { producto: { select: { id: true, codigoBarra: true, nombre: true } } } } },
     })
     if (!existing) return reply.code(404).send({ error: 'Orden de compra no encontrada' })
 
@@ -530,8 +532,27 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
     })
     if (!oc) return reply.code(404).send({ error: 'Orden de compra no encontrada' })
 
-    const { cantidadesRecibidas = {} } = request.body || {}
+    const { cantidadesRecibidas = {}, codigosBarrasLeidos = {} } = request.body || {}
     const userId = request.user?.id || 1
+
+    if (await codigoBarrasObligatorio(prisma)) {
+      const lines = []
+      for (const item of oc.items) {
+        const cantidad = cantidadesRecibidas[item.id] !== undefined
+          ? Math.max(0, Number.parseInt(cantidadesRecibidas[item.id], 10) || 0)
+          : Math.max(0, item.cantidadPedida - item.cantidadRecepcionada)
+        let producto = item.producto
+        if (!producto && item.codigoInterno) {
+          producto = await prisma.producto.findUnique({
+            where: { codigoInterno: item.codigoInterno },
+            select: { id: true, codigoBarra: true, nombre: true },
+          })
+        }
+        lines.push({ itemId: item.id, cantidad, codigoBarra: producto?.codigoBarra, nombre: item.nombre || producto?.nombre })
+      }
+      const barcodeError = validateBarcodeScans(lines, codigosBarrasLeidos)
+      if (barcodeError) return reply.code(409).send(barcodeError)
+    }
 
     try {
       const result = await prisma.$transaction(async (tx) => {

@@ -62,6 +62,59 @@ export const ESTADO_FLUJO = Object.freeze({
   ANULADA: { codigo: 'ANULADA', label: 'Anulada', terminal: true },
 })
 
+// Ciclo operativo persistido. A diferencia de ESTADO_FLUJO (la fotografía
+// financiera que se deriva al leer), este estado sólo cambia por una
+// transición validada y queda auditado en ventas.orden_estado_flujo_historial.
+export const ESTADO_FLUJO_FORMAL = Object.freeze({
+  CREADA: { codigo: 'CREADA', label: 'Creada', terminal: false },
+  PREPARACION: { codigo: 'PREPARACION', label: 'Preparación', terminal: false },
+  PATIO: { codigo: 'PATIO', label: 'Patio', terminal: false },
+  DIDACTICO: { codigo: 'DIDACTICO', label: 'Didáctico', terminal: false },
+  REPARTO: { codigo: 'REPARTO', label: 'Reparto', terminal: false },
+  ENTREGADA: { codigo: 'ENTREGADA', label: 'Entregada', terminal: false },
+  CERRADA: { codigo: 'CERRADA', label: 'Cerrada', terminal: true },
+  ANULADA: { codigo: 'ANULADA', label: 'Anulada', terminal: true },
+})
+
+export const TRANSICIONES_ESTADO_FLUJO_FORMAL = Object.freeze({
+  CREADA: ['PREPARACION', 'ANULADA'],
+  PREPARACION: ['PATIO', 'ANULADA'],
+  PATIO: ['DIDACTICO', 'ANULADA'],
+  DIDACTICO: ['REPARTO', 'ANULADA'],
+  REPARTO: ['ENTREGADA', 'ANULADA'],
+  ENTREGADA: ['CERRADA', 'ANULADA'],
+  CERRADA: [],
+  ANULADA: [],
+})
+
+export function normalizeEstadoFlujoFormal(value) {
+  const key = comparisonKey(value).replace(/\s+/g, '_').toUpperCase()
+  return ESTADO_FLUJO_FORMAL[key] || null
+}
+
+export function validateEstadoFlujoFormalTransition(previous, next) {
+  const from = normalizeEstadoFlujoFormal(previous)?.codigo
+  const to = normalizeEstadoFlujoFormal(next)?.codigo
+  if (!to) return { error: 'estado de flujo invalido' }
+  if (!from) return { error: 'estado actual de flujo invalido' }
+  if (from === to) return { error: `La orden ya está en ${ESTADO_FLUJO_FORMAL[to].label}` }
+  if (!TRANSICIONES_ESTADO_FLUJO_FORMAL[from]?.includes(to)) {
+    return { error: `Transición inválida: ${ESTADO_FLUJO_FORMAL[from].label} → ${ESTADO_FLUJO_FORMAL[to].label}` }
+  }
+  return { from, to }
+}
+
+export function estadoFlujoFormalDesdeTracking(estado) {
+  const normalized = comparisonKey(estado)
+  return {
+    preparado: 'PREPARACION',
+    patio: 'PATIO',
+    didactico: 'DIDACTICO',
+    reparto: 'REPARTO',
+    entregado: 'ENTREGADA',
+  }[normalized] || null
+}
+
 // Grafias con que un mismo valor aparece hoy en la base, para las consultas que
 // filtran por igualdad. Mientras convivan ambos vocabularios, un `where` que
 // nombre una sola grafia deja fuera al resto de las ordenes en silencio.

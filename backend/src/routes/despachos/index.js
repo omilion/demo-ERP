@@ -7,6 +7,8 @@ import { resolveOdtForWrite, resolveOrdenForWrite } from '../relation-guards.js'
 import { registerDespachoMatrizRoutes } from './matriz.js'
 import { attachCliente } from '../ventas/helpers.js'
 import { isValidContactEmail } from '../ventas/operational-rules.js'
+import { transitionEstadoFlujoDesdeTracking } from '../ventas/estado-flujo-formal.js'
+import { codigoBarrasObligatorio, validateBarcodeScans } from '../ordenes-compra-proveedores/barcode-policy.js'
 
 const LIST_LIMIT = 100
 
@@ -59,6 +61,7 @@ const PackingUpdate = z.object({
   bultoEstado: z.string().optional().nullable(),
   bultoObservacion: z.string().optional().nullable(),
   observacion: z.string().optional().nullable(),
+  codigosBarrasLeidos: z.object({}).catchall(z.string()).optional(),
   items: z.array(z.object({
     id: optionalId,
     itemId: optionalId,
@@ -78,11 +81,18 @@ const TrackingEventoCreate = z.object({
   fechaEvento: z.string().optional().nullable(),
 })
 
-export const TRACKING_ESTADOS = ['Patio', 'Didáctico', 'Reparto', 'Entregado', 'Incidencia', 'Reprogramado', 'Retenido', 'Devuelto', 'Preparado', 'En ruta']
+// “En ruta” queda como valor legacy legible. No es una transición nueva: el
+// flujo obligatorio usa Reparto antes de Entregado.
+export const TRACKING_ESTADOS = ['Preparado', 'Patio', 'Didáctico', 'Reparto', 'Entregado', 'Incidencia', 'Reprogramado', 'Retenido', 'Devuelto', 'En ruta']
 const TRACKING_CHAIN = {
-  Patio: ['Didáctico', 'Incidencia', 'Reprogramado', 'Retenido', 'Preparado', 'En ruta'],
+  Preparado: ['Patio', 'Incidencia', 'Retenido'],
+  Patio: ['Didáctico', 'Incidencia', 'Reprogramado', 'Retenido'],
   Didáctico: ['Reparto', 'Incidencia', 'Reprogramado', 'Retenido'],
   Reparto: ['Entregado', 'Incidencia', 'Reprogramado', 'Retenido', 'Devuelto'],
+  Incidencia: ['Incidencia', 'Patio', 'Didáctico', 'Reparto'],
+  Reprogramado: ['Patio'],
+  Retenido: ['Patio'],
+  Devuelto: [],
   Entregado: [],
 }
 
@@ -590,6 +600,9 @@ export function buildTrackingEventData(input = {}, user = null, now = new Date()
 
 export function validateTrackingTransition(previousEstado, nextEstado) {
   if (!TRACKING_CHAIN[previousEstado]) return null
+  // Una incidencia puede complementarse con responsable/acción después del
+  // primer aviso; se conserva cada actualización como evento separado.
+  if (previousEstado === 'Incidencia' && nextEstado === 'Incidencia') return null
   if (previousEstado === nextEstado) return { error: `El despacho ya está en ${nextEstado}` }
   if (!TRACKING_CHAIN[previousEstado].includes(nextEstado)) return { error: `Transición inválida: ${previousEstado} → ${nextEstado}` }
   return null
@@ -729,7 +742,7 @@ async function buildPackingTrace(prisma, ordenId, despachoId = null, guiaDespach
   const [items, bultos, eventos, packedDespacho, packedGuia] = await Promise.all([
     prisma.ordenItem.findMany({
       where: { ordenId, eliminado: false },
-      select: { id: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true },
+      select: { id: true, productoId: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true },
       orderBy: { id: 'asc' },
     }),
     prisma.packingBulto.findMany({
@@ -764,7 +777,12 @@ async function buildPackingTrace(prisma, ordenId, despachoId = null, guiaDespach
       })
       : Promise.resolve(null),
   ])
-  const result = { items, bultos, eventos }
+  const productoIds = [...new Set(items.map(item => item.productoId).filter(Boolean))]
+  const productos = productoIds.length
+    ? await prisma.producto.findMany({ where: { id: { in: productoIds } }, select: { id: true, codigoBarra: true } })
+    : []
+  const barcodeByProductoId = new Map(productos.map(producto => [producto.id, producto.codigoBarra]))
+  const result = { items: items.map(item => ({ ...item, codigoBarra: barcodeByProductoId.get(item.productoId) || null })), bultos, eventos }
   if (packedDespacho) {
     result.packedDespacho = packedDespacho.map(row => ({
       ordenItemId: row.ordenItemId,
@@ -964,7 +982,7 @@ export default async function despachosRoutes(fastify) {
         sucursalId: true,
         items: {
           where: { eliminado: false },
-          select: { id: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true },
+          select: { id: true, productoId: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true },
           orderBy: { id: 'asc' },
         },
       },
@@ -974,6 +992,26 @@ export default async function despachosRoutes(fastify) {
 
     const plan = buildPackingUpdatePlan(orden.items, parsed.data.items)
     if (plan.error) return reply.code(400).send({ error: plan.error })
+    if (await codigoBarrasObligatorio(fastify.prisma)) {
+      const byItemId = new Map(orden.items.map(item => [item.id, item]))
+      const productoIds = [...new Set(orden.items.map(item => item.productoId).filter(Boolean))]
+      const productos = productoIds.length
+        ? await fastify.prisma.producto.findMany({ where: { id: { in: productoIds } }, select: { id: true, codigoBarra: true } })
+        : []
+      const barcodeByProductoId = new Map(productos.map(producto => [producto.id, producto.codigoBarra]))
+      const barcodeError = validateBarcodeScans(
+        plan.updates
+          .filter(update => update.delta > 0)
+          .map(update => ({
+            itemId: update.id,
+            cantidad: update.delta,
+            codigoBarra: barcodeByProductoId.get(byItemId.get(update.id)?.productoId),
+            nombre: byItemId.get(update.id)?.nombre,
+          })),
+        parsed.data.codigosBarrasLeidos || {},
+      )
+      if (barcodeError) return reply.code(409).send(barcodeError)
+    }
     const despachoRef = parsePackingReferenceId(parsed.data.despachoId, 'despachoId')
     if (despachoRef.error) return reply.code(400).send({ error: despachoRef.error })
     const bultoRef = parsePackingReferenceId(parsed.data.bultoId, 'bultoId')
@@ -1080,9 +1118,14 @@ export default async function despachosRoutes(fastify) {
       where: withOrdenSucursalScope(request.user, { id, eliminado: false }),
     })
     if (!despacho) return reply.code(404).send({ error: 'no encontrado' })
+    const orden = despacho.ordenId
+      ? await fastify.prisma.orden.findUnique({ where: { id: despacho.ordenId }, select: { estadoFlujoFormal: true, fechaEstadoFlujo: true } })
+      : null
     const trace = await buildDespachoTrackingTrace(fastify.prisma, id)
     return {
       despacho: { ...attachDespachoMetrics(despacho), tracking: trace.latest },
+      estadoFlujoFormal: orden?.estadoFlujoFormal || null,
+      fechaEstadoFlujo: orden?.fechaEstadoFlujo || null,
       ...trace,
     }
   })
@@ -1118,9 +1161,27 @@ export default async function despachosRoutes(fastify) {
       if (updatedDespacho.ordenId && built.data.estado === 'Entregado') {
         await recalculateOrdenEntrega(tx, updatedDespacho.ordenId)
       }
+      let flujo = null
+      if (updatedDespacho.ordenId) {
+        flujo = await transitionEstadoFlujoDesdeTracking(
+          tx,
+          updatedDespacho.ordenId,
+          built.data.estado,
+          request.user,
+          { motivo: `Tracking despacho #${id}: ${built.data.estado}` },
+        )
+        // Lanzar revierte también el evento recién creado; responder dentro de
+        // la transacción lo habría confirmado aunque el flujo formal fallara.
+        if (flujo?.error) {
+          const error = new Error(flujo.error)
+          error.statusCode = 409
+          throw error
+        }
+      }
       const trace = await buildDespachoTrackingTrace(tx, id)
       return {
         evento,
+        estadoFlujoFormal: flujo?.orden?.estadoFlujoFormal || null,
         despacho: { ...attachDespachoMetrics(updatedDespacho), tracking: trace.latest },
         ...trace,
       }

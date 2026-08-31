@@ -133,6 +133,7 @@ model EmpresaConfig {
   logoUrl           String?  @map("logo_url")
   textoPie          String?  @map("texto_pie")
   metaMensualVentas Float    @default(0) @map("meta_mensual_ventas")
+  escaneoCodigoBarrasObligatorio Boolean @default(false) @map("escaneo_codigo_barras_obligatorio")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@map("empresa")
@@ -502,6 +503,8 @@ model Orden {
   estadoPago               String                    @default("No pagada") @map("estado_pago")
   estadoEntrega            String                    @default("Pendiente entrega") @map("estado_entrega")
   fechaEstadoEntrega       DateTime?                 @map("fecha_estado_entrega")
+  estadoFlujoFormal        String                    @default("CREADA") @map("estado_flujo_formal")
+  fechaEstadoFlujo         DateTime?                 @map("fecha_estado_flujo")
   clienteId                Int?                      @map("cliente_id")
   clienteSucursalId        Int?                      @map("cliente_sucursal_id")
   rutCliente               String?                   @map("rut_cliente")
@@ -550,6 +553,7 @@ model Orden {
   packingBultos            PackingBulto[]
   packingEventos           PackingEvento[]
   despachoAjustes          DespachoAjusteHistorial[]
+  historialEstadoFlujo     OrdenEstadoFlujoHistorial[]
   notasCreditoInternas     NotaCreditoInterna[]
   oportunidadesCrm         CrmRegistro[]
   // La base ya tenia el foreign key con RESTRICT: un cliente con ventas no se
@@ -564,6 +568,26 @@ model Orden {
   @@index([clienteSucursalId])
   @@index([rutCliente])
   @@map("ordenes")
+  @@schema("ventas")
+}
+
+// Bitácora inmutable del ciclo operativo de una venta. `estado_flujo_formal`
+// es el estado actual; esta tabla conserva quién hizo cada transición y cuándo.
+model OrdenEstadoFlujoHistorial {
+  id             Int      @id @default(autoincrement())
+  ordenId        Int      @map("orden_id")
+  estadoAnterior String?  @map("estado_anterior")
+  estadoNuevo    String   @map("estado_nuevo")
+  motivo         String?
+  usuarioId      Int?     @map("usuario_id")
+  usuarioNombre  String?  @map("usuario_nombre")
+  usuarioRol     String?  @map("usuario_rol")
+  createdAt      DateTime @default(now()) @map("created_at")
+  orden          Orden    @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+
+  @@index([ordenId, createdAt])
+  @@index([estadoNuevo])
+  @@map("orden_estado_flujo_historial")
   @@schema("ventas")
 }
 

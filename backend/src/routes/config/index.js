@@ -11,6 +11,7 @@ const EMPRESA_FIELDS = [
   'codigoEmpresa',
   'logoUrl',
   'textoPie',
+  'escaneoCodigoBarrasObligatorio',
 ]
 
 function cleanString(value) {
@@ -26,6 +27,8 @@ function cleanEmpresaPayload(body = {}) {
     if (field === 'codigoEmpresa') {
       const parsed = Number(body[field])
       data.codigoEmpresa = Number.isInteger(parsed) && parsed > 0 ? parsed : null
+    } else if (field === 'escaneoCodigoBarrasObligatorio') {
+      data.escaneoCodigoBarrasObligatorio = body[field] === true || body[field] === 'true'
     } else {
       data[field] = cleanString(body[field])
     }
