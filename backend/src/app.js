@@ -54,6 +54,7 @@ import tallerCorteRoutes from './routes/taller-corte/index.js'
 import notasInternasRoutes from './routes/notas-internas/index.js'
 import importacionesRoutes from './routes/importaciones/index.js'
 import ordenesCompraProveedoresRoutes from './routes/ordenes-compra-proveedores/index.js'
+import excepcionesRoutes from './routes/excepciones/index.js'
 import { decorateRbac } from './middleware/rbac.js'
 import { isErpAccessToken } from './plugins/jwt.js'
 
@@ -126,6 +127,7 @@ export function buildApp(opts = {}) {
   app.register(notasInternasRoutes, { prefix: '/api/notas-internas' })
   app.register(importacionesRoutes, { prefix: '/api/importaciones' })
   app.register(ordenesCompraProveedoresRoutes, { prefix: '/api/ordenes-compra-proveedores' })
+  app.register(excepcionesRoutes, { prefix: '/api/excepciones' })
   app.register(uploadsRoutes, { prefix: '/uploads' })
 
   app.get('/api/health', async () => ({ status: 'ok' }))

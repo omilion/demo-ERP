@@ -562,6 +562,7 @@ model Orden {
   cliente                  Cliente?                  @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   clienteSucursal          ClienteSucursal?          @relation(fields: [clienteSucursalId], references: [id], onDelete: SetNull)
   descuentoSolicitud       DescuentoSolicitud?       @relation("OrdenDescuentoSolicitud", fields: [descuentoSolicitudId], references: [id], onDelete: SetNull)
+  excepcionAlertas         ExcepcionAlerta[]
 
   @@index([nInterno])
   @@index([clienteId])
@@ -1471,6 +1472,51 @@ model BodegaTaller {
   @@index([tallerId])
   @@map("bodega_taller")
   @@schema("taller")
+}
+
+// Reglas configurables que convierten una transición excepcional en una tarea
+// auditable. No bloquean por defecto: Gerencia decide esa política por regla.
+model ExcepcionRegla {
+  id                 Int      @id @default(autoincrement())
+  codigo             String   @unique
+  nombre             String
+  descripcion        String?
+  estadoDestino      String?  @map("estado_destino")
+  severidad          String   @default("alta")
+  horasEscalamiento  Int      @default(24) @map("horas_escalamiento")
+  rolResponsable     String   @default("coordinador_comercial") @map("rol_responsable")
+  rolEscalamiento    String   @default("admin") @map("rol_escalamiento")
+  activo             Boolean  @default(true)
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  alertas            ExcepcionAlerta[]
+
+  @@index([activo, estadoDestino])
+  @@map("excepcion_reglas")
+  @@schema("ventas")
+}
+
+model ExcepcionAlerta {
+  id                 Int              @id @default(autoincrement())
+  reglaId            Int              @map("regla_id")
+  ordenId            Int?             @map("orden_id")
+  estado             String           @default("ABIERTA")
+  severidad          String
+  rolResponsable     String           @map("rol_responsable")
+  rolEscalamiento    String           @map("rol_escalamiento")
+  venceAt            DateTime         @map("vence_at")
+  escaladaAt         DateTime?        @map("escalada_at")
+  resueltaAt         DateTime?        @map("resuelta_at")
+  resueltaPorId      Int?             @map("resuelta_por_id")
+  evidencia          String?
+  createdAt          DateTime         @default(now()) @map("created_at")
+  regla              ExcepcionRegla   @relation(fields: [reglaId], references: [id], onDelete: Restrict)
+  orden              Orden?           @relation(fields: [ordenId], references: [id], onDelete: SetNull)
+
+  @@index([estado, venceAt])
+  @@index([ordenId, estado])
+  @@map("excepcion_alertas")
+  @@schema("ventas")
 }
 
 model BodegaTallerLote {

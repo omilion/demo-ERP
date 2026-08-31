@@ -14,6 +14,29 @@ function usuarioAuditado(user = {}) {
   }
 }
 
+export async function crearAlertasExcepcionPorTransicion(tx, ordenId, estadoDestino, now = new Date()) {
+  // Mantiene compatibilidad con los tests/instalaciones anteriores a la
+  // migración; en producción Prisma expone ambos delegados tras generate.
+  if (!tx.excepcionRegla || !tx.excepcionAlerta) return []
+  const reglas = await tx.excepcionRegla.findMany({ where: { activo: true, estadoDestino } })
+  const creadas = []
+  for (const regla of reglas) {
+    const abierta = await tx.excepcionAlerta.findFirst({ where: { reglaId: regla.id, ordenId, estado: { in: ['ABIERTA', 'ESCALADA'] } }, select: { id: true } })
+    if (abierta) continue
+    creadas.push(await tx.excepcionAlerta.create({
+      data: {
+        reglaId: regla.id,
+        ordenId,
+        severidad: regla.severidad,
+        rolResponsable: regla.rolResponsable,
+        rolEscalamiento: regla.rolEscalamiento,
+        venceAt: new Date(now.getTime() + regla.horasEscalamiento * 60 * 60 * 1000),
+      },
+    }))
+  }
+  return creadas
+}
+
 // Una transición siempre actualiza la fila principal y agrega su evidencia en
 // la misma transacción. No se expone update/delete para el historial.
 export async function transitionEstadoFlujoFormal(tx, orden, nextEstado, user, { motivo = null } = {}) {
@@ -40,7 +63,8 @@ export async function transitionEstadoFlujoFormal(tx, orden, nextEstado, user, {
       ...usuarioAuditado(user),
     },
   })
-  return { orden: updated, historial }
+  const alertas = await crearAlertasExcepcionPorTransicion(tx, orden.id, transition.to, now)
+  return { orden: updated, historial, alertas }
 }
 
 export async function transitionEstadoFlujoDesdeTracking(tx, ordenId, trackingEstado, user, options = {}) {
@@ -70,7 +94,8 @@ export async function transitionEstadoFlujoDesdeTracking(tx, ordenId, trackingEs
           ...usuarioAuditado(user),
         },
       })
-      return { orden: updated, historial }
+      const alertas = await crearAlertasExcepcionPorTransicion(tx, ordenId, next, now)
+      return { orden: updated, historial, alertas }
     }
   }
   return transitionEstadoFlujoFormal(tx, orden, next, user, options)
