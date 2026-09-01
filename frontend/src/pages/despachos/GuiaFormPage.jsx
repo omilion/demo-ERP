@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from '../../store/notif'
 import { PageHeader, Btn, Badge } from '../../components/shared'
@@ -96,7 +96,7 @@ function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCa
   const ventaData = ventaQuery.data || null
 
   // Fiscal receptor state
-  const [receptor, setReceptor] = useState(() => {
+  const receptorDefaults = useMemo(() => {
     const r = existingDoc?.receptor || {}
     return {
       rut: r.rut || selectedDespacho?.receptorRut || ventaData?.rutCliente || '',
@@ -108,8 +108,23 @@ function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCa
       contacto: r.contacto || selectedDespacho?.contacto || ventaData?.contactoDespacho || '',
       email: r.email || selectedDespacho?.emailContacto || ventaData?.emailContactoDespacho || '',
     }
-  })
-  const setReceptorField = (key, value) => setReceptor(prev => ({ ...prev, [key]: value }))
+  }, [existingDoc, selectedDespacho, ventaData])
+
+  const [receptor, setReceptor] = useState(receptorDefaults)
+  const receptorTouched = useRef(false)
+
+  // selectedDespacho/ventaData llegan de queries async: cuando el formulario
+  // monta antes de que resuelvan, el estado inicial queda vacio para siempre
+  // si no se resincroniza aca. Se corta apenas el usuario edita algo a mano.
+  useEffect(() => {
+    if (receptorTouched.current) return
+    setReceptor(receptorDefaults)
+  }, [receptorDefaults])
+
+  const setReceptorField = (key, value) => {
+    receptorTouched.current = true
+    setReceptor(prev => ({ ...prev, [key]: value }))
+  }
 
   // Traslado & Tipo despacho
   const [indTraslado, setIndTraslado] = useState(existingDoc?.extra?.indTraslado ? String(existingDoc.extra.indTraslado) : '1')
