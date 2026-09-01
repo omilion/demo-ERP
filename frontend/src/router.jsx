@@ -72,6 +72,7 @@ import DocumentosRecibidosPage from './pages/facturacion/DocumentosRecibidosPage
 import CosteoPage from './pages/costeo/CosteoPage'
 import ImportacionesPage from './pages/importaciones/ImportacionesPage'
 import OrdenesCompraProveedoresPage from './pages/ordenes-compra-proveedores/OrdenesCompraProveedoresPage'
+import ExcepcionesPage from './pages/admin/ExcepcionesPage'
 
 
 const ALL = ['admin', 'vendedor', 'coordinador_comercial', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
@@ -177,6 +178,7 @@ export const router = createBrowserRouter([
       { path: 'admin/historico',  element: <ProtectedRoute allowedRoles={['admin']}><HistoricoPage /></ProtectedRoute> },
       { path: 'admin/saneamiento-legacy', element: <ProtectedRoute allowedRoles={['admin']}><SaneamientoLegacyPage /></ProtectedRoute> },
       { path: 'admin/ia-balance', element: <ProtectedRoute allowedRoles={['admin']}><IaBalancePage /></ProtectedRoute> },
+      { path: 'admin/excepciones', element: <ProtectedRoute allowedRoles={['admin']}><ExcepcionesPage /></ProtectedRoute> },
 
     ],
   },

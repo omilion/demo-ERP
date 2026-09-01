@@ -21,6 +21,7 @@ model User {
   permisoDescuentos          Boolean          @default(false) @map("permiso_descuentos")
   permisoAprobarDescuentos   Boolean          @default(false) @map("permiso_aprobar_descuentos")
   permisosExtra              Json?            @map("permisos_extra")
+  tiposVentaPermitidos       Json?            @map("tipos_venta_permitidos")
   sucursalId                 Int?             @map("sucursal_id")
   activo                     Boolean          @default(true)
   createdAt                  DateTime         @default(now()) @map("created_at")
@@ -562,6 +563,7 @@ model Orden {
   cliente                  Cliente?                  @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   clienteSucursal          ClienteSucursal?          @relation(fields: [clienteSucursalId], references: [id], onDelete: SetNull)
   descuentoSolicitud       DescuentoSolicitud?       @relation("OrdenDescuentoSolicitud", fields: [descuentoSolicitudId], references: [id], onDelete: SetNull)
+  excepcionAlertas         ExcepcionAlerta[]
 
   @@index([nInterno])
   @@index([clienteId])
@@ -1461,15 +1463,81 @@ model BodegaTaller {
   proveedorId     Int?                          @map("proveedor_id")
   sucursalId      Int?                          @map("sucursal_id")
   precio          Float                         @default(0)
+  densidadKgM3    Float?                        @map("densidad_kg_m3")
+  espesorMm       Float?                        @map("espesor_mm")
+  formato         String?
   tallerId        Int?                          @map("taller_id")
   activo          Boolean                       @default(true)
   taller          Taller?                       @relation(fields: [tallerId], references: [id], onDelete: SetNull)
   movimientos     BodegaTallerMovimiento[]
   recetaLineas    RecetaMaterial[]
   precioHistorial BodegaTallerPrecioHistorial[]
+  lotes           BodegaTallerLote[]
 
   @@index([tallerId])
   @@map("bodega_taller")
+  @@schema("taller")
+}
+
+// Reglas configurables que convierten una transición excepcional en una tarea
+// auditable. No bloquean por defecto: Gerencia decide esa política por regla.
+model ExcepcionRegla {
+  id                 Int      @id @default(autoincrement())
+  codigo             String   @unique
+  nombre             String
+  descripcion        String?
+  estadoDestino      String?  @map("estado_destino")
+  severidad          String   @default("alta")
+  horasEscalamiento  Int      @default(24) @map("horas_escalamiento")
+  rolResponsable     String   @default("coordinador_comercial") @map("rol_responsable")
+  rolEscalamiento    String   @default("admin") @map("rol_escalamiento")
+  activo             Boolean  @default(true)
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  alertas            ExcepcionAlerta[]
+
+  @@index([activo, estadoDestino])
+  @@map("excepcion_reglas")
+  @@schema("ventas")
+}
+
+model ExcepcionAlerta {
+  id                 Int              @id @default(autoincrement())
+  reglaId            Int              @map("regla_id")
+  ordenId            Int?             @map("orden_id")
+  estado             String           @default("ABIERTA")
+  severidad          String
+  rolResponsable     String           @map("rol_responsable")
+  rolEscalamiento    String           @map("rol_escalamiento")
+  venceAt            DateTime         @map("vence_at")
+  escaladaAt         DateTime?        @map("escalada_at")
+  resueltaAt         DateTime?        @map("resuelta_at")
+  resueltaPorId      Int?             @map("resuelta_por_id")
+  evidencia          String?
+  createdAt          DateTime         @default(now()) @map("created_at")
+  regla              ExcepcionRegla   @relation(fields: [reglaId], references: [id], onDelete: Restrict)
+  orden              Orden?           @relation(fields: [ordenId], references: [id], onDelete: SetNull)
+
+  @@index([estado, venceAt])
+  @@index([ordenId, estado])
+  @@map("excepcion_alertas")
+  @@schema("ventas")
+}
+model BodegaTallerLote {
+  id                 Int          @id @default(autoincrement())
+  bodegaTallerId     Int          @map("bodega_taller_id")
+  codigo             String
+  cantidadInicial    Float        @map("cantidad_inicial")
+  cantidadDisponible Float        @map("cantidad_disponible")
+  estadoCalidad      String       @default("aprobado") @map("estado_calidad")
+  observacion        String?
+  recibidoAt         DateTime     @default(now()) @map("recibido_at")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  item               BodegaTaller @relation(fields: [bodegaTallerId], references: [id], onDelete: Restrict)
+
+  @@unique([bodegaTallerId, codigo])
+  @@index([bodegaTallerId, estadoCalidad])
+  @@map("bodega_taller_lotes")
   @@schema("taller")
 }
 
@@ -1520,6 +1588,10 @@ model TallerHistorialMaterial {
   fecha         DateTime
   taller        String?
   sucursalId    Int?     @map("sucursal_id")
+  loteCodigo    String?  @map("lote_codigo")
+  calidad       String?
+  mermaCantidad Float    @default(0) @map("merma_cantidad")
+  mermaMotivo   String?  @map("merma_motivo")
 
   @@index([odtId])
   @@map("taller_historial_materiales")

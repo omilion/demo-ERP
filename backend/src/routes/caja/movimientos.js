@@ -3,6 +3,7 @@ import { resolveOrdenForWrite } from '../relation-guards.js'
 import { computeVentaFinancialState, computeVentaFinancialStateFromDb, resolveEstadoPago, syncOrdenFinancialState } from '../ventas/financial.js'
 import { getUserSucursalId, isMovimientoInUserSucursal, isReferencialMedioPago, withTurnoSucursalScope } from './scope.js'
 import { approveCrmFromOrderPayment } from '../../domain/crm/service.js'
+import { cerrarSiCorresponde } from '../ventas/estado-flujo-formal.js'
 
 const MEDIOS_PAGO = [
   'Efectivo',
@@ -152,9 +153,15 @@ async function validatePaymentDocumentReference(prisma, { ordenId, documento, nD
   })
   const doc = cleanText(documento)
   const number = cleanText(nDoc)
+  // El pago se imputa contra un documento, no contra la venta: primero se registra
+  // la boleta o factura -el movimiento "referencial", que es la obligacion- y luego
+  // los pagos que la van saldando, que pueden ser varios y de distinto medio. El
+  // mensaje nombra ese paso previo: sin el, el cajero solo veia que no podia cobrar.
   if (!referenciales.length) {
-    if (doc || number) return { status: 404, error: 'Documento referencial no encontrado para la venta' }
-    return { status: 400, error: 'Crea un documento referencial activo antes de registrar el pago' }
+    if (doc || number) {
+      return { status: 404, error: 'Ese documento no esta registrado en la venta. Registralo primero en Cobranza y despues imputa el pago.' }
+    }
+    return { status: 400, error: 'Antes de cobrar hay que registrar el documento de la venta (boleta o factura) en Cobranza. El pago se imputa contra ese documento.' }
   }
   if (!doc || !number) {
     return { status: 400, error: 'Selecciona un documento referencial activo para registrar el pago' }
@@ -442,11 +449,24 @@ export default async function movimientosRoutes(fastify) {
         }
         const movimientoSucursalId = turno.caja?.sucursalId ?? orden.sucursalId ?? userSucursalId
 
+        // Son dos sucursales distintas y se estaban confundiendo: DONDE se registra la
+        // plata es la caja del turno, pero A QUE VENTA pertenece un documento no
+        // depende de en que caja este sentado el cajero. Al buscar los documentos con
+        // la sucursal del turno, un cajero no encontraba la boleta que acababa de
+        // emitir para esa misma venta y recibia un 404. En produccion hay 851
+        // documentos referenciales sin sucursal y las cajas si la tienen, asi que el
+        // choque no era hipotetico.
+        //
+        // El documento ya esta acotado por ordenId, y el acceso a la venta se valido
+        // mas arriba contra la sucursal del usuario: el filtro por turno solo agregaba
+        // falsos negativos. Se busca con el mismo criterio con que se guardo.
+        const documentoSucursalId = orden.sucursalId ?? userSucursalId
+
         const documentReference = await validatePaymentDocumentReference(tx, {
           ordenId,
           documento: d.documento,
           nDoc: d.nDoc,
-          sucursalId: movimientoSucursalId,
+          sucursalId: documentoSucursalId,
           monto: d.monto,
         })
         if (documentReference.error) {
@@ -541,6 +561,10 @@ export default async function movimientosRoutes(fastify) {
           actor: request.user,
           now: fecha,
         })
+        // El cierre ocurre cuando se juntan pagada y entregada, y el orden en que
+        // llegan varia: por eso se consulta tambien desde el cobro y no solo desde la
+        // entrega. Si falta la otra condicion no hace nada.
+        await cerrarSiCorresponde(tx, ordenId, request.user)
 
         return {
           movimiento,

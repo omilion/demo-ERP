@@ -601,7 +601,12 @@ describe('POST /api/caja/cobranza/orden/:id/pago', () => {
       payload: { monto: 1000, medioPago: 'Efectivo' },
     })
     expect(noDocument.statusCode).toBe(400)
-    expect(JSON.parse(noDocument.body).error).toBe('Crea un documento referencial activo antes de registrar el pago')
+    // Se afirma lo que el mensaje tiene que lograr -nombrar el documento y donde se
+    // registra-, no su redaccion exacta: al cajero le llegaba un rechazo que no decia
+    // que hacer, y fijar el texto literal impedia mejorarlo.
+    const mensajeSinDocumento = JSON.parse(noDocument.body).error
+    expect(mensajeSinDocumento).toMatch(/documento/i)
+    expect(mensajeSinDocumento).toMatch(/cobranza/i)
 
     const documento = await app.inject({
       method: 'POST',

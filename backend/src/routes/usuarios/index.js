@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt'
+import { TIPO_VENTA_VALUES, normalizeTipoVenta } from '../ventas/estados-normalize.js'
 
-const ROLES = new Set(['admin', 'vendedor', 'coordinador_comercial', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura'])
+const ROLES = new Set(['admin', 'vendedor', 'coordinador_comercial', 'bodeguero', 'cajero', 'taller', 'taller_operario', 'rrhh', 'solo_lectura'])
 const PERMISSIONS = new Set(['read', 'write', 'delete'])
 // Catalogo de modulos delegables. Tiene que corresponder uno a uno con lo que
 // el codigo exige via rbac() o can(): un modulo que se puede asignar y nadie
@@ -68,6 +69,7 @@ const userSelect = {
   permisoDescuentos: true,
   permisoAprobarDescuentos: true,
   permisosExtra: true,
+  tiposVentaPermitidos: true,
   sucursalId: true,
   activo: true,
   createdAt: true,
@@ -107,6 +109,19 @@ function sanitizePermisosExtra(value) {
     if (unique.length) sanitized[module] = unique
   }
   return { value: Object.keys(sanitized).length ? sanitized : null }
+}
+
+// null significa "todos los tipos" para no recortar ventas de cuentas ya
+// existentes. Una lista es una restriccion explicita para ejecutivos.
+function sanitizeTiposVentaPermitidos(value) {
+  if (value === undefined || value === null || value === '') return { value: null }
+  if (!Array.isArray(value)) return { error: 'tiposVentaPermitidos debe ser una lista' }
+  const tipos = [...new Set(value.map(tipo => normalizeTipoVenta(tipo)).filter(Boolean))]
+  if (tipos.length !== value.length || tipos.some(tipo => !TIPO_VENTA_VALUES.includes(tipo))) {
+    return { error: 'tipo de venta invalido' }
+  }
+  if (!tipos.length) return { error: 'Seleccione al menos un tipo de venta o use todos los tipos' }
+  return { value: tipos }
 }
 
 async function validateSucursal(prisma, sucursalId) {
@@ -201,6 +216,8 @@ export default async function usuariosRoutes(fastify) {
     if (sucursalError) return reply.code(404).send({ error: sucursalError })
     const permisos = sanitizePermisosExtra(b.permisosExtra)
     if (permisos.error) return reply.code(400).send({ error: permisos.error })
+    const tiposVenta = sanitizeTiposVentaPermitidos(b.tiposVentaPermitidos)
+    if (tiposVenta.error) return reply.code(400).send({ error: tiposVenta.error })
     const duplicate = await validateDuplicates(fastify.prisma, { email, rut, codigoVendedor })
     if (duplicate) return reply.code(409).send({ error: duplicate })
 
@@ -218,6 +235,7 @@ export default async function usuariosRoutes(fastify) {
           permisoDescuentos: Boolean(b.permisoDescuentos),
           permisoAprobarDescuentos: Boolean(b.permisoAprobarDescuentos),
           permisosExtra: permisos.value,
+          tiposVentaPermitidos: tiposVenta.value,
           sucursalId: parsedSucursal.value,
           activo: b.activo !== false,
         },
@@ -261,6 +279,11 @@ export default async function usuariosRoutes(fastify) {
       if (permisos.error) return reply.code(400).send({ error: permisos.error })
       data.permisosExtra = permisos.value
     }
+    if (b.tiposVentaPermitidos !== undefined) {
+      const tiposVenta = sanitizeTiposVentaPermitidos(b.tiposVentaPermitidos)
+      if (tiposVenta.error) return reply.code(400).send({ error: tiposVenta.error })
+      data.tiposVentaPermitidos = tiposVenta.value
+    }
     if (b.sucursalId !== undefined) {
       const parsedSucursal = parseOptionalId(b.sucursalId, 'sucursalId')
       if (parsedSucursal.error) return reply.code(400).send({ error: parsedSucursal.error })
@@ -282,7 +305,7 @@ export default async function usuariosRoutes(fastify) {
 
     try {
       const u = await fastify.prisma.user.update({ where: { id }, data, select: userSelect })
-      if (data.passwordHash || data.role !== undefined || data.activo === false) {
+      if (data.passwordHash || data.role !== undefined || data.activo === false || data.permisosExtra !== undefined || data.tiposVentaPermitidos !== undefined) {
         await fastify.prisma.session.deleteMany({ where: { userId: id } })
       }
       return u
@@ -306,6 +329,7 @@ export default async function usuariosRoutes(fastify) {
         data: { permisosExtra: permisos.value },
         select: { id: true, permisosExtra: true },
       })
+      await fastify.prisma.session.deleteMany({ where: { userId: id } })
       return u
     } catch (e) {
       if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrado' })

@@ -529,6 +529,10 @@ async function getOrdenRowsByWhere(fastify, where) {
       pago: financialState.estadoPago,
       estadoFlujo: deriveEstadoFlujo({ ...o, estadoPago: financialState.estadoPago }),
       estadoLogistico,
+      // El estado logístico describe la preparación; el formal conserva la etapa
+      // efectivamente recorrida por la venta y su marca de tiempo.
+      estadoFlujoFormal: o.estadoFlujoFormal || 'CREADA',
+      fechaEstadoFlujo: o.fechaEstadoFlujo || null,
       creadorNombre: o.creadorNombre || null,
       guiasLegacy: o.guias || null,
       odts,
@@ -589,6 +593,11 @@ async function getOcOnlineRowsByWhere(fastify, where) {
     saldo: o.total || 0,
     estado: o.estadoCompra,
     pago: null,
+    // La Matriz consume una forma homogénea para sus tres fuentes. Una OC online
+    // aún no puede tener despacho propio, pero debe declarar la lista vacía para
+    // que la UI no pierda la columna ni tenga que adivinar por la fuente.
+    despachos: [],
+    despachosCount: 0,
     detalleProductos: [],
   }))
 }
@@ -654,6 +663,8 @@ async function getLicitacionRowsByWhere(fastify, where) {
       saldo: total,
       estado: l.estado,
       pago: null,
+      despachos: [],
+      despachosCount: 0,
       creadorNombre: l.usuario || null,
       ordenVinculadaId: l.ordenId || null,
       detalleProductos: [],

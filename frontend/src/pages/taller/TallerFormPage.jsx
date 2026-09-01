@@ -22,7 +22,7 @@ import {
   useCerrarOdt
 } from '../../api/odts'
 import { useProductos } from '../../api/productos'
-import { useBodegaTallerAutocomplete } from '../../api/bodegaTaller'
+import { useBodegaTallerAutocomplete, useBodegaTallerLotes } from '../../api/bodegaTaller'
 import { useTelas } from '../../api/telas'
 import { useHistorialMateriales } from '../../api/historialMateriales'
 import { useAuthStore } from '../../store/auth'
@@ -456,7 +456,7 @@ async function handleCloseOdt(estado) {
           <Input type="number" value={data.ordenId} onChange={v => set('ordenId', v)} placeholder="ID de venta/orden; vacío para trabajo interno" error={errors.ordenId} disabled={!isEditMode} />
         </FormField>
         <FormField label="Centro de costo" required={!data.ordenId} error={errors.centroCostoId}>
-          <Select value={data.centroCostoId} onChange={v => set('centroCostoId', v)} options={[{ value: '', label: data.ordenId ? 'Sin imputación' : 'Selecciona centro de costo' }, ...(centrosCostoMeta.items || []).map(c => ({ value: String(c.id), label: `${c.codigo} — ${c.nombre}` }))]} disabled={!isEditMode} />
+          <Select value={data.centroCostoId} onChange={v => set('centroCostoId', v)} options={[{ value: '', label: data.ordenId ? 'Sin imputación' : 'Selecciona centro de costo' }, ...(centrosCostoMeta.items || []).map(c => ({ value: String(c.id), label: c.codigo === c.nombre ? c.nombre : `${c.codigo} — ${c.nombre}` }))]} disabled={!isEditMode} />
           {isEditMode && <Btn size="sm" variant="ghost" onClick={async () => { const codigo = await promptDialog({ title: 'Nuevo centro de costo', detail: 'Código corto y único.' }); if (!codigo?.trim()) return; const nombre = await promptDialog({ title: 'Nombre del centro de costo' }); if (!nombre?.trim()) return; createCentroCosto.mutate({ codigo: codigo.trim(), nombre: nombre.trim() }, { onSuccess: centro => set('centroCostoId', String(centro.id)), onError: err => toast.error(getErrorMessage(err)) }) }}>Agregar centro</Btn>}
         </FormField>
         <FormField label="Tipo de Trabajo">
@@ -604,6 +604,10 @@ function OdtConsumosSection({ odtId }) {
   const [cantidad, setCantidad] = useState('')
   const [taller, setTaller] = useState('')
   const [motivo, setMotivo] = useState('')
+  const [loteId, setLoteId] = useState('')
+  const [calidad, setCalidad] = useState('aprobado')
+  const [mermaCantidad, setMermaCantidad] = useState('')
+  const [mermaMotivo, setMermaMotivo] = useState('')
   const createConsumo = useCreateOdtConsumo()
   const deleteMaterial = useDeleteOdtMaterial()
 
@@ -616,6 +620,8 @@ function OdtConsumosSection({ odtId }) {
     trimmedSearch,
     tipo === 'material_taller',
   )
+  const selectedBodegaId = tipo === 'material_taller' ? itemId : null
+  const { data: lotesData = { items: [] }, isLoading: loadingLotes } = useBodegaTallerLotes(selectedBodegaId)
   const { data: telasResult = { items: [] }, isLoading: loadingTelas } = useTelas(telaParams)
   const { data: historial = { items: [] }, isLoading: loadingHistorial } = useHistorialMateriales({ odtId })
   const { data: materiales = { items: [] }, isLoading: loadingMateriales } = useOdtMateriales(odtId)
@@ -628,6 +634,12 @@ function OdtConsumosSection({ odtId }) {
 
   const items = source.items
   const selectedItem = items.find(item => String(item.id) === String(itemId))
+  const requiereLote = tipo === 'material_taller' && selectedItem?.densidadKgM3 != null
+  const lotesAprobados = (lotesData.items || []).filter(lote => lote.estadoCalidad === 'aprobado' && Number(lote.cantidadDisponible) > 0)
+  const loteOptions = [
+    { value: '', label: loadingLotes ? 'Cargando lotes...' : lotesAprobados.length ? 'Seleccione lote aprobado' : 'Sin lotes aprobados disponibles' },
+    ...lotesAprobados.map(lote => ({ value: String(lote.id), label: `${lote.codigo} · disponible ${Number(lote.cantidadDisponible).toFixed(2)}` })),
+  ]
   const itemOptions = [
     { value: '', label: source.loading ? 'Cargando...' : items.length ? 'Seleccione item' : 'Sin resultados' },
     ...items.map(item => ({ value: String(item.id), label: consumoLabel(tipo, item) })),
@@ -637,6 +649,7 @@ function OdtConsumosSection({ odtId }) {
     const parsedCantidad = parseCantidad(cantidad)
     if (!selectedItem) return toast.warning('Seleccione un item')
     if (parsedCantidad <= 0) return toast.warning('Ingrese una cantidad mayor a cero')
+    if (requiereLote && !loteId) return toast.warning('Seleccione un lote aprobado para la espuma')
 
     const numericItemId = Number(selectedItem.id)
     const payload = {
@@ -647,6 +660,10 @@ function OdtConsumosSection({ odtId }) {
       cantidad: parsedCantidad,
       taller: taller.trim() || undefined,
       motivo: motivo.trim() || undefined,
+      loteId: loteId ? Number(loteId) : undefined,
+      calidad,
+      mermaCantidad: mermaCantidad || undefined,
+      mermaMotivo: mermaMotivo.trim() || undefined,
       codigoInterno: consumoCodigo(tipo, selectedItem) || undefined,
       nombre: consumoNombre(tipo, selectedItem) || undefined,
       unidad: consumoUnidad(tipo, selectedItem) || undefined,
@@ -657,6 +674,9 @@ function OdtConsumosSection({ odtId }) {
         setItemId('')
         setCantidad('')
         setMotivo('')
+        setLoteId('')
+        setMermaCantidad('')
+        setMermaMotivo('')
       },
       onError: (error) => toast.error(error?.response?.data?.error || 'Error al registrar consumo'),
     })
@@ -664,7 +684,7 @@ function OdtConsumosSection({ odtId }) {
 
   const recent = (historial.items || []).slice(0, 5)
   const materialesActuales = materiales.items || []
-  const disabled = createConsumo.isPending || !itemId || !cantidad
+  const disabled = createConsumo.isPending || !itemId || !cantidad || (requiereLote && !loteId)
 
   const handleDeleteMaterial = async material => {
     if (!await confirmDialog({ title: 'Confirmar', detail: `Eliminar material ${material.nombre || material.codigoInterno || material.id} de la OT?`, tone: 'danger' })) return
@@ -685,7 +705,7 @@ function OdtConsumosSection({ odtId }) {
             <Input value={search} onChange={v => { setSearch(v); setItemId('') }} placeholder="Codigo o nombre" disabled={createConsumo.isPending} />
           </FormField>
           <FormField label="Item">
-            <Select value={itemId} onChange={setItemId} options={itemOptions} disabled={createConsumo.isPending || source.loading} />
+            <Select value={itemId} onChange={v => { setItemId(v); setLoteId('') }} options={itemOptions} disabled={createConsumo.isPending || source.loading} />
           </FormField>
           <FormField label="Cantidad">
             <Input type="number" value={cantidad} onChange={setCantidad} placeholder="0" disabled={createConsumo.isPending} />
@@ -696,6 +716,18 @@ function OdtConsumosSection({ odtId }) {
           <FormField label="Motivo">
             <Input value={motivo} onChange={setMotivo} placeholder="Produccion OT" disabled={createConsumo.isPending} />
           </FormField>
+          {tipo === 'material_taller' && <FormField label={requiereLote ? 'Lote de espuma *' : 'Lote (opcional)'}>
+            <Select value={loteId} onChange={setLoteId} options={loteOptions} disabled={createConsumo.isPending || !selectedItem || loadingLotes} />
+          </FormField>}
+          {tipo === 'material_taller' && <FormField label="Control calidad">
+            <Select value={calidad} onChange={setCalidad} options={[{ value: 'aprobado', label: 'Aprobado' }, { value: 'reproceso', label: 'Reproceso' }, { value: 'rechazado', label: 'Rechazado' }]} disabled={createConsumo.isPending} />
+          </FormField>}
+          {tipo === 'material_taller' && <FormField label="Merma">
+            <Input type="number" value={mermaCantidad} onChange={setMermaCantidad} placeholder="0" disabled={createConsumo.isPending} />
+          </FormField>}
+          {tipo === 'material_taller' && <FormField label="Motivo merma">
+            <Input value={mermaMotivo} onChange={setMermaMotivo} placeholder="Corte, defecto..." disabled={createConsumo.isPending} />
+          </FormField>}
           <div style={{ marginBottom: 18 }}>
             <button
               type="button"

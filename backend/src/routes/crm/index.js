@@ -9,6 +9,7 @@ import {
 } from '../../domain/crm/constants.js'
 import { addSemaforo, createCrmGestion, elapsedDays, transitionCrm } from '../../domain/crm/service.js'
 import { canApplyDescuento, requiresDescuentoPermission } from '../ventas/descuentos-permissions.js'
+import { assertTipoVentaPermitido } from '../ventas/tipos-permitidos.js'
 import { validateDescuentoContraReglas } from '../ventas/descuentos-guard.js'
 
 const CRM_ESTADOS = new Set(['0', '1', '2', '3'])
@@ -167,13 +168,15 @@ export default async function crmRoutes(fastify) {
       const b = request.body || {}
       const tipo = String(b.tipo || '').trim()
       const esCotizacionSimple = String(b.crmQuoteMode || '').toUpperCase() === 'PROSPECCION_DIRECTA'
-      const canalVenta = esCotizacionSimple ? 'PROSPECCION_DIRECTA' : tipo === 'Licitación' ? 'LICITACION' : null
-      const tipoVenta = esCotizacionSimple ? 'COTIZACION_SIMPLE' : canalVenta === 'LICITACION' ? 'LICITACION' : null
+      const esCompraAgil = String(b.crmQuoteMode || '').toUpperCase() === 'COMPRA_AGIL' || tipo === 'Compra Ágil'
+      const canalVenta = esCotizacionSimple ? 'PROSPECCION_DIRECTA' : esCompraAgil ? 'COMPRA_AGIL' : tipo === 'Licitación' ? 'LICITACION' : null
+      const tipoVenta = esCotizacionSimple ? 'COTIZACION_SIMPLE' : esCompraAgil ? 'COMPRA_AGIL' : canalVenta === 'LICITACION' ? 'LICITACION' : null
       const clienteId = Number(b.clienteId)
       const crmId = b.crmId === undefined || b.crmId === null || b.crmId === '' ? null : Number(b.crmId)
       const descuentoPct = Number(b.descuentoPct || 0)
       const rawItems = Array.isArray(b.items) ? b.items : []
       if (!canalVenta) return reply.code(400).send({ error: 'Selecciona una cotizacion CRM valida' })
+      if (!assertTipoVentaPermitido(reply, request.user, esCotizacionSimple ? 'Normal' : tipo)) return
       if (!Number.isInteger(clienteId) || clienteId <= 0) return reply.code(400).send({ error: 'Selecciona un cliente' })
       if (crmId !== null && (!Number.isInteger(crmId) || crmId <= 0)) return reply.code(400).send({ error: 'Registro CRM invalido' })
       if (crmId !== null && !await ensureCrmAccess(f.prisma, crmId, request.user)) return reply.code(404).send({ error: 'Registro CRM no encontrado' })

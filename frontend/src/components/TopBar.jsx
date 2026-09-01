@@ -7,9 +7,39 @@ import { can, canAny, getUserRole, hasRole } from '../utils/permissions'
 import { NotificacionesBell } from './NotificacionesBell'
 import plastimarLogo from '../assets/plastimar-logo.webp'
 
+const HIGHLIGHT_STYLES = {
+  amber: { bg: '#fef08a', hoverBg: '#fde047', color: '#78350f' },
+  blue: { bg: '#e0f2fe', hoverBg: '#bae6fd', color: '#0369a1' },
+}
+
 const NAV_GROUPS = [
   { label: 'Ventas', items: [
-    { label: '+ Nueva Venta', route: '/ventas/nueva', module: 'ventas', permission: 'write', highlight: true },
+    {
+      label: '+ Nueva Venta',
+      route: '/ventas/nueva',
+      module: 'ventas',
+      permission: 'write',
+      highlight: 'amber',
+      children: [
+        { label: 'Sala / Mostrador', route: '/ventas/nueva?tipo=Venta+Sala' },
+        { label: 'Convenio Marco', route: '/ventas/nueva?tipo=Convenio+Marco' },
+        { label: 'Trato Directo', route: '/ventas/nueva?tipo=Trato+Directo' },
+        { label: 'Marketplace', route: '/ventas/nueva?tipo=Marketplace' },
+        { label: 'Web', route: '/ventas/nueva?tipo=Venta+Web' },
+      ],
+    },
+    {
+      label: '+ Cotización',
+      route: '/crm/nueva/cotizacion-simple',
+      module: 'ventas',
+      permission: 'write',
+      highlight: 'blue',
+      children: [
+        { label: 'Simple', route: '/crm/nueva/cotizacion-simple' },
+        { label: 'Licitación', route: '/crm/nueva/licitacion' },
+        { label: 'Compra Ágil', route: '/crm/nueva/compra-agil' },
+      ],
+    },
     { label: 'Matriz Ventas', route: '/ventas', module: 'ventas' },
     { label: 'CRM', route: '/crm', module: 'ventas' },
     { label: 'Clientes', route: '/clientes', module: 'clientes' },
@@ -113,6 +143,114 @@ function canUseNavItem(user, item) {
   return can(user, item.module, item.permission || 'read')
 }
 
+const DropdownItem = ({ item, isLast, currentPath, handleNav, onCloseAll }) => {
+  const [isSubOpen, setIsSubOpen] = useState(false)
+  const subTimer = useRef()
+  const hlStyle = item.highlight ? (typeof item.highlight === 'string' ? HIGHLIGHT_STYLES[item.highlight] || HIGHLIGHT_STYLES.amber : HIGHLIGHT_STYLES.amber) : null
+  const isCurrent = item.route === currentPath || currentPath.startsWith(item.route + '/')
+  const hasChildren = item.children && item.children.length > 0
+
+  const handleMouseEnter = () => {
+    clearTimeout(subTimer.current)
+    if (hasChildren) setIsSubOpen(true)
+  }
+
+  const handleMouseLeave = () => {
+    clearTimeout(subTimer.current)
+    if (hasChildren) {
+      subTimer.current = setTimeout(() => setIsSubOpen(false), 150)
+    }
+  }
+
+  return (
+    <div
+      style={{ position: 'relative' }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <button
+        type="button"
+        onClick={e => handleNav(item.route, onCloseAll, e)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+          width: '100%',
+          padding: '9px 16px',
+          fontSize: 13,
+          fontWeight: hlStyle ? 700 : isCurrent ? 600 : 400,
+          color: hlStyle ? hlStyle.color : isCurrent ? 'var(--green-700)' : 'var(--text-1)',
+          background: hlStyle ? (isSubOpen ? hlStyle.hoverBg : hlStyle.bg) : (isSubOpen || isCurrent) ? 'var(--green-50)' : 'none',
+          borderBottom: !isLast ? '1px solid var(--border)' : 'none',
+          cursor: 'pointer',
+          textAlign: 'left',
+          transition: 'background 0.1s',
+        }}
+      >
+        <span>{item.label}</span>
+        {hasChildren && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', opacity: 0.7, transform: isSubOpen ? 'translateX(2px)' : 'none', transition: 'transform 0.15s' }}>
+            <Icon name="chevronRight" size={11} color={hlStyle ? hlStyle.color : undefined} />
+          </span>
+        )}
+      </button>
+
+      {hasChildren && isSubOpen && (
+        <div
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          style={{
+            position: 'absolute',
+            top: -1,
+            left: 'calc(100% + 2px)',
+            background: '#fff',
+            borderRadius: 10,
+            minWidth: 200,
+            boxShadow: '0 8px 32px oklch(0 0 0 / 0.15)',
+            border: '1px solid var(--border)',
+            overflow: 'hidden',
+            zIndex: 10001,
+            animation: 'dropIn 0.15s ease',
+          }}
+        >
+          {item.children.map((sub, idx) => {
+            const subIsCurrent = sub.route === currentPath
+            return (
+              <button
+                key={sub.route}
+                onClick={e => {
+                  e.stopPropagation()
+                  handleNav(sub.route, onCloseAll, e)
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  width: '100%',
+                  padding: '9px 16px',
+                  fontSize: 13,
+                  fontWeight: subIsCurrent ? 600 : 400,
+                  color: subIsCurrent ? 'var(--green-700)' : 'var(--text-1)',
+                  background: subIsCurrent ? 'var(--green-50)' : 'none',
+                  borderBottom: idx < item.children.length - 1 ? '1px solid var(--border)' : 'none',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => !subIsCurrent && (e.currentTarget.style.background = 'var(--green-50)')}
+                onMouseLeave={e => !subIsCurrent && (e.currentTarget.style.background = 'none')}
+              >
+                {sub.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const DropdownGroup = ({ group, currentPath }) => {
   const [open, setOpen] = useState(false)
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
@@ -179,23 +317,17 @@ const DropdownGroup = ({ group, currentPath }) => {
           <div style={{
             background: '#fff', borderRadius: 10, minWidth: 180,
             boxShadow: '0 8px 32px oklch(0 0 0 / 0.15)', border: '1px solid var(--border)',
-            overflow: 'hidden', animation: 'dropIn 0.15s ease',
+            overflow: 'visible', animation: 'dropIn 0.15s ease',
           }}>
             {group.items.map((item, i) => (
-              <button key={item.route} onClick={e => handleNav(item.route, () => setOpen(false), e)} style={{
-                display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-                padding: '9px 16px', fontSize: 13,
-                fontWeight: item.highlight ? 700 : item.route === currentPath ? 600 : 400,
-                color: item.highlight ? '#78350f' : item.route === currentPath ? 'var(--green-700)' : 'var(--text-1)',
-                background: item.highlight ? '#fef08a' : item.route === currentPath ? 'var(--green-50)' : 'none',
-                borderBottom: i < group.items.length - 1 ? '1px solid var(--border)' : 'none',
-                cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
-              }}
-                onMouseEnter={e => item.highlight ? (e.currentTarget.style.background = '#fde047') : item.route !== currentPath && (e.currentTarget.style.background = 'var(--green-50)')}
-                onMouseLeave={e => item.highlight ? (e.currentTarget.style.background = '#fef08a') : item.route !== currentPath && (e.currentTarget.style.background = 'none')}
-              >
-                {item.label}
-              </button>
+              <DropdownItem
+                key={item.route}
+                item={item}
+                isLast={i === group.items.length - 1}
+                currentPath={currentPath}
+                handleNav={handleNav}
+                onCloseAll={() => setOpen(false)}
+              />
             ))}
           </div>
         </div>

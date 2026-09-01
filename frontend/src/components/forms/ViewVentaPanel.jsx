@@ -21,7 +21,6 @@ const resolvedDiscountAmount = (subtotal, pct, frozenAmount) => {
   if (frozen > 0) return Math.min(Math.round(frozen), Math.round(Number(subtotal || 0)))
   return discountAmount(subtotal, pct)
 }
-
 function discountLabel(venta, pct) {
   const snapshot = venta.descuentoSnapshot || {}
   const name = snapshot.reglaNombre || snapshot.nombre || null

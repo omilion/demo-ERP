@@ -1,5 +1,6 @@
 import { getUserSucursalId } from '../caja/scope.js'
 import { applyVentaStockDeltas, buildStockDeltasFromItems, isVentaDirectaStockTipo } from './stock.js'
+import { puedeGestionarTipoVenta } from './tipos-permitidos.js'
 
 function userLabel(user) {
   return user?.nombre || user?.username || null
@@ -19,6 +20,7 @@ export default async function deleteVenta(fastify) {
           include: { items: { where: { eliminado: false } } },
         })
         if (!orden) return { status: 404, payload: { error: 'Venta no encontrada' } }
+        if (!puedeGestionarTipoVenta(request.user, orden.tipo)) return { status: 403, payload: { error: 'No tiene permiso para gestionar este tipo de venta' } }
         if (orden.eliminada) return { status: 409, payload: { error: 'La venta ya esta anulada' } }
 
         const closedMovement = await tx.movimientoCaja.findFirst({

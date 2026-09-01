@@ -18,6 +18,7 @@ const TABS = [
   { id: 'trato-directo', label: 'Trato directo' },
   { id: 'licitacion', label: 'Licitaciones' },
   { id: 'compra-agil', label: 'Compra ágil' },
+  { id: 'marketplace', label: 'Marketplace' },
 ]
 
 const ESTADO_PAGO_OPTS = ['', 'No pagada', 'Pagada', 'Parcial']
@@ -63,11 +64,34 @@ const getEstaSemanaRange = () => {
 }
 
 function getInitialQuick(searchParams) {
-  if (searchParams.get('no_pagada') || searchParams.get('noPagada')) return 'noPagada'
-  if (searchParams.get('pendiente_entrega') || searchParams.get('pendienteEntrega')) return 'pendienteEntrega'
-  if (searchParams.get('entregada')) return 'entregada'
+  const filtro = searchParams.get('filtro') || ''
+  if (
+    searchParams.get('no_pagada') ||
+    searchParams.get('noPagada') ||
+    filtro === 'no_pagadas' ||
+    filtro === 'no_pagada' ||
+    filtro === 'noPagadas'
+  ) return 'noPagada'
+
+  if (
+    searchParams.get('pendiente_entrega') ||
+    searchParams.get('pendienteEntrega') ||
+    filtro === 'pendiente_entrega' ||
+    filtro === 'pendienteEntrega'
+  ) return 'pendienteEntrega'
+
+  if (searchParams.get('entregada') || filtro === 'entregada') return 'entregada'
   if (searchParams.get('ventasHoy')) return 'ventasHoy'
-  if (searchParams.get('desde') || searchParams.get('hasta') || searchParams.get('all')) return ''
+
+  if (
+    searchParams.get('desde') ||
+    searchParams.get('hasta') ||
+    searchParams.get('all') ||
+    searchParams.get('estadoPago') ||
+    searchParams.get('estadoEntrega') ||
+    searchParams.get('search')
+  ) return ''
+
   return 'ventasHoy'
 }
 
@@ -486,6 +510,21 @@ export default function MatrizVentasPage() {
     { key: 'fecha', label: 'Fecha Creacion', render: v => <span style={{ ...mono, fontSize: 11 }}>{formatDateTime(v)}</span> },
     { key: 'creadorNombre', label: 'Creada por', render: v => <span style={{ fontSize: 12 }}>{v || '-'}</span> },
     { key: 'odtCount', label: 'OT', render: (_, row) => renderLinkedList(row.odts, odt => `#${odt.id} ${odt.estado || ''}`) },
+    // El despacho va antes que la guia porque ocurre antes: bodega toma la venta y
+    // recien despues emite la guia, que puede no emitirse nunca. Mirando solo las
+    // guias, la venta se veia sin movimiento aunque bodega ya estuviera trabajandola.
+    // La etapa que la venta recorrio de verdad, con historial y autor detras. Va junto
+    // al despacho porque es donde se lee el avance operativo de un vistazo.
+    { key: 'estadoFlujoFormal', label: 'Etapa', render: (v) => {
+      const etiquetas = {
+        CREADA: 'Creada', PREPARACION: 'Preparación', PATIO: 'Patio', DIDACTICO: 'Didáctico',
+        REPARTO: 'Reparto', ENTREGADA: 'Entregada', CERRADA: 'Cerrada', ANULADA: 'Anulada',
+      }
+      return <span style={{ fontSize: 12 }}>{etiquetas[v] || v || '-'}</span>
+    } },
+    { key: 'despachosCount', label: 'Despacho', render: (_, row) => row.despachos?.length
+      ? renderLinkedList(row.despachos, d => `#${d.id}${d.parcial ? ' parcial' : ''}${d.fechaEntrega ? ' entregado' : ''}`)
+      : '-' },
     { key: 'guiasCount', label: 'Guias Desp.', render: (_, row) => row.guias?.length ? renderLinkedList(row.guias, guia => `#${guia.nGuia || guia.id}`) : (row.guiasLegacy ? <span style={{ ...mono, fontSize: 11 }}>#{row.guiasLegacy}</span> : '-') },
     { key: 'documentosCount', label: 'Documentos', wrap: true, render: (_, row) => renderDocumentos(row) },
     { key: 'cliente', label: 'Cliente', render: v => <span style={{ ...mono, fontSize: 11 }}>{v || '-'}</span> },

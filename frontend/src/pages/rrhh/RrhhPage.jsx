@@ -106,6 +106,13 @@ function TabDatos({ t }) {
 }
 
 // ── ViewTrabajadorPage ───────────────────────────────────────────────
+const CURRENT_YEAR = new Date().getFullYear()
+const ANIO_OPCIONES = Array.from({ length: 15 }, (_, i) => String(CURRENT_YEAR - 7 + i))
+const MES_OPCIONES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+]
+
 const RRHH_TAB_CONFIG = {
   contratos: {
     label: 'Contratos', singular: 'contrato', addLabel: 'Nuevo contrato',
@@ -113,59 +120,62 @@ const RRHH_TAB_CONFIG = {
     defaults: { contrato: '', plazo: '', inicio: '', termino: '', estado: true, imagen: '' },
     fields: [
       { key: 'contrato', label: 'Contrato', required: true }, { key: 'plazo', label: 'Plazo' },
-      { key: 'inicio', label: 'Inicio', type: 'date' }, { key: 'termino', label: 'Termino', type: 'date' },
+      { key: 'inicio', label: 'Fecha de inicio', type: 'date' }, { key: 'termino', label: 'Fecha de término', type: 'date' },
       { key: 'estado', label: 'Vigente', type: 'checkbox' },
     ],
     columns: [
       ['Contrato', 'contrato'], ['Plazo', 'plazo'],
-      ['Inicio', it => fmtDate(it.inicio)], ['Termino', it => fmtDate(it.termino)],
+      ['Inicio', it => fmtDate(it.inicio)], ['Término', it => fmtDate(it.termino)],
       ['Estado', it => it.estado ? <Badge tone="green">Vigente</Badge> : <Badge tone="gray">Cerrado</Badge>],
     ],
   },
   liquidaciones: {
-    label: 'Liquidaciones', singular: 'liquidacion', addLabel: 'Nueva liquidacion',
+    label: 'Liquidaciones', singular: 'liquidación', addLabel: 'Nueva liquidación',
     resource: liquidaciones, documentField: 'imagen',
-    defaults: { anio: '', mes: '', sueldoBase: '', totalImponible: '', totalHaberes: '', totalDescuentos: '', liquidoPagar: '', horasExtras: '', totalExtras: '', imagen: '', estado: true },
+    defaults: { anio: String(CURRENT_YEAR), mes: MES_OPCIONES[new Date().getMonth()], sueldoBase: '', totalImponible: '', totalHaberes: '', totalDescuentos: '', liquidoPagar: '', horasExtras: '', totalExtras: '', imagen: '', estado: true },
     fields: [
-      { key: 'anio', label: 'Ano' }, { key: 'mes', label: 'Mes' },
+      { key: 'anio', label: 'Año', type: 'select', options: ANIO_OPCIONES, required: true },
+      { key: 'mes', label: 'Mes', type: 'select', options: MES_OPCIONES, required: true },
       { key: 'sueldoBase', label: 'Sueldo base', type: 'number' }, { key: 'totalImponible', label: 'Total imponible', type: 'number' },
       { key: 'totalHaberes', label: 'Total haberes', type: 'number' }, { key: 'totalDescuentos', label: 'Total descuentos', type: 'number' },
-      { key: 'liquidoPagar', label: 'Liquido a pagar', type: 'number' }, { key: 'horasExtras', label: 'Horas extra', type: 'number', step: '0.5' },
+      { key: 'liquidoPagar', label: 'Líquido a pagar', type: 'number' }, { key: 'horasExtras', label: 'Horas extra', type: 'number', step: '0.5' },
       { key: 'totalExtras', label: 'Total extras', type: 'number' }, { key: 'estado', label: 'Activa', type: 'checkbox' },
     ],
     columns: [
-      ['Periodo', it => [it.anio, it.mes].filter(Boolean).join('-') || '-'],
+      ['Período', it => [it.anio, it.mes].filter(Boolean).join('-') || '-'],
       ['Sueldo base', it => fmtPeso(it.sueldoBase)], ['Imponible', it => fmtPeso(it.totalImponible)],
-      ['Liquido', it => fmtPeso(it.liquidoPagar)], ['Horas extra', it => `${it.horasExtras || 0} hrs`],
+      ['Líquido', it => fmtPeso(it.liquidoPagar)], ['Horas extra', it => `${it.horasExtras || 0} hrs`],
     ],
   },
   anticipos: {
     label: 'Anticipos', singular: 'anticipo', addLabel: 'Nuevo anticipo',
     resource: anticipos,
-    defaults: { anio: '', mes: '', banco: '', tipoCuenta: '', cuenta: '', fecha: '', monto: '' },
+    defaults: { anio: String(CURRENT_YEAR), mes: MES_OPCIONES[new Date().getMonth()], banco: '', tipoCuenta: '', cuenta: '', fecha: '', monto: '' },
     fields: [
-      { key: 'anio', label: 'Ano' }, { key: 'mes', label: 'Mes' }, { key: 'banco', label: 'Banco' },
-      { key: 'tipoCuenta', label: 'Tipo cuenta' }, { key: 'cuenta', label: 'Cuenta' },
+      { key: 'anio', label: 'Año', type: 'select', options: ANIO_OPCIONES, required: true },
+      { key: 'mes', label: 'Mes', type: 'select', options: MES_OPCIONES, required: true },
+      { key: 'banco', label: 'Banco' },
+      { key: 'tipoCuenta', label: 'Tipo de cuenta' }, { key: 'cuenta', label: 'N° de cuenta' },
       { key: 'fecha', label: 'Fecha', type: 'date' }, { key: 'monto', label: 'Monto', type: 'number' },
     ],
     columns: [
-      ['Periodo', it => [it.anio, it.mes].filter(Boolean).join('-') || '-'],
+      ['Período', it => [it.anio, it.mes].filter(Boolean).join('-') || '-'],
       ['Fecha', it => fmtDate(it.fecha)], ['Banco', 'banco'], ['Monto', it => fmtPeso(it.monto)],
     ],
   },
   vacaciones: {
-    label: 'Vacaciones', singular: 'vacacion', addLabel: 'Nueva vacacion',
+    label: 'Vacaciones', singular: 'vacación', addLabel: 'Nueva vacación',
     resource: vacaciones, documentField: 'imagen', required: ['fechaInicio', 'fechaTermino'],
     defaults: { inicioContrato: '', diasPendientes: '', periodo: '', dias: '', saldo: '', fechaInicio: '', fechaTermino: '', imagen: '', estado: true },
     fields: [
-      { key: 'inicioContrato', label: 'Inicio contrato', type: 'date' }, { key: 'diasPendientes', label: 'Dias pendientes' },
-      { key: 'periodo', label: 'Periodo' }, { key: 'dias', label: 'Dias', type: 'number' }, { key: 'saldo', label: 'Saldo', type: 'number' },
-      { key: 'fechaInicio', label: 'Fecha inicio', type: 'date', required: true }, { key: 'fechaTermino', label: 'Fecha termino', type: 'date', required: true },
+      { key: 'inicioContrato', label: 'Inicio de contrato', type: 'date' }, { key: 'diasPendientes', label: 'Días pendientes' },
+      { key: 'periodo', label: 'Período' }, { key: 'dias', label: 'Días', type: 'number' }, { key: 'saldo', label: 'Saldo', type: 'number' },
+      { key: 'fechaInicio', label: 'Fecha de inicio', type: 'date', required: true }, { key: 'fechaTermino', label: 'Fecha de término', type: 'date', required: true },
       { key: 'estado', label: 'Activa', type: 'checkbox' },
     ],
     columns: [
-      ['Periodo', 'periodo'], ['Inicio', it => fmtDate(it.fechaInicio)], ['Termino', it => fmtDate(it.fechaTermino)],
-      ['Dias', 'dias'], ['Saldo', 'saldo'],
+      ['Período', 'periodo'], ['Inicio', it => fmtDate(it.fechaInicio)], ['Término', it => fmtDate(it.fechaTermino)],
+      ['Días', 'dias'], ['Saldo', 'saldo'],
     ],
   },
   licencias: {
@@ -173,13 +183,13 @@ const RRHH_TAB_CONFIG = {
     resource: licencias, documentField: 'imagen', required: ['inicio', 'termino'],
     defaults: { fecha: '', inicio: '', termino: '', dias: '', tipo: '', reposo: '', imagen: '', estado: true },
     fields: [
-      { key: 'fecha', label: 'Fecha', type: 'date' }, { key: 'inicio', label: 'Inicio', type: 'date', required: true },
-      { key: 'termino', label: 'Termino', type: 'date', required: true }, { key: 'dias', label: 'Dias', type: 'number' },
+      { key: 'fecha', label: 'Fecha', type: 'date' }, { key: 'inicio', label: 'Fecha de inicio', type: 'date', required: true },
+      { key: 'termino', label: 'Fecha de término', type: 'date', required: true }, { key: 'dias', label: 'Días', type: 'number' },
       { key: 'tipo', label: 'Tipo' }, { key: 'reposo', label: 'Reposo' }, { key: 'estado', label: 'Activa', type: 'checkbox' },
     ],
     columns: [
-      ['Tipo', 'tipo'], ['Inicio', it => fmtDate(it.inicio)], ['Termino', it => fmtDate(it.termino)],
-      ['Dias', 'dias'], ['Reposo', 'reposo'],
+      ['Tipo', 'tipo'], ['Inicio', it => fmtDate(it.inicio)], ['Término', it => fmtDate(it.termino)],
+      ['Días', 'dias'], ['Reposo', 'reposo'],
       ['Estado', it => it.estado ? <Badge tone="green">Activa</Badge> : <Badge tone="gray">Inactiva</Badge>],
     ],
   },
@@ -190,12 +200,12 @@ const RRHH_TAB_CONFIG = {
     fields: [
       { key: 'epp', label: 'EPP', required: true }, { key: 'marca', label: 'Marca' },
       { key: 'cantidad', label: 'Cantidad', type: 'number', required: true },
-      { key: 'fechaEntrega', label: 'Fecha entrega', type: 'date', required: true },
-      { key: 'observacion', label: 'Observacion', wide: true },
+      { key: 'fechaEntrega', label: 'Fecha de entrega', type: 'date', required: true },
+      { key: 'observacion', label: 'Observación', wide: true },
     ],
     columns: [
       ['EPP', 'epp'], ['Marca', 'marca'], ['Cantidad', 'cantidad'],
-      ['Entrega', it => fmtDate(it.fechaEntrega)], ['Observacion', 'observacion'],
+      ['Entrega', it => fmtDate(it.fechaEntrega)], ['Observación', 'observacion'],
     ],
   },
   subcontratos: {
@@ -205,13 +215,13 @@ const RRHH_TAB_CONFIG = {
     fields: [
       { key: 'empresa', label: 'Empresa contratista', required: true },
       { key: 'contrato', label: 'Nombre subcontrato', required: true },
-      { key: 'inicio', label: 'Inicio', type: 'date' },
-      { key: 'termino', label: 'Termino', type: 'date' },
+      { key: 'inicio', label: 'Fecha de inicio', type: 'date' },
+      { key: 'termino', label: 'Fecha de término', type: 'date' },
       { key: 'estado', label: 'Activo', type: 'checkbox' },
     ],
     columns: [
       ['Empresa', 'empresa'], ['Contrato', 'contrato'],
-      ['Inicio', it => fmtDate(it.inicio)], ['Termino', it => fmtDate(it.termino)],
+      ['Inicio', it => fmtDate(it.inicio)], ['Término', it => fmtDate(it.termino)],
       ['Estado', it => it.estado ? <Badge tone="green">Activo</Badge> : <Badge tone="gray">Cerrado</Badge>],
     ],
   },
@@ -220,14 +230,14 @@ const RRHH_TAB_CONFIG = {
     resource: certificadosAntecedentes, documentField: 'imagen', required: ['fechaEmision'],
     defaults: { fechaEmision: '', fechaVencimiento: '', documento: '', imagen: '', observacion: '', estado: true },
     fields: [
-      { key: 'fechaEmision', label: 'Fecha emision', type: 'date', required: true },
-      { key: 'fechaVencimiento', label: 'Fecha vencimiento', type: 'date' },
-      { key: 'observacion', label: 'Observacion', wide: true },
+      { key: 'fechaEmision', label: 'Fecha de emisión', type: 'date', required: true },
+      { key: 'fechaVencimiento', label: 'Fecha de vencimiento', type: 'date' },
+      { key: 'observacion', label: 'Observación', wide: true },
       { key: 'estado', label: 'Activo', type: 'checkbox' },
     ],
     columns: [
-      ['Emision', it => fmtDate(it.fechaEmision)], ['Vencimiento', it => fmtDate(it.fechaVencimiento)],
-      ['Observacion', 'observacion'],
+      ['Emisión', it => fmtDate(it.fechaEmision)], ['Vencimiento', it => fmtDate(it.fechaVencimiento)],
+      ['Observación', 'observacion'],
       ['Estado', it => it.estado ? <Badge tone="green">Vigente</Badge> : <Badge tone="gray">Vencido</Badge>],
     ],
   },
@@ -236,15 +246,15 @@ const RRHH_TAB_CONFIG = {
     resource: vacunas, documentField: 'imagen', required: ['tipo', 'fecha'],
     defaults: { tipo: '', dosis: '', fecha: '', documento: '', imagen: '', observacion: '', estado: true },
     fields: [
-      { key: 'tipo', label: 'Tipo vacuna (Influenza, COVID, etc.)', required: true },
+      { key: 'tipo', label: 'Tipo de vacuna (Influenza, COVID, etc.)', required: true },
       { key: 'dosis', label: 'Dosis (1a, de refuerzo, etc.)' },
-      { key: 'fecha', label: 'Fecha vacuna', type: 'date', required: true },
-      { key: 'observacion', label: 'Observacion', wide: true },
+      { key: 'fecha', label: 'Fecha de vacunación', type: 'date', required: true },
+      { key: 'observacion', label: 'Observación', wide: true },
       { key: 'estado', label: 'Activo', type: 'checkbox' },
     ],
     columns: [
       ['Tipo', 'tipo'], ['Dosis', 'dosis'], ['Fecha', it => fmtDate(it.fecha)],
-      ['Observacion', 'observacion'],
+      ['Observación', 'observacion'],
       ['Estado', it => it.estado ? <Badge tone="green">Al día</Badge> : <Badge tone="gray">Inactivo</Badge>],
     ],
   },
@@ -274,6 +284,22 @@ function RrhhInputField({ field, value, onChange }) {
         <input type="checkbox" checked={!!value} onChange={e => onChange(e.target.checked)} />
         {field.label}
       </label>
+    )
+  }
+  if (field.type === 'select') {
+    return (
+      <div style={{ gridColumn: field.wide ? '1 / -1' : undefined }}>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>{field.label}{field.required ? ' *' : ''}</div>
+        <select value={value ?? ''} onChange={e => onChange(e.target.value)}
+          style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box', background: '#fff' }}>
+          <option value="">— Seleccionar —</option>
+          {(field.options || []).map(opt => {
+            const val = typeof opt === 'object' ? opt.value : opt
+            const lbl = typeof opt === 'object' ? opt.label : opt
+            return <option key={val} value={val}>{lbl}</option>
+          })}
+        </select>
+      </div>
     )
   }
   return (

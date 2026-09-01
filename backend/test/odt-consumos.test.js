@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import odtConsumosRoutes, {
   applyOdtConsumo,
   buildHistorialMaterialData,
+  consumirMaterialTaller,
   getConsumoUserId,
   getConsumoUsuario,
   parseConsumoRequest,
@@ -53,12 +54,16 @@ describe('ODT consumos helpers', () => {
       cantidad: '2',
       motivo: ' Corte ODT ',
       taller: ' Espumas ',
-    })).toEqual({
+    })).toMatchObject({
       tipo: 'producto',
       id: 10,
       cantidad: 2,
       motivo: 'Corte ODT',
       taller: 'Espumas',
+      loteId: null,
+      calidad: 'aprobado',
+      mermaCantidad: 0,
+      mermaMotivo: null,
     })
 
     expect(parseConsumoRequest({ tipo: 'otro', id: 1, cantidad: 1, motivo: 'x' })).toEqual({
@@ -102,6 +107,10 @@ describe('ODT consumos helpers', () => {
       fecha: NOW,
       taller: 'Espumas',
       sucursalId: 4,
+      loteCodigo: null,
+      calidad: null,
+      mermaCantidad: 0,
+      mermaMotivo: null,
     })
 
     expect(buildHistorialMaterialData({
@@ -275,6 +284,7 @@ describe('ODT consumos helpers', () => {
         unidadMedida: true,
         stock: true,
         sucursalId: true,
+        densidadKgM3: true,
       },
     })
     expect(tx.bodegaTaller.updateMany).toHaveBeenCalledWith({
@@ -342,12 +352,47 @@ describe('ODT consumos helpers', () => {
         unidadMedida: true,
         stock: true,
         sucursalId: true,
+        densidadKgM3: true,
       },
     })
     expect(tx.bodegaTaller.updateMany).toHaveBeenCalledWith({
       where: { ...scopedWhere, stock: { gte: 1.25 } },
       data: { stock: { decrement: 1.25 } },
     })
+  })
+
+  it('requires an approved lot for foam and discounts consumption plus waste from that lot', async () => {
+    const material = {
+      id: 8, codigoInterno: 'ESP-25', nombre: 'Espuma D25', unidadMedida: 'plancha',
+      stock: 10, sucursalId: null, densidadKgM3: 25,
+    }
+    const baseTx = {
+      bodegaTaller: { findFirst: vi.fn().mockResolvedValue(material), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      bodegaTallerMovimiento: { create: vi.fn().mockResolvedValue({ id: 101 }) },
+      tallerHistorialMaterial: { create: vi.fn().mockResolvedValue({ id: 201 }) },
+      tallerMaterial: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 301 }), update: vi.fn() },
+      bodegaTallerLote: { findFirst: vi.fn(), update: vi.fn() },
+    }
+
+    await expect(consumirMaterialTaller({
+      tx: baseTx, odt: { id: 12, sucursalId: null }, itemId: 8, cantidad: 2, mermaCantidad: 0,
+      motivo: 'Corte', userId: 9, usuario: 'Taller', taller: 'Espumas', calidad: 'aprobado',
+    })).resolves.toEqual({ status: 400, error: 'loteId requerido para consumir espuma' })
+    expect(baseTx.bodegaTaller.updateMany).not.toHaveBeenCalled()
+
+    const lote = { id: 33, codigo: 'L-2026-001', cantidadDisponible: 4 }
+    baseTx.bodegaTallerLote.findFirst.mockResolvedValue(lote)
+    const result = await consumirMaterialTaller({
+      tx: baseTx, odt: { id: 12, sucursalId: null }, itemId: 8, cantidad: 2, mermaCantidad: 0.5,
+      mermaMotivo: 'Recorte', motivo: 'Corte', userId: 9, usuario: 'Taller', taller: 'Espumas', loteId: 33, calidad: 'reproceso',
+    })
+
+    expect(result).toMatchObject({ tipo: 'material_taller', id: 8, stockFinal: 7.5 })
+    expect(baseTx.bodegaTaller.updateMany).toHaveBeenCalledWith({
+      where: { id: 8, stock: { gte: 2.5 } }, data: { stock: { decrement: 2.5 } },
+    })
+    expect(baseTx.bodegaTallerLote.update).toHaveBeenCalledWith({ where: { id: 33 }, data: { cantidadDisponible: { decrement: 2.5 } } })
+    expect(baseTx.tallerHistorialMaterial.create).toHaveBeenCalledWith({ data: expect.objectContaining({ loteCodigo: 'L-2026-001', calidad: 'reproceso', mermaCantidad: 0.5, mermaMotivo: 'Recorte' }) })
   })
 
   it('consumes tela stock with existing positive egreso movement convention', async () => {

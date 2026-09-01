@@ -2,6 +2,8 @@
 import { computeTotal } from './helpers.js'
 import { applyVentaStockDeltas, buildStockDeltasFromItems, isVentaDirectaStockTipo } from './stock.js'
 import { getUserSucursalId, isReferencialMedioPago } from '../caja/scope.js'
+import { puedeGestionarTipoVenta } from './tipos-permitidos.js'
+import { avanzarEstadoFlujo, cerrarSiCorresponde } from './estado-flujo-formal.js'
 
 function scopedOrdenWhere(user, id) {
   const sucursalId = getUserSucursalId(user)
@@ -85,8 +87,9 @@ export default async function ventaCargosRoutes(fastify) {
     preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
-    const orden = await fastify.prisma.orden.findFirst({ where: scopedOrdenWhere(request.user, id), select: { id: true } })
+    const orden = await fastify.prisma.orden.findFirst({ where: scopedOrdenWhere(request.user, id), select: { id: true, tipo: true } })
     if (!orden) return reply.code(404).send({ error: 'Venta no encontrada' })
+    if (!puedeGestionarTipoVenta(request.user, orden.tipo)) return reply.code(403).send({ error: 'No tiene permiso para gestionar este tipo de venta' })
     return fastify.prisma.ordenCargo.findMany({ where: { ordenId: id }, orderBy: { id: 'asc' } })
   })
 
@@ -96,8 +99,9 @@ export default async function ventaCargosRoutes(fastify) {
     const id = parseInt(request.params.id, 10)
     const { nombre, valor } = request.body || {}
     if (!nombre || valor == null) return reply.code(400).send({ error: 'nombre y valor requeridos' })
-    const orden = await fastify.prisma.orden.findFirst({ where: scopedOrdenWhere(request.user, id), select: { id: true } })
+    const orden = await fastify.prisma.orden.findFirst({ where: scopedOrdenWhere(request.user, id), select: { id: true, tipo: true } })
     if (!orden) return reply.code(404).send({ error: 'Venta no encontrada' })
+    if (!puedeGestionarTipoVenta(request.user, orden.tipo)) return reply.code(403).send({ error: 'No tiene permiso para gestionar este tipo de venta' })
     if (await hasFinancialTrace(fastify.prisma, id)) {
       return reply.code(409).send({ error: 'No se pueden modificar cargos con pagos o documentos de caja registrados' })
     }
@@ -114,9 +118,10 @@ export default async function ventaCargosRoutes(fastify) {
     try {
       const cargo = await fastify.prisma.ordenCargo.findUnique({
         where: { id: cargoId },
-        include: { orden: { select: { sucursalId: true } } },
+        include: { orden: { select: { sucursalId: true, tipo: true } } },
       })
       if (!cargo || !isOrdenInUserSucursal(request.user, cargo.orden)) return reply.code(404).send({ error: 'no encontrado' })
+      if (!puedeGestionarTipoVenta(request.user, cargo.orden.tipo)) return reply.code(403).send({ error: 'No tiene permiso para gestionar este tipo de venta' })
       if (await hasFinancialTrace(fastify.prisma, cargo.ordenId)) {
         return reply.code(409).send({ error: 'No se pueden modificar cargos con pagos o documentos de caja registrados' })
       }
@@ -137,6 +142,7 @@ export default async function ventaCargosRoutes(fastify) {
           include: { items: { where: { eliminado: false } }, cargos: true },
         })
         if (!orden) return { statusCode: 404, error: 'no encontrada' }
+        if (!puedeGestionarTipoVenta(request.user, orden.tipo)) return { statusCode: 403, error: 'No tiene permiso para gestionar este tipo de venta' }
         if (orden.eliminada) return { statusCode: 409, error: 'La venta ya esta anulada' }
         if (await hasClosedCajaMovements(tx, id, false)) {
           return { statusCode: 409, error: 'No se puede anular una venta con movimientos de Caja en turnos cerrados' }
@@ -189,6 +195,7 @@ export default async function ventaCargosRoutes(fastify) {
           include: { items: { where: { eliminado: false } }, cargos: true },
         })
         if (!orden) return { statusCode: 404, error: 'no encontrada' }
+        if (!puedeGestionarTipoVenta(request.user, orden.tipo)) return { statusCode: 403, error: 'No tiene permiso para gestionar este tipo de venta' }
         if (!orden.eliminada && orden.estado === 'Activa') return { statusCode: 409, error: 'La venta ya esta activa' }
         if (await hasClosedCajaMovements(tx, id, true)) {
           return { statusCode: 409, error: 'No se puede reactivar una venta con movimientos de Caja en turnos cerrados' }
@@ -260,6 +267,14 @@ export default async function ventaCargosRoutes(fastify) {
       const estadoEntrega = totalEnt === 0 ? 'Pendiente entrega'
         : totalEnt >= totalCant ? 'Entregada' : 'Parcial'
       await fastify.prisma.orden.update({ where: { id: item.ordenId }, data: { estadoEntrega, fechaEstadoEntrega: new Date() } })
+      // El estado formal sigue al hecho operativo. Antes convivian dos verdades: la
+      // venta figuraba entregada y su flujo formal seguia en CREADA.
+      if (estadoEntrega === 'Entregada') {
+        await avanzarEstadoFlujo(fastify.prisma, item.ordenId, 'ENTREGADA', request.user, 'Items entregados')
+        await cerrarSiCorresponde(fastify.prisma, item.ordenId, request.user)
+      } else if (estadoEntrega === 'Parcial') {
+        await avanzarEstadoFlujo(fastify.prisma, item.ordenId, 'PREPARACION', request.user, 'Entrega parcial')
+      }
       return updated
     } catch (e) { throw e }
   })

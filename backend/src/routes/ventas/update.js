@@ -16,6 +16,7 @@ import {
   normalizeEstadoPago,
   normalizeTipoVenta,
 } from './estados-normalize.js'
+import { assertTipoVentaPermitido } from './tipos-permitidos.js'
 
 // Los catalogos y su normalizacion viven en estados-normalize.js: el legacy
 // escribe otra grafia de los mismos estados y hay que aceptarla al entrar.
@@ -161,6 +162,8 @@ export default async function updateVenta(fastify) {
         },
       })
       if (!current) return reply.code(404).send({ error: 'Venta no encontrada' })
+      if (!assertTipoVentaPermitido(reply, request.user, current.tipo)) return
+      if (ordenData.tipo !== undefined && !assertTipoVentaPermitido(reply, request.user, ordenData.tipo)) return
       if (current.eliminada) return reply.code(409).send({ error: 'No se puede editar una venta anulada' })
       if (Object.prototype.hasOwnProperty.call(ordenData, 'abono') ||
         Object.prototype.hasOwnProperty.call(ordenData, 'estadoPago') ||

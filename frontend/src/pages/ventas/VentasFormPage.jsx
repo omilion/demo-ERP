@@ -1124,6 +1124,12 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   const isEdit = !!id
   const isSimpleCrmQuote = crmMode && crmQuoteMode === 'PROSPECCION_DIRECTA'
   const user = useAuthStore(s => s.user)
+  const tiposPermitidos = user?.role === 'vendedor' && Array.isArray(user?.tiposVentaPermitidos)
+    ? user.tiposVentaPermitidos
+    : null
+  const puedeUsarTipo = tipo => !tiposPermitidos || tiposPermitidos.includes(tipo)
+  const tiposDisponibles = TIPOS.filter(puedeUsarTipo)
+  const tiposVentaDirectaDisponibles = TIPOS_VENTA_DIRECTA.filter(puedeUsarTipo)
   const canDeleteVentas = can(user, 'ventas', 'delete')
   const canPasarTaller = canAny(user, [['taller', 'write'], ['ventas', 'write']])
 
@@ -1181,6 +1187,24 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   const [initializedId, setInitializedId] = useState(null)
   const [showNewCliente, setShowNewCliente] = useState(false)
   const productsSectionRef = useRef(null)
+
+  // En modo CRM el canal lo fija la ruta, no el formulario. Sin esto, data.tipo podía
+  // quedar desalineado de forceTipo y las validaciones de guardado —que exigen ID y
+  // fecha de licitación— no llegaban a correr, dejando pasar una licitación sin datos.
+  // No aplica al editar: ahí manda el tipo que la venta ya tiene.
+  useEffect(() => {
+    if (crmMode && !isEdit && forceTipo && data.tipo !== forceTipo) set('tipo', forceTipo)
+  }, [crmMode, isEdit, forceTipo, data.tipo, set])
+
+  useEffect(() => {
+    if (!isEdit && !crmMode) {
+      const qTipo = searchParams.get('tipo')
+      if (qTipo) {
+        const canonical = normalizeTipoVenta(qTipo) || qTipo
+        if (data.tipo !== canonical) set('tipo', canonical)
+      }
+    }
+  }, [searchParams, isEdit, crmMode, data.tipo, set])
 
   useEffect(() => {
     if (found && initializedId !== found.id) {
@@ -1278,7 +1302,29 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
     })
   }
 
+  const crmOptions = [
+    { value: 'Cotización simple CRM', label: 'Cotización simple CRM' },
+    { value: 'Licitación', label: 'Licitación' },
+    { value: 'Compra Ágil', label: 'Compra Ágil' },
+  ].filter(option => puedeUsarTipo(option.value === 'Cotización simple CRM' ? 'Normal' : option.value))
+  const currentCrmValue = isSimpleCrmQuote
+    ? 'Cotización simple CRM'
+    : (forceTipo || data.tipo)
+
   async function handleTipoChange(nextTipo) {
+    if (crmMode) {
+      const crmId = searchParams.get('crmId')
+      const query = crmId ? `?crmId=${crmId}` : ''
+      if (nextTipo === 'Cotización simple CRM' || nextTipo === 'cotizacion-simple') {
+        if (!isSimpleCrmQuote) navigate(`/crm/nueva/cotizacion-simple${query}`)
+      } else if (nextTipo === 'Licitación') {
+        if (forceTipo !== 'Licitación') navigate(`/crm/nueva/licitacion${query}`)
+      } else if (nextTipo === 'Compra Ágil') {
+        if (forceTipo !== 'Compra Ágil') navigate(`/crm/nueva/compra-agil${query}`)
+      }
+      return
+    }
+
     if (nextTipo === data.tipo) return
     const hasCommercialData = items.length > 0 || data.descuentoPct !== '' || data.licitacion || data.marketplaceCanal
     if (hasCommercialData) {
@@ -1291,6 +1337,9 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       if (!confirmed) return
     }
     set('tipo', nextTipo)
+    if (!isEdit && !crmMode) {
+      setSearchParams({ tipo: nextTipo }, { replace: true })
+    }
     setSelectedDiscountRule(null)
     set('descuentoPct', '')
   }
@@ -1324,15 +1373,16 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         return
       }
     }
-    if (!/^\S+@\S+\.\S+$/.test(String(data.emailContactoDespacho || '').trim())) {
+    const isMarketplaceSave = String(data.tipo || '').toLowerCase().includes('marketplace') || normalizeTipoVenta(data.tipo) === 'Marketplace'
+    if (!isMarketplaceSave && !/^\S+@\S+\.\S+$/.test(String(data.emailContactoDespacho || '').trim())) {
       toast.warning('Ingresa el correo obligatorio del contacto de despacho')
       return
     }
-    if (data.tipo === 'Marketplace' && !String(data.marketplaceCanal || '').trim()) {
+    if (isMarketplaceSave && !String(data.marketplaceCanal || '').trim()) {
       toast.warning('Indica el canal Marketplace')
       return
     }
-    if (data.tipo === 'Marketplace' && !String(data.marketplaceReferencia || '').trim()) {
+    if (isMarketplaceSave && !String(data.marketplaceReferencia || '').trim()) {
       toast.warning('Indica el N° de orden del portal para poder conciliar la comisión')
       return
     }
@@ -1355,10 +1405,10 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       emailContactoDespacho: data.emailContactoDespacho || null,
       regionDespacho: data.regionDespacho || null,
       comunaDespacho: data.comunaDespacho || null,
-      marketplaceCanal: data.tipo === 'Marketplace' ? data.marketplaceCanal || null : null,
-      marketplaceReferencia: data.tipo === 'Marketplace' ? data.marketplaceReferencia || null : null,
-      marketplaceComisionPct: data.tipo === 'Marketplace' && data.marketplaceComisionPct !== '' ? Number(data.marketplaceComisionPct) : null,
-      marketplaceComisionMonto: data.tipo === 'Marketplace' && data.marketplaceComisionMonto !== '' ? Number(data.marketplaceComisionMonto) : null,
+      marketplaceCanal: isMarketplaceSave ? data.marketplaceCanal || null : null,
+      marketplaceReferencia: isMarketplaceSave ? data.marketplaceReferencia || null : null,
+      marketplaceComisionPct: isMarketplaceSave && data.marketplaceComisionPct !== '' ? Number(data.marketplaceComisionPct) : null,
+      marketplaceComisionMonto: isMarketplaceSave && data.marketplaceComisionMonto !== '' ? Number(data.marketplaceComisionMonto) : null,
       crmId: searchParams.get('crmId') ? Number(searchParams.get('crmId')) : undefined,
     }
     if (data.tipo === 'Licitación') {
@@ -1433,7 +1483,14 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   const fechaFicha = isEdit && (found?.fecha || found?.createdAt)
     ? new Date(found.fecha || found.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     : new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
-  const isLicitacionOrCompraAgil = data.tipo === 'Licitación' || data.tipo === 'Compra Ágil'
+  // El canal lo declara la ruta a través de forceTipo, y de ahí salen el título y el
+  // selector. La sección de detalles miraba sólo data.tipo, así que si los dos se
+  // separaban el encabezado decía "Licitación" mientras el cuerpo dibujaba el flujo
+  // estándar: sin ID, sin fecha y sin plazo, y la cotización se guardaba igual.
+  // El efecto de más abajo mantiene data.tipo alineado; esto cubre el primer render.
+  const tipoEfectivo = (crmMode && forceTipo) || data.tipo
+  const isLicitacionOrCompraAgil = tipoEfectivo === 'Licitación' || tipoEfectivo === 'Compra Ágil'
+  const isMarketplace = String(tipoEfectivo || '').toLowerCase().includes('marketplace') || normalizeTipoVenta(tipoEfectivo) === 'Marketplace'
   // Los catálogos históricos pueden contener porcentajes repetidos por
   // importaciones antiguas. Un select no debe renderizar opciones duplicadas:
   // además del warning de React, el usuario no podría distinguirlas.
@@ -1453,10 +1510,10 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       onCancel={() => navigate(isEdit ? `/ventas/${id}` : crmMode ? '/crm' : '/ventas')}
       typeControl={(
         <Select
-          value={data.tipo}
+          value={crmMode ? currentCrmValue : data.tipo}
           onChange={handleTipoChange}
-          options={crmMode ? [{ value: forceTipo, label: isSimpleCrmQuote ? 'Cotizacion simple CRM' : forceTipo }] : (isEdit ? (TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS]) : TIPOS_VENTA_DIRECTA)}
-          disabled={crmMode}
+          options={crmMode ? crmOptions : (isEdit ? (tiposDisponibles.includes(data.tipo) ? tiposDisponibles : [data.tipo, ...tiposDisponibles]) : tiposVentaDirectaDisponibles)}
+          disabled={isEdit}
           aria-label="Tipo de venta"
           style={{ backgroundColor: '#fffbeb', borderColor: '#fcd34d', fontWeight: 700, color: '#78350f' }}
         />
@@ -1507,10 +1564,10 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         <FormDivider label="Tipo de Venta" />
       <FormField label="Tipo de Venta">
         <Select
-          value={data.tipo}
+          value={crmMode ? currentCrmValue : data.tipo}
           onChange={handleTipoChange}
-          options={crmMode ? [{ value: forceTipo, label: isSimpleCrmQuote ? 'Cotización simple · Prospección directa' : forceTipo }] : (isEdit ? (TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS]) : TIPOS_VENTA_DIRECTA)}
-          disabled={crmMode}
+          options={crmMode ? crmOptions : (isEdit ? (tiposDisponibles.includes(data.tipo) ? tiposDisponibles : [data.tipo, ...tiposDisponibles]) : tiposVentaDirectaDisponibles)}
+          disabled={isEdit}
           style={{ 
             backgroundColor: '#fffbeb', // Soft yellow background
             borderColor: '#fcd34d',     // Warm golden border
@@ -1583,7 +1640,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         </VentaWorkspaceSection>
       )}
 
-      {data.tipo === 'Marketplace' && <VentaWorkspaceSection className="venta-workspace-special-details" title="Venta Marketplace y comisión">
+      {isMarketplace && <VentaWorkspaceSection className="venta-workspace-special-details" title="Venta Marketplace y comisión">
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 1fr', gap: 14 }}>
           <FormField label="Canal Marketplace" required>
             <Select
@@ -1664,83 +1721,84 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       )}
 
       </div>
-      <VentaWorkspaceSection className="venta-workspace-dispatch-section" title="Información de Despacho">
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-        <FormField label="Días para entrega" required>
-          <Input type="number" min="0" max="3650" value={data.plazoEntregaDias || ''} onChange={v => { set('plazoEntregaDias', v); set('fechaPlazo', calculateDeliveryDateIso(v, data.plazoEntregaTipo)) }} placeholder="Ej: 15" />
-        </FormField>
-        <FormField label="Tipo de días" required>
-          <RadioGroup
-            name="plazoEntregaTipo"
-            ariaLabel="Tipo de días para la entrega"
-            value={data.plazoEntregaTipo || 'corridos'}
-            onChange={v => { set('plazoEntregaTipo', v); set('fechaPlazo', calculateDeliveryDateIso(data.plazoEntregaDias, v)) }}
-            options={[{ value: 'habiles', label: 'Días hábiles' }, { value: 'corridos', label: 'Días corridos' }]}
-          />
-        </FormField>
-        <FormField label="Fecha tope calculada">
-          <Input type="date" value={data.fechaPlazo || ''} onChange={v => set('fechaPlazo', v)} />
-        </FormField>
-        <FormField label="Monto Despacho Cotizado">
-          <Input type="number" value={data.montoDespacho || ''} onChange={v => set('montoDespacho', v)} prefix="$" placeholder="0" />
-        </FormField>
-        <div style={{ display: 'flex', alignItems: 'center', marginTop: 20 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
-            <input type="checkbox" checked={!!data.enviosParciales} onChange={e => set('enviosParciales', e.target.checked)} />
-            Permite envíos parciales
-          </label>
-        </div>
-      </div>
-      {/* Región y Comuna encadenadas: elegir región filtra las comunas disponibles */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
-        <FormField label="Región Despacho">
-          <Select
-            value={data.regionDespacho || ''}
-            onChange={v => { set('regionDespacho', v); set('comunaDespacho', '') }}
-            options={[{ value: '', label: '— Seleccionar región —' }, ...regiones.map(r => ({ value: r.nombre, label: r.nombre }))]}
-          />
-        </FormField>
-        <FormField label="Comuna Despacho">
-          <Select
-            value={data.comunaDespacho || ''}
-            onChange={v => set('comunaDespacho', v)}
-            disabled={!data.regionDespacho}
-            options={[{ value: '', label: data.regionDespacho ? '— Seleccionar comuna —' : 'Elige región primero' }, ...comunas.map(c => ({ value: c.nombre, label: c.nombre }))]}
-          />
-        </FormField>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 14 }}>
-        <FormField label="Dirección de Despacho (Override)" hint="Dejar vacío para usar dirección por defecto del cliente">
-          <Input value={data.direccionDespacho || ''} onChange={v => set('direccionDespacho', v)} placeholder="Calle y número" />
-        </FormField>
-        <FormField label="Datos extra de dirección" hint="Depto, oficina, referencia, etc.">
-          <Input value={data.direccionDespachoExtra || ''} onChange={v => set('direccionDespachoExtra', v)} placeholder="Depto / referencia (opcional)" />
-        </FormField>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
-        <FormField label="Contacto de Despacho">
-          <Input value={data.contactoDespacho || ''} onChange={v => set('contactoDespacho', v)} placeholder="Nombre del contacto" />
-        </FormField>
-        <FormField label="Teléfono Contacto Despacho">
-          <Input value={data.telefonoContactoDespacho || ''} onChange={v => set('telefonoContactoDespacho', v)} placeholder="Teléfono del contacto" />
-        </FormField>
-        <FormField label="Correo Contacto Despacho" required>
-          <Input type="email" value={data.emailContactoDespacho || ''} onChange={v => set('emailContactoDespacho', v)} placeholder="contacto@cliente.cl" />
-        </FormField>
-      </div>
-      {isEdit && found?.cotizaciones?.length > 0 && (
-        <div style={{ marginTop: 8, marginBottom: 8, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-          <div style={{ padding: '8px 10px', background: 'var(--bg)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>Cotizacion / licitacion vinculada</div>
-          {found.cotizaciones.map(c => (
-            <button key={c.id} type="button" onClick={() => navigate(`/licitaciones/${c.id}`)} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, width: '100%', padding: '9px 10px', background: '#fff', borderTop: '1px solid var(--border)', textAlign: 'left', cursor: 'pointer', fontSize: 12 }}>
-              <span><strong>{c.idLicitacion || `#${c.id}`}</strong> {c.referencia || c.ordenCompra || ''}</span>
-              <span style={{ color: 'var(--green-700)', fontWeight: 600 }}>Ver</span>
-            </button>
-          ))}
-        </div>
+      {!isMarketplace && (
+        <VentaWorkspaceSection className="venta-workspace-dispatch-section" title="Información de Despacho">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+            <FormField label="Días para entrega" required>
+              <Input type="number" min="0" max="3650" value={data.plazoEntregaDias || ''} onChange={v => { set('plazoEntregaDias', v); set('fechaPlazo', calculateDeliveryDateIso(v, data.plazoEntregaTipo)) }} placeholder="Ej: 15" />
+            </FormField>
+            <FormField label="Tipo de días" required>
+              <RadioGroup
+                name="plazoEntregaTipo"
+                ariaLabel="Tipo de días para la entrega"
+                value={data.plazoEntregaTipo || 'corridos'}
+                onChange={v => { set('plazoEntregaTipo', v); set('fechaPlazo', calculateDeliveryDateIso(data.plazoEntregaDias, v)) }}
+                options={[{ value: 'habiles', label: 'Días hábiles' }, { value: 'corridos', label: 'Días corridos' }]}
+              />
+            </FormField>
+            <FormField label="Fecha tope calculada">
+              <Input type="date" value={data.fechaPlazo || ''} onChange={v => set('fechaPlazo', v)} />
+            </FormField>
+            <FormField label="Monto Despacho Cotizado">
+              <Input type="number" value={data.montoDespacho || ''} onChange={v => set('montoDespacho', v)} prefix="$" placeholder="0" />
+            </FormField>
+            <div style={{ display: 'flex', alignItems: 'center', marginTop: 20 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                <input type="checkbox" checked={!!data.enviosParciales} onChange={e => set('enviosParciales', e.target.checked)} />
+                Permite envíos parciales
+              </label>
+            </div>
+          </div>
+          {/* Región y Comuna encadenadas: elegir región filtra las comunas disponibles */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
+            <FormField label="Región Despacho">
+              <Select
+                value={data.regionDespacho || ''}
+                onChange={v => { set('regionDespacho', v); set('comunaDespacho', '') }}
+                options={[{ value: '', label: '— Seleccionar región —' }, ...regiones.map(r => ({ value: r.nombre, label: r.nombre }))]}
+              />
+            </FormField>
+            <FormField label="Comuna Despacho">
+              <Select
+                value={data.comunaDespacho || ''}
+                onChange={v => set('comunaDespacho', v)}
+                disabled={!data.regionDespacho}
+                options={[{ value: '', label: data.regionDespacho ? '— Seleccionar comuna —' : 'Elige región primero' }, ...comunas.map(c => ({ value: c.nombre, label: c.nombre }))]}
+              />
+            </FormField>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 14 }}>
+            <FormField label="Dirección de Despacho (Override)" hint="Dejar vacío para usar dirección por defecto del cliente">
+              <Input value={data.direccionDespacho || ''} onChange={v => set('direccionDespacho', v)} placeholder="Calle y número" />
+            </FormField>
+            <FormField label="Datos extra de dirección" hint="Depto, oficina, referencia, etc.">
+              <Input value={data.direccionDespachoExtra || ''} onChange={v => set('direccionDespachoExtra', v)} placeholder="Depto / referencia (opcional)" />
+            </FormField>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
+            <FormField label="Contacto de Despacho">
+              <Input value={data.contactoDespacho || ''} onChange={v => set('contactoDespacho', v)} placeholder="Nombre del contacto" />
+            </FormField>
+            <FormField label="Teléfono Contacto Despacho">
+              <Input value={data.telefonoContactoDespacho || ''} onChange={v => set('telefonoContactoDespacho', v)} placeholder="Teléfono del contacto" />
+            </FormField>
+            <FormField label="Correo Contacto Despacho" required>
+              <Input type="email" value={data.emailContactoDespacho || ''} onChange={v => set('emailContactoDespacho', v)} placeholder="contacto@cliente.cl" />
+            </FormField>
+          </div>
+          {isEdit && found?.cotizaciones?.length > 0 && (
+            <div style={{ marginTop: 8, marginBottom: 8, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ padding: '8px 10px', background: 'var(--bg)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>Cotizacion / licitacion vinculada</div>
+              {found.cotizaciones.map(c => (
+                <button key={c.id} type="button" onClick={() => navigate(`/licitaciones/${c.id}`)} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, width: '100%', padding: '9px 10px', background: '#fff', borderTop: '1px solid var(--border)', textAlign: 'left', cursor: 'pointer', fontSize: 12 }}>
+                  <span><strong>{c.idLicitacion || `#${c.id}`}</strong> {c.referencia || c.ordenCompra || ''}</span>
+                  <span style={{ color: 'var(--green-700)', fontWeight: 600 }}>Ver</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </VentaWorkspaceSection>
       )}
-
-      </VentaWorkspaceSection>
       {isEdit && <VentaWorkspaceSection className="venta-workspace-edit-section" title="Estados de la Orden">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
         <FormField label="Estado de la orden">
@@ -1866,9 +1924,9 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         </VentaWorkspaceSection>
       )}
 
-      <VentaWorkspaceSection className="venta-workspace-observations-section" title="Observaciones">
-      <FormField label="Notas internas">
-        <Textarea value={data.observaciones || ''} onChange={v => set('observaciones', v)} placeholder="Instrucciones especiales, condiciones de entrega, etc." rows={3} />
+      <VentaWorkspaceSection className="venta-workspace-observations-section" title="Información adicional">
+      <FormField label="Notas e información adicional del pedido">
+        <Textarea value={data.observaciones || ''} onChange={v => set('observaciones', v)} placeholder="Observaciones del pedido, datos del cliente, especificaciones técnicas, condiciones de entrega o notas generales..." rows={3} />
       </FormField>
       </VentaWorkspaceSection>
 

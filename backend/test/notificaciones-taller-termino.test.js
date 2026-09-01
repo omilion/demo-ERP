@@ -34,8 +34,16 @@ describeDb('el aviso de produccion terminada', () => {
       data: { email: `${marca}-bod@plastimar.cl`, passwordHash: 'x', role: 'bodeguero', nombre: `${marca} Bodega`, activo: true },
     })
 
+    // Toda OT debe declarar origen: una orden de venta o un centro de costo
+    // (constraint odts_origen_requerido_new). Acá basta el centro de costo, que no
+    // arrastra cliente ni sucursal: el aviso de término no depende de la procedencia.
+    const centro = await app.prisma.centroCosto.create({
+      data: { codigo: `${marca}-CC`, nombre: `${marca} Interno` },
+    })
+    creado.centroCostoId = centro.id
+
     const odt = await app.prisma.odt.create({
-      data: { clienteNombre: `${marca} Cliente`, estado: 'Pendiente' },
+      data: { centroCostoId: centro.id, clienteNombre: `${marca} Cliente`, estado: 'Pendiente' },
     })
     creado.odtId = odt.id
 

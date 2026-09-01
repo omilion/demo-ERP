@@ -30,7 +30,31 @@ export default async function odtsRoutes(fastify) {
 
   fastify.get('/meta/centros-costo', {
     preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
-  }, async () => ({ items: await fastify.prisma.centroCosto.findMany({ where: { activo: true }, orderBy: [{ codigo: 'asc' }, { nombre: 'asc' }] }) }))
+  }, async () => {
+    let items = await fastify.prisma.centroCosto.findMany({ where: { activo: true }, orderBy: [{ id: 'asc' }] })
+    if (items.length === 0) {
+      const DEFAULT_CENTROS = [
+        { codigo: 'Inventario', nombre: 'Inventario' },
+        { codigo: 'Materias', nombre: 'Materias' },
+        { codigo: 'ActivoFijo', nombre: 'ActivoFijo' },
+        { codigo: 'GMantencion', nombre: 'GMantencion' },
+        { codigo: 'GTransporte', nombre: 'GTransporte' },
+        { codigo: 'GOperacionales', nombre: 'GOperacionales' },
+        { codigo: 'GAdministrativos', nombre: 'GAdministrativos' },
+        { codigo: 'Importacion', nombre: 'Importacion' },
+        { codigo: 'Equipos', nombre: 'Equipos' },
+      ]
+      for (const item of DEFAULT_CENTROS) {
+        await fastify.prisma.centroCosto.upsert({
+          where: { codigo: item.codigo },
+          update: { nombre: item.nombre, activo: true },
+          create: { codigo: item.codigo, nombre: item.nombre, activo: true },
+        })
+      }
+      items = await fastify.prisma.centroCosto.findMany({ where: { activo: true }, orderBy: [{ id: 'asc' }] })
+    }
+    return { items }
+  })
 
   fastify.post('/meta/centros-costo', {
     preHandler: [fastify.authenticate, fastify.rbac('taller.gestion', 'write')],

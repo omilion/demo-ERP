@@ -7,7 +7,7 @@ import { resolveOdtForWrite, resolveOrdenForWrite } from '../relation-guards.js'
 import { registerDespachoMatrizRoutes } from './matriz.js'
 import { attachCliente } from '../ventas/helpers.js'
 import { isValidContactEmail } from '../ventas/operational-rules.js'
-import { transitionEstadoFlujoDesdeTracking } from '../ventas/estado-flujo-formal.js'
+import { avanzarEstadoFlujo, cerrarSiCorresponde, transitionEstadoFlujoDesdeTracking } from '../ventas/estado-flujo-formal.js'
 import { codigoBarrasObligatorio, validateBarcodeScans } from '../ordenes-compra-proveedores/barcode-policy.js'
 import { deriveEstadoLogistico, resumenPacking, resumenPreparacion } from './estado-logistico.js'
 import { IND_TRASLADO, TIPO_DESPACHO, computeTotales } from '../../facturacion/documento.js'
@@ -1684,6 +1684,14 @@ export default async function despachosRoutes(fastify) {
     return fastify.prisma.$transaction(async (tx) => {
       const despacho = await tx.despacho.create({ data })
       await applyOrdenEntregaSync(tx, entregaSync)
+      // Tomar la venta en bodega ES la preparacion. Sin esto la orden seguia en
+      // CREADA mientras bodega ya la estaba armando, y el estado formal solo se movia
+      // si alguien registraba un evento de tracking a mano.
+      if (despacho.ordenId) {
+        const destino = entregaSync?.estadoEntrega === 'Entregada' ? 'ENTREGADA' : 'PREPARACION'
+        await avanzarEstadoFlujo(tx, despacho.ordenId, destino, request.user, 'Despacho creado en bodega')
+        if (destino === 'ENTREGADA') await cerrarSiCorresponde(tx, despacho.ordenId, request.user)
+      }
       return despacho
     })
   })
