@@ -269,6 +269,7 @@ function EditUsuarioModal({ user, sucursales, onClose }) {
   const updateU = useUpdateUsuario()
   const updateP = useUpdatePermisos()
   const [tab, setTab] = useState('datos')
+  const [isEditingPerms, setIsEditingPerms] = useState(false)
   const [form, setForm] = useState({
     nombre: user.nombre || '',
     role: user.role || 'vendedor',
@@ -309,15 +310,18 @@ function EditUsuarioModal({ user, sucursales, onClose }) {
 
   function savePermisos() {
     updateP.mutate({ id: user.id, permisosExtra: Object.keys(permisos).length === 0 ? null : permisos }, {
-      onSuccess: () => onClose(),
+      onSuccess: () => {
+        setIsEditingPerms(false)
+        onClose()
+      },
       onError: e => toast.error(e.response?.data?.error || 'Error'),
     })
   }
 
   return (
-    <Modal onClose={onClose} title={`Editar ${user.nombre}`} width={760}>
+    <Modal onClose={onClose} title={`Editar ${user.nombre}`} width={780}>
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', marginBottom: 14 }}>
-        {[['datos', 'Datos'], ['efectivos', 'Permisos efectivos'], ['permisos', 'Permisos extra']].map(([id, label]) => (
+        {[['datos', 'Datos'], ['efectivos', 'Permisos']].map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={tabBtn(tab === id)}>{label}</button>
         ))}
       </div>
@@ -333,22 +337,61 @@ function EditUsuarioModal({ user, sucursales, onClose }) {
         </>
       )}
 
-      {tab === 'permisos' && (
-        <>
-          <div style={infoBoxStyle}>Estos permisos se suman al rol; no muestran lo que ya viene dado por el rol. Revisa la pestaña <strong>Permisos efectivos</strong> para ver el acceso completo.</div>
-          <PermisosMatrix role={form.role} permisos={permisos} editable onToggle={togglePerm} />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-            <Btn variant="secondary" size="sm" onClick={() => setPermisos({})}>Limpiar todo</Btn>
-            <Btn variant="secondary" size="sm" onClick={onClose}>Cancelar</Btn>
-            <Btn variant="primary" size="sm" onClick={savePermisos} disabled={updateP.isPending}>{updateP.isPending ? 'Guardando...' : 'Guardar permisos'}</Btn>
-          </div>
-        </>
-      )}
-
       {tab === 'efectivos' && (
         <>
-          <div style={infoBoxStyle}>Vista de lectura: combina el rol <strong>{form.role}</strong> y los permisos extra guardados. Una marca indica acceso real.</div>
-          <PermisosMatrix role={form.role} permisos={permisos} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, padding: '10px 14px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>
+                Permisos del usuario (Rol: <strong style={{ color: 'var(--green-700)' }}>{form.role}</strong>)
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+                {isEditingPerms
+                  ? 'Modo edición activo: agrega o quita permisos adicionales sobre el rol base.'
+                  : 'Las marcas de casilla indican el acceso real por rol o por permisos extra.'}
+              </div>
+            </div>
+            {!isEditingPerms ? (
+              <Btn variant="secondary" size="sm" onClick={() => setIsEditingPerms(true)}>
+                Modificar permisos
+              </Btn>
+            ) : (
+              <div style={{ display: 'flex', gap: 6 }}>
+                <Btn variant="secondary" size="sm" onClick={() => { setPermisos(user.permisosExtra || {}); setIsEditingPerms(false) }}>
+                  Cancelar
+                </Btn>
+                <Btn variant="primary" size="sm" onClick={savePermisos} disabled={updateP.isPending}>
+                  {updateP.isPending ? 'Guardando...' : 'Guardar permisos'}
+                </Btn>
+              </div>
+            )}
+          </div>
+
+          <PermisosMatrix
+            role={form.role}
+            permisos={permisos}
+            editable={isEditingPerms}
+            onToggle={togglePerm}
+          />
+
+          {isEditingPerms && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
+              <button
+                type="button"
+                onClick={() => setPermisos({})}
+                style={{ fontSize: 12, color: 'var(--amber-700, #b45309)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                Limpiar permisos extra
+              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Btn variant="secondary" size="sm" onClick={() => { setPermisos(user.permisosExtra || {}); setIsEditingPerms(false) }}>
+                  Cancelar
+                </Btn>
+                <Btn variant="primary" size="sm" onClick={savePermisos} disabled={updateP.isPending}>
+                  {updateP.isPending ? 'Guardando...' : 'Guardar permisos'}
+                </Btn>
+              </div>
+            </div>
+          )}
         </>
       )}
     </Modal>
@@ -412,30 +455,65 @@ function TiposVentaField({ form, set }) {
 }
 
 function PermisosMatrix({ role, permisos, editable = false, onToggle }) {
-  const user = { role, permisosExtra: permisos }
-  const checked = (clave, permiso) => editable
-    ? (permisos[clave] || []).includes(permiso)
-    : can(user, clave, permiso)
+  const getCellState = (clave, permiso) => {
+    const fromRole = can({ role }, clave, permiso)
+    const isExtra = (permisos[clave] || []).includes(permiso)
+    const checked = fromRole || isExtra
+    return { fromRole, isExtra, checked }
+  }
+
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-        <thead><tr style={{ background: 'var(--bg)' }}><th style={thStyle}>Modulo</th>{PERMS.map(p => <th key={p} style={{ ...thStyle, textAlign: 'center', width: 82 }}>{p}</th>)}</tr></thead>
-        <tbody>{MODULOS.map(([mod, label, funciones = []]) => (
-          <Fragment key={mod}>
-            <PermisosRow label={label} clave={mod} checked={checked} editable={editable} onToggle={onToggle} />
-            {funciones.map(([fn, fnLabel]) => <PermisosRow key={`${mod}.${fn}`} label={fnLabel} clave={`${mod}.${fn}`} checked={checked} editable={editable} onToggle={onToggle} nested />)}
-          </Fragment>
-        ))}</tbody>
+        <thead>
+          <tr style={{ background: 'var(--bg)' }}>
+            <th style={thStyle}>Módulo</th>
+            {PERMS.map(p => <th key={p} style={{ ...thStyle, textAlign: 'center', width: 90 }}>{p.toUpperCase()}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {MODULOS.map(([mod, label, funciones = []]) => (
+            <Fragment key={mod}>
+              <PermisosRow label={label} clave={mod} getCellState={getCellState} editable={editable} onToggle={onToggle} />
+              {funciones.map(([fn, fnLabel]) => (
+                <PermisosRow key={`${mod}.${fn}`} label={fnLabel} clave={`${mod}.${fn}`} getCellState={getCellState} editable={editable} onToggle={onToggle} nested />
+              ))}
+            </Fragment>
+          ))}
+        </tbody>
       </table>
     </div>
   )
 }
 
-function PermisosRow({ label, clave, checked, editable, onToggle, nested = false }) {
-  return <tr style={{ borderTop: '1px solid var(--border)' }}>
-    <td style={{ padding: nested ? '5px 12px 5px 30px' : '7px 12px', fontWeight: nested ? 400 : 500, fontSize: nested ? 12 : undefined, color: nested ? 'var(--text-2)' : undefined }}>{label}</td>
-    {PERMS.map(permiso => <td key={permiso} style={{ padding: nested ? '5px 8px' : '7px 8px', textAlign: 'center' }}><input type="checkbox" checked={checked(clave, permiso)} disabled={!editable} onChange={editable ? () => onToggle(clave, permiso) : undefined} /></td>)}
-  </tr>
+function PermisosRow({ label, clave, getCellState, editable, onToggle, nested = false }) {
+  return (
+    <tr style={{ borderTop: '1px solid var(--border)' }}>
+      <td style={{ padding: nested ? '5px 12px 5px 30px' : '7px 12px', fontWeight: nested ? 400 : 500, fontSize: nested ? 12 : undefined, color: nested ? 'var(--text-2)' : undefined }}>
+        {label}
+      </td>
+      {PERMS.map(permiso => {
+        const { fromRole, isExtra, checked } = getCellState(clave, permiso)
+        const canEditThis = editable && !fromRole
+
+        return (
+          <td key={permiso} style={{ padding: nested ? '5px 8px' : '7px 8px', textAlign: 'center' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={!canEditThis}
+                onChange={canEditThis ? () => onToggle(clave, permiso) : undefined}
+                style={{ cursor: canEditThis ? 'pointer' : 'default' }}
+              />
+              {fromRole && <span style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 600 }} title="Otorgado por el rol base">Rol</span>}
+              {isExtra && !fromRole && <span style={{ fontSize: 10, color: 'var(--blue)', fontWeight: 700 }} title="Permiso extra personalizado">+Extra</span>}
+            </div>
+          </td>
+        )
+      })}
+    </tr>
+  )
 }
 
 function Modal({ onClose, title, width = 500, children }) {
