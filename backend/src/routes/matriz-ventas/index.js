@@ -402,7 +402,8 @@ async function getOrdenRowsByWhere(fastify, where) {
   })
   const ruts = [...new Set(ordenes.map(o => o.rutCliente).filter(Boolean))]
   const ordenIds = ordenes.map(o => o.id)
-  const [clientesArr, odtsArr, cotizArr, guiasArr, movsArr, multasArr] = await Promise.all([
+  // El orden importa: cada nombre corresponde a la consulta en la misma posicion.
+  const [clientesArr, odtsArr, cotizArr, despachosArr, guiasArr, movsArr, multasArr] = await Promise.all([
     ruts.length ? fastify.prisma.cliente.findMany({
       where: { rut: { in: ruts } },
       select: { rut: true, razonSocial: true, nombre: true, email: true, conflictivo: true, conflictivoDetalle: true },
@@ -414,6 +415,13 @@ async function getOrdenRowsByWhere(fastify, where) {
     ordenIds.length ? fastify.prisma.cotizacionLicitacion.findMany({
       where: { ordenId: { in: ordenIds } },
       select: { id: true, idLicitacion: true, ordenId: true },
+    }) : [],
+    // El despacho y la guia son tablas distintas: bodega crea el despacho y la guia
+    // puede venir despues o no venir. Mirando solo las guias, la Matriz mostraba la
+    // venta sin movimiento aunque bodega ya la hubiera tomado.
+    ordenIds.length ? fastify.prisma.despacho.findMany({
+      where: { ordenId: { in: ordenIds }, eliminado: false },
+      select: { id: true, ordenId: true, tipoDespacho: true, parcial: true, fechaInterno: true, fechaEntrega: true },
     }) : [],
     ordenIds.length ? fastify.prisma.guiaDespacho.findMany({
       where: { ordenId: { in: ordenIds }, eliminado: false },
@@ -445,6 +453,7 @@ async function getOrdenRowsByWhere(fastify, where) {
   ])
   const clienteMap = Object.fromEntries(clientesArr.map(c => [c.rut, c]))
   const odtMap = {}; for (const o of odtsArr) (odtMap[o.ordenId] ||= []).push({ id: o.id, estado: o.estado })
+  const despachosMap = {}; for (const d of despachosArr) (despachosMap[d.ordenId] ||= []).push({ id: d.id, tipo: d.tipoDespacho, parcial: d.parcial, fechaInterno: d.fechaInterno, fechaEntrega: d.fechaEntrega })
   const guiasMap = {}; for (const g of guiasArr) (guiasMap[g.ordenId] ||= []).push({ id: g.id, nGuia: g.nGuia, fechaGuia: g.fechaGuia, origen: g.origen })
   const docsMap = {}; for (const m of movsArr) (docsMap[m.ordenId] ||= []).push(m)
   const multasMap = {}; for (const multa of multasArr) (multasMap[multa.ordenId] ||= []).push(multa)
@@ -462,6 +471,7 @@ async function getOrdenRowsByWhere(fastify, where) {
     const abono = financialState.abono
     const saldo = financialState.saldo
     const odts = odtMap[o.id] || []
+    const despachos = despachosMap[o.id] || []
     const guias = guiasMap[o.id] || []
     const documentosLegacy = documentos.map(documentoResumen).join(' | ')
     return {
@@ -494,6 +504,8 @@ async function getOrdenRowsByWhere(fastify, where) {
       odts,
       odtCount: odts.length,
       guias,
+      despachos,
+      despachosCount: despachos.length,
       guiasCount: guias.length,
       documentos,
       documentosCount: documentos.length,

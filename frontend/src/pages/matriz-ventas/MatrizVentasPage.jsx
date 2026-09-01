@@ -460,6 +460,12 @@ export default function MatrizVentasPage() {
     { key: 'fecha', label: 'Fecha Creacion', render: v => <span style={{ ...mono, fontSize: 11 }}>{formatDateTime(v)}</span> },
     { key: 'creadorNombre', label: 'Creada por', render: v => <span style={{ fontSize: 12 }}>{v || '-'}</span> },
     { key: 'odtCount', label: 'OT', render: (_, row) => renderLinkedList(row.odts, odt => `#${odt.id} ${odt.estado || ''}`) },
+    // El despacho va antes que la guia porque ocurre antes: bodega toma la venta y
+    // recien despues emite la guia, que puede no emitirse nunca. Mirando solo las
+    // guias, la venta se veia sin movimiento aunque bodega ya estuviera trabajandola.
+    { key: 'despachosCount', label: 'Despacho', render: (_, row) => row.despachos?.length
+      ? renderLinkedList(row.despachos, d => `#${d.id}${d.parcial ? ' parcial' : ''}${d.fechaEntrega ? ' entregado' : ''}`)
+      : '-' },
     { key: 'guiasCount', label: 'Guias Desp.', render: (_, row) => row.guias?.length ? renderLinkedList(row.guias, guia => `#${guia.nGuia || guia.id}`) : (row.guiasLegacy ? <span style={{ ...mono, fontSize: 11 }}>#{row.guiasLegacy}</span> : '-') },
     { key: 'documentosCount', label: 'Documentos', wrap: true, render: (_, row) => renderDocumentos(row) },
     { key: 'cliente', label: 'Cliente', render: v => <span style={{ ...mono, fontSize: 11 }}>{v || '-'}</span> },
