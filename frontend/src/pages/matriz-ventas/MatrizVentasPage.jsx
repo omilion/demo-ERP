@@ -18,6 +18,7 @@ const TABS = [
   { id: 'trato-directo', label: 'Trato directo' },
   { id: 'licitacion', label: 'Licitaciones' },
   { id: 'compra-agil', label: 'Compra ágil' },
+  { id: 'marketplace', label: 'Marketplace' },
 ]
 
 const ESTADO_PAGO_OPTS = ['', 'No pagada', 'Pagada', 'Parcial']
