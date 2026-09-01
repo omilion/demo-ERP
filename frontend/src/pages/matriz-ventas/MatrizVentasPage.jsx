@@ -76,6 +76,7 @@ export default function MatrizVentasPage() {
   const [searchParams] = useSearchParams()
   const user = useAuthStore(s => s.user)
   const canDeleteVentas = can(user, 'ventas', 'delete')
+  const canWriteDespacho = can(user, 'despacho', 'write')
   const anularVenta = useAnularVenta()
 
   const [tab, setTab] = useState(searchParams.get('tipo') || 'all')
@@ -313,6 +314,21 @@ export default function MatrizVentasPage() {
           <button onClick={e => { e.stopPropagation(); navigate(`/odt?ordenId=${row.id}`) }} style={operationBtn('#0ea5e9')} title="Informe taller">
             Inf. Taller
           </button>
+          {canWriteDespacho && ['EN_TALLER', 'PICKING_PARCIAL', 'LISTA_PICKING', 'PICKING', 'PACKING'].includes(row.estadoLogistico?.codigo) && (
+            <button onClick={e => { e.stopPropagation(); navigate(`/despachos/ordenes/${row.id}/packing`) }} style={operationBtn('#7c3aed')} title="Registrar picking/packing">
+              Packing
+            </button>
+          )}
+          {canWriteDespacho && row.estadoLogistico?.codigo === 'LISTA_DESPACHO' && (
+            <>
+              <button onClick={e => { e.stopPropagation(); navigate(`/despachos/nuevo?ordenId=${row.id}`) }} style={operationBtn('#059669')} title="Programar salida">
+                Programar Salida
+              </button>
+              <button onClick={e => { e.stopPropagation(); navigate(`/despachos/guias/nueva?ordenId=${row.id}`) }} style={operationBtn('#d97706')} title="Preparar guía DTE 52">
+                Preparar Guía
+              </button>
+            </>
+          )}
           {row.nInterno && (
             <button onClick={e => { e.stopPropagation(); navigate(`/caja?nInterno=${row.nInterno}`) }} style={operationBtn('#16a34a')} title="Ver pagos">
               Ver pagos
