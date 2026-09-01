@@ -131,7 +131,21 @@ function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespac
         {[['Pago', v.estadoPago], ['Entrega', v.estadoEntrega], ['Estado', v.estado], ['Flujo', v.estadoFlujo]].map(([label, val], i) => (
           <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', textAlign: 'center', border: '1px solid var(--border)' }}>
             <div style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 5 }}>{label}</div>
-            {label === 'Flujo' ? <EstadoFlujoBadge estado={val} /> : <EstadoBadge v={val} />}
+            {label === 'Entrega' && canWrite && !v.eliminada ? (
+              <select
+                value={v.estadoEntrega || 'Pendiente entrega'}
+                onChange={e => handleCambiarEstadoEntrega?.(e.target.value)}
+                style={{ fontSize: 11, fontWeight: 700, padding: '3px 6px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', maxWidth: '100%' }}
+              >
+                {['Pendiente entrega', 'En despacho', 'Entregada', 'Parcial'].map(e => (
+                  <option key={e} value={e}>{e}</option>
+                ))}
+              </select>
+            ) : label === 'Flujo' ? (
+              <EstadoFlujoBadge estado={val} />
+            ) : (
+              <EstadoBadge v={val} />
+            )}
           </div>
         ))}
       </div>
@@ -889,10 +903,22 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const [notaInterna, setNotaInterna] = useState(false)
 
   const { data: full, isLoading } = useVenta(venta.id)
+  const updateVenta = useUpdateVenta()
   const deleteVenta = useDeleteVenta()
   const forzarTallerMut = useForzarTaller()
   const updateEntregados = useUpdateItemEntregados()
   const documentosDteQuery = useDocumentos({ ordenId: venta.id })
+
+  const handleCambiarEstadoEntrega = (nuevoEstado) => {
+    if (!nuevoEstado || nuevoEstado === (full?.estadoEntrega || venta.estadoEntrega)) return
+    updateVenta.mutate(
+      { id: venta.id, estadoEntrega: nuevoEstado },
+      {
+        onSuccess: () => toast.success(`Estado de entrega cambiado a "${nuevoEstado}"`),
+        onError: (err) => toast.error(err?.response?.data?.error || 'No se pudo cambiar el estado de entrega'),
+      }
+    )
+  }
 
   const v = full || venta
   const odts  = full?.odts  ?? []

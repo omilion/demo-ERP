@@ -168,8 +168,9 @@ export default async function crmRoutes(fastify) {
       const b = request.body || {}
       const tipo = String(b.tipo || '').trim()
       const esCotizacionSimple = String(b.crmQuoteMode || '').toUpperCase() === 'PROSPECCION_DIRECTA'
-      const canalVenta = esCotizacionSimple ? 'PROSPECCION_DIRECTA' : tipo === 'Licitación' ? 'LICITACION' : null
-      const tipoVenta = esCotizacionSimple ? 'COTIZACION_SIMPLE' : canalVenta === 'LICITACION' ? 'LICITACION' : null
+      const esCompraAgil = String(b.crmQuoteMode || '').toUpperCase() === 'COMPRA_AGIL' || tipo === 'Compra Ágil'
+      const canalVenta = esCotizacionSimple ? 'PROSPECCION_DIRECTA' : esCompraAgil ? 'COMPRA_AGIL' : tipo === 'Licitación' ? 'LICITACION' : null
+      const tipoVenta = esCotizacionSimple ? 'COTIZACION_SIMPLE' : esCompraAgil ? 'COMPRA_AGIL' : canalVenta === 'LICITACION' ? 'LICITACION' : null
       const clienteId = Number(b.clienteId)
       const crmId = b.crmId === undefined || b.crmId === null || b.crmId === '' ? null : Number(b.crmId)
       const descuentoPct = Number(b.descuentoPct || 0)
