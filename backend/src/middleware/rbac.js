@@ -36,6 +36,13 @@ const PERMISSIONS = {
     clientes: ['read'],
     ventas:   ['read'],
   },
+  // Jefe de taller. El nombre del rol es generico por historia, pero corresponde al
+  // "Jefe de Taller" de los documentos del cliente: gestiona la OT, la cierra y
+  // aprueba la calidad de lo que sale de SU taller.
+  //
+  // De que taller es jefe no se sabe por el rol -este da gestion sobre todos- sino
+  // por `Taller.jefeId`. Sin esa distincion, el jefe de Corte aprobaria lo que sale
+  // de Espumas.
   taller:       {
     reportes: ['read'],
     taller:   ['read', 'write'],

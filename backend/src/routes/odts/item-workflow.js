@@ -162,14 +162,20 @@ const relationSelect = {
   taller: { select: { nombre: true, jefeId: true } },
 }
 
-// La calidad de lo que sale de un taller la aprueba su jefe. La coordinacion tambien,
-// porque alguien tiene que poder destrabar; y si el taller aun no tiene jefe asignado
-// no se bloquea a nadie: un control que nadie puede ejercer detiene el trabajo en vez
-// de ordenarlo.
+// La calidad de lo que sale de un taller la aprueba SU jefe.
+//
+// Mientras el taller no tenga jefe asignado alcanza con el permiso de taller: un
+// control que nadie puede ejercer detiene el trabajo en vez de ordenarlo, y la regla
+// va entrando en vigor a medida que Plastimar nombre a cada jefe.
+//
+// Cuando si lo tiene, no basta con el permiso de gestion: todos los jefes de taller
+// lo tienen, asi que el de Corte podria aprobar lo que sale de Espumas y la regla
+// quedaria en nada. El desbloqueo queda en `taller:delete`, que es la llave de
+// administracion que este archivo ya usa para los estados destructivos.
 export function puedeRecibirEtapa(user, taller) {
-  if (taller?.jefeId && user?.id === taller.jefeId) return true
-  if (can(user?.role, 'taller.gestion', 'write', user?.permisosExtra)) return true
-  return !taller?.jefeId
+  if (!taller?.jefeId) return can(user?.role, 'taller.avance', 'write', user?.permisosExtra)
+  if (user?.id === taller.jefeId) return true
+  return can(user?.role, 'taller', 'delete', user?.permisosExtra)
 }
 
 export default async function itemWorkflowRoutes(fastify) {

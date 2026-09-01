@@ -189,12 +189,26 @@ describeDb('la etapa siguiente recibe el trabajo de la anterior', () => {
       }
     })
 
-    it('la coordinacion tambien aprueba: alguien tiene que poder destrabar', async () => {
+    it('otro jefe de taller no aprueba lo que sale de un taller ajeno', async () => {
       if (!otroUsuario) return
       const ctx = await etapaEn('listo')
       await app.prisma.taller.update({ where: { id: taller.id }, data: { jefeId: otroUsuario.id } })
       try {
-        const res = await recibirComo(ctx, comoUsuario(userId, { 'taller.gestion': ['read', 'write'] }), { cantidadAceptada: 100 })
+        // Todos los jefes tienen taller.gestion: si eso bastara, el de Corte aprobaria
+        // lo que sale de Espumas y la regla quedaria en nada.
+        const res = await recibirComo(ctx, comoUsuario(userId, null, 'taller'), { cantidadAceptada: 100 })
+        expect(res.statusCode).toBe(403)
+      } finally {
+        await app.prisma.taller.update({ where: { id: taller.id }, data: { jefeId: null } })
+      }
+    })
+
+    it('administracion destraba cuando el jefe no esta', async () => {
+      if (!otroUsuario) return
+      const ctx = await etapaEn('listo')
+      await app.prisma.taller.update({ where: { id: taller.id }, data: { jefeId: otroUsuario.id } })
+      try {
+        const res = await recibirComo(ctx, comoUsuario(userId, null, 'admin'), { cantidadAceptada: 100 })
         expect(res.statusCode).toBe(201)
       } finally {
         await app.prisma.taller.update({ where: { id: taller.id }, data: { jefeId: null } })
