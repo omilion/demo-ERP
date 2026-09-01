@@ -234,8 +234,12 @@ export default async function tallerCorteRoutes(fastify) {
     })
   })
 
+  // Registrar el avance propio es el trabajo del operario, no gestion del taller.
+  // Con taller:write, el rol taller_operario -que tiene taller:read y
+  // taller.avance:write- quedaba bloqueado justo de la pantalla para la que existe:
+  // una cortadora no podia anotar lo que acababa de cortar.
   fastify.post('/items/:id/avances', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('taller.avance', 'write')],
   }, async (request, reply) => {
     const resolved = await findCorteItem(fastify.prisma, Number.parseInt(request.params.id, 10), request.user)
     if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
@@ -248,16 +252,24 @@ export default async function tallerCorteRoutes(fastify) {
     const usuario = usuarioActual(request.user)
     const observacion = request.body?.observacion ? String(request.body.observacion).trim() : null
     const objetivo = Number(resolved.item.odtItem.cantidad || 0)
-    const previo = await fastify.prisma.odtAvance.aggregate({
-      where: { odtItemTallerId: resolved.item.id },
-      _sum: { cantidadTerminada: true },
-    })
-    const totalPrevio = Number(previo._sum.cantidadTerminada || 0)
-    if (objetivo > 0 && totalPrevio + cantidad > objetivo + 0.0001) {
-      return reply.code(409).send({ error: `El avance supera la cantidad objetivo (${objetivo})` })
-    }
 
     const avance = await fastify.prisma.$transaction(async tx => {
+      // El total se suma y se compara DENTRO de la transaccion, con la fila de la
+      // tarea tomada. Antes se leia afuera: dos operarias registrando a la vez leian
+      // el mismo total previo, las dos pasaban el chequeo y entre ambas anotaban mas
+      // de lo pedido. Con turnos que se solapan no es un caso raro.
+      await tx.$queryRaw`SELECT id FROM taller.odt_item_talleres WHERE id = ${resolved.item.id} FOR UPDATE`
+      const previo = await tx.odtAvance.aggregate({
+        where: { odtItemTallerId: resolved.item.id },
+        _sum: { cantidadTerminada: true },
+      })
+      const totalPrevio = Number(previo._sum.cantidadTerminada || 0)
+      if (objetivo > 0 && totalPrevio + cantidad > objetivo + 0.0001) {
+        const err = new Error(`El avance supera la cantidad objetivo (${objetivo})`)
+        err.statusCode = 409
+        throw err
+      }
+
       const created = await tx.odtAvance.create({
         data: {
           odtItemTallerId: resolved.item.id,
@@ -288,8 +300,9 @@ export default async function tallerCorteRoutes(fastify) {
     return reply.code(201).send(avance)
   })
 
+  // La foto es parte del mismo avance: quien puede declararlo puede documentarlo.
   fastify.post('/items/:id/evidencias', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('taller.avance', 'write')],
     bodyLimit: 7 * 1024 * 1024,
   }, async (request, reply) => {
     const resolved = await findCorteItem(fastify.prisma, Number.parseInt(request.params.id, 10), request.user)

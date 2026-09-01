@@ -174,6 +174,14 @@ export default async function itemWorkflowRoutes(fastify) {
     const operarioResponsableId = request.body?.operarioResponsableId !== undefined
       ? (request.body.operarioResponsableId === null ? null : parseInt(request.body.operarioResponsableId, 10))
       : undefined
+    // Declarar el propio avance y decidir quien hace el trabajo son cosas distintas.
+    // Este endpoint pide taller.avance:write -el permiso del operario- y aceptaba
+    // ademas el responsable, asi que una cortadora podia reasignarle la tarea a otra.
+    // Asignar es de coordinacion.
+    if (operarioResponsableId !== undefined
+      && !can(request.user?.role, 'taller.gestion', 'write', request.user?.permisosExtra)) {
+      return reply.code(403).send({ error: 'Asignar responsable es de coordinación de taller' })
+    }
     if (operarioResponsableId !== undefined && operarioResponsableId !== null && isNaN(operarioResponsableId)) {
       return reply.code(400).send({ error: 'operarioResponsableId invalido' })
     }
