@@ -224,6 +224,40 @@ export default async function notificacionesRoutes(fastify) {
           link: `/ventas/${o.id}`,
         })
       }
+
+      // El aviso anterior llega cuando la venta ya salio: sirve para reclamar, no
+      // para preparar. Este avisa mientras bodega la esta armando, que es cuando
+      // facturacion todavia alcanza a emitir sin frenar el despacho. La emision
+      // sigue siendo manual; lo unico que cambia es cuando se entera.
+      const enPreparacion = await prisma.despacho.findMany({
+        where: {
+          eliminado: false,
+          ordenId: yaFacturadas.length ? { not: null, notIn: yaFacturadas } : { not: null },
+          fechaEntrega: null,
+        },
+        select: { id: true, ordenId: true, parcial: true, fechaInterno: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }).catch(() => [])
+      const ordenesPrep = enPreparacion.length
+        ? await prisma.orden.findMany({
+          where: { id: { in: enPreparacion.map(d => d.ordenId) }, eliminada: false },
+          select: { id: true, nInterno: true, rutCliente: true },
+        }).catch(() => [])
+        : []
+      const prepPorId = Object.fromEntries(ordenesPrep.map(o => [o.id, o]))
+      for (const d of enPreparacion) {
+        const o = prepPorId[d.ordenId]
+        if (!o) continue
+        items.push({
+          tipo: 'venta_en_preparacion_sin_documento',
+          severidad: 'media',
+          titulo: `En preparación y sin documento: venta #${o.nInterno || o.id}`,
+          detalle: `Bodega la está preparando${d.parcial ? ' (parcial)' : ''}${o.rutCliente ? ' · ' + o.rutCliente : ''}`,
+          fecha: d.fechaInterno || d.createdAt,
+          link: `/ventas/${o.id}`,
+        })
+      }
     }
 
     // 4. Producción terminada: visible tanto para bodega como despacho.
@@ -239,13 +273,30 @@ export default async function notificacionesRoutes(fastify) {
         take: 200,
       })
       for (const odt of candidatas) {
-        const estaciones = odt.items.flatMap(item => item.talleres).filter(item => item.estado !== 'cancelado')
-        if (!estaciones.length || !estaciones.every(item => item.estado === 'listo')) continue
+        // Comparacion insensible a mayusculas: el legado dejo 5.173 estaciones en
+        // "Listo" y el resto escribe "listo". Con igualdad exacta, una OT terminada
+        // hace meses nunca aparecia como lista y bodega no se enteraba nunca.
+        const esListo = valor => String(valor || '').trim().toLowerCase() === 'listo'
+        const estaciones = odt.items.flatMap(item => item.talleres)
+          .filter(item => String(item.estado || '').trim().toLowerCase() !== 'cancelado')
+        if (!estaciones.length) continue
+
+        const listas = estaciones.filter(item => esListo(item.estado)).length
+        if (!listas) continue
+
+        // El taller no termina todo de una vez. Cuando deja parte lista, bodega ya
+        // puede ir preparando esa parte en vez de esperar la OT completa; por eso el
+        // aviso sale igual, distinguiendo si queda trabajo pendiente.
+        const completa = listas === estaciones.length
         items.push({
-          tipo: 'odt_lista_despacho',
+          tipo: completa ? 'odt_lista_despacho' : 'odt_parcial_picking',
           severidad: 'media',
-          titulo: `ODT lista para bodega y despacho: #${odt.id}`,
-          detalle: odt.clienteNombre || 'Producción terminada; coordinar preparación y ruta.',
+          titulo: completa
+            ? `Lista para picking: OT #${odt.id}`
+            : `Picking parcial disponible: OT #${odt.id}`,
+          detalle: completa
+            ? (odt.clienteNombre || 'Producción terminada; coordinar preparación y ruta.')
+            : `${listas} de ${estaciones.length} productos listos${odt.clienteNombre ? ' · ' + odt.clienteNombre : ''}`,
           fecha: odt.fechaEntregaCompromiso || odt.plazo || odt.createdAt,
           link: `/despachos?odtId=${odt.id}`,
         })
