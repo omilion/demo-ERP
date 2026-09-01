@@ -40,12 +40,23 @@ const PERSONAS = {
 describeDb('la guardia de cada endpoint del proceso de cada persona', () => {
   let app
   let userId
+  let odtId
 
   beforeAll(async () => {
     app = buildApp({ logger: false })
     await app.ready()
     const u = await app.prisma.user.findFirst({ where: { activo: true }, select: { id: true } })
     userId = u.id
+    // Se prueba contra una OT que existe de verdad. Con un id fijo, una base que no
+    // tenga esa fila devuelve 404 y la guardia de más abajo lo lee como "la ruta no
+    // existe": el test falla por datos y acusa un problema de rutas que no hay.
+    const centro = await app.prisma.centroCosto.create({
+      data: { codigo: `RECORRIDO-${Date.now()}`, nombre: 'Recorrido de personas' },
+    })
+    const odt = await app.prisma.odt.create({
+      data: { centroCostoId: centro.id, clienteNombre: 'Recorrido', estado: 'Pendiente' },
+    })
+    odtId = odt.id
   })
   afterAll(async () => { await app.close() })
 
@@ -65,10 +76,10 @@ describeDb('la guardia de cada endpoint del proceso de cada persona', () => {
   describe('la cortadora alcanza el avance y no el cierre', () => {
     it('la guardia la deja entrar a la OT y al avance', async () => {
       expect(await puede('cortadora', 'GET', '/api/odts?limit=1')).toBe(true)
-      expect(await puede('cortadora', 'POST', '/api/odts/1/bitacora')).toBe(true)
+      expect(await puede('cortadora', 'POST', `/api/odts/${odtId}/bitacora`)).toBe(true)
     })
     it('no cierra la OT', async () => {
-      expect(await puede('cortadora', 'POST', '/api/odts/1/cerrar')).toBe(false)
+      expect(await puede('cortadora', 'POST', `/api/odts/${odtId}/cerrar`)).toBe(false)
     })
     it('no entra a ventas', async () => {
       expect(await puede('cortadora', 'GET', '/api/ventas?limit=1')).toBe(false)
@@ -77,8 +88,8 @@ describeDb('la guardia de cada endpoint del proceso de cada persona', () => {
 
   describe('la supervisora si cierra', () => {
     it('gestiona y cierra la OT', async () => {
-      expect(await puede('supervisora', 'POST', '/api/odts/1/bitacora')).toBe(true)
-      expect(await puede('supervisora', 'POST', '/api/odts/1/cerrar')).toBe(true)
+      expect(await puede('supervisora', 'POST', `/api/odts/${odtId}/bitacora`)).toBe(true)
+      expect(await puede('supervisora', 'POST', `/api/odts/${odtId}/cerrar`)).toBe(true)
     })
   })
 
@@ -119,7 +130,7 @@ describeDb('la guardia de cada endpoint del proceso de cada persona', () => {
   describe('gerencia pasa por todo', () => {
     it('no encuentra puerta cerrada', async () => {
       for (const [method, url] of [['GET', '/api/ventas?limit=1'], ['POST', '/api/ventas'],
-        ['POST', '/api/odts/1/cerrar'], ['GET', '/api/rrhh/trabajadores?limit=1']]) {
+        ['POST', `/api/odts/${odtId}/cerrar`], ['GET', '/api/rrhh/trabajadores?limit=1']]) {
         expect(await puede('gerencia', method, url), `${method} ${url}`).toBe(true)
       }
     })

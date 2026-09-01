@@ -43,8 +43,16 @@ describeDb('al taller le llega su trabajo', () => {
     })
     creado.usuarios = [cortadora.id, otraCortadora.id]
 
+    // Toda OT debe declarar origen: una orden de venta o un centro de costo
+    // (constraint odts_origen_requerido_new). Acá basta el centro de costo, que no
+    // arrastra cliente ni sucursal: el aviso al taller no depende de la procedencia.
+    const centro = await app.prisma.centroCosto.create({
+      data: { codigo: `${marca}-CC`, nombre: `${marca} Interno` },
+    })
+    creado.centroCostoId = centro.id
+
     const odt = await app.prisma.odt.create({
-      data: { clienteNombre: `${marca} Cliente`, estado: 'Pendiente', fechaEntregaCompromiso: new Date(Date.now() + 86400000) },
+      data: { centroCostoId: centro.id, clienteNombre: `${marca} Cliente`, estado: 'Pendiente', fechaEntregaCompromiso: new Date(Date.now() + 86400000) },
     })
     creado.odtId = odt.id
 
