@@ -398,7 +398,7 @@ async function buildOrdenWhere(fastify, ctx, user) {
 async function getOrdenRowsByWhere(fastify, where) {
   const ordenes = await fastify.prisma.orden.findMany({
     where,
-    include: { items: { where: { eliminado: false } }, cargos: true },
+    include: { items: { where: { eliminado: false } }, cargos: true, packingBultos: true },
     orderBy: { createdAt: 'desc' },
   })
   const ruts = [...new Set(ordenes.map(o => o.rutCliente).filter(Boolean))]
@@ -548,6 +548,8 @@ async function getOrdenRowsByWhere(fastify, where) {
       regionDespacho: o.regionDespacho,
       comunaDespacho: o.comunaDespacho,
       ciudadDespacho: o.ciudadDespacho,
+      bultos: o.packingBultos || [],
+      pickingAjustes: (o.items || []).filter(i => i.pickingObservacion).map(i => ({ itemId: i.id, nombre: i.nombre, observacion: i.pickingObservacion })),
     }
   })
 }

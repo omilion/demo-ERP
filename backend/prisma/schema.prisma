@@ -600,6 +600,10 @@ model OrdenItem {
   descripcion     String?
   cantidad        Int
   nEntregados     Int             @default(0) @map("n_entregados")
+  pickingConfirmado    Boolean    @default(false) @map("picking_confirmado")
+  pickingObservacion   String?    @map("picking_observacion")
+  pickingConfirmadoPor String?    @map("picking_confirmado_por")
+  pickingConfirmadoAt  DateTime?  @map("picking_confirmado_at")
   precioUnitario  Float           @map("precio_unitario")
   precioConIva    Float?          @map("precio_con_iva")
   cargoTransporte Float           @default(0) @map("cargo_transporte")
@@ -1989,6 +1993,8 @@ model PackingBulto {
   numero      String
   estado      String          @default("Preparado")
   observacion String?
+  dimensiones String?
+  peso        Float?
   usuario     String?
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")

@@ -128,12 +128,22 @@ const PackingUpdate = z.object({
   bultoNumero: z.string().optional().nullable(),
   bultoEstado: z.string().optional().nullable(),
   bultoObservacion: z.string().optional().nullable(),
+  bultoDimensiones: z.string().optional().nullable(),
+  bultoPeso: z.union([z.number(), z.string()]).optional().nullable(),
   observacion: z.string().optional().nullable(),
   codigosBarrasLeidos: z.object({}).catchall(z.string()).optional(),
   items: z.array(z.object({
     id: optionalId,
     itemId: optionalId,
     nEntregados: z.union([z.number().int(), z.string()]),
+  })).min(1),
+})
+
+const PickingConfirmUpdate = z.object({
+  items: z.array(z.object({
+    itemId: optionalId,
+    confirmado: z.boolean(),
+    observacion: z.string().optional().nullable(),
   })).min(1),
 })
 
@@ -764,6 +774,9 @@ export function buildPackingUpdatePlan(orderItems = [], requestedItems = []) {
     }
 
     const cantidadAnterior = Number(current.nEntregados || 0)
+    if (nEntregados > cantidadAnterior && !current.pickingConfirmado) {
+      return { error: `Item ${itemId} no tiene picking confirmado` }
+    }
     updates.push({
       id: itemId,
       nEntregados,
@@ -822,7 +835,10 @@ async function buildPackingTrace(prisma, ordenId, despachoId = null, guiaDespach
   const [items, bultos, eventos, packedDespacho, packedGuia] = await Promise.all([
     prisma.ordenItem.findMany({
       where: { ordenId, eliminado: false },
-      select: { id: true, productoId: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true },
+      select: {
+        id: true, productoId: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true,
+        pickingConfirmado: true, pickingObservacion: true, pickingConfirmadoPor: true, pickingConfirmadoAt: true,
+      },
       orderBy: { id: 'asc' },
     }),
     prisma.packingBulto.findMany({
@@ -1073,11 +1089,19 @@ export default async function despachosRoutes(fastify) {
       take: 500, // debe igualar el LIMIT de la query raw de arriba, si no trunca antes del filtro por etapa
       orderBy: { createdAt: 'asc' },
       include: {
-        items: { where: { eliminado: false }, select: { id: true, productoId: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true }, orderBy: { id: 'asc' } },
+        items: {
+          where: { eliminado: false },
+          select: {
+            id: true, productoId: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true,
+            pickingConfirmado: true, pickingObservacion: true,
+          },
+          orderBy: { id: 'asc' },
+        },
         cliente: { select: { id: true, nombre: true, razonSocial: true, rut: true, email: true, telefono: true } },
         clienteSucursal: { select: { nombre: true, direccion: true, region: true, comuna: true, ciudad: true, contacto: true, email: true, telefono: true } },
         despachos: { where: { eliminado: false }, select: { id: true, eliminado: true, tipoDespacho: true, transporte: true, numeroSeguimiento: true, fechaEntrega: true, parcial: true, tieneMulta: true, createdAt: true }, orderBy: { createdAt: 'desc' } },
         guiasDespacho: { where: { eliminado: false }, select: { id: true, nGuia: true, fechaGuia: true, despachoId: true }, orderBy: { createdAt: 'desc' } },
+        packingBultos: { select: { id: true, numero: true, estado: true, dimensiones: true, peso: true }, orderBy: { createdAt: 'asc' } },
       },
     })
     const guiaIds = ordenes.flatMap(orden => orden.guiasDespacho.map(guia => guia.id))
@@ -1185,6 +1209,8 @@ export default async function despachosRoutes(fastify) {
         guias,
         tracking: trackingByOrden.get(orden.id) || null,
         items,
+        bultos: orden.packingBultos,
+        pickingAjustes: items.filter(item => item.pickingObservacion).map(item => ({ itemId: item.id, nombre: item.nombre, observacion: item.pickingObservacion })),
       }
     })
 
@@ -1268,7 +1294,7 @@ export default async function despachosRoutes(fastify) {
         sucursalId: true,
         items: {
           where: { eliminado: false },
-          select: { id: true, productoId: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true },
+          select: { id: true, productoId: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true, pickingConfirmado: true },
           orderBy: { id: 'asc' },
         },
       },
@@ -1310,6 +1336,8 @@ export default async function despachosRoutes(fastify) {
     const bultoNumero = cleanText(parsed.data.bultoNumero)
     const bultoEstado = cleanText(parsed.data.bultoEstado) || 'Preparado'
     const bultoObservacion = cleanText(parsed.data.bultoObservacion)
+    const bultoDimensiones = cleanText(parsed.data.bultoDimensiones)
+    const bultoPeso = hasValue(parsed.data.bultoPeso) ? Number(parsed.data.bultoPeso) : null
     const observacion = cleanText(parsed.data.observacion)
     const usuario = userLabel(request.user)
 
@@ -1342,6 +1370,8 @@ export default async function despachosRoutes(fastify) {
         if (despachoId !== null) bultoUpdate.despachoId = despachoId
         if (parsed.data.bultoEstado !== undefined) bultoUpdate.estado = bultoEstado
         if (parsed.data.bultoObservacion !== undefined) bultoUpdate.observacion = bultoObservacion
+        if (parsed.data.bultoDimensiones !== undefined) bultoUpdate.dimensiones = bultoDimensiones
+        if (parsed.data.bultoPeso !== undefined) bultoUpdate.peso = bultoPeso
         if (Object.keys(bultoUpdate).length) {
           bulto = await tx.packingBulto.update({
             where: { id: bultoId },
@@ -1359,12 +1389,16 @@ export default async function despachosRoutes(fastify) {
             numero: bultoNumero,
             estado: bultoEstado,
             observacion: bultoObservacion,
+            dimensiones: bultoDimensiones,
+            peso: bultoPeso,
             usuario,
           },
           update: {
             despachoId: despachoId || undefined,
             estado: bultoEstado,
             observacion: parsed.data.bultoObservacion !== undefined ? bultoObservacion : undefined,
+            dimensiones: parsed.data.bultoDimensiones !== undefined ? bultoDimensiones : undefined,
+            peso: parsed.data.bultoPeso !== undefined ? bultoPeso : undefined,
           },
         })
       }
@@ -1392,6 +1426,68 @@ export default async function despachosRoutes(fastify) {
         estadoEntrega: updatedOrden.estadoEntrega,
         ...trace,
       }
+    })
+  })
+
+  // Confirmacion de picking por linea: gate para poder empacar (ver
+  // buildPackingUpdatePlan). No mueve nEntregados ni toca la guia/factura,
+  // solo deja trazabilidad de que se reviso la linea (o que se ajusto, ej.
+  // sustitucion de color) antes de pasarla a Packing.
+  fastify.put('/ordenes/:ordenId/picking', {
+    preHandler: [fastify.authenticate, fastify.rbac('despacho.packing', 'write')],
+  }, async (request, reply) => {
+    const ordenId = parsePositiveInt(request.params.ordenId)
+    if (!ordenId) return reply.code(400).send({ error: 'ordenId invalido' })
+    const parsed = PickingConfirmUpdate.safeParse(request.body || {})
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
+
+    const orden = await fastify.prisma.orden.findFirst({
+      where: { id: ordenId, eliminada: false },
+      select: {
+        id: true,
+        sucursalId: true,
+        items: { where: { eliminado: false }, select: { id: true, nEntregados: true }, orderBy: { id: 'asc' } },
+      },
+    })
+    if (!orden) return reply.code(404).send({ error: 'Orden no encontrada' })
+    if (!userCanAccessOrden(request.user, orden)) return reply.code(403).send({ error: 'Forbidden' })
+
+    const byId = new Map(orden.items.map(item => [item.id, item]))
+    const rows = []
+    for (const requested of parsed.data.items) {
+      const itemId = parsePositiveInt(requested.itemId)
+      if (!itemId || !byId.has(itemId)) return reply.code(400).send({ error: `Item ${requested.itemId} no pertenece a la orden` })
+      rows.push({ itemId, confirmado: !!requested.confirmado, observacion: cleanText(requested.observacion) })
+    }
+
+    const usuario = userLabel(request.user)
+    const now = new Date()
+
+    return fastify.prisma.$transaction(async (tx) => {
+      for (const row of rows) {
+        await tx.ordenItem.update({
+          where: { id: row.itemId },
+          data: {
+            pickingConfirmado: row.confirmado,
+            pickingObservacion: row.observacion,
+            pickingConfirmadoPor: row.confirmado ? usuario : null,
+            pickingConfirmadoAt: row.confirmado ? now : null,
+          },
+        })
+      }
+      const eventRows = rows.map(row => ({
+        ordenId,
+        ordenItemId: row.itemId,
+        cantidadAnterior: byId.get(row.itemId).nEntregados,
+        cantidadNueva: byId.get(row.itemId).nEntregados,
+        delta: 0,
+        accion: !row.confirmado ? 'picking_pendiente' : (row.observacion ? 'picking_ajuste' : 'picking_confirmado'),
+        observacion: row.observacion,
+        usuario,
+      }))
+      await tx.packingEvento.createMany({ data: eventRows })
+      const trace = await buildPackingTrace(tx, ordenId)
+      return { ordenId, ...trace }
     })
   })
 

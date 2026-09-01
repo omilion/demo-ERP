@@ -314,8 +314,13 @@ export default function MatrizVentasPage() {
           <button onClick={e => { e.stopPropagation(); navigate(`/odt?ordenId=${row.id}`) }} style={operationBtn('#0ea5e9')} title="Informe taller">
             Inf. Taller
           </button>
-          {canWriteDespacho && ['EN_TALLER', 'PICKING_PARCIAL', 'LISTA_PICKING', 'PICKING', 'PACKING'].includes(row.estadoLogistico?.codigo) && (
-            <button onClick={e => { e.stopPropagation(); navigate(`/despachos/ordenes/${row.id}/packing`) }} style={operationBtn('#7c3aed')} title="Registrar picking/packing">
+          {canWriteDespacho && ['EN_TALLER', 'PICKING_PARCIAL', 'LISTA_PICKING', 'PICKING'].includes(row.estadoLogistico?.codigo) && (
+            <button onClick={e => { e.stopPropagation(); navigate(`/despachos/ordenes/${row.id}/picking`) }} style={operationBtn('#7c3aed')} title="Confirmar picking">
+              Picking
+            </button>
+          )}
+          {canWriteDespacho && row.estadoLogistico?.codigo === 'PACKING' && (
+            <button onClick={e => { e.stopPropagation(); navigate(`/despachos/ordenes/${row.id}/packing`) }} style={operationBtn('#7c3aed')} title="Armar bultos">
               Packing
             </button>
           )}
@@ -448,6 +453,34 @@ export default function MatrizVentasPage() {
         </div>
       ) : '-' },
     { key: 'estadoLogistico', label: 'Operación', render: value => value ? <Badge tone={value.tone || 'gray'}>{value.label}</Badge> : '-' },
+    {
+      key: 'bultos',
+      label: 'Bultos / Retiro',
+      render: (_, row) => {
+        const bultos = row.bultos || []
+        const ajustes = row.pickingAjustes || []
+        if (!bultos.length && !ajustes.length) return <span style={{ color: 'var(--text-3)' }}>-</span>
+        return (
+          <div style={{ fontSize: 11, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {bultos.length > 0 && (
+              <div>
+                <strong>{bultos.length} bulto{bultos.length === 1 ? '' : 's'}</strong>
+                {bultos.map(b => (
+                  <div key={b.id} style={{ color: 'var(--text-3)' }}>
+                    {b.numero}{b.dimensiones ? ` · ${b.dimensiones}` : ''}{b.peso ? ` · ${b.peso}kg` : ''}
+                  </div>
+                ))}
+              </div>
+            )}
+            {ajustes.length > 0 && (
+              <div style={{ color: 'var(--amber-700, #b45309)' }}>
+                {ajustes.map(a => <div key={a.itemId}>⚠ {a.nombre}: {a.observacion}</div>)}
+              </div>
+            )}
+          </div>
+        )
+      },
+    },
     { key: 'regionDespacho', label: 'Región Desp.', render: v => <span style={{ fontSize: 12 }}>{v || '—'}</span> },
     { key: 'detalleProductos', label: 'Detalle', width: 430, wrap: true, render: (_, row) => renderDetalle(row) },
     { key: 'fecha', label: 'Fecha Creacion', render: v => <span style={{ ...mono, fontSize: 11 }}>{formatDateTime(v)}</span> },

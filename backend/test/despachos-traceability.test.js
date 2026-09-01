@@ -394,8 +394,8 @@ describe('dispatch list filters', () => {
 describe('packing and dispatch timing helpers', () => {
   it('builds a validated packing update plan for order items', () => {
     const orderItems = [
-      { id: 1, cantidad: 3, nEntregados: 0 },
-      { id: 2, cantidad: 2, nEntregados: 1 },
+      { id: 1, cantidad: 3, nEntregados: 0, pickingConfirmado: true },
+      { id: 2, cantidad: 2, nEntregados: 1, pickingConfirmado: true },
     ]
 
     expect(buildPackingUpdatePlan(orderItems, [
@@ -419,6 +419,16 @@ describe('packing and dispatch timing helpers', () => {
       { itemId: 1, nEntregados: 2 },
     ])).toEqual({
       error: 'itemId duplicado: 1',
+    })
+
+    const sinConfirmar = [{ id: 1, cantidad: 3, nEntregados: 0, pickingConfirmado: false }]
+    expect(buildPackingUpdatePlan(sinConfirmar, [{ itemId: 1, nEntregados: 1 }])).toEqual({
+      error: 'Item 1 no tiene picking confirmado',
+    })
+    // Corregir hacia abajo (o dejar igual) no requiere picking confirmado.
+    const parcialSinConfirmar = [{ id: 1, cantidad: 3, nEntregados: 2, pickingConfirmado: false }]
+    expect(buildPackingUpdatePlan(parcialSinConfirmar, [{ itemId: 1, nEntregados: 1 }])).toEqual({
+      updates: [{ id: 1, nEntregados: 1, cantidadAnterior: 2, delta: -1 }],
     })
   })
 

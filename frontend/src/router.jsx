@@ -44,6 +44,7 @@ import GuiaPrintPage from './pages/despachos/GuiaPrintPage'
 import GuiaFormPage from './pages/despachos/GuiaFormPage'
 import DespachoFormPage from './pages/despachos/DespachoFormPage'
 import DespachoPackingPage from './pages/despachos/DespachoPackingPage'
+import PickingConfirmPage from './pages/despachos/PickingConfirmPage'
 import DespachoTrackingPage from './pages/despachos/DespachoTrackingPage'
 import BitacoraTallerPage from './pages/bitacora-taller/BitacoraTallerPage'
 import HistorialMaterialesPage from './pages/historial-materiales/HistorialMaterialesPage'
@@ -146,6 +147,7 @@ export const router = createBrowserRouter([
       { path: 'despachos', element: protect(<DespachosPage />, { module: 'despacho' }) },
       { path: 'despachos/nuevo', element: protect(<DespachoFormPage />, { module: 'despacho', permission: 'write' }) },
       { path: 'despachos/:id/editar', element: protect(<DespachoFormPage />, { module: 'despacho', permission: 'write' }) },
+      { path: 'despachos/ordenes/:ordenId/picking', element: protect(<PickingConfirmPage />, { module: 'despacho', permission: 'write' }) },
       { path: 'despachos/ordenes/:ordenId/packing', element: protect(<DespachoPackingPage />, { module: 'despacho', permission: 'write' }) },
       { path: 'despachos/:id/tracking', element: protect(<DespachoTrackingPage />, { module: 'despacho' }) },
       { path: 'despachos/guias/nueva', element: protect(<GuiaFormPage />, { module: 'despacho', permission: 'write' }) },

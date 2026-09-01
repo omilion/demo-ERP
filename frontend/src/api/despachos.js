@@ -134,6 +134,19 @@ export const useUpdateDespachoPacking = () => {
   })
 }
 
+export const useConfirmarPicking = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ordenId, ...data }) => api.put(`/despachos/ordenes/${ordenId}/picking`, data).then(r => r.data),
+    onSuccess: (_, { ordenId }) => {
+      qc.invalidateQueries({ queryKey: ['despachos'] })
+      qc.invalidateQueries({ queryKey: ['despachos', 'packing', ordenId] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+    },
+  })
+}
+
 export const useDeleteDespacho = () => {
   const qc = useQueryClient()
   return useMutation({

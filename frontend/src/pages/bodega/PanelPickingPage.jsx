@@ -135,9 +135,9 @@ export default function PanelPickingPage() {
             <Btn
               variant="primary"
               size="sm"
-              onClick={() => navigate(`/despachos/ordenes/${row.ordenId}/packing`)}
+              onClick={() => navigate(`/despachos/ordenes/${row.ordenId}/picking`)}
             >
-              Iniciar Picking / Packing
+              Confirmar Picking
             </Btn>
           )}
           <Btn
