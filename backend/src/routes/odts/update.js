@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { resolveOrdenForWrite } from '../relation-guards.js'
 import { getUserSucursalId } from '../caja/scope.js'
 import { can } from '../../middleware/rbac.js'
-import { ODT_ESTADOS, applyOdtStateSideEffects, buildOdtUpdateBitacoraEntries, getAuditUsuario, validateOperario } from './operations.js'
+import { ODT_ESTADOS, applyOdtStateSideEffects, buildOdtUpdateBitacoraEntries, getAuditUsuario, validateOdtEstadoTransition, validateOperario } from './operations.js'
 
 const Schema = z.object({
   tipo: z.enum(['Corte', 'Espumas', 'Confecciones', 'Madera', 'Externo']).optional(),
@@ -99,6 +99,8 @@ export default async function updateOdt(fastify) {
       if (data.fechaIngreso) data.fechaIngreso = new Date(data.fechaIngreso)
       if (data.fechaInicio) data.fechaInicio = new Date(data.fechaInicio)
       if (data.fechaTermino) data.fechaTermino = new Date(data.fechaTermino)
+      const transicionInvalida = validateOdtEstadoTransition(current.estado, data.estado)
+      if (transicionInvalida) return reply.code(409).send({ error: transicionInvalida })
       const updateData = applyOdtStateSideEffects(data, current)
       const bitacoraEntries = buildOdtUpdateBitacoraEntries({
         current,
@@ -129,6 +131,30 @@ export default async function updateOdt(fastify) {
     try {
       const current = await fastify.prisma.odt.findFirst({ where: scopedOdtWhere(id, request.user) })
       if (!current) return reply.code(404).send({ error: 'ODT no encontrada' })
+
+      // No se cierra una OT con trabajo pendiente en el taller. Antes se podia, y la
+      // OT quedaba Terminada con etapas a medias: bodega la recibia incompleta y el
+      // desajuste aparecia recien al despachar. El error nombra que falta, porque un
+      // "no se puede cerrar" a secas obliga a ir a buscar la causa a mano.
+      const pendientes = await fastify.prisma.odtItemTaller.findMany({
+        where: {
+          odtItem: { odtId: id, eliminado: false },
+          estado: { notIn: ['listo', 'Listo', 'cancelado'] },
+        },
+        select: { estado: true, odtItem: { select: { nombre: true, codigoInterno: true } }, taller: { select: { nombre: true } } },
+        take: 20,
+      })
+      if (pendientes.length) {
+        const detalle = pendientes
+          .map(p => `${p.odtItem?.codigoInterno || p.odtItem?.nombre || 'item'} en ${p.taller?.nombre || 'taller'} (${p.estado})`)
+          .join('; ')
+        return reply.code(409).send({
+          error: `No se puede cerrar: quedan ${pendientes.length} etapa(s) sin terminar. ${detalle}`,
+        })
+      }
+
+      const transicionInvalida = validateOdtEstadoTransition(current.estado, body.estado)
+      if (transicionInvalida) return reply.code(409).send({ error: transicionInvalida })
       const updateData = applyOdtStateSideEffects({ estado: body.estado }, current)
       return await fastify.prisma.$transaction(async (tx) => {
         const o = await tx.odt.update({ where: { id }, data: updateData })
