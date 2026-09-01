@@ -15,7 +15,13 @@ const HIGHLIGHT_STYLES = {
 const NAV_GROUPS = [
   { label: 'Ventas', items: [
     { label: '+ Nueva Venta', route: '/ventas/nueva', module: 'ventas', permission: 'write', highlight: 'amber' },
-    { label: '+ Nueva Cotización', route: '/crm/nueva/cotizacion-simple', module: 'ventas', permission: 'write', highlight: 'blue' },
+    // Una entrada por canal, no un botón único. Antes "+ Nueva Cotización" llevaba
+    // siempre a cotización simple: quien iba a cotizar una licitación terminaba en el
+    // formulario equivocado —sin ID, sin fecha y sin plazo— y la cotización se guardaba
+    // igual, registrada como prospección directa. El canal se elige antes de entrar.
+    { label: '+ Cotización simple', route: '/crm/nueva/cotizacion-simple', module: 'ventas', permission: 'write', highlight: 'blue' },
+    { label: '+ Cotización Licitación', route: '/crm/nueva/licitacion', module: 'ventas', permission: 'write', highlight: 'blue' },
+    { label: '+ Cotización Compra Ágil', route: '/crm/nueva/compra-agil', module: 'ventas', permission: 'write', highlight: 'blue' },
     { label: 'Matriz Ventas', route: '/ventas', module: 'ventas' },
     { label: 'CRM', route: '/crm', module: 'ventas' },
     { label: 'Clientes', route: '/clientes', module: 'clientes' },
