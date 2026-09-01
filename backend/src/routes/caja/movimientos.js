@@ -449,11 +449,24 @@ export default async function movimientosRoutes(fastify) {
         }
         const movimientoSucursalId = turno.caja?.sucursalId ?? orden.sucursalId ?? userSucursalId
 
+        // Son dos sucursales distintas y se estaban confundiendo: DONDE se registra la
+        // plata es la caja del turno, pero A QUE VENTA pertenece un documento no
+        // depende de en que caja este sentado el cajero. Al buscar los documentos con
+        // la sucursal del turno, un cajero no encontraba la boleta que acababa de
+        // emitir para esa misma venta y recibia un 404. En produccion hay 851
+        // documentos referenciales sin sucursal y las cajas si la tienen, asi que el
+        // choque no era hipotetico.
+        //
+        // El documento ya esta acotado por ordenId, y el acceso a la venta se valido
+        // mas arriba contra la sucursal del usuario: el filtro por turno solo agregaba
+        // falsos negativos. Se busca con el mismo criterio con que se guardo.
+        const documentoSucursalId = orden.sucursalId ?? userSucursalId
+
         const documentReference = await validatePaymentDocumentReference(tx, {
           ordenId,
           documento: d.documento,
           nDoc: d.nDoc,
-          sucursalId: movimientoSucursalId,
+          sucursalId: documentoSucursalId,
           monto: d.monto,
         })
         if (documentReference.error) {

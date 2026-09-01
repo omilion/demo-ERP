@@ -117,4 +117,44 @@ describeDb('la maquina de estados sigue al trabajo real', () => {
     expect(TRANSICIONES_ESTADO_FLUJO_FORMAL.PREPARACION).toContain('ENTREGADA')
     expect(TRANSICIONES_ESTADO_FLUJO_FORMAL.PREPARACION).toContain('PATIO')
   })
+
+  it('el recorrido completo por la API deja la venta cerrada', async () => {
+    const orden = await nuevaVenta()
+    const item = await app.prisma.ordenItem.findFirst({ where: { ordenId: orden.id } })
+    await app.inject({
+      method: 'PUT',
+      url: `/api/ventas/items/${item.id}/entregados`,
+      headers: { authorization: `Bearer ${token('bodeguero', { 'ventas.entregas': ['write'] })}` },
+      payload: { nEntregados: item.cantidad },
+    })
+
+    const tCaja = token('cajero', { caja: ['read', 'write'], cobranza: ['read', 'write'] })
+    await app.inject({
+      method: 'POST',
+      url: '/api/caja/turno',
+      headers: { authorization: `Bearer ${tCaja}` },
+      payload: { montoInicial: 0 },
+    })
+    const nDoc = String(Date.now()).slice(-7)
+    const doc = await app.inject({
+      method: 'POST',
+      url: `/api/caja/cobranza/orden/${orden.id}/documento`,
+      headers: { authorization: `Bearer ${tCaja}` },
+      payload: { monto: 5000, documento: 'Boleta', nDoc },
+    })
+    expect(doc.statusCode).toBe(201)
+
+    // Donde se registra la plata es la caja del turno, pero a que venta pertenece un
+    // documento no depende de en que caja este sentado el cajero. Al buscarlos con la
+    // sucursal del turno, el cajero recibia un 404 por la boleta que acababa de emitir
+    // para esa misma venta, y la venta no podia cerrarse nunca.
+    const pago = await app.inject({
+      method: 'POST',
+      url: `/api/caja/cobranza/orden/${orden.id}/pago`,
+      headers: { authorization: `Bearer ${tCaja}` },
+      payload: { monto: 5000, medioPago: 'Efectivo', documento: 'Boleta', nDoc },
+    })
+    expect(pago.statusCode).toBe(201)
+    expect(await estadoDe(orden.id)).toBe('CERRADA')
+  })
 })
