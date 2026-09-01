@@ -120,22 +120,22 @@ model AuditLog {
 // ── CONFIG ────────────────────────────────────────────────────────────
 
 model EmpresaConfig {
-  id                Int      @id @default(autoincrement())
-  nombre            String
-  rut               String
-  razonSocial       String?  @map("razon_social")
-  giro              String?
-  email             String?
-  telefono          String?
-  direccion         String?
-  region            String?
-  comuna            String?
-  codigoEmpresa     Int?     @map("codigo_empresa")
-  logoUrl           String?  @map("logo_url")
-  textoPie          String?  @map("texto_pie")
-  metaMensualVentas Float    @default(0) @map("meta_mensual_ventas")
-  escaneoCodigoBarrasObligatorio Boolean @default(false) @map("escaneo_codigo_barras_obligatorio")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id                             Int      @id @default(autoincrement())
+  nombre                         String
+  rut                            String
+  razonSocial                    String?  @map("razon_social")
+  giro                           String?
+  email                          String?
+  telefono                       String?
+  direccion                      String?
+  region                         String?
+  comuna                         String?
+  codigoEmpresa                  Int?     @map("codigo_empresa")
+  logoUrl                        String?  @map("logo_url")
+  textoPie                       String?  @map("texto_pie")
+  metaMensualVentas              Float    @default(0) @map("meta_mensual_ventas")
+  escaneoCodigoBarrasObligatorio Boolean  @default(false) @map("escaneo_codigo_barras_obligatorio")
+  updatedAt                      DateTime @updatedAt @map("updated_at")
 
   @@map("empresa")
   @@schema("config")
@@ -497,54 +497,54 @@ model RelacionProducto {
 // ── VENTAS ───────────────────────────────────────────────────────────
 
 model Orden {
-  id                       Int                       @id @default(autoincrement())
-  nInterno                 Int?                      @unique @map("n_interno")
+  id                       Int                         @id @default(autoincrement())
+  nInterno                 Int?                        @unique @map("n_interno")
   tipo                     String
-  estado                   String                    @default("Activa")
-  estadoPago               String                    @default("No pagada") @map("estado_pago")
-  estadoEntrega            String                    @default("Pendiente entrega") @map("estado_entrega")
-  fechaEstadoEntrega       DateTime?                 @map("fecha_estado_entrega")
-  estadoFlujoFormal        String                    @default("CREADA") @map("estado_flujo_formal")
-  fechaEstadoFlujo         DateTime?                 @map("fecha_estado_flujo")
-  clienteId                Int?                      @map("cliente_id")
-  clienteSucursalId        Int?                      @map("cliente_sucursal_id")
-  rutCliente               String?                   @map("rut_cliente")
-  emailCliente             String?                   @map("email_cliente")
-  userId                   Int                       @map("user_id")
-  sucursalId               Int?                      @map("sucursal_id")
-  descuentoPct             Float                     @default(0) @map("descuento_pct")
-  descuentoSolicitudId     Int?                      @unique @map("descuento_solicitud_id")
-  descuentoMonto           Float?                    @map("descuento_monto")
-  descuentoSnapshot        Json?                     @map("descuento_snapshot")
-  abono                    Float                     @default(0)
+  estado                   String                      @default("Activa")
+  estadoPago               String                      @default("No pagada") @map("estado_pago")
+  estadoEntrega            String                      @default("Pendiente entrega") @map("estado_entrega")
+  fechaEstadoEntrega       DateTime?                   @map("fecha_estado_entrega")
+  estadoFlujoFormal        String                      @default("CREADA") @map("estado_flujo_formal")
+  fechaEstadoFlujo         DateTime?                   @map("fecha_estado_flujo")
+  clienteId                Int?                        @map("cliente_id")
+  clienteSucursalId        Int?                        @map("cliente_sucursal_id")
+  rutCliente               String?                     @map("rut_cliente")
+  emailCliente             String?                     @map("email_cliente")
+  userId                   Int                         @map("user_id")
+  sucursalId               Int?                        @map("sucursal_id")
+  descuentoPct             Float                       @default(0) @map("descuento_pct")
+  descuentoSolicitudId     Int?                        @unique @map("descuento_solicitud_id")
+  descuentoMonto           Float?                      @map("descuento_monto")
+  descuentoSnapshot        Json?                       @map("descuento_snapshot")
+  abono                    Float                       @default(0)
   facturado                Float?
   guias                    Int?
   licitacion               String?
   observaciones            String?
-  creadorNombre            String?                   @map("creador_nombre")
-  requiereAprobacion       Boolean                   @default(false) @map("requiere_aprobacion")
-  nImpresiones             Int                       @default(0) @map("n_impresiones")
-  eliminada                Boolean                   @default(false)
-  userMod                  String?                   @map("user_mod")
+  creadorNombre            String?                     @map("creador_nombre")
+  requiereAprobacion       Boolean                     @default(false) @map("requiere_aprobacion")
+  nImpresiones             Int                         @default(0) @map("n_impresiones")
+  eliminada                Boolean                     @default(false)
+  userMod                  String?                     @map("user_mod")
   fecham                   DateTime?
-  createdAt                DateTime                  @default(now()) @map("created_at")
-  enviosParciales          Boolean                   @default(false) @map("envios_parciales")
-  montoDespacho            Float                     @default(0) @map("monto_despacho")
-  fechaPlazo               DateTime?                 @map("fecha_plazo")
-  direccionDespacho        String?                   @map("direccion_despacho")
-  direccionDespachoExtra   String?                   @map("direccion_despacho_extra")
-  contactoDespacho         String?                   @map("contacto_despacho")
-  telefonoContactoDespacho String?                   @map("telefono_contacto_despacho")
-  emailContactoDespacho    String?                   @map("email_contacto_despacho")
-  plazoEntregaDias         Int?                      @map("plazo_entrega_dias")
-  plazoEntregaTipo         String?                   @map("plazo_entrega_tipo")
-  marketplaceCanal         String?                   @map("marketplace_canal")
-  marketplaceComisionPct   Float?                    @map("marketplace_comision_pct")
-  marketplaceComisionMonto Float?                    @map("marketplace_comision_monto")
-  marketplaceReferencia    String?                   @map("marketplace_referencia")
-  regionDespacho           String?                   @map("region_despacho")
-  comunaDespacho           String?                   @map("comuna_despacho")
-  ciudadDespacho           String?                   @map("ciudad_despacho")
+  createdAt                DateTime                    @default(now()) @map("created_at")
+  enviosParciales          Boolean                     @default(false) @map("envios_parciales")
+  montoDespacho            Float                       @default(0) @map("monto_despacho")
+  fechaPlazo               DateTime?                   @map("fecha_plazo")
+  direccionDespacho        String?                     @map("direccion_despacho")
+  direccionDespachoExtra   String?                     @map("direccion_despacho_extra")
+  contactoDespacho         String?                     @map("contacto_despacho")
+  telefonoContactoDespacho String?                     @map("telefono_contacto_despacho")
+  emailContactoDespacho    String?                     @map("email_contacto_despacho")
+  plazoEntregaDias         Int?                        @map("plazo_entrega_dias")
+  plazoEntregaTipo         String?                     @map("plazo_entrega_tipo")
+  marketplaceCanal         String?                     @map("marketplace_canal")
+  marketplaceComisionPct   Float?                      @map("marketplace_comision_pct")
+  marketplaceComisionMonto Float?                      @map("marketplace_comision_monto")
+  marketplaceReferencia    String?                     @map("marketplace_referencia")
+  regionDespacho           String?                     @map("region_despacho")
+  comunaDespacho           String?                     @map("comuna_despacho")
+  ciudadDespacho           String?                     @map("ciudad_despacho")
   items                    OrdenItem[]
   cargos                   OrdenCargo[]
   despachos                Despacho[]
@@ -560,9 +560,9 @@ model Orden {
   // La base ya tenia el foreign key con RESTRICT: un cliente con ventas no se
   // puede borrar. Se declara igual para no alterar ese comportamiento; las bajas
   // de cliente se hacen con el flag `activo`, no borrando la fila.
-  cliente                  Cliente?                  @relation(fields: [clienteId], references: [id], onDelete: Restrict)
-  clienteSucursal          ClienteSucursal?          @relation(fields: [clienteSucursalId], references: [id], onDelete: SetNull)
-  descuentoSolicitud       DescuentoSolicitud?       @relation("OrdenDescuentoSolicitud", fields: [descuentoSolicitudId], references: [id], onDelete: SetNull)
+  cliente                  Cliente?                    @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  clienteSucursal          ClienteSucursal?            @relation(fields: [clienteSucursalId], references: [id], onDelete: SetNull)
+  descuentoSolicitud       DescuentoSolicitud?         @relation("OrdenDescuentoSolicitud", fields: [descuentoSolicitudId], references: [id], onDelete: SetNull)
   excepcionAlertas         ExcepcionAlerta[]
 
   @@index([nInterno])
@@ -1359,13 +1359,13 @@ model Odt {
 }
 
 model CentroCosto {
-  id          Int       @id @default(autoincrement())
-  codigo      String    @unique
+  id          Int      @id @default(autoincrement())
+  codigo      String   @unique
   nombre      String
   descripcion String?
-  activo      Boolean   @default(true)
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
   odts        Odt[]
 
   @@index([activo])
@@ -1478,19 +1478,19 @@ model BodegaTaller {
 // Reglas configurables que convierten una transición excepcional en una tarea
 // auditable. No bloquean por defecto: Gerencia decide esa política por regla.
 model ExcepcionRegla {
-  id                 Int      @id @default(autoincrement())
-  codigo             String   @unique
-  nombre             String
-  descripcion        String?
-  estadoDestino      String?  @map("estado_destino")
-  severidad          String   @default("alta")
-  horasEscalamiento  Int      @default(24) @map("horas_escalamiento")
-  rolResponsable     String   @default("coordinador_comercial") @map("rol_responsable")
-  rolEscalamiento    String   @default("admin") @map("rol_escalamiento")
-  activo             Boolean  @default(true)
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
-  alertas            ExcepcionAlerta[]
+  id                Int               @id @default(autoincrement())
+  codigo            String            @unique
+  nombre            String
+  descripcion       String?
+  estadoDestino     String?           @map("estado_destino")
+  severidad         String            @default("alta")
+  horasEscalamiento Int               @default(24) @map("horas_escalamiento")
+  rolResponsable    String            @default("coordinador_comercial") @map("rol_responsable")
+  rolEscalamiento   String            @default("admin") @map("rol_escalamiento")
+  activo            Boolean           @default(true)
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  alertas           ExcepcionAlerta[]
 
   @@index([activo, estadoDestino])
   @@map("excepcion_reglas")
@@ -1498,27 +1498,28 @@ model ExcepcionRegla {
 }
 
 model ExcepcionAlerta {
-  id                 Int              @id @default(autoincrement())
-  reglaId            Int              @map("regla_id")
-  ordenId            Int?             @map("orden_id")
-  estado             String           @default("ABIERTA")
-  severidad          String
-  rolResponsable     String           @map("rol_responsable")
-  rolEscalamiento    String           @map("rol_escalamiento")
-  venceAt            DateTime         @map("vence_at")
-  escaladaAt         DateTime?        @map("escalada_at")
-  resueltaAt         DateTime?        @map("resuelta_at")
-  resueltaPorId      Int?             @map("resuelta_por_id")
-  evidencia          String?
-  createdAt          DateTime         @default(now()) @map("created_at")
-  regla              ExcepcionRegla   @relation(fields: [reglaId], references: [id], onDelete: Restrict)
-  orden              Orden?           @relation(fields: [ordenId], references: [id], onDelete: SetNull)
+  id              Int            @id @default(autoincrement())
+  reglaId         Int            @map("regla_id")
+  ordenId         Int?           @map("orden_id")
+  estado          String         @default("ABIERTA")
+  severidad       String
+  rolResponsable  String         @map("rol_responsable")
+  rolEscalamiento String         @map("rol_escalamiento")
+  venceAt         DateTime       @map("vence_at")
+  escaladaAt      DateTime?      @map("escalada_at")
+  resueltaAt      DateTime?      @map("resuelta_at")
+  resueltaPorId   Int?           @map("resuelta_por_id")
+  evidencia       String?
+  createdAt       DateTime       @default(now()) @map("created_at")
+  regla           ExcepcionRegla @relation(fields: [reglaId], references: [id], onDelete: Restrict)
+  orden           Orden?         @relation(fields: [ordenId], references: [id], onDelete: SetNull)
 
   @@index([estado, venceAt])
   @@index([ordenId, estado])
   @@map("excepcion_alertas")
   @@schema("ventas")
 }
+
 model BodegaTallerLote {
   id                 Int          @id @default(autoincrement())
   bodegaTallerId     Int          @map("bodega_taller_id")
@@ -1630,21 +1631,23 @@ model OdtItem {
 }
 
 model OdtItemTaller {
-  id                    Int               @id @default(autoincrement())
-  odtItemId             Int               @map("odt_item_id")
-  tallerId              Int               @map("taller_id")
-  estado                String            @default("pendiente")
+  id                    Int                 @id @default(autoincrement())
+  odtItemId             Int                 @map("odt_item_id")
+  tallerId              Int                 @map("taller_id")
+  estado                String              @default("pendiente")
   obs                   String?
-  fechaInicio           DateTime?         @map("fecha_inicio")
-  fechaListo            DateTime?         @map("fecha_listo")
+  fechaInicio           DateTime?           @map("fecha_inicio")
+  fechaListo            DateTime?           @map("fecha_listo")
   usuario               String?
-  usuarioListo          String?           @map("usuario_listo")
-  operarioResponsableId Int?              @map("operario_responsable_id")
-  odtItem               OdtItem           @relation(fields: [odtItemId], references: [id], onDelete: Cascade)
-  taller                Taller            @relation(fields: [tallerId], references: [id])
-  operarioResponsable   User?             @relation("OdtResponsable", fields: [operarioResponsableId], references: [id])
+  usuarioListo          String?             @map("usuario_listo")
+  operarioResponsableId Int?                @map("operario_responsable_id")
+  odtItem               OdtItem             @relation(fields: [odtItemId], references: [id], onDelete: Cascade)
+  taller                Taller              @relation(fields: [tallerId], references: [id])
+  operarioResponsable   User?               @relation("OdtResponsable", fields: [operarioResponsableId], references: [id])
   avances               OdtAvance[]
   evidencias            TallerEvidencia[]
+  recepciones           OdtEtapaRecepcion[]
+  odtEtapaRecepcions    OdtEtapaRecepcion[]
 
   @@unique([odtItemId, tallerId])
   @@index([tallerId])
@@ -1704,6 +1707,34 @@ model NotaCreditoInternaItem {
   @@index([productoId])
   @@map("notas_credito_interna_items")
   @@schema("ventas")
+}
+
+// Lo que la etapa siguiente declara al recibir el trabajo de la anterior. Es la
+// inspeccion de calidad: quien recibe es el primer interesado en que venga bien, y
+// ya esta ahi. Se registra por cantidad y no por si/no, porque el defecto real es
+// parcial -de 100 cortes, 8 con el color cambiado- y el resto sigue su camino.
+//
+// Append-only: cada recepcion queda con su autor y su hora. La evidencia va en
+// TallerEvidencia, que ya cuelga de la misma etapa.
+model OdtEtapaRecepcion {
+  id                Int           @id @default(autoincrement())
+  odtItemTallerId   Int           @map("odt_item_taller_id")
+  cantidadRevisada  Float         @map("cantidad_revisada")
+  cantidadAceptada  Float         @map("cantidad_aceptada")
+  cantidadRechazada Float         @map("cantidad_rechazada")
+  defecto           String?
+  causa             String?
+  // aceptada | reproceso | descarte
+  decision          String
+  usuario           String
+  usuarioId         Int?          @map("usuario_id")
+  ipEquipo          String?       @map("ip_equipo")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  odtItemTaller     OdtItemTaller @relation(fields: [odtItemTallerId], references: [id], onDelete: Cascade)
+
+  @@index([odtItemTallerId, createdAt])
+  @@map("odt_etapa_recepciones")
+  @@schema("taller")
 }
 
 model OdtAvance {
