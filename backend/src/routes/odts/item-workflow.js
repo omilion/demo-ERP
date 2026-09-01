@@ -159,7 +159,17 @@ const relationSelect = {
       odt: { select: { id: true, sucursalId: true, estado: true, eliminado: true } },
     },
   },
-  taller: { select: { nombre: true } },
+  taller: { select: { nombre: true, jefeId: true } },
+}
+
+// La calidad de lo que sale de un taller la aprueba su jefe. La coordinacion tambien,
+// porque alguien tiene que poder destrabar; y si el taller aun no tiene jefe asignado
+// no se bloquea a nadie: un control que nadie puede ejercer detiene el trabajo en vez
+// de ordenarlo.
+export function puedeRecibirEtapa(user, taller) {
+  if (taller?.jefeId && user?.id === taller.jefeId) return true
+  if (can(user?.role, 'taller.gestion', 'write', user?.permisosExtra)) return true
+  return !taller?.jefeId
 }
 
 export default async function itemWorkflowRoutes(fastify) {
@@ -376,6 +386,11 @@ export default async function itemWorkflowRoutes(fastify) {
     // se puede aceptar ni rechazar.
     if (normalizeText(current.estado) !== 'listo') {
       return reply.code(409).send({ error: 'La etapa todavia no esta lista para recibir' })
+    }
+    if (!puedeRecibirEtapa(request.user, current.taller)) {
+      return reply.code(403).send({
+        error: `La calidad de ${current.taller?.nombre || 'este taller'} la aprueba su jefe`,
+      })
     }
 
     const usuario = getRequestUsuario(request.user) || 'Sistema'

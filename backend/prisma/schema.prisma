@@ -29,6 +29,7 @@ model User {
   accesos                    AccesoLog[]
   comisionReglas             ComisionRegla[]
   odtResponsabilidades       OdtItemTaller[]  @relation("OdtResponsable")
+  talleresQueJefatura        Taller[]         @relation("TallerJefe")
   trabajador                 Trabajador?      @relation("TrabajadorUsuario")
   reglasDescuentoCreadas     DescuentoRegla[] @relation("DescuentoReglaCreadaPor")
   reglasDescuentoModificadas DescuentoRegla[] @relation("DescuentoReglaModificadaPor")
@@ -1596,9 +1597,16 @@ model TallerHistorialMaterial {
 }
 
 model Taller {
-  id             Int              @id @default(autoincrement())
-  nombre         String           @unique
-  activo         Boolean          @default(true)
+  id     Int     @id @default(autoincrement())
+  nombre String  @unique
+  activo Boolean @default(true)
+
+  // Quien aprueba la calidad de lo que sale de este taller. El control lo hace el
+  // jefe del taller correspondiente, y hasta ahora no habia forma de saber quien es:
+  // el rol `taller` gobierna todos los talleres por igual.
+  jefeId Int? @map("jefe_id")
+  jefe   User? @relation("TallerJefe", fields: [jefeId], references: [id], onDelete: SetNull)
+
   estados        OdtItemTaller[]
   productos      Producto[]       @relation("ProductoTaller")
   materiales     BodegaTaller[]
@@ -1647,7 +1655,6 @@ model OdtItemTaller {
   avances               OdtAvance[]
   evidencias            TallerEvidencia[]
   recepciones           OdtEtapaRecepcion[]
-  odtEtapaRecepcions    OdtEtapaRecepcion[]
 
   @@unique([odtItemId, tallerId])
   @@index([tallerId])

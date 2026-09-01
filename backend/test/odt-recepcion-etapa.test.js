@@ -141,6 +141,74 @@ describeDb('la etapa siguiente recibe el trabajo de la anterior', () => {
     expect(entrada.texto).toMatch(/Medidas fuera de tolerancia/)
   })
 
+  // La calidad de lo que sale de un taller la aprueba su jefe. Hasta ahora el sistema
+  // no podia siquiera nombrarlo: el rol `taller` gobierna todos los talleres por igual.
+  describe('quien aprueba la calidad', () => {
+    let otroUsuario
+
+    beforeAll(async () => {
+      otroUsuario = await app.prisma.user.findFirst({
+        where: { activo: true, id: { not: userId } }, select: { id: true },
+      })
+    })
+
+    const comoUsuario = (id, extra, role = 'taller') => app.jwt.sign({
+      id, role, nombre: `u${id}`, permisosExtra: extra,
+      scope: 'erp', aud: 'plastimar:erp', tokenType: 'access',
+    })
+
+    const recibirComo = (ctx, token, payload) => app.inject({
+      method: 'POST',
+      url: `/api/odts/${ctx.odt.id}/items/${ctx.item.id}/talleres/${ctx.etapa.id}/recepcion`,
+      headers: { authorization: `Bearer ${token}` },
+      payload,
+    })
+
+    it('el jefe del taller aprueba', async () => {
+      const ctx = await etapaEn('listo')
+      await app.prisma.taller.update({ where: { id: taller.id }, data: { jefeId: userId } })
+      try {
+        const res = await recibirComo(ctx, comoUsuario(userId, { 'taller.avance': ['read', 'write'] }), { cantidadAceptada: 100 })
+        expect(res.statusCode).toBe(201)
+      } finally {
+        await app.prisma.taller.update({ where: { id: taller.id }, data: { jefeId: null } })
+      }
+    })
+
+    it('un operario cualquiera no aprueba lo que sale del taller', async () => {
+      if (!otroUsuario) return
+      const ctx = await etapaEn('listo')
+      await app.prisma.taller.update({ where: { id: taller.id }, data: { jefeId: otroUsuario.id } })
+      try {
+        // Con el rol de operario, que es quien ejecuta y no quien aprueba.
+        const res = await recibirComo(ctx, comoUsuario(userId, null, 'taller_operario'), { cantidadAceptada: 100 })
+        expect(res.statusCode).toBe(403)
+        expect(JSON.parse(res.body).error).toMatch(/jefe/i)
+      } finally {
+        await app.prisma.taller.update({ where: { id: taller.id }, data: { jefeId: null } })
+      }
+    })
+
+    it('la coordinacion tambien aprueba: alguien tiene que poder destrabar', async () => {
+      if (!otroUsuario) return
+      const ctx = await etapaEn('listo')
+      await app.prisma.taller.update({ where: { id: taller.id }, data: { jefeId: otroUsuario.id } })
+      try {
+        const res = await recibirComo(ctx, comoUsuario(userId, { 'taller.gestion': ['read', 'write'] }), { cantidadAceptada: 100 })
+        expect(res.statusCode).toBe(201)
+      } finally {
+        await app.prisma.taller.update({ where: { id: taller.id }, data: { jefeId: null } })
+      }
+    })
+
+    it('un taller sin jefe asignado no bloquea a nadie', async () => {
+      // Un control que nadie puede ejercer detiene el trabajo en vez de ordenarlo.
+      const ctx = await etapaEn('listo')
+      const res = await recibirComo(ctx, comoUsuario(userId, { 'taller.avance': ['read', 'write'] }), { cantidadAceptada: 100 })
+      expect(res.statusCode).toBe(201)
+    })
+  })
+
   it('conserva cada recepcion: son append-only', async () => {
     const ctx = await etapaEn('listo')
     await recibir(ctx, { cantidadAceptada: 50, cantidadRechazada: 50, defecto: 'Primera revision' })
