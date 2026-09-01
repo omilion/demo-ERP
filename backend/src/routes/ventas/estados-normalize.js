@@ -76,9 +76,15 @@ export const ESTADO_FLUJO_FORMAL = Object.freeze({
   ANULADA: { codigo: 'ANULADA', label: 'Anulada', terminal: true },
 })
 
+// La cadena patio -> didactico -> reparto es del despacho a domicilio. La mayoria
+// de las ventas no pasa por ahi: de 16.368, solo 27 tienen despacho, y Venta Sala,
+// Venta Web y Convenio Marco suman 13.653 en las que el cliente retira o el envio no
+// usa esa ruta. Sin el salto directo de PREPARACION a ENTREGADA, casi ninguna venta
+// podria cerrarse: quedarian todas atascadas esperando un patio por el que nunca
+// pasaron.
 export const TRANSICIONES_ESTADO_FLUJO_FORMAL = Object.freeze({
   CREADA: ['PREPARACION', 'ANULADA'],
-  PREPARACION: ['PATIO', 'ANULADA'],
+  PREPARACION: ['PATIO', 'ENTREGADA', 'ANULADA'],
   PATIO: ['DIDACTICO', 'ANULADA'],
   DIDACTICO: ['REPARTO', 'ANULADA'],
   REPARTO: ['ENTREGADA', 'ANULADA'],
