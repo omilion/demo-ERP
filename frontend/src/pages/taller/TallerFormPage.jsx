@@ -438,7 +438,7 @@ export default function TallerFormPage() {
           <Input type="number" value={data.ordenId} onChange={v => set('ordenId', v)} placeholder="ID de venta/orden; vacío para trabajo interno" error={errors.ordenId} disabled={!isEditMode} />
         </FormField>
         <FormField label="Centro de costo" required={!data.ordenId} error={errors.centroCostoId}>
-          <Select value={data.centroCostoId} onChange={v => set('centroCostoId', v)} options={[{ value: '', label: data.ordenId ? 'Sin imputación' : 'Selecciona centro de costo' }, ...(centrosCostoMeta.items || []).map(c => ({ value: String(c.id), label: `${c.codigo} — ${c.nombre}` }))]} disabled={!isEditMode} />
+          <Select value={data.centroCostoId} onChange={v => set('centroCostoId', v)} options={[{ value: '', label: data.ordenId ? 'Sin imputación' : 'Selecciona centro de costo' }, ...(centrosCostoMeta.items || []).map(c => ({ value: String(c.id), label: c.codigo === c.nombre ? c.nombre : `${c.codigo} — ${c.nombre}` }))]} disabled={!isEditMode} />
           {isEditMode && <Btn size="sm" variant="ghost" onClick={async () => { const codigo = await promptDialog({ title: 'Nuevo centro de costo', detail: 'Código corto y único.' }); if (!codigo?.trim()) return; const nombre = await promptDialog({ title: 'Nombre del centro de costo' }); if (!nombre?.trim()) return; createCentroCosto.mutate({ codigo: codigo.trim(), nombre: nombre.trim() }, { onSuccess: centro => set('centroCostoId', String(centro.id)), onError: err => toast.error(getErrorMessage(err)) }) }}>Agregar centro</Btn>}
         </FormField>
         <FormField label="Tipo de Trabajo">
