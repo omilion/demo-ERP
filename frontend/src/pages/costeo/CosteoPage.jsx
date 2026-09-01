@@ -286,12 +286,14 @@ function MateriasPrimasTab() {
   const { data: bodegaData, isLoading } = useBodegaTaller();
   const { data: talleresData } = useTalleres();
   const updateBodega = useUpdateBodegaTaller();
+  const deleteBodega = useDeleteBodegaTaller();
 
   const [editingItem, setEditingItem] = useState(null);
   const [newPrecio, setNewPrecio] = useState('');
   const [motivo, setMotivo] = useState('');
   const [historyMaterialId, setHistoryMaterialId] = useState(null);
   const [creando, setCreando] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState(null);
 
   const talleres = toArray(talleresData);
   const todos = toArray(bodegaData);
@@ -307,6 +309,8 @@ function MateriasPrimasTab() {
       || [item.codigoInterno, item.nombre, item.detalle].filter(Boolean).join(' ').toLowerCase().includes(texto);
     return porTaller && porTexto;
   });
+  const materialesEspuma = todos.filter((item) => /espuma/i.test(String(tallerNombre(item.tallerId) || '')));
+  const espumasSinFichaTecnica = materialesEspuma.filter((item) => item.densidadKgM3 == null || item.espesorMm == null || !item.formato).length;
 
   const handleSavePrecio = async () => {
     if (!editingItem || !newPrecio) return;
@@ -322,6 +326,17 @@ function MateriasPrimasTab() {
     }
   };
 
+  const handleDelete = async (item) => {
+    const ok = await confirmDialog(`¿Desactivar ${item.nombre}? Se conserva su historial y las recetas ya usadas.`);
+    if (!ok) return;
+    try {
+      await deleteBodega.mutateAsync(item.id);
+      toast.success('Materia prima desactivada');
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'No se pudo desactivar la materia prima');
+    }
+  };
+
   const columns = [
     { key: 'codigoInterno', label: 'Código', render: (v) => <span style={{ fontWeight: 600 }}>{v}</span> },
     { key: 'nombre', label: 'Nombre Material' },
@@ -334,6 +349,9 @@ function MateriasPrimasTab() {
         : <Badge tone="gray">Sin asignar</Badge>,
     },
     { key: 'unidadMedida', label: 'Unidad', render: (v) => v || 'u' },
+    { key: 'densidadKgM3', label: 'Densidad', render: (v) => v == null ? '—' : `${Number(v).toLocaleString('es-CL')} kg/m³` },
+    { key: 'espesorMm', label: 'Espesor', render: (v) => v == null ? '—' : `${Number(v).toLocaleString('es-CL')} mm` },
+    { key: 'formato', label: 'Formato', render: (v) => v || '—' },
     { key: 'stock', label: 'Stock', render: (v) => (v || 0).toLocaleString('es-CL') },
     { key: 'precio', label: 'Precio Unitario', render: (v) => `$${(v || 0).toLocaleString('es-CL')}` },
     {
@@ -341,11 +359,15 @@ function MateriasPrimasTab() {
       label: 'Acciones',
       render: (_, r) => (
         <div style={{ display: 'flex', gap: 8 }}>
+          <Btn size="xs" variant="secondary" onClick={() => setEditingMaterial(r)}>Editar</Btn>
           <Btn size="xs" variant="secondary" onClick={() => { setEditingItem(r); setNewPrecio(r.precio || ''); }}>
             Editar Precio
           </Btn>
           <Btn size="xs" variant="ghost" onClick={() => setHistoryMaterialId(r.id)}>
             Histórico
+          </Btn>
+          <Btn size="xs" variant="ghost" onClick={() => handleDelete(r)}>
+            Eliminar
           </Btn>
         </div>
       ),
@@ -354,6 +376,16 @@ function MateriasPrimasTab() {
 
   return (
     <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', padding: '14px 16px', marginBottom: 14, borderRadius: 10, border: '1px solid #bae6fd', background: '#f0f9ff' }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#0c4a6e' }}>Ficha técnica de espumas</div>
+          <div style={{ fontSize: 12, color: '#075985', marginTop: 3 }}>La densidad, espesor y formato pertenecen a la materia prima; lote, calidad y merma se controlan en Taller.</div>
+        </div>
+        <div style={{ display: 'flex', gap: 18, alignItems: 'center' }}>
+          <div><div style={{ fontSize: 20, fontWeight: 700, color: '#0369a1' }}>{materialesEspuma.length}</div><div style={{ fontSize: 11, color: '#075985' }}>materiales Espumas</div></div>
+          <div><div style={{ fontSize: 20, fontWeight: 700, color: espumasSinFichaTecnica ? '#b45309' : '#15803d' }}>{espumasSinFichaTecnica}</div><div style={{ fontSize: 11, color: '#075985' }}>fichas por completar</div></div>
+        </div>
+      </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
         <SearchBar placeholder="Buscar por código, nombre o detalle" value={busqueda} onChange={setBusqueda} style={{ width: 300 }} />
         <select
@@ -374,6 +406,7 @@ function MateriasPrimasTab() {
       <Table columns={columns} rows={isLoading ? [] : items} emptyMessage={isLoading ? 'Cargando materias primas…' : 'Sin materias primas'} />
 
       {creando && <NuevaMateriaPrimaModal talleres={talleres} onClose={() => setCreando(false)} />}
+      {editingMaterial && <EditarMateriaPrimaModal material={editingMaterial} talleres={talleres} onClose={() => setEditingMaterial(null)} />}
 
       {/* Edit Price Modal */}
       {editingItem && (
@@ -475,7 +508,7 @@ function NuevaMateriaPrimaModal({ talleres, onClose }) {
           </div>
 
           <div style={{ paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>EspecificaciÃ³n de espuma</div>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Especificación de espuma</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
                 <label style={etiqueta}>Densidad (kg/mÂ³)</label>
@@ -520,6 +553,86 @@ function NuevaMateriaPrimaModal({ talleres, onClose }) {
             <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
             <Btn onClick={guardar} disabled={crear.isPending}>{crear.isPending ? 'Creando…' : 'Crear'}</Btn>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditarMateriaPrimaModal({ material, talleres, onClose }) {
+  const actualizar = useUpdateBodegaTaller();
+  const [form, setForm] = useState({
+    codigoInterno: material.codigoInterno || '',
+    nombre: material.nombre || '',
+    detalle: material.detalle || '',
+    unidadMedida: material.unidadMedida || 'kg',
+    precio: material.precio ?? '',
+    tallerId: material.tallerId ? String(material.tallerId) : '',
+    densidadKgM3: material.densidadKgM3 ?? '',
+    espesorMm: material.espesorMm ?? '',
+    formato: material.formato || '',
+  });
+  const set = (campo, valor) => setForm((actual) => ({ ...actual, [campo]: valor }));
+  const tallerActual = talleres.find((taller) => String(taller.id) === form.tallerId);
+  const esEspuma = /espuma/i.test(String(tallerActual?.label || tallerActual?.nombre || '')) || form.densidadKgM3 !== '' || form.espesorMm !== '' || form.formato !== '';
+  const campo = { width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', marginTop: 4, fontFamily: 'inherit' };
+  const etiqueta = { fontSize: 12, fontWeight: 600 };
+
+  const guardar = async () => {
+    if (!form.codigoInterno.trim() || !form.nombre.trim()) {
+      toast.warning('Código y nombre son obligatorios');
+      return;
+    }
+    try {
+      const data = {
+        codigoInterno: form.codigoInterno.trim(),
+        nombre: form.nombre.trim(),
+        detalle: form.detalle.trim() || null,
+        unidadMedida: form.unidadMedida,
+        precio: Number(form.precio) || 0,
+        tallerId: form.tallerId ? Number(form.tallerId) : null,
+      };
+      if (esEspuma) {
+        data.densidadKgM3 = form.densidadKgM3 === '' ? null : Number(form.densidadKgM3);
+        data.espesorMm = form.espesorMm === '' ? null : Number(form.espesorMm);
+        data.formato = form.formato.trim() || null;
+      }
+      await actualizar.mutateAsync({ id: material.id, data });
+      toast.success('Materia prima actualizada');
+      onClose();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'No se pudo actualizar la materia prima');
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,.48)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: '#fff', padding: 24, borderRadius: 12, width: 620, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 18px 50px rgba(15,23,42,.25)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 18 }}>
+          <div><h3 style={{ margin: 0, fontSize: 17 }}>Editar materia prima</h3><div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>Ficha maestra para costeo e inventario de Taller</div></div>
+          <button onClick={onClose} style={{ border: 0, background: 'transparent', cursor: 'pointer' }}><Icon name="x" size={18} /></button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div><label style={etiqueta}>Código</label><input value={form.codigoInterno} onChange={(e) => set('codigoInterno', e.target.value)} style={campo} /></div>
+            <div><label style={etiqueta}>Taller</label><select value={form.tallerId} onChange={(e) => set('tallerId', e.target.value)} style={{ ...campo, background: '#fff' }}><option value="">Sin asignar</option>{talleres.map((t) => <option key={t.id} value={String(t.id)}>{t.label || t.nombre}</option>)}</select></div>
+          </div>
+          <div><label style={etiqueta}>Nombre</label><input value={form.nombre} onChange={(e) => set('nombre', e.target.value)} style={campo} /></div>
+          <div><label style={etiqueta}>Detalle</label><input value={form.detalle} onChange={(e) => set('detalle', e.target.value)} style={campo} /></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div><label style={etiqueta}>Unidad</label><select value={form.unidadMedida} onChange={(e) => set('unidadMedida', e.target.value)} style={{ ...campo, background: '#fff' }}>{UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}</select></div>
+            <div><label style={etiqueta}>Costo unitario ($)</label><input type="number" min="0" value={form.precio} onChange={(e) => set('precio', e.target.value)} style={campo} /></div>
+          </div>
+          {esEspuma && <div style={{ padding: 12, borderRadius: 8, background: '#f0f9ff', border: '1px solid #bae6fd' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#0369a1', marginBottom: 8 }}>Propiedades técnicas de espuma</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+              <div><label style={etiqueta}>Densidad kg/m³</label><input type="number" min="0" step="0.01" value={form.densidadKgM3} onChange={(e) => set('densidadKgM3', e.target.value)} style={campo} /></div>
+              <div><label style={etiqueta}>Espesor mm</label><input type="number" min="0" step="0.01" value={form.espesorMm} onChange={(e) => set('espesorMm', e.target.value)} style={campo} /></div>
+              <div><label style={etiqueta}>Formato</label><input value={form.formato} onChange={(e) => set('formato', e.target.value)} placeholder="plancha, bloque…" style={campo} /></div>
+            </div>
+            <div style={{ fontSize: 11, color: '#0c4a6e', marginTop: 8 }}>Lote, calidad y merma se registran al recibir o consumir el material.</div>
+          </div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}><Btn variant="secondary" onClick={onClose}>Cancelar</Btn><Btn onClick={guardar} disabled={actualizar.isPending}>{actualizar.isPending ? 'Guardando…' : 'Guardar cambios'}</Btn></div>
         </div>
       </div>
     </div>

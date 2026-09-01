@@ -96,7 +96,7 @@ export default function BodegaTallerPage() {
     { key: 'codigoBarra', label: 'Cod Barra', render: v => mono(v) },
     { key: 'codigoInterno', label: 'Cod Interno', render: v => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: 'var(--green-700)' }}>{v}</span> },
     { key: 'nombre', label: 'Nombre', wrap: true, render: v => <span style={{ fontSize: 13 }}>{v}</span> },
-    { key: '_especificacion', label: 'EspecificaciÃ³n espuma', render: (_, row) => {
+    { key: '_especificacion', label: 'Especificación espuma', render: (_, row) => {
       const parts = [row.densidadKgM3 != null && `D${row.densidadKgM3}`, row.espesorMm != null && `${row.espesorMm} mm`, row.formato].filter(Boolean)
       return parts.length ? <Badge tone="blue">{parts.join(' · ')}</Badge> : '-'
     } },
@@ -321,13 +321,13 @@ function MaterialModal({ title, onClose, onSave, initial, saving, categorias = [
           <FormField label="Precio"><Input type="number" value={form.precio} onChange={v => setForm(f => ({ ...f, precio: v }))} /></FormField>
         </div>
         <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>EspecificaciÃ³n tÃ©cnica de espuma</div>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>Especificación técnica de espuma</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
             <FormField label="Densidad (kg/mÂ³)"><Input type="number" min="0" value={form.densidadKgM3} onChange={v => setForm(f => ({ ...f, densidadKgM3: v }))} /></FormField>
             <FormField label="Espesor (mm)"><Input type="number" min="0" value={form.espesorMm} onChange={v => setForm(f => ({ ...f, espesorMm: v }))} /></FormField>
             <FormField label="Formato"><Input placeholder="Ej. plancha 2 x 1 m" value={form.formato} onChange={v => setForm(f => ({ ...f, formato: v }))} /></FormField>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Al registrar densidad, la espuma se consumirÃ¡ por lote aprobado en las Ã³rdenes de taller.</div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Al registrar densidad, la espuma se consumirá por lote aprobado en las órdenes de taller.</div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
           <Btn variant="secondary" size="sm" onClick={onClose} disabled={saving}>Cancelar</Btn>
@@ -363,21 +363,21 @@ function LotesModal({ material, onClose }) {
             { key: 'cantidadInicial', label: 'Ingreso', align: 'right', render: v => Number(v || 0).toFixed(2) },
             { key: 'cantidadDisponible', label: 'Disponible', align: 'right', render: v => Number(v || 0).toFixed(2) },
             { key: 'estadoCalidad', label: 'Calidad', render: v => <Badge tone={v === 'aprobado' ? 'green' : v === 'observado' ? 'amber' : 'red'}>{v}</Badge> },
-            { key: 'observacion', label: 'ObservaciÃ³n', render: v => v || '-' },
+            { key: 'observacion', label: 'Observación', render: v => v || '-' },
           ]} rows={lotes} emptyMessage="Sin lotes registrados" getRowKey={row => row.id} ariaLabel="Lotes de material" />
         )}
         <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
           <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>Registrar lote</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1.1fr .8fr 1fr', gap: 12 }}>
-            <FormField label="CÃ³digo de lote" required><Input value={form.codigo} onChange={v => setForm(f => ({ ...f, codigo: v }))} /></FormField>
+            <FormField label="Código de lote" required><Input value={form.codigo} onChange={v => setForm(f => ({ ...f, codigo: v }))} /></FormField>
             <FormField label="Cantidad" required><Input type="number" min="0" value={form.cantidad} onChange={v => setForm(f => ({ ...f, cantidad: v, regularizarExistente: false }))} /></FormField>
             <FormField label="Estado de calidad"><Select value={form.estadoCalidad} onChange={v => setForm(f => ({ ...f, estadoCalidad: v, regularizarExistente: v === 'aprobado' && f.regularizarExistente }))} options={[{ value: 'aprobado', label: 'Aprobado' }, { value: 'observado', label: 'Observado' }, { value: 'rechazado', label: 'Rechazado' }]} /></FormField>
           </div>
-          <FormField label="ObservaciÃ³n"><Input value={form.observacion} onChange={v => setForm(f => ({ ...f, observacion: v }))} /></FormField>
+          <FormField label="Observación"><Input value={form.observacion} onChange={v => setForm(f => ({ ...f, observacion: v }))} /></FormField>
           {puedeRegularizar && (
             <label style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 10, fontSize: 12, color: 'var(--text-2)' }}>
               <input type="checkbox" checked={form.regularizarExistente} onChange={e => setForm(f => ({ ...f, regularizarExistente: e.target.checked, cantidad: e.target.checked ? String(material.stock) : f.cantidad }))} />
-              Este lote corresponde al stock histÃ³rico ya registrado ({Number(material.stock).toFixed(2)}); no sumar nuevamente.
+              Este lote corresponde al stock histórico ya registrado ({Number(material.stock).toFixed(2)}); no sumar nuevamente.
             </label>
           )}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
