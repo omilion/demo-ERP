@@ -1373,15 +1373,16 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         return
       }
     }
-    if (data.tipo !== 'Marketplace' && !/^\S+@\S+\.\S+$/.test(String(data.emailContactoDespacho || '').trim())) {
+    const isMarketplaceSave = String(data.tipo || '').toLowerCase().includes('marketplace') || normalizeTipoVenta(data.tipo) === 'Marketplace'
+    if (!isMarketplaceSave && !/^\S+@\S+\.\S+$/.test(String(data.emailContactoDespacho || '').trim())) {
       toast.warning('Ingresa el correo obligatorio del contacto de despacho')
       return
     }
-    if (data.tipo === 'Marketplace' && !String(data.marketplaceCanal || '').trim()) {
+    if (isMarketplaceSave && !String(data.marketplaceCanal || '').trim()) {
       toast.warning('Indica el canal Marketplace')
       return
     }
-    if (data.tipo === 'Marketplace' && !String(data.marketplaceReferencia || '').trim()) {
+    if (isMarketplaceSave && !String(data.marketplaceReferencia || '').trim()) {
       toast.warning('Indica el N° de orden del portal para poder conciliar la comisión')
       return
     }
@@ -1404,10 +1405,10 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       emailContactoDespacho: data.emailContactoDespacho || null,
       regionDespacho: data.regionDespacho || null,
       comunaDespacho: data.comunaDespacho || null,
-      marketplaceCanal: data.tipo === 'Marketplace' ? data.marketplaceCanal || null : null,
-      marketplaceReferencia: data.tipo === 'Marketplace' ? data.marketplaceReferencia || null : null,
-      marketplaceComisionPct: data.tipo === 'Marketplace' && data.marketplaceComisionPct !== '' ? Number(data.marketplaceComisionPct) : null,
-      marketplaceComisionMonto: data.tipo === 'Marketplace' && data.marketplaceComisionMonto !== '' ? Number(data.marketplaceComisionMonto) : null,
+      marketplaceCanal: isMarketplaceSave ? data.marketplaceCanal || null : null,
+      marketplaceReferencia: isMarketplaceSave ? data.marketplaceReferencia || null : null,
+      marketplaceComisionPct: isMarketplaceSave && data.marketplaceComisionPct !== '' ? Number(data.marketplaceComisionPct) : null,
+      marketplaceComisionMonto: isMarketplaceSave && data.marketplaceComisionMonto !== '' ? Number(data.marketplaceComisionMonto) : null,
       crmId: searchParams.get('crmId') ? Number(searchParams.get('crmId')) : undefined,
     }
     if (data.tipo === 'Licitación') {
@@ -1489,6 +1490,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   // El efecto de más abajo mantiene data.tipo alineado; esto cubre el primer render.
   const tipoEfectivo = (crmMode && forceTipo) || data.tipo
   const isLicitacionOrCompraAgil = tipoEfectivo === 'Licitación' || tipoEfectivo === 'Compra Ágil'
+  const isMarketplace = String(tipoEfectivo || '').toLowerCase().includes('marketplace') || normalizeTipoVenta(tipoEfectivo) === 'Marketplace'
   // Los catálogos históricos pueden contener porcentajes repetidos por
   // importaciones antiguas. Un select no debe renderizar opciones duplicadas:
   // además del warning de React, el usuario no podría distinguirlas.
@@ -1638,7 +1640,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         </VentaWorkspaceSection>
       )}
 
-      {data.tipo === 'Marketplace' && <VentaWorkspaceSection className="venta-workspace-special-details" title="Venta Marketplace y comisión">
+      {isMarketplace && <VentaWorkspaceSection className="venta-workspace-special-details" title="Venta Marketplace y comisión">
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 1fr', gap: 14 }}>
           <FormField label="Canal Marketplace" required>
             <Select
@@ -1719,7 +1721,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       )}
 
       </div>
-      {data.tipo !== 'Marketplace' && (
+      {!isMarketplace && (
         <VentaWorkspaceSection className="venta-workspace-dispatch-section" title="Información de Despacho">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
             <FormField label="Días para entrega" required>
