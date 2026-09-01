@@ -3,6 +3,7 @@ import { resolveOrdenForWrite } from '../relation-guards.js'
 import { computeVentaFinancialState, computeVentaFinancialStateFromDb, resolveEstadoPago, syncOrdenFinancialState } from '../ventas/financial.js'
 import { getUserSucursalId, isMovimientoInUserSucursal, isReferencialMedioPago, withTurnoSucursalScope } from './scope.js'
 import { approveCrmFromOrderPayment } from '../../domain/crm/service.js'
+import { cerrarSiCorresponde } from '../ventas/estado-flujo-formal.js'
 
 const MEDIOS_PAGO = [
   'Efectivo',
@@ -547,6 +548,10 @@ export default async function movimientosRoutes(fastify) {
           actor: request.user,
           now: fecha,
         })
+        // El cierre ocurre cuando se juntan pagada y entregada, y el orden en que
+        // llegan varia: por eso se consulta tambien desde el cobro y no solo desde la
+        // entrega. Si falta la otra condicion no hace nada.
+        await cerrarSiCorresponde(tx, ordenId, request.user)
 
         return {
           movimiento,

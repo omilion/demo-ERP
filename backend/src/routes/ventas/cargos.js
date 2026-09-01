@@ -3,6 +3,7 @@ import { computeTotal } from './helpers.js'
 import { applyVentaStockDeltas, buildStockDeltasFromItems, isVentaDirectaStockTipo } from './stock.js'
 import { getUserSucursalId, isReferencialMedioPago } from '../caja/scope.js'
 import { puedeGestionarTipoVenta } from './tipos-permitidos.js'
+import { avanzarEstadoFlujo, cerrarSiCorresponde } from './estado-flujo-formal.js'
 
 function scopedOrdenWhere(user, id) {
   const sucursalId = getUserSucursalId(user)
@@ -266,6 +267,14 @@ export default async function ventaCargosRoutes(fastify) {
       const estadoEntrega = totalEnt === 0 ? 'Pendiente entrega'
         : totalEnt >= totalCant ? 'Entregada' : 'Parcial'
       await fastify.prisma.orden.update({ where: { id: item.ordenId }, data: { estadoEntrega, fechaEstadoEntrega: new Date() } })
+      // El estado formal sigue al hecho operativo. Antes convivian dos verdades: la
+      // venta figuraba entregada y su flujo formal seguia en CREADA.
+      if (estadoEntrega === 'Entregada') {
+        await avanzarEstadoFlujo(fastify.prisma, item.ordenId, 'ENTREGADA', request.user, 'Items entregados')
+        await cerrarSiCorresponde(fastify.prisma, item.ordenId, request.user)
+      } else if (estadoEntrega === 'Parcial') {
+        await avanzarEstadoFlujo(fastify.prisma, item.ordenId, 'PREPARACION', request.user, 'Entrega parcial')
+      }
       return updated
     } catch (e) { throw e }
   })
