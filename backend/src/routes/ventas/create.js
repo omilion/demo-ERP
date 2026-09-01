@@ -16,6 +16,7 @@ import { validateDescuentoContraReglas } from './descuentos-guard.js'
 import { assertDiscountAuthorizationForDraft } from '../descuentos/rules-engine.js'
 import { autoNotifyTaller } from '../pasar-taller/service.js'
 import { calculateDeliveryDate, normalizeLicitacionPlazo, normalizeMarketplace, sanitizeCommercialIdentifier } from './operational-rules.js'
+import { assertTipoVentaPermitido } from './tipos-permitidos.js'
 
 
 const ItemSchema = z.object({
@@ -117,6 +118,7 @@ export default async function createVenta(fastify) {
       crmId,
       ...rest
     } = parsed.data
+    if (!assertTipoVentaPermitido(reply, request.user, rest.tipo)) return
     const normalizedLicitacionPlazo = normalizeLicitacionPlazo(licitacionPlazo)
     if (normalizedLicitacionPlazo.error) return reply.code(400).send({ error: normalizedLicitacionPlazo.error })
     if (abono > 0 || facturado !== undefined || (estadoPago && estadoPago !== 'No pagada')) {

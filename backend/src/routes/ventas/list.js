@@ -4,6 +4,7 @@ import { parseDate, parsePagination, parsePositiveInt } from '../operational-uti
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenScope } from '../historico/corte.js'
 import { getUserSucursalId } from '../caja/scope.js'
 import { attachEstadoFlujo, GRAFIAS_CONVENIO_MARCO, GRAFIAS_LICITACION } from './estados-normalize.js'
+import { whereTiposVentaPermitidos } from './tipos-permitidos.js'
 
 function normalizeTipo(value) {
   return String(value || '')
@@ -57,6 +58,8 @@ export default async function listVentas(fastify) {
     if (estadoPago) where.estadoPago = estadoPago
     if (estadoEntrega) where.estadoEntrega = estadoEntrega
     if (tipo) where.tipo = buildTipoWhere(tipo)
+    const tiposPermitidosWhere = whereTiposVentaPermitidos(request.user)
+    if (tiposPermitidosWhere) where = mergeWhere(where, tiposPermitidosWhere)
     if (desde || hasta || fechaDesde || fechaHasta) {
       const gte = parseDate(fechaDesde || desde)
       const lte = parseDate(fechaHasta || hasta, true)

@@ -147,7 +147,7 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
   // Handlers for dynamic material rows
   const addMaterialRow = (type) => {
     if (type === 'bodega') {
-      const items = Array.isArray(materialesBodega) ? materialesBodega : (materialesBodega?.data || []);
+      const items = Array.isArray(materialesBodega) ? materialesBodega : (materialesBodega?.items || materialesBodega?.data || []);
       const first = items[0];
       if (!first) {
         toast.error('No hay materias primas registradas en Bodega Taller');
@@ -260,7 +260,7 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
     }
   };
 
-  const itemsBodega = Array.isArray(materialesBodega) ? materialesBodega : (materialesBodega?.data || []);
+  const itemsBodega = Array.isArray(materialesBodega) ? materialesBodega : (materialesBodega?.items || materialesBodega?.data || []);
   const itemsTelas = Array.isArray(telas) ? telas : (telas?.data || []);
 
   if (!isOpen || !producto) return null;
@@ -354,7 +354,7 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
                           >
                             {itemsBodega.map((b) => (
                               <option key={b.id} value={b.id}>
-                                {b.nombre} (${(b.precio || 0).toLocaleString('es-CL')})
+                                {b.nombre}{b.densidadKgM3 != null ? ` · ${b.densidadKgM3} kg/m³` : ''} (${(b.precio || 0).toLocaleString('es-CL')})
                               </option>
                             ))}
                           </select>

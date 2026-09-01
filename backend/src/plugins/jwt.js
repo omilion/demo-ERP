@@ -25,6 +25,7 @@ export function createErpAccessTokenPayload(user) {
     permisoDescuentos: !!user.permisoDescuentos,
     permisoAprobarDescuentos: !!user.permisoAprobarDescuentos,
     permisosExtra: user.permisosExtra || null,
+    tiposVentaPermitidos: user.tiposVentaPermitidos || null,
     scope: TOKEN_SCOPES.ERP,
     aud: TOKEN_AUDIENCES.ERP,
     tokenType: TOKEN_TYPES.ACCESS,

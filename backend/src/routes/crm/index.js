@@ -9,6 +9,7 @@ import {
 } from '../../domain/crm/constants.js'
 import { addSemaforo, createCrmGestion, elapsedDays, transitionCrm } from '../../domain/crm/service.js'
 import { canApplyDescuento, requiresDescuentoPermission } from '../ventas/descuentos-permissions.js'
+import { assertTipoVentaPermitido } from '../ventas/tipos-permitidos.js'
 import { validateDescuentoContraReglas } from '../ventas/descuentos-guard.js'
 
 const CRM_ESTADOS = new Set(['0', '1', '2', '3'])
@@ -174,6 +175,7 @@ export default async function crmRoutes(fastify) {
       const descuentoPct = Number(b.descuentoPct || 0)
       const rawItems = Array.isArray(b.items) ? b.items : []
       if (!canalVenta) return reply.code(400).send({ error: 'Selecciona una cotizacion CRM valida' })
+      if (!assertTipoVentaPermitido(reply, request.user, esCotizacionSimple ? 'Normal' : tipo)) return
       if (!Number.isInteger(clienteId) || clienteId <= 0) return reply.code(400).send({ error: 'Selecciona un cliente' })
       if (crmId !== null && (!Number.isInteger(crmId) || crmId <= 0)) return reply.code(400).send({ error: 'Registro CRM invalido' })
       if (crmId !== null && !await ensureCrmAccess(f.prisma, crmId, request.user)) return reply.code(404).send({ error: 'Registro CRM no encontrado' })

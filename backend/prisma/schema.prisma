@@ -21,6 +21,7 @@ model User {
   permisoDescuentos          Boolean          @default(false) @map("permiso_descuentos")
   permisoAprobarDescuentos   Boolean          @default(false) @map("permiso_aprobar_descuentos")
   permisosExtra              Json?            @map("permisos_extra")
+  tiposVentaPermitidos       Json?            @map("tipos_venta_permitidos")
   sucursalId                 Int?             @map("sucursal_id")
   activo                     Boolean          @default(true)
   createdAt                  DateTime         @default(now()) @map("created_at")

@@ -4,6 +4,8 @@ import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, FilterSelect } from 
 import { useDeleteUsuario, useUsuarios, useCreateUsuario, useUpdateUsuario, useUpdatePermisos } from '../../api/usuarios'
 import { useSucursales } from '../../api/locations'
 import { useAuthStore } from '../../store/auth'
+import { can } from '../../utils/permissions'
+import { TIPO_VENTA_OPCIONES } from '../../utils/ventaEstados'
 
 const ROLES = ['admin', 'vendedor', 'coordinador_comercial', 'bodeguero', 'cajero', 'taller', 'taller_operario', 'rrhh', 'solo_lectura']
 
@@ -89,10 +91,15 @@ export default function UsuariosPage() {
     { key: 'rut', label: 'RUT', render: v => mono(v) },
     { key: 'permisoDescuentos', label: 'Descuentos', render: v => v ? <Badge tone="green">Si</Badge> : <Badge tone="gray">No</Badge> },
     { key: 'permisoAprobarDescuentos', label: 'Aprueba dctos.', render: v => v ? <Badge tone="green">Si</Badge> : <Badge tone="gray">No</Badge> },
-    { key: 'permisosExtra', label: 'Permisos', render: v => {
-      if (!v) return <span style={{ color: 'var(--text-3)', fontSize: 12 }}>-</span>
-      const count = Object.keys(v).length
-      return <Badge tone="amber">{count} modulo{count !== 1 ? 's' : ''}</Badge>
+    { key: '_permisos', label: 'Acceso', render: (_, row) => {
+      const count = Object.keys(row.permisosExtra || {}).length
+      return <span style={{ fontSize: 12, color: 'var(--text-2)' }}>
+        Rol {row.role}{count ? ` + ${count} extra` : ''}
+      </span>
+    }},
+    { key: 'tiposVentaPermitidos', label: 'Tipos de venta', render: value => {
+      if (!Array.isArray(value)) return <Badge tone="green">Todos</Badge>
+      return <Badge tone="blue">{value.length} tipo{value.length !== 1 ? 's' : ''}</Badge>
     }},
     { key: 'activo', label: 'Estado', render: v => v ? <Badge tone="green">Activo</Badge> : <Badge tone="red">Inactivo</Badge> },
     { key: '_acc', label: '', render: (_, row) => (
@@ -234,6 +241,7 @@ function CreateUsuarioModal({ sucursales, onClose }) {
     sucursalId: '',
     permisoDescuentos: false,
     permisoAprobarDescuentos: false,
+    tiposVentaPermitidos: null,
     activo: true,
   })
 
@@ -270,6 +278,7 @@ function EditUsuarioModal({ user, sucursales, onClose }) {
     sucursalId: user.sucursalId != null ? String(user.sucursalId) : '',
     permisoDescuentos: Boolean(user.permisoDescuentos),
     permisoAprobarDescuentos: Boolean(user.permisoAprobarDescuentos),
+    tiposVentaPermitidos: Array.isArray(user.tiposVentaPermitidos) ? user.tiposVentaPermitidos : null,
     password: '',
     activo: user.activo,
   })
@@ -308,7 +317,7 @@ function EditUsuarioModal({ user, sucursales, onClose }) {
   return (
     <Modal onClose={onClose} title={`Editar ${user.nombre}`} width={760}>
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', marginBottom: 14 }}>
-        {[['datos', 'Datos'], ['permisos', 'Permisos extra']].map(([id, label]) => (
+        {[['datos', 'Datos'], ['efectivos', 'Permisos efectivos'], ['permisos', 'Permisos extra']].map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={tabBtn(tab === id)}>{label}</button>
         ))}
       </div>
@@ -326,48 +335,20 @@ function EditUsuarioModal({ user, sucursales, onClose }) {
 
       {tab === 'permisos' && (
         <>
-          <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: 'var(--bg)' }}>
-                  <th style={thStyle}>Modulo</th>
-                  {PERMS.map(p => <th key={p} style={{ ...thStyle, textAlign: 'center', width: 82 }}>{p}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {MODULOS.map(([mod, label, funciones = []]) => (
-                  <Fragment key={mod}>
-                    <tr style={{ borderTop: '1px solid var(--border)' }}>
-                      <td style={{ padding: '7px 12px', fontWeight: 500 }}>{label}</td>
-                      {PERMS.map(p => (
-                        <td key={p} style={{ padding: '7px 8px', textAlign: 'center' }}>
-                          <input type="checkbox" checked={(permisos[mod] || []).includes(p)} onChange={() => togglePerm(mod, p)} />
-                        </td>
-                      ))}
-                    </tr>
-                    {/* El permiso del modulo ya cubre todas sus funciones: estas filas
-                        sirven para dar UNA sin abrir el modulo entero. */}
-                    {funciones.map(([fn, fnLabel]) => {
-                      const clave = `${mod}.${fn}`
-                      return <tr key={clave} style={{ borderTop: '1px solid var(--border)' }}>
-                        <td style={{ padding: '5px 12px 5px 30px', fontSize: 12, color: 'var(--text-2)' }}>{fnLabel}</td>
-                        {PERMS.map(p => (
-                          <td key={p} style={{ padding: '5px 8px', textAlign: 'center' }}>
-                            <input type="checkbox" checked={(permisos[clave] || []).includes(p)} onChange={() => togglePerm(clave, p)} />
-                          </td>
-                        ))}
-                      </tr>
-                    })}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <div style={infoBoxStyle}>Estos permisos se suman al rol; no muestran lo que ya viene dado por el rol. Revisa la pestaña <strong>Permisos efectivos</strong> para ver el acceso completo.</div>
+          <PermisosMatrix role={form.role} permisos={permisos} editable onToggle={togglePerm} />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
             <Btn variant="secondary" size="sm" onClick={() => setPermisos({})}>Limpiar todo</Btn>
             <Btn variant="secondary" size="sm" onClick={onClose}>Cancelar</Btn>
             <Btn variant="primary" size="sm" onClick={savePermisos} disabled={updateP.isPending}>{updateP.isPending ? 'Guardando...' : 'Guardar permisos'}</Btn>
           </div>
+        </>
+      )}
+
+      {tab === 'efectivos' && (
+        <>
+          <div style={infoBoxStyle}>Vista de lectura: combina el rol <strong>{form.role}</strong> y los permisos extra guardados. Una marca indica acceso real.</div>
+          <PermisosMatrix role={form.role} permisos={permisos} />
         </>
       )}
     </Modal>
@@ -402,8 +383,59 @@ function UserFields({ form, setForm, sucursales, showPassword = false, passwordH
       <Field label="Puede aprobar o rechazar descuentos">
         <label style={checkStyle}><input type="checkbox" checked={form.permisoAprobarDescuentos} onChange={e => set('permisoAprobarDescuentos', e.target.checked)} /> Si</label>
       </Field>
+      <div style={{ gridColumn: '1 / -1' }}>
+        <Field label="Tipos de venta autorizados" hint={form.role === 'vendedor' ? 'Restringe los tipos que este ejecutivo puede consultar, crear y editar. Las ventas existentes no se modifican.' : 'Gerencia y Coordinacion Comercial tienen cobertura transversal por rol; esta matriz se configura para ejecutivos.'}>
+          {form.role === 'vendedor' ? <TiposVentaField form={form} set={set} /> : <div style={{ ...infoBoxStyle, margin: 0 }}>Este control se aplica a cuentas con rol vendedor. Para los demas roles se mantiene la cobertura propia de su funcion.</div>}
+        </Field>
+      </div>
     </div>
   )
+}
+
+function TiposVentaField({ form, set }) {
+  const sinRestriccion = !Array.isArray(form.tiposVentaPermitidos)
+  const seleccionados = form.tiposVentaPermitidos || []
+  const toggleTipo = tipo => set('tiposVentaPermitidos', seleccionados.includes(tipo)
+    ? seleccionados.filter(item => item !== tipo)
+    : [...seleccionados, tipo])
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 7, padding: '8px 10px' }}>
+      <label style={{ ...checkStyle, paddingTop: 0, fontWeight: 600 }}><input type="checkbox" checked={sinRestriccion} onChange={event => set('tiposVentaPermitidos', event.target.checked ? null : [])} /> Todos los tipos de venta</label>
+      {!sinRestriccion && <>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', margin: '7px 0' }}>Seleccione al menos un tipo antes de guardar.</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '6px 12px' }}>
+          {TIPO_VENTA_OPCIONES.map(tipo => <label key={tipo} style={{ ...checkStyle, paddingTop: 0 }}><input type="checkbox" checked={seleccionados.includes(tipo)} onChange={() => toggleTipo(tipo)} /> {tipo}</label>)}
+        </div>
+      </>}
+    </div>
+  )
+}
+
+function PermisosMatrix({ role, permisos, editable = false, onToggle }) {
+  const user = { role, permisosExtra: permisos }
+  const checked = (clave, permiso) => editable
+    ? (permisos[clave] || []).includes(permiso)
+    : can(user, clave, permiso)
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead><tr style={{ background: 'var(--bg)' }}><th style={thStyle}>Modulo</th>{PERMS.map(p => <th key={p} style={{ ...thStyle, textAlign: 'center', width: 82 }}>{p}</th>)}</tr></thead>
+        <tbody>{MODULOS.map(([mod, label, funciones = []]) => (
+          <Fragment key={mod}>
+            <PermisosRow label={label} clave={mod} checked={checked} editable={editable} onToggle={onToggle} />
+            {funciones.map(([fn, fnLabel]) => <PermisosRow key={`${mod}.${fn}`} label={fnLabel} clave={`${mod}.${fn}`} checked={checked} editable={editable} onToggle={onToggle} nested />)}
+          </Fragment>
+        ))}</tbody>
+      </table>
+    </div>
+  )
+}
+
+function PermisosRow({ label, clave, checked, editable, onToggle, nested = false }) {
+  return <tr style={{ borderTop: '1px solid var(--border)' }}>
+    <td style={{ padding: nested ? '5px 12px 5px 30px' : '7px 12px', fontWeight: nested ? 400 : 500, fontSize: nested ? 12 : undefined, color: nested ? 'var(--text-2)' : undefined }}>{label}</td>
+    {PERMS.map(permiso => <td key={permiso} style={{ padding: nested ? '5px 8px' : '7px 8px', textAlign: 'center' }}><input type="checkbox" checked={checked(clave, permiso)} disabled={!editable} onChange={editable ? () => onToggle(clave, permiso) : undefined} /></td>)}
+  </tr>
 }
 
 function Modal({ onClose, title, width = 500, children }) {
@@ -431,6 +463,7 @@ const mono = value => value ? <span style={{ fontFamily: "'DM Mono',monospace", 
 const btnStyle = { padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500 }
 const inputStyle = { width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }
 const checkStyle = { display: 'flex', gap: 6, fontSize: 13, alignItems: 'center', cursor: 'pointer', paddingTop: 7 }
+const infoBoxStyle = { marginBottom: 12, padding: '9px 10px', borderRadius: 7, background: 'var(--green-50, #f0fdf4)', color: 'var(--text-2)', fontSize: 12, lineHeight: 1.4 }
 const thStyle = { padding: '8px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }
 const tabBtn = active => ({
   padding: '7px 14px',

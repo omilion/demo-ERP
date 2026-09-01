@@ -2,6 +2,7 @@ import { attachCliente, attachProductos } from './helpers.js'
 import { computeVentaFinancialState } from './financial.js'
 import { getUserSucursalId } from '../caja/scope.js'
 import { attachEstadoFlujo } from './estados-normalize.js'
+import { assertTipoVentaPermitido } from './tipos-permitidos.js'
 
 function ignoreMissingLegacyColumn(error) {
   return error.code === 'P2022' ? [] : Promise.reject(error)
@@ -36,6 +37,7 @@ export default async function getVenta(fastify) {
       include: { items: true, cargos: true },
     })
     if (!o) return reply.code(404).send({ error: 'Venta no encontrada' })
+    if (!assertTipoVentaPermitido(reply, request.user, o.tipo)) return
 
     const [odts, pagos, multas, despachos, guias, cobranza, cotizaciones] = await Promise.all([
       fastify.prisma.odt.findMany({
