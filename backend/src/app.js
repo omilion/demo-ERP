@@ -72,6 +72,17 @@ export function buildApp(opts = {}) {
     if (!isErpAccessToken(request.user)) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
+
+    // La sesión refresh no protege el bearer token ya emitido. Contrastamos una
+    // versión de autorización persistida para que una baja o cambio de permisos
+    // lo deje inválido en la siguiente llamada, sin esperar su expiración JWT.
+    const user = await app.prisma.user.findUnique({
+      where: { id: Number(request.user.id) },
+      select: { activo: true, authVersion: true },
+    })
+    if (!user || !user.activo || Number(user.authVersion || 0) !== Number(request.user.authVersion || 0)) {
+      return reply.status(401).send({ error: 'Session revoked' })
+    }
   })
   decorateRbac(app)
 

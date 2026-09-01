@@ -33,10 +33,10 @@ export function useReasignarOrdenItem() {
   })
 }
 
-export function useEliminarOrdenItem() {
+export function useExcluirOrdenItem() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id) => api.delete(`/admin/integridad/orden-item/${id}`).then(r => r.data),
+    mutationFn: (id) => api.patch(`/admin/integridad/orden-item/${id}/excluir`).then(r => r.data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin'] }) },
   })
 }
@@ -49,10 +49,10 @@ export function useReasignarOdtItem() {
   })
 }
 
-export function useEliminarOdtItem() {
+export function useExcluirOdtItem() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id) => api.delete(`/admin/integridad/odt-item/${id}`).then(r => r.data),
+    mutationFn: (id) => api.patch(`/admin/integridad/odt-item/${id}/excluir`).then(r => r.data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin'] }) },
   })
 }

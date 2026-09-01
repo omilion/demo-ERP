@@ -24,6 +24,7 @@ model User {
   tiposVentaPermitidos       Json?            @map("tipos_venta_permitidos")
   sucursalId                 Int?             @map("sucursal_id")
   activo                     Boolean          @default(true)
+  authVersion                Int              @default(0) @map("auth_version")
   createdAt                  DateTime         @default(now()) @map("created_at")
   sessions                   Session[]
   accesos                    AccesoLog[]

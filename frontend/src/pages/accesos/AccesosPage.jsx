@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { useAccesos } from '../../api/accesos'
 
@@ -50,9 +51,12 @@ export default function AccesosPage() {
     <main className="page page-wide">
       <PageHeader
         title="Accesos al Sistema"
-        subtitle={`${total.toLocaleString('es-CL')} eventos registrados`}
+        subtitle={`${total.toLocaleString('es-CL')} eventos de autenticación registrados`}
         breadcrumb={['Inicio', 'Admin', 'Accesos']}
       />
+      <div style={{ marginBottom: 14, padding: '11px 14px', borderRadius: 10, background: 'rgba(59, 130, 246, 0.10)', color: 'var(--text-1)', fontSize: 13, lineHeight: 1.45 }}>
+        Esta vista registra ingresos y actividad de acceso; no modifica permisos. Para asignar o revocar acceso use <Link to="/usuarios" style={{ fontWeight: 700, color: 'var(--blue)' }}>Usuarios</Link>. Los cambios de permisos revocan la sesión activa de inmediato.
+      </div>
       <div className="kpi-strip">
         <KpiCard label="Total eventos" value={total.toLocaleString('es-CL')} icon="key" sublabel="Histórico login" />
         <KpiCard label="En página" value={items.length} icon="list" sublabel={`Página ${page} de ${pages}`} />

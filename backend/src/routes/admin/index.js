@@ -1,6 +1,13 @@
 import comisionesAdminRoutes from './comisiones.js'
 import aiBalanceRoutes from './ai-balance.js'
 
+const INTEGRITY_SUMMARY_CACHE_MS = 30_000
+let integritySummaryCache = { value: null, expiresAt: 0 }
+
+function invalidateIntegritySummaryCache() {
+  integritySummaryCache = { value: null, expiresAt: 0 }
+}
+
 export function toJsonSerializable(value) {
   if (typeof value === 'bigint') {
     const asNumber = Number(value)
@@ -19,18 +26,18 @@ export function toJsonSerializable(value) {
 export default async function adminRoutes(fastify) {
   const adminRead = fastify.rbac('admin', 'read', { allowExtra: false })
   const adminWrite = fastify.rbac('admin', 'write', { allowExtra: false })
-  const adminDelete = fastify.rbac('admin', 'delete', { allowExtra: false })
 
   fastify.register(comisionesAdminRoutes, { prefix: '/comisiones' })
   fastify.register(aiBalanceRoutes)
 
   fastify.get('/integridad/resumen', { preHandler: [fastify.authenticate, adminRead] }, async () => {
+    if (integritySummaryCache.value && integritySummaryCache.expiresAt > Date.now()) return integritySummaryCache.value
     const p = fastify.prisma
     const [r] = await p.$queryRaw`
       SELECT
-        (SELECT COUNT(*) FROM ventas.orden_items oi WHERE oi.producto_id IS NOT NULL
+        (SELECT COUNT(*) FROM ventas.orden_items oi WHERE COALESCE(oi.eliminado, false) = false AND oi.producto_id IS NOT NULL
            AND NOT EXISTS (SELECT 1 FROM catalogo.productos p WHERE p.id = oi.producto_id))::int AS orden_items_huerfanos,
-        (SELECT COUNT(*) FROM taller.odt_items oi WHERE oi.producto_id IS NOT NULL
+        (SELECT COUNT(*) FROM taller.odt_items oi WHERE COALESCE(oi.eliminado, false) = false AND oi.producto_id IS NOT NULL
            AND NOT EXISTS (SELECT 1 FROM catalogo.productos p WHERE p.id = oi.producto_id))::int AS odt_items_huerfanos,
         (SELECT COUNT(*) FROM catalogo.productos WHERE stock < 0)::int AS productos_stock_negativo,
         (SELECT COUNT(*) FROM catalogo.productos WHERE activo = true AND (precio_lista IS NULL OR precio_lista <= 0))::int AS productos_sin_precio,
@@ -71,12 +78,13 @@ export default async function adminRoutes(fastify) {
         (SELECT COUNT(*) FROM taller.odts WHERE (cliente_nombre IS NULL OR cliente_nombre = ''))::int AS odts_sin_cliente,
         (SELECT COUNT(*) FROM taller.bitacora_taller WHERE fecha IS NULL)::int AS bitacora_sin_fecha
     `
+    integritySummaryCache = { value: r, expiresAt: Date.now() + INTEGRITY_SUMMARY_CACHE_MS }
     return r
   })
 
   fastify.get('/integridad/:tipo', { preHandler: [fastify.authenticate, adminRead] }, async (req, reply) => {
     const { tipo } = req.params
-    const limit = Math.min(Number(req.query.limit) || 200, 1000)
+    const limit = Math.min(Number(req.query.limit) || 200, 500)
     const p = fastify.prisma
 
     switch (tipo) {
@@ -84,14 +92,14 @@ export default async function adminRoutes(fastify) {
         return p.$queryRaw`
           SELECT oi.id, oi.orden_id, oi.producto_id, oi.nombre, oi.cantidad, oi.precio_unitario, o.created_at
           FROM ventas.orden_items oi LEFT JOIN ventas.ordenes o ON o.id = oi.orden_id
-          WHERE oi.producto_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM catalogo.productos p WHERE p.id = oi.producto_id)
+          WHERE COALESCE(oi.eliminado, false) = false AND oi.producto_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM catalogo.productos p WHERE p.id = oi.producto_id)
           ORDER BY o.created_at DESC NULLS LAST LIMIT ${limit}
         `
       case 'odt-items-huerfanos':
         return p.$queryRaw`
           SELECT oi.id, oi.odt_id, oi.producto_id, oi.nombre, oi.cantidad
           FROM taller.odt_items oi
-          WHERE oi.producto_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM catalogo.productos p WHERE p.id = oi.producto_id)
+          WHERE COALESCE(oi.eliminado, false) = false AND oi.producto_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM catalogo.productos p WHERE p.id = oi.producto_id)
           ORDER BY oi.id DESC LIMIT ${limit}
         `
       case 'productos-stock-negativo':
@@ -240,6 +248,7 @@ export default async function adminRoutes(fastify) {
       )
       SELECT COUNT(*)::int AS actualizadas FROM upd
     `
+    invalidateIntegritySummaryCache()
     return r
   })
 
@@ -247,34 +256,52 @@ export default async function adminRoutes(fastify) {
     const id = Number(req.params.id)
     const productoId = Number(req.body?.producto_id)
     if (!id || !productoId) return reply.code(400).send({ error: 'id y producto_id requeridos' })
-    const [prod] = await fastify.prisma.$queryRaw`SELECT id, nombre, precio_lista FROM catalogo.productos WHERE id = ${productoId}`
-    if (!prod) return reply.code(404).send({ error: 'Producto no existe' })
-    await fastify.prisma.$executeRaw`UPDATE ventas.orden_items SET producto_id = ${productoId}, nombre = ${prod.nombre} WHERE id = ${id}`
+    const [prod] = await fastify.prisma.$queryRaw`SELECT id, nombre, precio_lista FROM catalogo.productos WHERE id = ${productoId} AND activo = true`
+    if (!prod) return reply.code(404).send({ error: 'Producto activo no existe' })
+    const updated = await fastify.prisma.$executeRaw`UPDATE ventas.orden_items SET producto_id = ${productoId}, nombre = ${prod.nombre} WHERE id = ${id} AND COALESCE(eliminado, false) = false`
+    if (!updated) return reply.code(404).send({ error: 'Item no encontrado o excluido' })
+    invalidateIntegritySummaryCache()
     return { ok: true, producto: prod }
   })
 
-  fastify.delete('/integridad/orden-item/:id', { preHandler: [fastify.authenticate, adminDelete] }, async (req, reply) => {
+  fastify.patch('/integridad/orden-item/:id/excluir', { preHandler: [fastify.authenticate, adminWrite] }, async (req, reply) => {
     const id = Number(req.params.id)
     if (!id) return reply.code(400).send({ error: 'id requerido' })
-    await fastify.prisma.$executeRaw`DELETE FROM ventas.orden_items WHERE id = ${id}`
-    return { ok: true }
+    const updated = await fastify.prisma.$executeRaw`
+      UPDATE ventas.orden_items oi SET eliminado = true
+      WHERE oi.id = ${id} AND COALESCE(oi.eliminado, false) = false
+        AND oi.producto_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM catalogo.productos p WHERE p.id = oi.producto_id)
+    `
+    if (!updated) return reply.code(404).send({ error: 'Item no encontrado o ya excluido' })
+    invalidateIntegritySummaryCache()
+    return { ok: true, accion: 'excluido_sin_borrado_fisico' }
   })
 
   fastify.patch('/integridad/odt-item/:id', { preHandler: [fastify.authenticate, adminWrite] }, async (req, reply) => {
     const id = Number(req.params.id)
     const productoId = Number(req.body?.producto_id)
     if (!id || !productoId) return reply.code(400).send({ error: 'id y producto_id requeridos' })
-    const [prod] = await fastify.prisma.$queryRaw`SELECT id, nombre FROM catalogo.productos WHERE id = ${productoId}`
-    if (!prod) return reply.code(404).send({ error: 'Producto no existe' })
-    await fastify.prisma.$executeRaw`UPDATE taller.odt_items SET producto_id = ${productoId}, nombre = ${prod.nombre} WHERE id = ${id}`
+    const [prod] = await fastify.prisma.$queryRaw`SELECT id, nombre FROM catalogo.productos WHERE id = ${productoId} AND activo = true`
+    if (!prod) return reply.code(404).send({ error: 'Producto activo no existe' })
+    const updated = await fastify.prisma.$executeRaw`UPDATE taller.odt_items SET producto_id = ${productoId}, nombre = ${prod.nombre} WHERE id = ${id} AND COALESCE(eliminado, false) = false`
+    if (!updated) return reply.code(404).send({ error: 'Item no encontrado o excluido' })
+    invalidateIntegritySummaryCache()
     return { ok: true, producto: prod }
   })
 
-  fastify.delete('/integridad/odt-item/:id', { preHandler: [fastify.authenticate, adminDelete] }, async (req, reply) => {
+  fastify.patch('/integridad/odt-item/:id/excluir', { preHandler: [fastify.authenticate, adminWrite] }, async (req, reply) => {
     const id = Number(req.params.id)
     if (!id) return reply.code(400).send({ error: 'id requerido' })
-    await fastify.prisma.$executeRaw`DELETE FROM taller.odt_items WHERE id = ${id}`
-    return { ok: true }
+    const updated = await fastify.prisma.$executeRaw`
+      UPDATE taller.odt_items oi SET eliminado = true
+      WHERE oi.id = ${id} AND COALESCE(oi.eliminado, false) = false
+        AND oi.producto_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM catalogo.productos p WHERE p.id = oi.producto_id)
+    `
+    if (!updated) return reply.code(404).send({ error: 'Item no encontrado o ya excluido' })
+    invalidateIntegritySummaryCache()
+    return { ok: true, accion: 'excluido_sin_borrado_fisico' }
   })
 
   fastify.get('/auditoria', { preHandler: [fastify.authenticate, adminRead] }, async (req) => {

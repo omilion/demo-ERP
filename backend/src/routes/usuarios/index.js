@@ -304,10 +304,18 @@ export default async function usuariosRoutes(fastify) {
     if (safetyError) return reply.code(409).send({ error: safetyError })
 
     try {
-      const u = await fastify.prisma.user.update({ where: { id }, data, select: userSelect })
-      if (data.passwordHash || data.role !== undefined || data.activo === false || data.permisosExtra !== undefined || data.tiposVentaPermitidos !== undefined) {
-        await fastify.prisma.session.deleteMany({ where: { userId: id } })
-      }
+      const revocaSesion = data.passwordHash || data.role !== undefined || data.activo !== undefined
+        || data.permisosExtra !== undefined || data.tiposVentaPermitidos !== undefined
+        || data.permisoDescuentos !== undefined || data.permisoAprobarDescuentos !== undefined
+        || data.sucursalId !== undefined
+      const [u] = await fastify.prisma.$transaction([
+        fastify.prisma.user.update({
+          where: { id },
+          data: revocaSesion ? { ...data, authVersion: { increment: 1 } } : data,
+          select: userSelect,
+        }),
+        ...(revocaSesion ? [fastify.prisma.session.deleteMany({ where: { userId: id } })] : []),
+      ])
       return u
     } catch (e) {
       if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrado' })
@@ -324,12 +332,14 @@ export default async function usuariosRoutes(fastify) {
     const permisos = sanitizePermisosExtra(request.body?.permisosExtra)
     if (permisos.error) return reply.code(400).send({ error: permisos.error })
     try {
-      const u = await fastify.prisma.user.update({
-        where: { id },
-        data: { permisosExtra: permisos.value },
-        select: { id: true, permisosExtra: true },
-      })
-      await fastify.prisma.session.deleteMany({ where: { userId: id } })
+      const [u] = await fastify.prisma.$transaction([
+        fastify.prisma.user.update({
+          where: { id },
+          data: { permisosExtra: permisos.value, authVersion: { increment: 1 } },
+          select: { id: true, permisosExtra: true },
+        }),
+        fastify.prisma.session.deleteMany({ where: { userId: id } }),
+      ])
       return u
     } catch (e) {
       if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrado' })
@@ -348,7 +358,7 @@ export default async function usuariosRoutes(fastify) {
     if (safetyError) return reply.code(409).send({ error: safetyError })
     await fastify.prisma.$transaction([
       fastify.prisma.session.deleteMany({ where: { userId: id } }),
-      fastify.prisma.user.update({ where: { id }, data: { activo: false } }),
+      fastify.prisma.user.update({ where: { id }, data: { activo: false, authVersion: { increment: 1 } } }),
     ])
     return reply.code(204).send()
   })

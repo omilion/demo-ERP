@@ -57,6 +57,12 @@ export default function IaBalancePage() {
     items: [],
     total: 0,
   }
+  const limits = data?.limits || {
+    maxQueriesPerDay: 0,
+    maxRequestsPerWindow: 0,
+    windowSeconds: 0,
+    maxConcurrentRequests: 0,
+  }
 
   const pages = Math.max(1, Math.ceil(logs.total / limit))
 
@@ -197,6 +203,10 @@ export default function IaBalancePage() {
         </div>
       </div>
 
+      <div role="status" style={{ margin: '0 0 16px', padding: '11px 14px', borderRadius: 10, background: 'rgba(59, 130, 246, 0.10)', color: 'var(--text-1)', fontSize: 13, lineHeight: 1.45 }}>
+        Controles activos: {limits.maxQueriesPerDay || '…'} consultas diarias por usuario, {limits.maxRequestsPerWindow || '…'} por cada {limits.windowSeconds || '…'} segundos y {limits.maxConcurrentRequests || '…'} consulta simultánea por usuario. Las consultas que excedan el tiempo máximo se cierran con un mensaje recuperable.
+      </div>
+
       {/* KPI Stats */}
       <div className="kpi-strip" style={{ marginBottom: 20 }}>
         <KpiCard
@@ -291,7 +301,7 @@ export default function IaBalancePage() {
                             height: `${pct}%`,
                             background: barColor,
                             borderRadius: '4px 4px 0 0',
-                            transition: 'height 0.3s ease, background 0.1s',
+                            transition: 'background 0.1s',
                             cursor: 'pointer',
                           }}
                           onMouseEnter={e => e.currentTarget.style.background = hoverColor}

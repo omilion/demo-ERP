@@ -1,12 +1,34 @@
 import { can } from '../../middleware/rbac.js'
 import { permisoDeHerramienta } from './tools/index.js'
 import { randomUUID } from 'node:crypto'
-import { getAnthropic, isAiConfigured, buildSystemPrompt, AI_MODEL, AI_MAX_TOKENS, AI_EFFORT } from './llm.js'
+import { getAnthropic, isAiConfigured, buildSystemPrompt, AI_MODEL, AI_MAX_TOKENS, AI_EFFORT, AI_REQUEST_TIMEOUT_MS } from './llm.js'
 import { getToolDefinitions, runTool } from './tools/index.js'
 import { documentToolDefinitions, runDocumentTool, DOCUMENT_TOOL_NAMES } from './documents.js'
 import { uiToolDefinitions, runUiTool, UI_TOOL_NAMES } from './ui-tools.js'
+import { createAiRequestLimiter, getAiLimitConfig } from './limits.js'
 
-const MAX_ITERATIONS = 8
+const MAX_ITERATIONS = 4
+const aiLimitConfig = getAiLimitConfig()
+const aiRequestLimiter = createAiRequestLimiter(aiLimitConfig)
+
+async function finalMessageWithTimeout(stream) {
+  let timeoutId
+  try {
+    return await Promise.race([
+      stream.finalMessage(),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          stream.abort?.()
+          const error = new Error('La consulta IA excedió el tiempo máximo de espera.')
+          error.code = 'AI_TIMEOUT'
+          reject(error)
+        }, AI_REQUEST_TIMEOUT_MS)
+      }),
+    ])
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
 
 // Todas las definiciones de herramientas (consulta + documentos + UI) que ve el LLM.
 export function allToolDefinitions() {
@@ -59,26 +81,47 @@ export default async function aiChatRoute(fastify) {
     const messages = normalizeMessages(request.body?.messages)
     const lastUser = [...messages].reverse().find(m => m.role === 'user')?.content || ''
 
+    if (!isAiConfigured()) {
+      reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
+      const send = (event, data) => reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+      send('error', { message: 'El asistente IA no está configurado (falta ANTHROPIC_API_KEY).' })
+      reply.raw.end()
+      return reply
+    }
+    if (!messages.length) {
+      return reply.code(400).send({ error: 'No hay mensajes para procesar.' })
+    }
+
+    const admission = aiRequestLimiter.acquire(request.user.id)
+    if (!admission.ok) {
+      return reply.code(429)
+        .header('Retry-After', String(admission.retryAfterSeconds))
+        .send({ error: admission.reason === 'concurrent' ? 'Ya hay una consulta IA en curso para este usuario.' : 'Se alcanzó el límite temporal de consultas IA.', retryAfterSeconds: admission.retryAfterSeconds })
+    }
+    const startOfDay = new Date()
+    startOfDay.setHours(0, 0, 0, 0)
+    let queriesToday
+    try {
+      queriesToday = await fastify.prisma.aiQueryLog.count({
+        where: { userId: request.user.id, createdAt: { gte: startOfDay } },
+      })
+    } catch (error) {
+      admission.release()
+      fastify.log.warn({ error }, 'ai daily quota lookup failed')
+      return reply.code(503).send({ error: 'No fue posible validar la cuota IA. Intente nuevamente.' })
+    }
+    if (queriesToday >= aiLimitConfig.maxQueriesPerDay) {
+      admission.release()
+      return reply.code(429).send({ error: 'Se alcanzó el límite diario de consultas IA para este usuario.' })
+    }
+
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
       'X-Accel-Buffering': 'no',
     })
-    const send = (event, data) => {
-      reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-    }
-
-    if (!isAiConfigured()) {
-      send('error', { message: 'El asistente IA no está configurado (falta ANTHROPIC_API_KEY).' })
-      reply.raw.end()
-      return reply
-    }
-    if (!messages.length) {
-      send('error', { message: 'No hay mensajes para procesar.' })
-      reply.raw.end()
-      return reply
-    }
+    const send = (event, data) => reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
 
     const ctx = { prisma: fastify.prisma, user: request.user }
     const usedTools = []
@@ -117,7 +160,7 @@ export default async function aiChatRoute(fastify) {
 
         stream.on('text', delta => { answerText += delta; send('text', { delta }) })
 
-        const msg = await stream.finalMessage()
+        const msg = await finalMessageWithTimeout(stream)
         if (msg.usage) {
           totalUsage.input_tokens += msg.usage.input_tokens || 0
           totalUsage.output_tokens += msg.usage.output_tokens || 0
@@ -154,8 +197,9 @@ export default async function aiChatRoute(fastify) {
     } catch (e) {
       status = 'error'
       errorMsg = e.message
-      send('error', { message: e?.code === 'AI_NOT_CONFIGURED' ? 'Asistente no configurado.' : 'Ocurrió un error procesando la consulta.' })
+      send('error', { message: e?.code === 'AI_NOT_CONFIGURED' ? 'Asistente no configurado.' : e?.code === 'AI_TIMEOUT' ? 'La consulta tardó demasiado. Intente una pregunta más acotada.' : 'Ocurrió un error procesando la consulta.' })
     } finally {
+      admission.release()
       reply.raw.end()
       // Auditoría — no bloquea la respuesta.
       fastify.prisma.aiQueryLog.create({

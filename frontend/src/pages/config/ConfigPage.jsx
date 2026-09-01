@@ -44,6 +44,9 @@ export default function ConfigPage() {
         subtitle="Empresa, firmas y bloqueos del sistema"
         breadcrumb={['Inicio', 'Config']}
       />
+      <div role="status" style={{ marginBottom: 14, padding: '11px 14px', borderRadius: 10, background: 'rgba(245, 158, 11, 0.12)', color: 'var(--text-1)', fontSize: 13, lineHeight: 1.45 }}>
+        Los cambios aquí afectan la emisión de documentos, bloqueos operativos y comunicación externa. Revise los datos antes de guardar: cada modificación queda auditada.
+      </div>
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
       <div style={{ marginTop: 16 }}>
         {tab === 'empresa' && <EmpresaSection />}
@@ -313,10 +316,15 @@ function EmpresaSection() {
     return null
   }
 
-  const save = () => {
+  const save = async () => {
     const error = validate()
     if (error) return toast.error(error)
     const payload = empresaPayload(form)
+    if (!creating && selected && !await confirmDialog({
+      title: 'Confirmar cambio de empresa',
+      detail: 'Estos datos se usan en documentos y configuraciones operativas. Verifique RUT, razón social y el requisito de escaneo antes de continuar.',
+      tone: 'danger',
+    })) return
     if (creating || !selected) {
       return createMut.mutate(payload, {
         onSuccess: empresa => {
