@@ -152,9 +152,15 @@ async function validatePaymentDocumentReference(prisma, { ordenId, documento, nD
   })
   const doc = cleanText(documento)
   const number = cleanText(nDoc)
+  // El pago se imputa contra un documento, no contra la venta: primero se registra
+  // la boleta o factura -el movimiento "referencial", que es la obligacion- y luego
+  // los pagos que la van saldando, que pueden ser varios y de distinto medio. El
+  // mensaje nombra ese paso previo: sin el, el cajero solo veia que no podia cobrar.
   if (!referenciales.length) {
-    if (doc || number) return { status: 404, error: 'Documento referencial no encontrado para la venta' }
-    return { status: 400, error: 'Crea un documento referencial activo antes de registrar el pago' }
+    if (doc || number) {
+      return { status: 404, error: 'Ese documento no esta registrado en la venta. Registralo primero en Cobranza y despues imputa el pago.' }
+    }
+    return { status: 400, error: 'Antes de cobrar hay que registrar el documento de la venta (boleta o factura) en Cobranza. El pago se imputa contra ese documento.' }
   }
   if (!doc || !number) {
     return { status: 400, error: 'Selecciona un documento referencial activo para registrar el pago' }
