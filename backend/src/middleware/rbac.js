@@ -76,6 +76,11 @@ const PERMISSIONS = {
     licitaciones: ['read'],
     proveedores:  ['read'],
     rrhh:         ['read'],
+    // Ver la nomina no es ver los sueldos. Una cuenta de observacion podia listar a
+    // todo el personal con su sueldo liquido, y hay dos activas. Se niega explicito
+    // porque los permisos por funcion heredan del modulo: sin esta linea, `rrhh:read`
+    // le daria tambien la remuneracion.
+    'rrhh.remuneracion': [],
   },
 }
 
