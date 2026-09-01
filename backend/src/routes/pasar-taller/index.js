@@ -310,6 +310,14 @@ export default async function pasarTallerRoutes(fastify) {
       return reply.code(409).send({ error: 'La ODT no pertenece a la orden indicada' })
     }
 
+    // Sin items solo se puede AJUSTAR una OT que ya existe (su prioridad o su
+    // observacion). Crear una desde cero sin nada que fabricar dejaba una OT vacia,
+    // y la Matriz la cuenta igual: la venta aparecia con trabajo en taller cuando no
+    // habia ninguno. Se rechaza al crear, no al actualizar.
+    if (!items.length && !existingOdt) {
+      return reply.code(400).send({ error: 'Indica al menos un item para abrir la OT' })
+    }
+
     const [cliente, talleres, productosMap] = await Promise.all([
       attachCliente(fastify.prisma, orden),
       fastify.prisma.taller.findMany({ where: { activo: true }, orderBy: { nombre: 'asc' } }),
