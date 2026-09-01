@@ -1197,6 +1197,16 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   }, [crmMode, isEdit, forceTipo, data.tipo, set])
 
   useEffect(() => {
+    if (!isEdit && !crmMode) {
+      const qTipo = searchParams.get('tipo')
+      if (qTipo) {
+        const canonical = normalizeTipoVenta(qTipo) || qTipo
+        if (data.tipo !== canonical) set('tipo', canonical)
+      }
+    }
+  }, [searchParams, isEdit, crmMode, data.tipo, set])
+
+  useEffect(() => {
     if (found && initializedId !== found.id) {
       set('clienteId', String(found.clienteId || ''))
       set('clienteSucursalId', String(found.clienteSucursalId || ''))
@@ -1327,6 +1337,9 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       if (!confirmed) return
     }
     set('tipo', nextTipo)
+    if (!isEdit && !crmMode) {
+      setSearchParams({ tipo: nextTipo }, { replace: true })
+    }
     setSelectedDiscountRule(null)
     set('descuentoPct', '')
   }
@@ -1360,7 +1373,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         return
       }
     }
-    if (!/^\S+@\S+\.\S+$/.test(String(data.emailContactoDespacho || '').trim())) {
+    if (data.tipo !== 'Marketplace' && !/^\S+@\S+\.\S+$/.test(String(data.emailContactoDespacho || '').trim())) {
       toast.warning('Ingresa el correo obligatorio del contacto de despacho')
       return
     }
@@ -1706,83 +1719,84 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       )}
 
       </div>
-      <VentaWorkspaceSection className="venta-workspace-dispatch-section" title="Información de Despacho">
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-        <FormField label="Días para entrega" required>
-          <Input type="number" min="0" max="3650" value={data.plazoEntregaDias || ''} onChange={v => { set('plazoEntregaDias', v); set('fechaPlazo', calculateDeliveryDateIso(v, data.plazoEntregaTipo)) }} placeholder="Ej: 15" />
-        </FormField>
-        <FormField label="Tipo de días" required>
-          <RadioGroup
-            name="plazoEntregaTipo"
-            ariaLabel="Tipo de días para la entrega"
-            value={data.plazoEntregaTipo || 'corridos'}
-            onChange={v => { set('plazoEntregaTipo', v); set('fechaPlazo', calculateDeliveryDateIso(data.plazoEntregaDias, v)) }}
-            options={[{ value: 'habiles', label: 'Días hábiles' }, { value: 'corridos', label: 'Días corridos' }]}
-          />
-        </FormField>
-        <FormField label="Fecha tope calculada">
-          <Input type="date" value={data.fechaPlazo || ''} onChange={v => set('fechaPlazo', v)} />
-        </FormField>
-        <FormField label="Monto Despacho Cotizado">
-          <Input type="number" value={data.montoDespacho || ''} onChange={v => set('montoDespacho', v)} prefix="$" placeholder="0" />
-        </FormField>
-        <div style={{ display: 'flex', alignItems: 'center', marginTop: 20 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
-            <input type="checkbox" checked={!!data.enviosParciales} onChange={e => set('enviosParciales', e.target.checked)} />
-            Permite envíos parciales
-          </label>
-        </div>
-      </div>
-      {/* Región y Comuna encadenadas: elegir región filtra las comunas disponibles */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
-        <FormField label="Región Despacho">
-          <Select
-            value={data.regionDespacho || ''}
-            onChange={v => { set('regionDespacho', v); set('comunaDespacho', '') }}
-            options={[{ value: '', label: '— Seleccionar región —' }, ...regiones.map(r => ({ value: r.nombre, label: r.nombre }))]}
-          />
-        </FormField>
-        <FormField label="Comuna Despacho">
-          <Select
-            value={data.comunaDespacho || ''}
-            onChange={v => set('comunaDespacho', v)}
-            disabled={!data.regionDespacho}
-            options={[{ value: '', label: data.regionDespacho ? '— Seleccionar comuna —' : 'Elige región primero' }, ...comunas.map(c => ({ value: c.nombre, label: c.nombre }))]}
-          />
-        </FormField>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 14 }}>
-        <FormField label="Dirección de Despacho (Override)" hint="Dejar vacío para usar dirección por defecto del cliente">
-          <Input value={data.direccionDespacho || ''} onChange={v => set('direccionDespacho', v)} placeholder="Calle y número" />
-        </FormField>
-        <FormField label="Datos extra de dirección" hint="Depto, oficina, referencia, etc.">
-          <Input value={data.direccionDespachoExtra || ''} onChange={v => set('direccionDespachoExtra', v)} placeholder="Depto / referencia (opcional)" />
-        </FormField>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
-        <FormField label="Contacto de Despacho">
-          <Input value={data.contactoDespacho || ''} onChange={v => set('contactoDespacho', v)} placeholder="Nombre del contacto" />
-        </FormField>
-        <FormField label="Teléfono Contacto Despacho">
-          <Input value={data.telefonoContactoDespacho || ''} onChange={v => set('telefonoContactoDespacho', v)} placeholder="Teléfono del contacto" />
-        </FormField>
-        <FormField label="Correo Contacto Despacho" required>
-          <Input type="email" value={data.emailContactoDespacho || ''} onChange={v => set('emailContactoDespacho', v)} placeholder="contacto@cliente.cl" />
-        </FormField>
-      </div>
-      {isEdit && found?.cotizaciones?.length > 0 && (
-        <div style={{ marginTop: 8, marginBottom: 8, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-          <div style={{ padding: '8px 10px', background: 'var(--bg)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>Cotizacion / licitacion vinculada</div>
-          {found.cotizaciones.map(c => (
-            <button key={c.id} type="button" onClick={() => navigate(`/licitaciones/${c.id}`)} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, width: '100%', padding: '9px 10px', background: '#fff', borderTop: '1px solid var(--border)', textAlign: 'left', cursor: 'pointer', fontSize: 12 }}>
-              <span><strong>{c.idLicitacion || `#${c.id}`}</strong> {c.referencia || c.ordenCompra || ''}</span>
-              <span style={{ color: 'var(--green-700)', fontWeight: 600 }}>Ver</span>
-            </button>
-          ))}
-        </div>
+      {data.tipo !== 'Marketplace' && (
+        <VentaWorkspaceSection className="venta-workspace-dispatch-section" title="Información de Despacho">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+            <FormField label="Días para entrega" required>
+              <Input type="number" min="0" max="3650" value={data.plazoEntregaDias || ''} onChange={v => { set('plazoEntregaDias', v); set('fechaPlazo', calculateDeliveryDateIso(v, data.plazoEntregaTipo)) }} placeholder="Ej: 15" />
+            </FormField>
+            <FormField label="Tipo de días" required>
+              <RadioGroup
+                name="plazoEntregaTipo"
+                ariaLabel="Tipo de días para la entrega"
+                value={data.plazoEntregaTipo || 'corridos'}
+                onChange={v => { set('plazoEntregaTipo', v); set('fechaPlazo', calculateDeliveryDateIso(data.plazoEntregaDias, v)) }}
+                options={[{ value: 'habiles', label: 'Días hábiles' }, { value: 'corridos', label: 'Días corridos' }]}
+              />
+            </FormField>
+            <FormField label="Fecha tope calculada">
+              <Input type="date" value={data.fechaPlazo || ''} onChange={v => set('fechaPlazo', v)} />
+            </FormField>
+            <FormField label="Monto Despacho Cotizado">
+              <Input type="number" value={data.montoDespacho || ''} onChange={v => set('montoDespacho', v)} prefix="$" placeholder="0" />
+            </FormField>
+            <div style={{ display: 'flex', alignItems: 'center', marginTop: 20 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                <input type="checkbox" checked={!!data.enviosParciales} onChange={e => set('enviosParciales', e.target.checked)} />
+                Permite envíos parciales
+              </label>
+            </div>
+          </div>
+          {/* Región y Comuna encadenadas: elegir región filtra las comunas disponibles */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
+            <FormField label="Región Despacho">
+              <Select
+                value={data.regionDespacho || ''}
+                onChange={v => { set('regionDespacho', v); set('comunaDespacho', '') }}
+                options={[{ value: '', label: '— Seleccionar región —' }, ...regiones.map(r => ({ value: r.nombre, label: r.nombre }))]}
+              />
+            </FormField>
+            <FormField label="Comuna Despacho">
+              <Select
+                value={data.comunaDespacho || ''}
+                onChange={v => set('comunaDespacho', v)}
+                disabled={!data.regionDespacho}
+                options={[{ value: '', label: data.regionDespacho ? '— Seleccionar comuna —' : 'Elige región primero' }, ...comunas.map(c => ({ value: c.nombre, label: c.nombre }))]}
+              />
+            </FormField>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 14 }}>
+            <FormField label="Dirección de Despacho (Override)" hint="Dejar vacío para usar dirección por defecto del cliente">
+              <Input value={data.direccionDespacho || ''} onChange={v => set('direccionDespacho', v)} placeholder="Calle y número" />
+            </FormField>
+            <FormField label="Datos extra de dirección" hint="Depto, oficina, referencia, etc.">
+              <Input value={data.direccionDespachoExtra || ''} onChange={v => set('direccionDespachoExtra', v)} placeholder="Depto / referencia (opcional)" />
+            </FormField>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
+            <FormField label="Contacto de Despacho">
+              <Input value={data.contactoDespacho || ''} onChange={v => set('contactoDespacho', v)} placeholder="Nombre del contacto" />
+            </FormField>
+            <FormField label="Teléfono Contacto Despacho">
+              <Input value={data.telefonoContactoDespacho || ''} onChange={v => set('telefonoContactoDespacho', v)} placeholder="Teléfono del contacto" />
+            </FormField>
+            <FormField label="Correo Contacto Despacho" required>
+              <Input type="email" value={data.emailContactoDespacho || ''} onChange={v => set('emailContactoDespacho', v)} placeholder="contacto@cliente.cl" />
+            </FormField>
+          </div>
+          {isEdit && found?.cotizaciones?.length > 0 && (
+            <div style={{ marginTop: 8, marginBottom: 8, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ padding: '8px 10px', background: 'var(--bg)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>Cotizacion / licitacion vinculada</div>
+              {found.cotizaciones.map(c => (
+                <button key={c.id} type="button" onClick={() => navigate(`/licitaciones/${c.id}`)} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, width: '100%', padding: '9px 10px', background: '#fff', borderTop: '1px solid var(--border)', textAlign: 'left', cursor: 'pointer', fontSize: 12 }}>
+                  <span><strong>{c.idLicitacion || `#${c.id}`}</strong> {c.referencia || c.ordenCompra || ''}</span>
+                  <span style={{ color: 'var(--green-700)', fontWeight: 600 }}>Ver</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </VentaWorkspaceSection>
       )}
-
-      </VentaWorkspaceSection>
       {isEdit && <VentaWorkspaceSection className="venta-workspace-edit-section" title="Estados de la Orden">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
         <FormField label="Estado de la orden">
@@ -1908,9 +1922,9 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         </VentaWorkspaceSection>
       )}
 
-      <VentaWorkspaceSection className="venta-workspace-observations-section" title="Observaciones">
-      <FormField label="Notas internas">
-        <Textarea value={data.observaciones || ''} onChange={v => set('observaciones', v)} placeholder="Instrucciones especiales, condiciones de entrega, etc." rows={3} />
+      <VentaWorkspaceSection className="venta-workspace-observations-section" title="Información adicional">
+      <FormField label="Notas e información adicional del pedido">
+        <Textarea value={data.observaciones || ''} onChange={v => set('observaciones', v)} placeholder="Observaciones del pedido, datos del cliente, especificaciones técnicas, condiciones de entrega o notas generales..." rows={3} />
       </FormField>
       </VentaWorkspaceSection>
 
