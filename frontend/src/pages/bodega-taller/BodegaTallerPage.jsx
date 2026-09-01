@@ -114,9 +114,34 @@ export default function BodegaTallerPage() {
       <div style={{ display: 'flex', gap: 4 }}>
         {canWrite && <button onClick={(e) => { e.stopPropagation(); setEditing(row) }} style={actionBtn}>Editar</button>}
         {canWrite && <button onClick={(e) => { e.stopPropagation(); setMaterialLotes(row) }} style={actionBtn}>Lotes</button>}
-        {canDelete && <button onClick={(e) => { e.stopPropagation(); handleDelete(row) }} style={{ ...actionBtn, color: 'var(--red)' }}>Borrar</button>}
       </div>
     ) },
+  ]
+
+  const hasActiveFilters = Boolean(search || categoriaId || subcategoriaId || sucursalId || tab !== 'all')
+
+  const resetAllFilters = () => {
+    setSearch('')
+    setCategoriaId('')
+    setSubcategoriaId('')
+    setSucursalId('')
+    setTab('all')
+    setPage(1)
+  }
+
+  const categoriaOptions = [
+    { value: '', label: 'Todas' },
+    ...categorias.map(c => ({ value: String(c.id), label: c.nombre })),
+  ]
+
+  const subcategoriaOptions = [
+    { value: '', label: 'Todas' },
+    ...subcategorias.map(sc => ({ value: String(sc.id), label: sc.nombre })),
+  ]
+
+  const sucursalOptions = [
+    { value: '', label: 'Todas' },
+    ...sucursales.map(s => ({ value: String(s.id), label: s.nombre })),
   ]
 
   const toolbarExtra = (
