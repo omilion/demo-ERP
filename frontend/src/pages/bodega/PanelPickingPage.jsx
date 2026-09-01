@@ -20,7 +20,14 @@ export default function PanelPickingPage() {
 
   const { data: colaData, isLoading, refetch } = useDespachoColaOperativa({ etapa: 'picking', search })
   const items = useMemo(() => colaData?.items || [], [colaData])
-  const stats = colaData?.stats || {}
+
+  const prepStats = useMemo(() => items.reduce((acc, item) => {
+    const prep = item.preparacion || {}
+    acc.disponibleInventario += Number(prep.disponibleInventario || 0)
+    acc.disponibleTaller += Number(prep.disponibleTaller || 0)
+    acc.pendienteTaller += Number(prep.pendienteTaller || 0)
+    return acc
+  }, { disponibleInventario: 0, disponibleTaller: 0, pendienteTaller: 0 }), [items])
 
   const filtrados = useMemo(() => {
     return items.filter(item => {
@@ -159,10 +166,10 @@ export default function PanelPickingPage() {
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 20 }}>
-        <KpiCard title="Ventas en Picking" value={stats.totalVentas || items.length} subtitle="Listas o en proceso" tone="blue" />
-        <KpiCard title="Disponibles en Stock" value={stats.disponibleInventario || 0} subtitle="Productos inventariados" tone="green" />
-        <KpiCard title="Listas de Taller" value={stats.disponibleTaller || 0} subtitle="ODTs completadas" tone="teal" />
-        <KpiCard title="Pendientes en Taller" value={stats.pendienteTaller || 0} subtitle="Fabricación en curso" tone={Number(stats.pendienteTaller || 0) > 0 ? 'amber' : 'gray'} />
+        <KpiCard title="Ventas en Picking" value={items.length} subtitle="Listas o en proceso" tone="blue" />
+        <KpiCard title="Disponibles en Stock" value={prepStats.disponibleInventario} subtitle="Unidades inventariadas" tone="green" />
+        <KpiCard title="Listas de Taller" value={prepStats.disponibleTaller} subtitle="Unidades de ODTs completadas" tone="teal" />
+        <KpiCard title="Pendientes en Taller" value={prepStats.pendienteTaller} subtitle="Unidades en fabricación" tone={prepStats.pendienteTaller > 0 ? 'amber' : 'gray'} />
       </div>
 
       <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20 }}>

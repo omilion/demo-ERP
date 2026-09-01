@@ -411,15 +411,15 @@ export default function DespachosPage({ defaultTab }) {
       {tab === 'salidas' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, margin: '20px 0' }}>
           <KpiCard title="Salidas Listas" value={colaSalidas.data?.items?.length || 0} subtitle="Packing 100% o parcial listo" tone="green" />
-          <KpiCard title="Total Unidades Listas" value={colaSalidas.data?.stats?.disponibleTaller || 0} subtitle="Listas para entrega física" tone="blue" />
+          <KpiCard title="Total Unidades Listas" value={(colaSalidas.data?.items || []).reduce((sum, r) => sum + Number(r.packing?.preparados || 0), 0)} subtitle="Listas para entrega física" tone="blue" />
         </div>
       )}
 
       {tab === 'admin' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, margin: '20px 0' }}>
-          <KpiCard title="En Fabricación Taller" value={colaAdmin.data?.stats?.pendienteTaller || 0} subtitle="Unidades en curso" tone="amber" />
-          <KpiCard title="Listas para Picking" value={colaAdmin.data?.stats?.disponiblePicking || 0} subtitle="Stock disponible" tone="blue" />
-          <KpiCard title="En Preparación Packing" value={colaAdmin.data?.stats?.totalVentas || 0} subtitle="Pedidos en preparación" tone="teal" />
+          <KpiCard title="En Fabricación Taller" value={(colaAdmin.data?.items || []).reduce((sum, r) => sum + Number(r.preparacion?.pendienteTaller || 0), 0)} subtitle="Unidades en curso" tone="amber" />
+          <KpiCard title="Listas para Picking" value={(colaAdmin.data?.items || []).reduce((sum, r) => sum + Number(r.preparacion?.disponiblePicking || 0), 0)} subtitle="Stock disponible" tone="blue" />
+          <KpiCard title="En Preparación Packing" value={colaAdmin.data?.stats?.enPacking || 0} subtitle="Pedidos en preparación" tone="teal" />
           <KpiCard title="Total Salidas Hoy" value={registrosQuery.data?.total || 0} subtitle="Despachos registrados" tone="green" />
         </div>
       )}
