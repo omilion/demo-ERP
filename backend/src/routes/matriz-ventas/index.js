@@ -499,6 +499,11 @@ async function getOrdenRowsByWhere(fastify, where) {
       fechaEstadoEntrega: o.fechaEstadoEntrega,
       pago: financialState.estadoPago,
       estadoFlujo: deriveEstadoFlujo({ ...o, estadoPago: financialState.estadoPago }),
+      // El estado derivado se calcula de pago y entrega; el formal es la etapa que la
+      // venta recorrio de verdad, con su historial y su autor. Conviven a proposito:
+      // el primero resume la situacion, el segundo dice por donde paso.
+      estadoFlujoFormal: o.estadoFlujoFormal || 'CREADA',
+      fechaEstadoFlujo: o.fechaEstadoFlujo || null,
       creadorNombre: o.creadorNombre || null,
       guiasLegacy: o.guias || null,
       odts,

@@ -463,6 +463,15 @@ export default function MatrizVentasPage() {
     // El despacho va antes que la guia porque ocurre antes: bodega toma la venta y
     // recien despues emite la guia, que puede no emitirse nunca. Mirando solo las
     // guias, la venta se veia sin movimiento aunque bodega ya estuviera trabajandola.
+    // La etapa que la venta recorrio de verdad, con historial y autor detras. Va junto
+    // al despacho porque es donde se lee el avance operativo de un vistazo.
+    { key: 'estadoFlujoFormal', label: 'Etapa', render: (v) => {
+      const etiquetas = {
+        CREADA: 'Creada', PREPARACION: 'Preparación', PATIO: 'Patio', DIDACTICO: 'Didáctico',
+        REPARTO: 'Reparto', ENTREGADA: 'Entregada', CERRADA: 'Cerrada', ANULADA: 'Anulada',
+      }
+      return <span style={{ fontSize: 12 }}>{etiquetas[v] || v || '-'}</span>
+    } },
     { key: 'despachosCount', label: 'Despacho', render: (_, row) => row.despachos?.length
       ? renderLinkedList(row.despachos, d => `#${d.id}${d.parcial ? ' parcial' : ''}${d.fechaEntrega ? ' entregado' : ''}`)
       : '-' },
