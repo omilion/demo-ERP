@@ -1124,6 +1124,12 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   const isEdit = !!id
   const isSimpleCrmQuote = crmMode && crmQuoteMode === 'PROSPECCION_DIRECTA'
   const user = useAuthStore(s => s.user)
+  const tiposPermitidos = user?.role === 'vendedor' && Array.isArray(user?.tiposVentaPermitidos)
+    ? user.tiposVentaPermitidos
+    : null
+  const puedeUsarTipo = tipo => !tiposPermitidos || tiposPermitidos.includes(tipo)
+  const tiposDisponibles = TIPOS.filter(puedeUsarTipo)
+  const tiposVentaDirectaDisponibles = TIPOS_VENTA_DIRECTA.filter(puedeUsarTipo)
   const canDeleteVentas = can(user, 'ventas', 'delete')
   const canPasarTaller = canAny(user, [['taller', 'write'], ['ventas', 'write']])
 
@@ -1181,6 +1187,14 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   const [initializedId, setInitializedId] = useState(null)
   const [showNewCliente, setShowNewCliente] = useState(false)
   const productsSectionRef = useRef(null)
+
+  // En modo CRM el canal lo fija la ruta, no el formulario. Sin esto, data.tipo podía
+  // quedar desalineado de forceTipo y las validaciones de guardado —que exigen ID y
+  // fecha de licitación— no llegaban a correr, dejando pasar una licitación sin datos.
+  // No aplica al editar: ahí manda el tipo que la venta ya tiene.
+  useEffect(() => {
+    if (crmMode && !isEdit && forceTipo && data.tipo !== forceTipo) set('tipo', forceTipo)
+  }, [crmMode, isEdit, forceTipo, data.tipo, set])
 
   useEffect(() => {
     if (found && initializedId !== found.id) {
@@ -1282,7 +1296,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
     { value: 'Cotización simple CRM', label: 'Cotización simple CRM' },
     { value: 'Licitación', label: 'Licitación' },
     { value: 'Compra Ágil', label: 'Compra Ágil' },
-  ]
+  ].filter(option => puedeUsarTipo(option.value === 'Cotización simple CRM' ? 'Normal' : option.value))
   const currentCrmValue = isSimpleCrmQuote
     ? 'Cotización simple CRM'
     : (forceTipo || data.tipo)
@@ -1455,7 +1469,13 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   const fechaFicha = isEdit && (found?.fecha || found?.createdAt)
     ? new Date(found.fecha || found.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     : new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
-  const isLicitacionOrCompraAgil = data.tipo === 'Licitación' || data.tipo === 'Compra Ágil'
+  // El canal lo declara la ruta a través de forceTipo, y de ahí salen el título y el
+  // selector. La sección de detalles miraba sólo data.tipo, así que si los dos se
+  // separaban el encabezado decía "Licitación" mientras el cuerpo dibujaba el flujo
+  // estándar: sin ID, sin fecha y sin plazo, y la cotización se guardaba igual.
+  // El efecto de más abajo mantiene data.tipo alineado; esto cubre el primer render.
+  const tipoEfectivo = (crmMode && forceTipo) || data.tipo
+  const isLicitacionOrCompraAgil = tipoEfectivo === 'Licitación' || tipoEfectivo === 'Compra Ágil'
   // Los catálogos históricos pueden contener porcentajes repetidos por
   // importaciones antiguas. Un select no debe renderizar opciones duplicadas:
   // además del warning de React, el usuario no podría distinguirlas.
@@ -1477,7 +1497,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         <Select
           value={crmMode ? currentCrmValue : data.tipo}
           onChange={handleTipoChange}
-          options={crmMode ? crmOptions : (isEdit ? (TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS]) : TIPOS_VENTA_DIRECTA)}
+          options={crmMode ? crmOptions : (isEdit ? (tiposDisponibles.includes(data.tipo) ? tiposDisponibles : [data.tipo, ...tiposDisponibles]) : tiposVentaDirectaDisponibles)}
           disabled={isEdit}
           aria-label="Tipo de venta"
           style={{ backgroundColor: '#fffbeb', borderColor: '#fcd34d', fontWeight: 700, color: '#78350f' }}
@@ -1531,7 +1551,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         <Select
           value={crmMode ? currentCrmValue : data.tipo}
           onChange={handleTipoChange}
-          options={crmMode ? crmOptions : (isEdit ? (TIPOS.includes(data.tipo) ? TIPOS : [data.tipo, ...TIPOS]) : TIPOS_VENTA_DIRECTA)}
+          options={crmMode ? crmOptions : (isEdit ? (tiposDisponibles.includes(data.tipo) ? tiposDisponibles : [data.tipo, ...tiposDisponibles]) : tiposVentaDirectaDisponibles)}
           disabled={isEdit}
           style={{ 
             backgroundColor: '#fffbeb', // Soft yellow background
