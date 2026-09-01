@@ -304,12 +304,14 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
     return emitirDocumento(docId);
   };
 
-  const enviar = async (docIds) => {
+  const enviarDocumentos = async (docIds) => {
     const docs = [];
     for (const idValue of docIds) {
       const doc = await db.documentos.get(idValue);
       if (!doc) throw new Error(`Documento ${idValue} no encontrado.`);
-      if (doc.estado !== 'emitido' && doc.estado !== 'enviado') {
+      // Una vez recibido un trackId, el DTE se consulta: no se vuelve a subir.
+      // Esto evita que reintentos concurrentes generen envíos duplicados al SII.
+      if (doc.estado !== 'emitido') {
         throw new Error(`El documento folio ${doc.folio ?? '?'} no está emitido (estado: ${doc.estado}).`);
       }
       if (!doc.xml) throw new Error(`El documento folio ${doc.folio ?? '?'} no tiene XML.`);
@@ -357,6 +359,18 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
       }));
     }
     return { trackId: resultado.trackId, documentos: actualizados, envioXml: xml };
+  };
+
+  const enviar = async (docIds) => {
+    const ids = [...new Set((Array.isArray(docIds) ? docIds : [docIds])
+      .map(Number)
+      .filter(id => Number.isInteger(id) && id > 0))]
+      .sort((a, b) => a - b);
+    if (!ids.length) throw new Error('Indica al menos un documento para enviar al SII.');
+    if (db.documentos.withEnvioLock) {
+      return db.documentos.withEnvioLock(ids, () => enviarDocumentos(ids));
+    }
+    return enviarDocumentos(ids);
   };
 
   const consultarEstado = async (docId) => {

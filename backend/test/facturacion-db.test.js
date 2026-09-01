@@ -65,6 +65,24 @@ describe('facturacion/db (Prisma adapter)', () => {
     expect([r1.folio, r2.folio].sort()).toEqual([700, 701])
   })
 
+  it('documentos.withEnvioLock serializes concurrent sends of the same DTE', async () => {
+    let running = 0
+    let maxRunning = 0
+    const critical = async () => {
+      running += 1
+      maxRunning = Math.max(maxRunning, running)
+      await new Promise(resolve => setTimeout(resolve, 25))
+      running -= 1
+    }
+
+    await Promise.all([
+      db.documentos.withEnvioLock([987654], critical),
+      db.documentos.withEnvioLock([987654], critical),
+    ])
+
+    expect(maxRunning).toBe(1)
+  })
+
   it('no reutiliza en produccion un CAF anterior a la resolucion vigente', async () => {
     const oldCaf = await prisma.factCaf.create({
       data: {

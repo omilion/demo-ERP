@@ -18,10 +18,10 @@
 .cobranza-gestion__state { padding: 28px 16px; color: var(--text-3); font-size: 13px; text-align: center; }
 .cobranza-gestion__state.is-error { color: var(--red); }
 .cobranza-gestion__list { display: grid; max-height: 440px; overflow-y: auto; }
-.cobranza-gestion__alert { display: flex; justify-content: space-between; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--border); border-left: 3px solid var(--border); }
+.cobranza-gestion__alert { display: flex; justify-content: space-between; gap: 12px; padding: 13px 16px; border-top: 3px solid var(--border); border-bottom: 1px solid var(--border); }
 .cobranza-gestion__alert:last-child { border-bottom: 0; }
-.cobranza-gestion__alert.is-alta { border-left-color: var(--amber); }
-.cobranza-gestion__alert.is-critica { border-left-color: var(--red); }
+.cobranza-gestion__alert.is-alta { border-top-color: var(--amber); }
+.cobranza-gestion__alert.is-critica { border-top-color: var(--red); }
 .cobranza-gestion__alert > div:first-child { display: grid; gap: 3px; }
 .cobranza-gestion__alert span { color: var(--text-3); font-size: 11px; }
 .cobranza-gestion__alert-actions, .cobranza-gestion__row-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }

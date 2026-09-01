@@ -326,7 +326,7 @@ describe('costeo rutas (integracion con base real)', () => {
   it('21. filtro conReceta=true no rompe (relacion to-one con `is`)', async () => {
     const res = await app.inject({
       method: 'GET',
-      url: '/api/costeo/recetas?conReceta=true',
+      url: `/api/costeo/recetas?conReceta=true&search=${encodeURIComponent(marker)}`,
       headers: auth(adminToken),
     });
     expect(res.statusCode).toBe(200);

@@ -12,12 +12,22 @@ const fmt = value => '$' + Math.round(Number(value || 0)).toLocaleString('es-CL'
 const getError = error => error?.response?.data?.error || error?.message || 'No se pudo emitir el documento.'
 
 function Modal({ title, onClose, children }) {
+  const dialogRef = useRef(null)
+  useEffect(() => {
+    dialogRef.current?.focus()
+    const onKeyDown = event => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'oklch(0 0 0 / .45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div onClick={event => event.stopPropagation()} style={{ background: '#fff', width: 720, maxWidth: '100%', maxHeight: '92vh', overflowY: 'auto', borderRadius: 12, boxShadow: '0 16px 48px oklch(0 0 0 / .2)' }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onClick={event => event.stopPropagation()} style={{ background: '#fff', width: 720, maxWidth: '100%', maxHeight: '92vh', overflowY: 'auto', borderRadius: 12, boxShadow: '0 16px 48px oklch(0 0 0 / .2)' }}>
         <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ fontWeight: 700, fontSize: 16 }}>{title}</div>
-          <button onClick={onClose} title="Cerrar" style={{ padding: 4, color: 'var(--text-3)' }}><Icon name="x" size={18} /></button>
+          <button onClick={onClose} aria-label="Cerrar diálogo" title="Cerrar" style={{ minWidth: 40, minHeight: 40, padding: 4, color: 'var(--text-3)' }}><Icon name="x" size={18} /></button>
         </div>
         <div style={{ padding: 20 }}>{children}</div>
       </div>
@@ -101,6 +111,7 @@ const Total = ({ label, value, strong }) => <div style={{ display: 'flex', justi
 export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, previewItems, previewTotales, referenceFirst = false, onClose, onSuccess }) {
   const emitir = useEmitirDte()
   const [error, setError] = useState('')
+  const [envioPendiente, setEnvioPendiente] = useState(null)
   const [indTraslado, setIndTraslado] = useState('')
   const [tipoDespacho, setTipoDespacho] = useState('')
   // Sin tipo por defecto: al agregar una referencia se ve directo N°/Folio +
@@ -226,6 +237,10 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
         ...(referenciasPayload.length ? { referencias: referenciasPayload } : {}),
         ...(documentInput || {}),
       })
+      if (result.emitido?.envioSii?.estado === 'pendiente') {
+        setEnvioPendiente(result.emitido)
+        return
+      }
       onSuccess?.(result)
     } catch (cause) { setError(getError(cause)) }
   }
@@ -303,7 +318,11 @@ export function EmitirDteModal({ venta, guiaDespachoId, tipoDte, documentInput, 
     )}
     {!referenciaPrioritaria && referenciasUi}
     {error && <div style={errorStyle}>{error}</div>}
-    <div style={footerStyle}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn icon="send" onClick={confirmar} disabled={emitir.isPending || !(documentInput?.detalles?.length || payloadItems.length) || referenciasIncompletas}>{emitir.isPending ? 'Emitiendo...' : 'Confirmar y emitir'}</Btn></div>
+    {envioPendiente && <div role="status" aria-live="polite" style={emissionPendingStyle}><strong>Documento emitido: folio {envioPendiente.folio}.</strong><br />{envioPendiente.envioSii.mensaje}</div>}
+    <div style={footerStyle}>
+      <Btn variant="ghost" onClick={onClose}>{envioPendiente ? 'Cerrar' : 'Cancelar'}</Btn>
+      {!envioPendiente && <Btn icon="send" onClick={confirmar} disabled={emitir.isPending || !(documentInput?.detalles?.length || payloadItems.length) || referenciasIncompletas}>{emitir.isPending ? 'Emitiendo...' : 'Confirmar y emitir'}</Btn>}
+    </div>
   </Modal>
 }
 
@@ -407,6 +426,7 @@ export function NotaDteModal({ documento, tipoDte, onClose, onSuccess }) {
   const [razon, setRazon] = useState('')
   const [textoCorregido, setTextoCorregido] = useState('')
   const [error, setError] = useState('')
+  const [envioPendiente, setEnvioPendiente] = useState(null)
   const total = Number(documento?.totales?.total || 0)
   const fallbackMotivos = tipoDte === 56
     ? (Number(documento?.tipoDte) === 61 ? [{ codigo: 1, label: CODREF_MOTIVOS[1] }, { codigo: 3, label: CODREF_MOTIVOS[3] }] : [{ codigo: 3, label: CODREF_MOTIVOS[3] }])
@@ -461,6 +481,10 @@ export function NotaDteModal({ documento, tipoDte, onClose, onSuccess }) {
         items: itemsNota,
         referencias: [{ docLocalId: Number(documento.id), codRef: Number(codRef), razon: razon.trim() }],
       })
+      if (result.emitido?.envioSii?.estado === 'pendiente') {
+        setEnvioPendiente(result.emitido)
+        return
+      }
       onSuccess?.(result)
     } catch (cause) { setError(getError(cause)) }
   }
@@ -499,11 +523,16 @@ export function NotaDteModal({ documento, tipoDte, onClose, onSuccess }) {
     <textarea value={razon} maxLength={90} onChange={event => { setRazon(event.target.value); setError('') }} rows={3} placeholder="Explica claramente el motivo que se informará al SII" style={{ width: '100%', padding: 10, border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'inherit', resize: 'vertical' }} />
     <div style={{ textAlign: 'right', color: 'var(--text-3)', fontSize: 11 }}>{razon.length}/90</div>
     {error && <div style={errorStyle}>{error}</div>}
-    <div style={footerStyle}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn icon="send" onClick={confirmar} disabled={emitir.isPending || !razon.trim()}>{emitir.isPending ? 'Emitiendo y enviando...' : `Emitir ${tipoDte === 61 ? 'Nota de Crédito' : 'Nota de Débito'}`}</Btn></div>
+    {envioPendiente && <div role="status" aria-live="polite" style={emissionPendingStyle}><strong>Documento emitido: folio {envioPendiente.folio}.</strong><br />{envioPendiente.envioSii.mensaje}</div>}
+    <div style={footerStyle}>
+      <Btn variant="ghost" onClick={onClose}>{envioPendiente ? 'Cerrar' : 'Cancelar'}</Btn>
+      {!envioPendiente && <Btn icon="send" onClick={confirmar} disabled={emitir.isPending || !razon.trim()}>{emitir.isPending ? 'Emitiendo y enviando...' : `Emitir ${tipoDte === 61 ? 'Nota de Crédito' : 'Nota de Débito'}`}</Btn>}
+    </div>
   </Modal>
 }
 
 const errorStyle = { marginTop: 14, padding: '10px 12px', borderRadius: 8, background: 'var(--red-bg)', color: 'var(--red)', fontSize: 13 }
+const emissionPendingStyle = { marginTop: 14, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--amber-300, #f2c66d)', background: 'var(--amber-50, #fff9eb)', color: 'var(--text-1)', fontSize: 13, lineHeight: 1.45 }
 const footerStyle = { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }
 const notaSummaryStyle = { display: 'grid', gap: 5, padding: 12, border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, background: '#fff' }
 const notaSummaryLabel = { color: 'var(--text-3)', fontSize: 10, fontWeight: 800, textTransform: 'uppercase' }

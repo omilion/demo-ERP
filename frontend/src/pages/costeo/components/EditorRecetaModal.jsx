@@ -117,7 +117,10 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
   const procesosForEngine = useMemo(() => {
     return procesos.map((p) => {
       const key = `${p.tallerId || tallerId}_${(p.proceso || '').toLowerCase()}`;
-      const valorHora = tarifasMap.get(key) || (p.proceso === 'corte' ? 3800 : 4200);
+      // Nunca se inventa una tarifa en pantalla. Un valor supuesto hacía que
+      // la previsualización pareciera sana aunque el backend calculara mano
+      // de obra en cero por no tener una tarifa vigente.
+      const valorHora = tarifasMap.get(key) || 0;
 
       return {
         tallerId: p.tallerId || tallerId,
@@ -143,6 +146,11 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
   const pctDiferencia = producto?.precioLista
     ? ((diferencia / producto.precioLista) * 100).toFixed(1)
     : 0;
+  const alertasCosteo = useMemo(() => ({
+    materialesSinPrecio: materialesForEngine.filter(item => Number(item.cantidad) > 0 && Number(item.precioUnitario) <= 0),
+    procesosSinTarifa: procesosForEngine.filter(item => Number(item.horas) > 0 && Number(item.valorHora) <= 0),
+  }), [materialesForEngine, procesosForEngine]);
+  const costeoIncompleto = alertasCosteo.materialesSinPrecio.length > 0 || alertasCosteo.procesosSinTarifa.length > 0;
 
   // Handlers for dynamic material rows
   const addMaterialRow = (type) => {
@@ -230,6 +238,10 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
   const handleAplicarCosteo = async () => {
     if (!tallerId) {
       toast.warning('Selecciona el taller asignado');
+      return;
+    }
+    if (costeoIncompleto) {
+      toast.warning('No se puede aplicar: corrige los materiales sin precio o los procesos sin tarifa vigente.');
       return;
     }
     const ok = await confirmDialog(
@@ -384,7 +396,7 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
                         <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{engineMat?.unidad || 'un'}</span>
 
                         <div style={{ fontSize: 12, fontWeight: 600, textAlign: 'right' }}>
-                          ${(engineMat?.subtotal || 0).toLocaleString('es-CL')}
+                          ${(Number(engineMat?.cantidad || 0) * Number(engineMat?.precioUnitario || 0)).toLocaleString('es-CL')}
                         </div>
 
                         <button onClick={() => removeMaterialRow(idx)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--red-600)' }}>
@@ -436,7 +448,7 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
                         />
 
                         <div style={{ fontSize: 12, fontWeight: 600, textAlign: 'right' }}>
-                          ${(engineProc?.subtotal || 0).toLocaleString('es-CL')}
+                          ${(Number(engineProc?.horas || 0) * Number(engineProc?.valorHora || 0)).toLocaleString('es-CL')}
                         </div>
 
                         <button onClick={() => removeProcesoRow(idx)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--red-600)' }}>
@@ -468,6 +480,14 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
               <h3 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 12px 0', borderBottom: '1px solid #cbd5e1', paddingBottom: 8 }}>
                 Desglose en Vivo
               </h3>
+
+              {costeoIncompleto && (
+                <section role="alert" style={{ marginBottom: 12, padding: '10px 12px', border: '1px solid #f2c66d', borderRadius: 8, background: '#fff9eb', color: 'var(--text-1)', fontSize: 12, lineHeight: 1.45 }}>
+                  <strong>Costeo incompleto: no se podrá aplicar al precio lista.</strong>
+                  {alertasCosteo.materialesSinPrecio.length > 0 && <div>Materiales sin precio: {alertasCosteo.materialesSinPrecio.map(item => item.nombre).join(', ')}.</div>}
+                  {alertasCosteo.procesosSinTarifa.length > 0 && <div>Procesos sin tarifa: {alertasCosteo.procesosSinTarifa.map(item => item.proceso).join(', ')}.</div>}
+                </section>
+              )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -522,7 +542,7 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
               <Btn onClick={handleSaveReceta} variant="secondary" style={{ width: '100%' }}>
                 Guardar Borrador Receta
               </Btn>
-              <Btn onClick={handleAplicarCosteo} variant="primary" style={{ width: '100%', background: '#0284c7' }}>
+              <Btn onClick={handleAplicarCosteo} variant="primary" disabled={costeoIncompleto || aplicarCosteo.isPending || updateReceta.isPending} style={{ width: '100%', background: '#0284c7' }}>
                 Aplicar a Precio Lista
               </Btn>
             </div>

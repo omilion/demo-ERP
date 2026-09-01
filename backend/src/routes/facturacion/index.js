@@ -560,10 +560,25 @@ export default async function facturacionRoutes(fastify) {
       // o el proximo intento automatico (ver POST /enviar-lote).
       try {
         const enviado = await engine.enviar([emitido.id])
-        return enviado.documentos[0]
+        return {
+          ...(enviado.documentos[0] || emitido),
+          envioSii: {
+            estado: 'enviado',
+            mensaje: 'Documento enviado al SII. Consulta su estado antes de darlo por aceptado.',
+          },
+        }
       } catch (envioError) {
         fastify.log.warn({ err: envioError, docId: emitido.id }, 'Auto-envio al SII fallo tras emitir; el documento queda emitido para reintentar')
-        return emitido
+        // El operador necesita una acción segura y no el detalle técnico del
+        // proveedor: el folio sí se consumió, por lo que nunca debe emitir un
+        // segundo documento para resolver un timeout de envío.
+        return {
+          ...emitido,
+          envioSii: {
+            estado: 'pendiente',
+            mensaje: 'El folio fue emitido, pero el envío al SII quedó pendiente. No emitas otro documento: reintenta el envío desde Documentos emitidos.',
+          },
+        }
       }
     } catch (error) { return sendError(reply, error) }
   })

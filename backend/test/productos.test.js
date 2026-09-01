@@ -304,7 +304,7 @@ describe('POST /api/productos', () => {
     expect(body.porcDesc).toBe(5)
   })
 
-  it('persists catalog fields, validates purchase link and creates one MK workshop notice', async () => {
+  it('persists catalog fields and leaves new MK products in the Costeo recipe queue', async () => {
     const codigoInterno = testCode('MK-TEST')
     const marker = `${codigoInterno}-licitacion`
     try {
@@ -332,11 +332,17 @@ describe('POST /api/productos', () => {
         materialidad: 'espuma',
       })
 
-      const notices = await app.prisma.bitacoraTaller.findMany({
-        where: { texto: { contains: `[producto-mk:${body.id}]` } },
+      // La bitácora de Taller es exclusiva de ODT. Un producto MK sin receta
+      // se gestiona desde la cola de Costeo, no como una bitácora huérfana.
+      const costeoToken = await loginAs(app)
+      const queue = await app.inject({
+        method: 'GET',
+        url: `/api/costeo/recetas?conReceta=false&search=${encodeURIComponent(codigoInterno)}`,
+        headers: { authorization: `Bearer ${costeoToken}` },
       })
-      expect(notices).toHaveLength(1)
-      expect(notices[0].texto).toContain(codigoInterno)
+      expect(queue.statusCode).toBe(200)
+      expect(JSON.parse(queue.body).data.some(item => item.id === body.id)).toBe(true)
+      await expect(app.prisma.bitacoraTaller.count({ where: { texto: { contains: `[producto-mk:${body.id}]` } } })).resolves.toBe(0)
 
       const update = await app.inject({
         method: 'PUT',
@@ -345,7 +351,7 @@ describe('POST /api/productos', () => {
         payload: { nombre: 'Producto MK Catalogo Editado' },
       })
       expect(update.statusCode).toBe(200)
-      await expect(app.prisma.bitacoraTaller.count({ where: { texto: { contains: `[producto-mk:${body.id}]` } } })).resolves.toBe(1)
+      await expect(app.prisma.bitacoraTaller.count({ where: { texto: { contains: `[producto-mk:${body.id}]` } } })).resolves.toBe(0)
 
       const invalidLink = await app.inject({
         method: 'POST',
@@ -849,7 +855,7 @@ describe('Bodega product safeguards', () => {
     expect(body.errores.length).toBeGreaterThan(0)
   })
 
-  it('creates MK workshop notices when importing new products', async () => {
+  it('imports MK products into the Costeo recipe queue without creating ODT bitacora rows', async () => {
     const codigoMk = testCode('MK-IMP')
     const codigoNormal = testCode('TEST-IMP')
     try {
@@ -883,7 +889,15 @@ describe('Bodega product safeguards', () => {
       expect(applied.statusCode).toBe(200)
       const mkProduct = await app.prisma.producto.findUnique({ where: { codigoInterno: codigoMk } })
       const normalProduct = await app.prisma.producto.findUnique({ where: { codigoInterno: codigoNormal } })
-      await expect(app.prisma.bitacoraTaller.count({ where: { texto: { contains: `[producto-mk:${mkProduct.id}]` } } })).resolves.toBe(1)
+      const costeoToken = await loginAs(app)
+      const queue = await app.inject({
+        method: 'GET',
+        url: `/api/costeo/recetas?conReceta=false&search=${encodeURIComponent(codigoMk)}`,
+        headers: { authorization: `Bearer ${costeoToken}` },
+      })
+      expect(queue.statusCode).toBe(200)
+      expect(JSON.parse(queue.body).data.some(item => item.id === mkProduct.id)).toBe(true)
+      await expect(app.prisma.bitacoraTaller.count({ where: { texto: { contains: `[producto-mk:${mkProduct.id}]` } } })).resolves.toBe(0)
       await expect(app.prisma.bitacoraTaller.count({ where: { texto: { contains: `[producto-mk:${normalProduct.id}]` } } })).resolves.toBe(0)
     } finally {
       await app.prisma.bitacoraTaller.deleteMany({ where: { texto: { contains: codigoMk } } }).catch(() => {})

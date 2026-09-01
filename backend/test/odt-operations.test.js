@@ -13,10 +13,37 @@ import {
   isTerminalOdtEstado,
   validateOperario,
 } from '../src/routes/odts/operations.js'
+import { getOdtClosureBlocker } from '../src/routes/odts/update.js'
 
 const NOW = new Date('2026-05-23T12:00:00.000Z')
 
 describe('ODT operation helpers', () => {
+  it('requires control de calidad, signed validation and no pending station before closing an ODT', () => {
+    expect(getOdtClosureBlocker({
+      current: { estado: 'En proceso' },
+      pendientes: 0,
+      controlCalidad: { aprobada: true, observacion: 'Revision final correcta' },
+    })).toMatch(/Control calidad/)
+
+    expect(getOdtClosureBlocker({
+      current: { estado: 'Control calidad' },
+      pendientes: 0,
+      controlCalidad: null,
+    })).toMatch(/aprobacion/)
+
+    expect(getOdtClosureBlocker({
+      current: { estado: 'Control calidad' },
+      pendientes: 2,
+      controlCalidad: { aprobada: true, observacion: 'Revision final correcta' },
+    })).toMatch(/2 tarea/)
+
+    expect(getOdtClosureBlocker({
+      current: { estado: 'Control calidad' },
+      pendientes: 0,
+      controlCalidad: { aprobada: true, observacion: 'Revision final correcta' },
+    })).toBeNull()
+  })
+
   it('keeps the accepted ODT states explicit, including legacy Prioritaria only in the full list', () => {
     expect(ODT_ESTADOS).toEqual([
       'Pendiente',

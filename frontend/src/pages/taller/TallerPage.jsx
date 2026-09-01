@@ -489,7 +489,7 @@ function KanbanBoard({ odts, canWrite, pending, onSelect, onEstadoChange, onEsta
           ))}
         </div>
       </div>
-      <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.18,0.67,0.6,1.22)' }}>
+      <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.16,1,0.3,1)' }}>
         {activeOdt && (
           <OdtKanbanCardContent
             odt={activeOdt}

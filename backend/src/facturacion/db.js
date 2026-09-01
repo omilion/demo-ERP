@@ -10,6 +10,11 @@ const DOCUMENTO_UPDATABLE_FIELDS = [
   'estado', 'estadoDetalle', 'trackId', 'ambiente', 'xml'
 ];
 
+const documentIds = (ids) => [...new Set((Array.isArray(ids) ? ids : [ids])
+  .map(Number)
+  .filter(id => Number.isInteger(id) && id > 0))]
+  .sort((a, b) => a - b);
+
 export const createFacturacionDb = (prisma) => {
   const getEmpresa = async () => {
     const row = await prisma.factEmpresa.findUnique({ where: { id: 1 } });
@@ -62,6 +67,15 @@ export const createFacturacionDb = (prisma) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`facturacion-orden:${Number(ordenId)}`})::bigint)`;
       return operation();
     }, { maxWait: 5000, timeout: 30000 }),
+    // El SII puede tardar hasta 60 s. Bloqueamos el mismo conjunto de DTE en
+    // orden determinista para que un doble clic, dos cajeros o el job de
+    // reintento no suban el mismo XML dos veces ni generen trackId ambiguo.
+    withEnvioLock: (ids, operation) => prisma.$transaction(async (tx) => {
+      for (const id of documentIds(ids)) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`facturacion-envio:${id}`})::bigint)`;
+      }
+      return operation();
+    }, { maxWait: 5000, timeout: 75000 }),
     get: (docId) => prisma.factDocumento.findUnique({ where: { id: Number(docId) } }),
     list: ({ estado, tipoDte, clienteId, ordenId } = {}) => prisma.factDocumento.findMany({
       where: {

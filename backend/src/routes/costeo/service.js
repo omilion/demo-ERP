@@ -1,5 +1,36 @@
 import { calcularCosteo } from './engine.js';
 
+async function lockProductoCosteo(tx, productoId) {
+  // Serializa editar receta + aplicar costo del mismo producto. Sin este lock,
+  // dos operadores podían guardar versiones distintas y dejar un snapshot que
+  // no corresponde al precio finalmente aplicado.
+  if (typeof tx.$executeRaw === 'function') {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`costeo-producto:${productoId}`})::bigint)`;
+  }
+}
+
+export function getCosteoBlockers({ materiales = [], procesos = [] } = {}) {
+  const materialesSinPrecio = materiales
+    .filter(item => Number(item.cantidad) > 0 && Number(item.precioUnitario) <= 0)
+    .map(item => item.nombre || 'Material sin nombre');
+  const procesosSinTarifa = procesos
+    .filter(item => Number(item.horas) > 0 && Number(item.valorHora) <= 0)
+    .map(item => item.proceso || 'Proceso sin nombre');
+
+  return { materialesSinPrecio, procesosSinTarifa };
+}
+
+function throwCosteoIncompleto(alertas) {
+  const faltantes = [
+    ...(alertas.materialesSinPrecio.length ? [`materiales sin precio: ${alertas.materialesSinPrecio.join(', ')}`] : []),
+    ...(alertas.procesosSinTarifa.length ? [`procesos sin tarifa vigente: ${alertas.procesosSinTarifa.join(', ')}`] : []),
+  ];
+  if (!faltantes.length) return;
+  const error = new Error(`No se puede aplicar el costeo con datos incompletos (${faltantes.join('; ')}). Corrige los precios o tarifas y vuelve a calcular.`);
+  error.statusCode = 409;
+  throw error;
+}
+
 export async function getMaterialesHistorialPrecios(prisma, bodegaTallerId) {
   return prisma.bodegaTallerPrecioHistorial.findMany({
     where: { bodegaTallerId },
@@ -223,6 +254,7 @@ export async function upsertReceta(prisma, productoId, data) {
   }
 
   return prisma.$transaction(async (tx) => {
+    await lockProductoCosteo(tx, id);
     // Check if recipe exists
     const existingReceta = await tx.productoReceta.findUnique({
       where: { productoId: id },
@@ -400,14 +432,21 @@ export async function calcularCosteoProducto(prisma, productoId) {
     precioListaActual: producto.precioLista,
     costoTransferenciaCalculado: costeoResult.costoTransferencia,
     diferenciaMonto: costeoResult.costoTransferencia - producto.precioLista,
+    alertas: getCosteoBlockers({ materiales: materialesConImportado, procesos: procesosInput }),
     ...costeoResult,
   };
 }
 
 export async function aplicarCosteoProducto(prisma, productoId, user) {
-  const calculation = await calcularCosteoProducto(prisma, productoId);
-
   return prisma.$transaction(async (tx) => {
+    const id = parseInt(productoId, 10);
+    await lockProductoCosteo(tx, id);
+    // El cálculo se hace dentro de la misma transacción protegida que crea el
+    // snapshot y actualiza el precio: no se aplica una receta leída antes de
+    // que otro usuario la modifique.
+    const calculation = await calcularCosteoProducto(tx, id);
+    throwCosteoIncompleto(calculation.alertas);
+
     const snapshot = await tx.costeoSnapshot.create({
       data: {
         productoId: calculation.productoId,

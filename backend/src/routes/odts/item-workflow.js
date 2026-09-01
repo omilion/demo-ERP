@@ -17,6 +17,12 @@ const REOPEN_STATES = new Set(['en_proceso', 'pendiente'])
 const ESTADOS_SET = new Set(ODT_ITEM_TALLER_ESTADOS)
 const DESTRUCTIVE_WORKFLOW_STATES = new Set(['cancelado'])
 
+async function lockOdtWorkflow(tx, odtId) {
+  if (typeof tx?.$executeRaw === 'function') {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`odt-workflow:${Number(odtId)}`})::bigint)`
+  }
+}
+
 function normalizeText(value) {
   return String(value || '')
     .trim()
@@ -204,6 +210,7 @@ export default async function itemWorkflowRoutes(fastify) {
 
     try {
       return await fastify.prisma.$transaction(async (tx) => {
+        await lockOdtWorkflow(tx, parsedParams.odtId)
         const txCurrent = await tx.odtItemTaller.findFirst({
           where: relationWhere,
           select: relationSelect,
@@ -279,6 +286,7 @@ export default async function itemWorkflowRoutes(fastify) {
 
     try {
       return await fastify.prisma.$transaction(async (tx) => {
+        await lockOdtWorkflow(tx, parsedParams.odtId)
         const txItems = await tx.odtItemTaller.findMany({
           where: relationWhere,
           select: relationSelect,

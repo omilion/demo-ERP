@@ -175,6 +175,18 @@ function parseOptionalPositiveInt(value, field) {
   return { value: parsed }
 }
 
+async function lockProductoStock(tx, productoId) {
+  if (typeof tx.$executeRaw === 'function') {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`stock-producto:${productoId}`})::bigint)`
+  }
+}
+
+function throwStockPlanError(error) {
+  const failure = new Error(error)
+  failure.statusCode = error.includes('supera') || error.includes('previamente') ? 409 : 400
+  throw failure
+}
+
 async function resolveTraceability(prisma, body, options = {}) {
   const ordenInput = parseOptionalPositiveInt(body.ordenId, 'ordenId')
   if (ordenInput.error) return { status: 400, error: ordenInput.error }
@@ -241,31 +253,41 @@ export default async function movimientosProductoRoutes(fastify) {
       return reply.code(403).send({ error: 'Forbidden' })
     }
     const qty = parseInt(cantidad, 10)
-    const prod = await fastify.prisma.producto.findUnique({ where: { id } })
-    if (!prod) return reply.code(404).send({ error: 'Producto no encontrado' })
-    const builtMotivo = buildMovimientoMotivo({
-      tipo,
-      cantidad: qty,
-      stockActual: prod.stock,
-      motivo,
-      motivoCategoria,
-    })
-    if (builtMotivo.error) return reply.code(400).send({ error: builtMotivo.error })
+    if (!Number.isInteger(qty)) return reply.code(400).send({ error: 'cantidad invalida' })
 
     const traceability = await resolveTraceability(fastify.prisma, request.body || {}, { user: request.user })
     if (traceability.error) return reply.code(traceability.status || 400).send({ error: traceability.error })
 
-    const plan = buildStockMovementPlan({
-      tipo,
-      cantidad: qty,
-      stock: prod.stock,
-      stockReservado: prod.stockReservado,
-      stockDanado: prod.stockDanado,
-    })
-    if (plan.error) return reply.code(plan.error.includes('supera') || plan.error.includes('previamente') ? 409 : 400).send({ error: plan.error })
     const userId = request.user?.id || 1
 
-    const result = await fastify.prisma.$transaction(async (tx) => {
+    try {
+      const result = await fastify.prisma.$transaction(async (tx) => {
+      // Leer, validar y escribir bajo el mismo candado. El cálculo anterior
+      // usaba un producto leído antes de entrar a la transacción y podía
+      // sobrescribir el movimiento simultáneo de otro operario.
+      await lockProductoStock(tx, id)
+      const prod = await tx.producto.findUnique({ where: { id } })
+      if (!prod) {
+        const missing = new Error('Producto no encontrado')
+        missing.statusCode = 404
+        throw missing
+      }
+      const builtMotivo = buildMovimientoMotivo({
+        tipo,
+        cantidad: qty,
+        stockActual: prod.stock,
+        motivo,
+        motivoCategoria,
+      })
+      if (builtMotivo.error) throwStockPlanError(builtMotivo.error)
+      const plan = buildStockMovementPlan({
+        tipo,
+        cantidad: qty,
+        stock: prod.stock,
+        stockReservado: prod.stockReservado,
+        stockDanado: prod.stockDanado,
+      })
+      if (plan.error) throwStockPlanError(plan.error)
       await tx.producto.update({
         where: { id },
         data: {
@@ -302,6 +324,10 @@ export default async function movimientosProductoRoutes(fastify) {
         stockDisponible: plan.final.disponible,
       }
     })
-    return reply.code(201).send(result)
+      return reply.code(201).send(result)
+    } catch (error) {
+      if (error.statusCode) return reply.code(error.statusCode).send({ error: error.message })
+      throw error
+    }
   })
 }

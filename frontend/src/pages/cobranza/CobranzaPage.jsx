@@ -24,6 +24,8 @@ const MAIN_TABS = [
   { id: 'gestion',    label: 'Gestión y Cartola' },
 ]
 
+const ACTIVE_PAGE_SIZE = 50
+
 function diasDesde(fecha) {
   if (!fecha) return 0
   return Math.floor((Date.now() - new Date(fecha).getTime()) / 86400000)
@@ -89,7 +91,9 @@ export default function CobranzaPage() {
   const [nDoc, setNDoc] = useState('')
   const [creador, setCreador] = useState('')
   const [cobranzaFiltro, setCobranzaFiltro] = useState('')
+  const [activePage, setActivePage] = useState(1)
   const debounceRef = useRef(null)
+  const paymentDialogRef = useRef(null)
 
   // Historico filters
   const [histEjecutiva, setHistEjecutiva] = useState('')
@@ -131,8 +135,12 @@ export default function CobranzaPage() {
     return () => clearTimeout(histDebRef.current)
   }, [histSearch])
 
+  useEffect(() => {
+    setActivePage(1)
+  }, [estadoTab, cobranzaFiltro, debounced, fechaDesde, fechaHasta, fechaDocDesde, fechaDocHasta, documento, nDoc, creador])
+
   // Active cobranza
-  const activeParams = { orderBy: 'asc', limit: '500' }
+  const activeParams = { orderBy: 'asc', limit: String(ACTIVE_PAGE_SIZE), page: String(activePage) }
   if (!cobranzaFiltro) activeParams.estadoPago = estadoTab
   if (cobranzaFiltro) activeParams.cobranzaFiltro = cobranzaFiltro
   if (debounced) activeParams.search = debounced
@@ -148,6 +156,19 @@ export default function CobranzaPage() {
   const registrarPagoMut = useRegistrarPagoCobranza()
   const ventas = activeResult.items ?? []
   const total = activeResult.total ?? 0
+
+  useEffect(() => {
+    if (!paymentRow) return undefined
+    const focusTimer = window.setTimeout(() => paymentDialogRef.current?.focus(), 0)
+    const onKeyDown = event => {
+      if (event.key === 'Escape' && !registrarPagoMut.isPending) setPaymentRow(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.clearTimeout(focusTimer)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [paymentRow, registrarPagoMut.isPending])
 
   // Historico cobranza
   const histParams = {}
@@ -171,6 +192,17 @@ export default function CobranzaPage() {
   const paymentSaldo = paymentRow ? Math.max(0, (paymentRow.total || 0) - (paymentRow.abono || 0)) : 0
   const paymentDocs = paymentRow ? activeReferentialDocs(paymentRow).filter(doc => docSaldo(paymentRow, doc) > 0) : []
   const selectedPaymentDocKey = paymentForm.documento && paymentForm.nDoc ? `${paymentForm.documento}|||${paymentForm.nDoc}` : ''
+  const selectedPaymentDoc = paymentDocs.find(doc => `${doc.documento}|||${doc.nDoc}` === selectedPaymentDocKey) || null
+  const paymentAmount = Number(paymentForm.monto)
+  const paymentCanSubmit = Boolean(
+    paymentRow
+    && turno
+    && selectedPaymentDoc
+    && Number.isFinite(paymentAmount)
+    && paymentAmount > 0
+    && paymentAmount <= paymentSaldo
+    && paymentAmount <= docSaldo(paymentRow, selectedPaymentDoc)
+  )
   const miniInput = { padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }
 
   const openPayment = (row) => {
@@ -292,14 +324,14 @@ export default function CobranzaPage() {
     },
     {
       key: 'observaciones', label: 'Notas', wrap: true,
-      render: v => <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{v || '—'}</span>
+      render: v => <span style={{ display: '-webkit-box', maxWidth: 240, overflow: 'hidden', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, fontSize: 12, color: 'var(--text-3)' }}>{v || '—'}</span>
     },
     {
       key: '_acc', label: '',
       render: (_, row) => {
         const saldo = (row.total || 0) - (row.abono || 0)
         return (
-          <div style={{ display: 'flex', gap: 4 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {canRegisterPayment && (
             <button
               onClick={e => {
@@ -308,18 +340,18 @@ export default function CobranzaPage() {
                 openPayment(row)
               }}
               disabled={registrarPagoMut.isPending || !turno}
-              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--green-700)', background: 'var(--green-700)', cursor: 'pointer', color: '#fff', fontWeight: 500, whiteSpace: 'nowrap' }}
+              style={{ minHeight: 40, padding: '7px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--green-700)', background: 'var(--green-700)', cursor: 'pointer', color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}
               title={turno ? 'Registrar abono' : 'Requiere turno de caja abierto'}
             >Pagar</button>
             )}
             <button
               onClick={e => { e.stopPropagation(); navigate(ventaPath(row.id, user)) }}
-              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 500, whiteSpace: 'nowrap' }}
+              style={{ minHeight: 40, padding: '7px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--green-700)', fontWeight: 600, whiteSpace: 'nowrap' }}
             >{can(user, 'ventas', 'write') ? 'Gestionar' : 'Ver'}</button>
             {canWriteCobranza && (
               <button
                 onClick={e => { e.stopPropagation(); setGestionTarget(row); setMainTab('gestion') }}
-                style={{ padding: '3px 8px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--blue, #2563eb)', fontWeight: 500, whiteSpace: 'nowrap' }}
+                style={{ minHeight: 40, padding: '7px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--blue, #2563eb)', fontWeight: 600, whiteSpace: 'nowrap' }}
               >Seguimiento</button>
             )}
           </div>
@@ -595,6 +627,18 @@ export default function CobranzaPage() {
               />
         )}
 
+        {mainTab === 'activo' && !activeError && !isLoading && total > ACTIVE_PAGE_SIZE && (
+          <nav aria-label="Paginación de cobranza" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', borderTop: '1px solid var(--border)' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
+              Mostrando {Math.min((activePage - 1) * ACTIVE_PAGE_SIZE + 1, total).toLocaleString('es-CL')}–{Math.min(activePage * ACTIVE_PAGE_SIZE, total).toLocaleString('es-CL')} de {total.toLocaleString('es-CL')} documentos
+            </span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Btn variant="secondary" size="sm" onClick={() => setActivePage(page => Math.max(1, page - 1))} disabled={activePage <= 1}>Anterior</Btn>
+              <Btn variant="secondary" size="sm" onClick={() => setActivePage(page => Math.min(Math.ceil(total / ACTIVE_PAGE_SIZE), page + 1))} disabled={activePage >= Math.ceil(total / ACTIVE_PAGE_SIZE)}>Siguiente</Btn>
+            </div>
+          </nav>
+        )}
+
         {mainTab === 'historico' && (
           histError
             ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--red)' }}>{histQueryError?.response?.data?.error || 'No se pudo cargar historico de cobranza'}</div>
@@ -627,9 +671,9 @@ export default function CobranzaPage() {
       </div>
       {paymentRow && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.35)', display: 'grid', placeItems: 'center', zIndex: 50, padding: 16 }}>
-          <section style={{ width: 'min(760px, 100%)', background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+          <section ref={paymentDialogRef} role="dialog" aria-modal="true" aria-labelledby="payment-dialog-title" tabIndex={-1} style={{ width: 'min(760px, 100%)', background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
-              <h2 style={{ margin: 0, fontSize: 18 }}>Registrar pago venta #{paymentRow.id}</h2>
+              <h2 id="payment-dialog-title" style={{ margin: 0, fontSize: 18 }}>Registrar pago venta #{paymentRow.id}</h2>
               <p style={{ margin: '4px 0 0', color: 'var(--text-3)', fontSize: 13 }}>Saldo pendiente: {fmt(paymentSaldo)}</p>
             </div>
             <div style={{ padding: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
@@ -698,7 +742,7 @@ export default function CobranzaPage() {
             </div>
             <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <Btn variant="secondary" size="sm" onClick={() => setPaymentRow(null)}>Cancelar</Btn>
-              <Btn variant="primary" size="sm" onClick={submitPayment} disabled={registrarPagoMut.isPending || !turno}>Registrar pago</Btn>
+              <Btn variant="primary" size="sm" onClick={submitPayment} disabled={registrarPagoMut.isPending || !paymentCanSubmit}>Registrar pago</Btn>
             </div>
           </section>
         </div>

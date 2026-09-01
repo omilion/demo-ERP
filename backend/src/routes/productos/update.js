@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import { can } from '../../middleware/rbac.js'
 import { attachStockOperacional, computeEstado, computeEstadoOperacional, isProductoFotoUrl, normalizeProductoFotoFields, normalizeProductoFotos, sanitizeProductoCosto, syncProductoCategoriaText, syncProductoUbicacionText, validateCodigoBarraUnico, validateProductoClasificacion } from './helpers.js'
-import { ensureProductoMkNotification } from './mkNotifications.js'
 import { syncPrecioWeb } from './pricing.js'
 
 const FotoUrlSchema = z.string().refine(isProductoFotoUrl, {
@@ -133,7 +132,6 @@ export default async function updateProducto(fastify) {
             data: precioHistorialData(id, Number(existing.precioLista), Number(data.precioLista), usuarioNombre),
           })
         }
-        await ensureProductoMkNotification(tx, updated, request.user)
         return syncPrecioWeb(tx, updated)
       })
     } catch (error) {

@@ -12,6 +12,7 @@ import {
   aplicarCosteoProducto,
   getSnapshots,
   recalcularMasivo,
+  getCosteoBlockers,
 } from '../src/routes/costeo/service.js';
 
 describe('Costeo Service Unit & Logic Tests', () => {
@@ -120,9 +121,26 @@ describe('Costeo Service Unit & Logic Tests', () => {
     expect(res.costoAjustado).toBe(18540);
     expect(res.costoTransferenciaCalculado).toBe(25029);
     expect(res.diferenciaMonto).toBe(5029);
+    expect(res.alertas).toEqual({ materialesSinPrecio: [], procesosSinTarifa: [] });
   });
 
-  it('6. recalcularMasivo lanza error si se exceden 500 productos', async () => {
+  it('6. identifica líneas valorizadas en cero antes de aplicar un precio', () => {
+    expect(getCosteoBlockers({
+      materiales: [
+        { nombre: 'Espuma sin precio', cantidad: 2, precioUnitario: 0 },
+        { nombre: 'Muestra sin consumo', cantidad: 0, precioUnitario: 0 },
+      ],
+      procesos: [
+        { proceso: 'corte', horas: 1, valorHora: 0 },
+        { proceso: 'enfundado', horas: 0, valorHora: 0 },
+      ],
+    })).toEqual({
+      materialesSinPrecio: ['Espuma sin precio'],
+      procesosSinTarifa: ['corte'],
+    });
+  });
+
+  it('7. recalcularMasivo lanza error si se exceden 500 productos', async () => {
     const mockPrisma = {};
     const manyIds = Array.from({ length: 501 }, (_, i) => i + 1);
 

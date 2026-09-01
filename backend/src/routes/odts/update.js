@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { resolveOrdenForWrite } from '../relation-guards.js'
 import { getUserSucursalId } from '../caja/scope.js'
 import { can } from '../../middleware/rbac.js'
-import { ODT_ESTADOS, applyOdtStateSideEffects, buildOdtUpdateBitacoraEntries, getAuditUsuario, validateOperario } from './operations.js'
+import { ODT_ESTADOS, applyOdtStateSideEffects, buildOdtUpdateBitacoraEntries, getAuditUsuario, isTerminalOdtEstado, validateOperario } from './operations.js'
 
 const Schema = z.object({
   tipo: z.enum(['Corte', 'Espumas', 'Confecciones', 'Madera', 'Externo']).optional(),
@@ -29,6 +29,10 @@ const CerrarSchema = z.object({
   estado: z.enum(['Terminada', 'Entregada']).default('Terminada'),
   razon: z.string().trim().min(1).optional(),
   usuario: z.string().trim().min(1).optional(),
+  controlCalidad: z.object({
+    aprobada: z.literal(true),
+    observacion: z.string().trim().min(3, 'Describe la validacion de calidad antes de cerrar la OT.'),
+  }).optional(),
 }).optional()
 
 function lifecycleUsuario(request, body = {}) {
@@ -57,6 +61,27 @@ function scopedOdtWhere(id, user) {
   return { id, eliminado: false, ...(sucursalId ? { OR: [{ sucursalId }, { sucursalId: null }] } : {}) }
 }
 
+async function lockOdtWorkflow(tx, odtId) {
+  // El mismo lock se toma en el flujo de items de taller. Así no se puede
+  // marcar un ítem pendiente entre la verificación de QC y el cierre de OT.
+  if (typeof tx?.$executeRaw === 'function') {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`odt-workflow:${Number(odtId)}`})::bigint)`
+  }
+}
+
+export function getOdtClosureBlocker({ current, pendientes = 0, controlCalidad } = {}) {
+  if (current?.estado !== 'Control calidad') {
+    return 'La OT debe estar en Control calidad antes de cerrarse.'
+  }
+  if (!controlCalidad?.aprobada || !String(controlCalidad.observacion || '').trim()) {
+    return 'Registra la aprobacion y observacion de Control de calidad antes de cerrar la OT.'
+  }
+  if (Number(pendientes) > 0) {
+    return `No se puede cerrar: quedan ${pendientes} tarea(s) de taller sin marcar lista o cancelada.`
+  }
+  return null
+}
+
 export default async function updateOdt(fastify) {
   fastify.put('/:id', {
     preHandler: [fastify.authenticate, fastify.rbac('taller.gestion', 'write')],
@@ -75,6 +100,9 @@ export default async function updateOdt(fastify) {
         select: { id: true, estado: true, operarioId: true, fechaInicio: true, fechaTermino: true, sucursalId: true, ordenId: true, centroCostoId: true },
       })
       if (!current) return reply.code(404).send({ error: 'ODT no encontrada' })
+      if (data.estado && isTerminalOdtEstado(data.estado) && data.estado !== current.estado) {
+        return reply.code(400).send({ error: 'Usa el cierre supervisado de OT desde Control calidad; el cambio directo a un estado terminal no esta permitido.' })
+      }
       if (data.ordenId !== undefined && data.ordenId !== null && data.ordenId !== '') {
         const resolved = await resolveOrdenForWrite(fastify.prisma, { ordenId: data.ordenId }, { user: request.user })
         if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
@@ -107,6 +135,7 @@ export default async function updateOdt(fastify) {
         user: request.user,
       })
       return await fastify.prisma.$transaction(async (tx) => {
+        if (updateData.estado) await lockOdtWorkflow(tx, id)
         const o = await tx.odt.update({ where: { id }, data: updateData })
         if (bitacoraEntries.length) await tx.bitacoraTaller.createMany({ data: bitacoraEntries })
         return o
@@ -129,21 +158,41 @@ export default async function updateOdt(fastify) {
     try {
       const current = await fastify.prisma.odt.findFirst({ where: scopedOdtWhere(id, request.user) })
       if (!current) return reply.code(404).send({ error: 'ODT no encontrada' })
-      const updateData = applyOdtStateSideEffects({ estado: body.estado }, current)
       return await fastify.prisma.$transaction(async (tx) => {
+        await lockOdtWorkflow(tx, id)
+        const txCurrent = await tx.odt.findFirst({ where: scopedOdtWhere(id, request.user) })
+        if (!txCurrent) {
+          const error = new Error('ODT no encontrada')
+          error.statusCode = 404
+          throw error
+        }
+        const pendientes = await tx.odtItemTaller.count({
+          where: {
+            odtItem: { is: { odtId: id, eliminado: false } },
+            estado: { notIn: ['listo', 'cancelado'] },
+          },
+        })
+        const blocker = getOdtClosureBlocker({ current: txCurrent, pendientes, controlCalidad: body.controlCalidad })
+        if (blocker) {
+          const error = new Error(blocker)
+          error.statusCode = 409
+          throw error
+        }
+        const updateData = applyOdtStateSideEffects({ estado: body.estado }, txCurrent)
         const o = await tx.odt.update({ where: { id }, data: updateData })
         await tx.bitacoraTaller.create({
           data: lifecycleBitacoraData({
             id,
-            current,
+            current: txCurrent,
             request,
             body,
-            texto: lifecycleTexto(`ODT cerrada: ${current.estado} -> ${body.estado}`, body),
+            texto: lifecycleTexto(`Control de calidad aprobado: ${body.controlCalidad.observacion}. ODT cerrada: ${txCurrent.estado} -> ${body.estado}`, body),
           }),
         })
         return o
       })
     } catch (e) {
+      if (e.statusCode) return reply.code(e.statusCode).send({ error: e.message })
       if (e.code === 'P2025') return reply.code(404).send({ error: 'ODT no encontrada' })
       throw e
     }

@@ -1,5 +1,4 @@
 // Importador masivo de productos. El cliente parsea CSV/Excel y envia JSON.
-import { ensureProductoMkNotification } from './mkNotifications.js'
 import { syncPrecioWeb } from './pricing.js'
 
 const MAX_IMPORT_ROWS = 1000
@@ -350,7 +349,6 @@ export default async function importarRoute(fastify) {
       for (const row of createRows) {
         const created = await tx.producto.create({ data: row })
         await syncPrecioWeb(tx, created)
-        await ensureProductoMkNotification(tx, created, request.user)
       }
     })
     return { creados: createRows.length, ignorados, total: rows.length, errores: [] }

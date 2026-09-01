@@ -146,7 +146,7 @@ export default async function costeoRoutes(fastify) {
       const result = await aplicarCosteoProducto(fastify.prisma, request.params.productoId, request.user);
       return reply.send(result);
     } catch (e) {
-      return reply.code(400).send({ error: e.message });
+      return reply.code(e.statusCode || 400).send({ error: e.message });
     }
   });
 

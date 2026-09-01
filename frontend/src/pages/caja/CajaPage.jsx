@@ -114,6 +114,10 @@ export default function CajaPage() {
   const ingresos = movimientosCajaReal.filter(m => m.monto > 0).reduce((a, m) => a + m.monto, 0)
   const egresos = Math.abs(movimientosCajaReal.filter(m => m.monto < 0).reduce((a, m) => a + m.monto, 0))
   const saldo = ingresos - egresos
+  const horasTurnoAbierto = turno?.apertura
+    ? Math.floor((Date.now() - new Date(turno.apertura).getTime()) / (1000 * 60 * 60))
+    : 0
+  const turnoRequiereRevision = horasTurnoAbierto >= 24
   const systemConteo = CIERRE_FIELDS.reduce((acc, [key]) => ({ ...acc, [key]: 0 }), {})
   for (const mov of movimientos) {
     if (normalizeMedioPago(mov.medioPago) === 'referencial') continue
@@ -287,11 +291,18 @@ export default function CajaPage() {
 
       {tab === 'hoy' && (
         <div className="kpi-strip">
-          <KpiCard label="Ingresos turno" value={fmt(ingresos)} icon="trendingUp" tone="neutral" sublabel="Total entradas" />
-          <KpiCard label="Egresos turno" value={fmt(egresos)} icon="trendingDown" tone="amber" sublabel="Total salidas" />
-          <KpiCard label="Saldo del día" value={fmt(saldo)} icon="dollarSign" tone={saldo >= 0 ? 'neutral' : 'red'} sublabel="Resultado neto" />
-          <KpiCard label="Movimientos" value={movimientos.length} icon="refreshCw" sublabel="Transacciones hoy" />
+          <KpiCard label="Ingresos operativos" value={fmt(ingresos)} icon="trendingUp" tone="neutral" sublabel="Excluye movimientos referenciales" />
+          <KpiCard label="Egresos operativos" value={fmt(egresos)} icon="trendingDown" tone="amber" sublabel="Excluye movimientos referenciales" />
+          <KpiCard label="Saldo operativo" value={fmt(saldo)} icon="dollarSign" tone={saldo >= 0 ? 'neutral' : 'red'} sublabel="Base para el arqueo físico" />
+          <KpiCard label="Movimientos" value={movimientos.length} icon="refreshCw" sublabel="Incluye referencias no contables" />
         </div>
+      )}
+
+      {tab === 'hoy' && turnoRequiereRevision && (
+        <section role="status" aria-live="polite" style={{ marginBottom: 16, padding: '12px 16px', border: '1px solid var(--amber-300, #f2c66d)', borderRadius: 8, background: 'var(--amber-50, #fff9eb)', color: 'var(--text-1)' }}>
+          <strong>Turno abierto hace {horasTurnoAbierto} horas.</strong>{' '}
+          Revisa y realiza el arqueo antes de seguir registrando movimientos. El sistema conserva el turno abierto para no cerrar caja sin conteo físico.
+        </section>
       )}
 
       {tab === 'historico' && (
