@@ -454,9 +454,13 @@ describe('matriz ventas - fecha autonoma, estado inicial y paginacion', () => {
       createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
     })
     try {
+      // pageSize amplio a proposito: lo que se verifica es que el rango por defecto
+      // no sea "solo hoy", no el tamano de la pagina. Con el default de 100 la orden
+      // de hace 30 dias quedaba fuera en cuanto la base acumulaba ese tanto de
+      // registros recientes, y el test fallaba por un motivo que no es el suyo.
       const res = await app.inject({
         method: 'GET',
-        url: '/api/matriz-ventas',
+        url: '/api/matriz-ventas?pageSize=500',
         headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
       })
       expect(res.statusCode).toBe(200)

@@ -22,6 +22,7 @@ const describeDb = hasUsableDatabaseUrl() ? describe : describe.skip
 
 describeDb('la maquina de estados sigue al trabajo real', () => {
   let app, user, cliente, producto
+  const ordenesCreadas = []
 
   beforeAll(async () => {
     app = buildApp({ logger: false })
@@ -30,7 +31,16 @@ describeDb('la maquina de estados sigue al trabajo real', () => {
     cliente = await app.prisma.cliente.findFirst({ where: { activo: true } })
     producto = await app.prisma.producto.findFirst({ where: { activo: true } })
   })
-  afterAll(async () => { await app.close() })
+  afterAll(async () => {
+    // Cada corrida creaba ordenes que quedaban para siempre. Acumuladas, desplazan
+    // de la primera pagina a las que otras suites esperan encontrar.
+    for (const id of ordenesCreadas) {
+      await app.prisma.ordenEstadoFlujoHistorial.deleteMany({ where: { ordenId: id } }).catch(() => {})
+      await app.prisma.ordenItem.deleteMany({ where: { ordenId: id } }).catch(() => {})
+      await app.prisma.orden.delete({ where: { id } }).catch(() => {})
+    }
+    await app.close()
+  })
 
   const token = (role, extra = null) => app.jwt.sign({
     id: user.id, role, nombre: 'maquina', permisosExtra: extra,
@@ -49,7 +59,9 @@ describeDb('la maquina de estados sigue al trabajo real', () => {
     })
     expect(res.statusCode).toBe(201)
     const body = JSON.parse(res.body)
-    return body?.data ?? body
+    const orden = body?.data ?? body
+    ordenesCreadas.push(orden.id)
+    return orden
   }
 
   const estadoDe = async id => (await app.prisma.orden.findUnique({
@@ -135,7 +147,9 @@ describeDb('la maquina de estados sigue al trabajo real', () => {
       headers: { authorization: `Bearer ${tCaja}` },
       payload: { montoInicial: 0 },
     })
-    const nDoc = String(Date.now()).slice(-7)
+    // Numero unico de verdad: con Date.now() recortado chocaba con el documento que
+    // crea otra suite y la caja lo rechazaba por duplicado.
+    const nDoc = `${Date.now()}${Math.floor(Math.random() * 1000)}`.slice(-9)
     const doc = await app.inject({
       method: 'POST',
       url: `/api/caja/cobranza/orden/${orden.id}/documento`,
