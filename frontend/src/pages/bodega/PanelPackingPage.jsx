@@ -112,7 +112,7 @@ export default function PanelPackingPage() {
             <Btn
               variant="secondary"
               size="sm"
-              onClick={() => navigate(`/despachos/nuevo?ordenId=${row.ordenId}`)}
+              onClick={() => navigate(`/despachos/nuevo?ordenId=${row.ordenId}&nInterno=${row.nInterno || ''}`)}
             >
               Programar Salida
             </Btn>

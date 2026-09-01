@@ -314,19 +314,19 @@ export default function MatrizVentasPage() {
           <button onClick={e => { e.stopPropagation(); navigate(`/odt?ordenId=${row.id}`) }} style={operationBtn('#0ea5e9')} title="Informe taller">
             Inf. Taller
           </button>
-          {canWriteDespacho && ['EN_TALLER', 'PICKING_PARCIAL', 'LISTA_PICKING', 'PICKING'].includes(row.estadoLogistico?.codigo) && (
+          {canWriteDespacho && row.estado === 'Activa' && ['EN_TALLER', 'PICKING_PARCIAL', 'LISTA_PICKING', 'PICKING'].includes(row.estadoLogistico?.codigo) && (
             <button onClick={e => { e.stopPropagation(); navigate(`/despachos/ordenes/${row.id}/picking`) }} style={operationBtn('#7c3aed')} title="Confirmar picking">
               Picking
             </button>
           )}
-          {canWriteDespacho && row.estadoLogistico?.codigo === 'PACKING' && (
+          {canWriteDespacho && row.estado === 'Activa' && row.estadoLogistico?.codigo === 'PACKING' && (
             <button onClick={e => { e.stopPropagation(); navigate(`/despachos/ordenes/${row.id}/packing`) }} style={operationBtn('#7c3aed')} title="Armar bultos">
               Packing
             </button>
           )}
-          {canWriteDespacho && row.estadoLogistico?.codigo === 'LISTA_DESPACHO' && (
+          {canWriteDespacho && row.estado === 'Activa' && row.estadoLogistico?.codigo === 'LISTA_DESPACHO' && (
             <>
-              <button onClick={e => { e.stopPropagation(); navigate(`/despachos/nuevo?ordenId=${row.id}`) }} style={operationBtn('#059669')} title="Programar salida">
+              <button onClick={e => { e.stopPropagation(); navigate(`/despachos/nuevo?ordenId=${row.id}&nInterno=${row.nInterno || ''}`) }} style={operationBtn('#059669')} title="Programar salida">
                 Programar Salida
               </button>
               <button onClick={e => { e.stopPropagation(); navigate(`/despachos/guias/nueva?ordenId=${row.id}`) }} style={operationBtn('#d97706')} title="Preparar guía DTE 52">

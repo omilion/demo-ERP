@@ -752,7 +752,7 @@ function opBtnStyle(color) {
   }
 }
 
-function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmitirDte, canDelete, canManageInternalCreditNotes, internalCreditNoteBlocked, onCreateInternalCreditNote, canRegistrarPago, saldo, onCobrar }) {
+function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, canEmitirDte, onEmitirDte, canDelete, canManageInternalCreditNotes, internalCreditNoteBlocked, onCreateInternalCreditNote, canRegistrarPago, saldo, onCobrar }) {
   const navigate = useNavigate()
   const anularVenta = useAnularVenta()
   const activarVenta = useActivarVenta()
@@ -803,6 +803,21 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmit
       <button onClick={() => navigate(`/despachos?tab=guias&ordenId=${v.id}`)} style={opBtnStyle('var(--green-600)')}>
         <Icon name="truck" size={14} /> Guías Despachos ({guiasCount})
       </button>
+      {canWriteDespacho && v.estado === 'Activa' && ['EN_TALLER', 'PICKING_PARCIAL', 'LISTA_PICKING', 'PICKING'].includes(v.estadoLogistico?.codigo) && (
+        <button onClick={() => navigate(`/despachos/ordenes/${v.id}/picking`)} style={opBtnStyle('#7c3aed')}>
+          <Icon name="tool" size={14} /> Confirmar Picking
+        </button>
+      )}
+      {canWriteDespacho && v.estado === 'Activa' && v.estadoLogistico?.codigo === 'PACKING' && (
+        <button onClick={() => navigate(`/despachos/ordenes/${v.id}/packing`)} style={opBtnStyle('#7c3aed')}>
+          <Icon name="tool" size={14} /> Armar Packing
+        </button>
+      )}
+      {canWriteDespacho && v.estado === 'Activa' && v.estadoLogistico?.codigo === 'LISTA_DESPACHO' && (
+        <button onClick={() => navigate(`/despachos/guias/nueva?ordenId=${v.id}`)} style={opBtnStyle('#d97706')}>
+          <Icon name="fileText" size={14} /> Preparar Guía DTE 52
+        </button>
+      )}
       <button onClick={handleCreateDespacho} style={opBtnStyle('var(--blue)')}>
         <Icon name="truck" size={14} /> Crear Despacho ({despachosCount})
       </button>
@@ -917,6 +932,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const documentosCount = pagos.filter(isReferencialPago).length
   const dtes = documentosDteQuery.data?.documentos || []
   const canWriteFacturacion = can(user, 'facturacion', 'write')
+  const canWriteDespacho = can(user, 'despacho', 'write')
   const canRegistrarPago = can(user, 'cobranza', 'write') && can(user, 'caja', 'read') && can(user, 'caja', 'write')
   const ventaYaEmitida = hasActiveSalesDte(dtes)
   const canManageInternalCreditNotes = canWrite || canWriteFacturacion
@@ -1009,6 +1025,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                 v={v}
                 odtsCount={odts.length}
                 guiasCount={guias.length}
+                canWriteDespacho={canWriteDespacho}
                 canEmitirDte={canWriteFacturacion && !ventaYaEmitida}
                 onEmitirDte={() => setEmitirDte(true)}
                 canDelete={canDelete}

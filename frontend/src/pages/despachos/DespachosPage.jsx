@@ -151,7 +151,7 @@ export default function DespachosPage({ defaultTab }) {
       render: (_, r) => (
         <div style={{ display: 'flex', gap: 6 }}>
           {canWriteDespacho && (
-            <Btn variant="primary" size="sm" onClick={() => navigate(`/despachos/nuevo?ordenId=${r.ordenId}`)}>
+            <Btn variant="primary" size="sm" onClick={() => navigate(`/despachos/nuevo?ordenId=${r.ordenId}&nInterno=${r.nInterno || ''}`)}>
               Programar Salida
             </Btn>
           )}
