@@ -768,6 +768,95 @@ export default function TallerPage() {
     setFechaHasta('')
   }
 
+  const toolbarExtra = (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', width: '100%', padding: '2px 0' }}>
+      <button
+        type="button"
+        className="table-tool-btn"
+        onClick={() => setViewMode(v => v === 'kanban' ? 'tabla' : 'kanban')}
+        title="Cambiar vista CRM"
+        style={{ height: 28 }}
+      >
+        <Icon name={viewMode === 'kanban' ? 'list' : 'grid'} size={13} />
+        {viewMode === 'kanban' ? 'Vista Lista' : 'Vista CRM'}
+      </button>
+
+      <FilterSelect
+        value={estadoFilter}
+        onChange={setEst}
+        options={estadoOptions}
+        placeholder="Estado"
+        active={estadoFilter !== 'all'}
+        minMenuWidth={180}
+      />
+
+      <FilterSelect
+        value={operarioFilter}
+        onChange={setOperarioFilter}
+        options={operarioOptions}
+        placeholder="Responsable"
+        active={operarioFilter !== 'all'}
+        minMenuWidth={200}
+      />
+
+      <FilterSelect
+        value={fechaCampo}
+        onChange={setFechaCampo}
+        options={fechaCampoOptions}
+        placeholder="Fecha creada"
+        active={false}
+        minMenuWidth={160}
+      />
+
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <input
+          type="date"
+          value={fechaDesde}
+          onChange={e => setFechaDesde(e.target.value)}
+          style={{ padding: '3px 6px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, height: 28, width: 130 }}
+          title="Fecha desde"
+        />
+      </div>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <input
+          type="date"
+          value={fechaHasta}
+          onChange={e => setFechaHasta(e.target.value)}
+          style={{ padding: '3px 6px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, height: 28, width: 130 }}
+          title="Fecha hasta"
+        />
+      </div>
+
+      {hasActiveFilters && (
+        <button
+          type="button"
+          onClick={clearAllFilters}
+          style={{
+            height: 28,
+            padding: '0 10px',
+            borderRadius: 6,
+            border: '1px solid var(--amber-300, #fcd34d)',
+            background: 'var(--amber-50, #fffbeb)',
+            color: 'var(--amber-900, #78350f)',
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            transition: 'background 0.15s',
+          }}
+        >
+          Limpiar filtros
+        </button>
+      )}
+
+      <div style={{ marginLeft: 'auto' }}>
+        <SearchBar placeholder="Buscar OT, N° interno, cliente..." value={search} onChange={setSearch} style={{ width: 280, height: 28 }} />
+      </div>
+    </div>
+  )
+
   return (
     <main className="page page-wide">
       <PageHeader
@@ -847,104 +936,14 @@ export default function TallerPage() {
       />
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)' }}>
           <Tabs tabs={TALLER_TABS} active={tab} onChange={t => { setTab(t); setSearch('') }} />
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="table-tool-btn"
-              onClick={() => setViewMode(v => v === 'kanban' ? 'tabla' : 'kanban')}
-              title="Cambiar vista CRM"
-              style={{ height: 28 }}
-            >
-              <Icon name={viewMode === 'kanban' ? 'list' : 'grid'} size={13} />
-              {viewMode === 'kanban' ? 'Vista Lista' : 'Vista CRM'}
-            </button>
-
-            <FilterSelect
-              value={estadoFilter}
-              onChange={setEst}
-              options={estadoOptions}
-              placeholder="Estado"
-              active={estadoFilter !== 'all'}
-              minMenuWidth={180}
-            />
-
-            <FilterSelect
-              value={operarioFilter}
-              onChange={setOperarioFilter}
-              options={operarioOptions}
-              placeholder="Responsable"
-              active={operarioFilter !== 'all'}
-              minMenuWidth={200}
-            />
-
-            <FilterSelect
-              value={fechaCampo}
-              onChange={setFechaCampo}
-              options={fechaCampoOptions}
-              placeholder="Fecha creada"
-              active={false}
-              minMenuWidth={160}
-            />
-
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <input
-                type="date"
-                value={fechaDesde}
-                onChange={e => setFechaDesde(e.target.value)}
-                style={{ padding: '3px 6px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, height: 28, width: 130 }}
-                title="Fecha desde"
-              />
-            </div>
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <input
-                type="date"
-                value={fechaHasta}
-                onChange={e => setFechaHasta(e.target.value)}
-                style={{ padding: '3px 6px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, height: 28, width: 130 }}
-                title="Fecha hasta"
-              />
-            </div>
-
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={clearAllFilters}
-                style={{
-                  height: 28,
-                  padding: '0 10px',
-                  borderRadius: 6,
-                  border: '1px solid var(--amber-300, #fcd34d)',
-                  background: 'var(--amber-50, #fffbeb)',
-                  color: 'var(--amber-900, #78350f)',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  transition: 'background 0.15s',
-                }}
-              >
-                Limpiar filtros
-              </button>
-            )}
-
-            <div style={{ marginLeft: 'auto' }}>
-              <SearchBar placeholder="Buscar OT, N° interno, cliente..." value={search} onChange={setSearch} style={{ width: 280, height: 28 }} />
-            </div>
-          </div>
         </div>
-
 
         <div style={{ padding: 16 }}>
           {viewMode === 'kanban' && (
-            <div className="table-tools" aria-label="Controles de vista CRM" style={{ margin: '-16px -16px 12px' }}>
-              <button type="button" className="table-tool-btn" onClick={() => setViewMode('tabla')} title="Volver a lista">
-                <Icon name="list" size={13} />
-                Lista
-              </button>
+            <div style={{ marginBottom: 12 }}>
+              {toolbarExtra}
             </div>
           )}
           {viewMode === 'kanban' && kanbanResult.truncated && (
@@ -971,7 +970,7 @@ export default function TallerPage() {
               onEstadoDrop={handleKanbanDrop}
             />
           ) : (
-            <Table columns={odtColumns} rows={odts} onRowClick={row => navigate('/taller/' + row.id)} columnPrefsKey="taller-ots" ariaLabel="Taller OTs" getRowKey={row => row.id} />
+            <Table columns={odtColumns} rows={odts} onRowClick={row => navigate('/taller/' + row.id)} columnPrefsKey="taller-ots" ariaLabel="Taller OTs" getRowKey={row => row.id} toolbarExtra={toolbarExtra} />
           )}
         </div>
         {viewMode === 'tabla' && <Pager page={page} pages={pages} total={total} limit={LIMIT} shown={odts.length} onChange={setPagerPage} disabled={isLoading} />}
