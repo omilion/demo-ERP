@@ -10,6 +10,7 @@ const testFiles = [
   'test/pasar-taller.test.js',
   'test/despachos-flujo-integral.test.js',
   'test/despachos-traceability.test.js',
+  'test/flujo-roles-e2e.test.js',
   'test/notificaciones-bodega-facturacion.test.js',
 ]
 

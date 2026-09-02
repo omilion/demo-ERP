@@ -12,15 +12,22 @@ Base de auditoría: `docs/auditoria/AUDITORIA_E2E_COTIZACION_A_DESPACHO_2026-09-
    caben en el panel. Las pruebas pueden solicitar el conjunto completo sin
    depender del ranking de una base de datos realista.
 2. **Pruebas E2E reproducibles.** Se agregó `npm run test:e2e:docker`. Ejecuta
-   en procesos separados los siete flujos de cotización, venta, taller,
-   despacho y avisos contra `plastimar_test`. Así evita que Vitest acumule el
+   en procesos separados los ocho flujos de cotización, venta, taller,
+   despacho, relevos por rol y avisos contra `plastimar_test`. Así evita que Vitest acumule el
    grafo de módulos de todos los flujos y agote memoria. Sus temporales quedan
    en `backend/tmp/` (ignorado), por lo que tampoco dependen del disco `C:`.
+3. **Relevos operativos por rol.** `test/flujo-roles-e2e.test.js` ejecuta una
+   venta mixta y persiste el recorrido vendedor → coordinación comercial → jefe
+   de taller → operario → bodeguero (despacho, picking, packing, guía borrador
+   y tracking) → cajero → encargada de facturación con permiso granular →
+   gerencia. También verifica que `solo_lectura` no pueda mutar y que `rrhh`
+   permanezca fuera del flujo logístico. La caja y los datos usados son
+   exclusivos de la prueba y se eliminan al terminar.
 
 Verificación realizada:
 
 ```text
-npm run test:e2e:docker      # 7 archivos, 130 pruebas aprobadas
+npm run test:e2e:docker      # 8 archivos, 132 pruebas aprobadas
 npm run build                # frontend compilado correctamente
 ```
 
