@@ -233,6 +233,9 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
     if (!['borrador', 'error'].includes(doc.estado)) {
       throw new Error(`El documento ya fue emitido (estado: ${doc.estado}).`);
     }
+    if (doc.estado === 'error' && doc.folio) {
+      throw new Error(`El documento ya tiene folio ${doc.folio} y quedó con error. No se puede reemitir: revisa su rechazo o envío antes de cualquier acción manual.`);
+    }
     if (!TIPOS_DTE[doc.tipoDte]) throw new Error(`Tipo de DTE no soportado: ${doc.tipoDte}.`);
     // Debe ejecutarse antes de cargar certificado o tomar folio: un documento
     // fuera del schema del SII no puede consumir un folio irrecuperable.
@@ -346,12 +349,23 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
     if (!rutEmisorSii) throw new Error('El RUT de la empresa emisora no es válido.');
 
     let resultado;
-    if (esBoleta) {
-      const token = await sii.getTokenBoleta(ambiente, cert);
-      resultado = await sii.uploadEnvioBoleta({ ambiente, token, rutEnvia: firmante, rutEmisor: rutEmisorSii, filename, xmlLatin1 });
-    } else {
-      const token = await sii.getToken(ambiente, cert);
-      resultado = await sii.uploadEnvioDte({ ambiente, token, rutEnvia: firmante, rutEmisor: rutEmisorSii, filename, xmlLatin1 });
+    try {
+      if (esBoleta) {
+        const token = await sii.getTokenBoleta(ambiente, cert);
+        resultado = await sii.uploadEnvioBoleta({ ambiente, token, rutEnvia: firmante, rutEmisor: rutEmisorSii, filename, xmlLatin1 });
+      } else {
+        const token = await sii.getToken(ambiente, cert);
+        resultado = await sii.uploadEnvioDte({ ambiente, token, rutEnvia: firmante, rutEmisor: rutEmisorSii, filename, xmlLatin1 });
+      }
+    } catch (error) {
+      // Si el SII rechaza el upload (o la respuesta queda ambigua), no se
+      // permite reemitir ni reenviar automáticamente el mismo folio. Queda
+      // una evidencia persistente para conciliación manual.
+      await Promise.all(docs.map(doc => db.documentos.update(doc.id, {
+        estado: 'error',
+        estadoDetalle: `Envío SII no confirmado: ${error?.message || 'error desconocido'}`,
+      })));
+      throw error;
     }
 
     const actualizados = [];
