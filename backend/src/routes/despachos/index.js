@@ -1,4 +1,5 @@
 // Gestion de despachos y guias.
+import path from 'node:path'
 import { z } from 'zod'
 import { can } from '../../middleware/rbac.js'
 import { buildExport, sendExport } from '../../utils/export.js'
@@ -2057,6 +2058,22 @@ export default async function despachosRoutes(fastify) {
       })
     }
 
+    // La creación con emisión inmediata debe fallar antes de abrir la
+    // transacción y antes de reservar un folio si el certificado local no está
+    // disponible. El endpoint de reintento más abajo devuelve el mismo 422.
+    if (emitirSii) {
+      const engine = createFacturacionEngine({
+        db: createFacturacionDb(fastify.prisma),
+        dataDir: path.join(process.cwd(), 'data', 'facturacion'),
+      })
+      const certificado = await engine.certInfo()
+      if (!certificado.cargado || !certificado.valido) {
+        return reply.code(422).send({
+          error: certificado.error || 'No hay certificado digital cargado. Súbelo en Configuración.',
+        })
+      }
+    }
+
     return fastify.prisma.$transaction(async (tx) => {
       let guia = await tx.guiaDespacho.create({ data })
       if (autoNGuia) {
@@ -2098,7 +2115,7 @@ export default async function despachosRoutes(fastify) {
       let emitidoResult = null
       if (emitirSii && validation.valido) {
         const db = createFacturacionDb(tx)
-        const engine = createFacturacionEngine({ db })
+        const engine = createFacturacionEngine({ db, dataDir: path.join(process.cwd(), 'data', 'facturacion') })
         emitidoResult = await engine.emitir(factDoc.id)
         try {
           await engine.enviar([factDoc.id])
@@ -2149,14 +2166,18 @@ export default async function despachosRoutes(fastify) {
     }
 
     const db = createFacturacionDb(fastify.prisma)
-    const engine = createFacturacionEngine({ db })
-    const emitido = await engine.emitir(factDoc.id)
+    const engine = createFacturacionEngine({ db, dataDir: path.join(process.cwd(), 'data', 'facturacion') })
     try {
-      await engine.enviar([factDoc.id])
-    } catch {
-      // background sync error does not revert emission
+      const emitido = await engine.emitir(factDoc.id)
+      try {
+        await engine.enviar([factDoc.id])
+      } catch {
+        // background sync error does not revert emission
+      }
+      return { ok: true, documento: emitido, folio: emitido.folio, estado: emitido.estado }
+    } catch (error) {
+      return reply.code(422).send({ error: error?.message || 'No se pudo emitir la guía al SII' })
     }
-    return { ok: true, documento: emitido, folio: emitido.folio, estado: emitido.estado }
   })
 
   fastify.put('/guias/:id', {
