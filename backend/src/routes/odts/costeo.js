@@ -1,5 +1,6 @@
 import { computeTotal } from '../ventas/helpers.js'
 import { buildOdtTiempoMetrics, formatOperarioNombre, isPrismaMissingTable } from './operations.js'
+import { can } from '../../middleware/rbac.js'
 
 const JORNADA_MENSUAL_HORAS = 180
 
@@ -10,6 +11,22 @@ function round(value, digits = 1) {
 
 function roundMoney(value) {
   return Math.round(Number(value || 0))
+}
+
+// Leer Taller permite ejecutar y seguir una OT; no revela costos, margenes ni
+// remuneraciones. El costeo tiene su propio permiso y el sueldo exige uno aun
+// mas especifico, incluso para quien puede analizar costos.
+export function opcionesCosteoOdt(user = null) {
+  return {
+    incluirCosteo: can(user?.role, 'costeo', 'read', user?.permisosExtra),
+    incluirRemuneracion: can(user?.role, 'rrhh.remuneracion', 'read', user?.permisosExtra),
+  }
+}
+
+export function ocultarRemuneracionDeCosteo(costeo) {
+  if (!costeo) return costeo
+  const { sueldoLiquido, costoHora, ...sinRemuneracion } = costeo
+  return sinRemuneracion
 }
 
 export function parseMoneyLike(value) {
@@ -150,10 +167,14 @@ export function buildOdtCosteo(odt = {}, {
   }
 }
 
-export async function attachOdtCosteos(prisma, odts, now = new Date()) {
+export async function attachOdtCosteos(prisma, odts, now = new Date(), opciones = {}) {
+  const { incluirCosteo = true, incluirRemuneracion = true } = opciones
   const list = Array.isArray(odts) ? odts : [odts]
   const odtIds = [...new Set(list.map(odt => odt?.id).filter(Boolean))]
   if (!odtIds.length) return Array.isArray(odts) ? list : list[0]
+  // No consultar ni calcular costos para perfiles operativos. Asi tampoco se
+  // carga el sueldo desde RRHH en listados que no tienen derecho a verlo.
+  if (!incluirCosteo) return Array.isArray(odts) ? list : list[0]
 
   const trabajadorIds = [...new Set(list.map(odt => odt?.operarioId).filter(Boolean))]
   const ordenIds = [...new Set(list.map(odt => odt?.ordenId).filter(Boolean))]
@@ -217,21 +238,24 @@ export async function attachOdtCosteos(prisma, odts, now = new Date()) {
   const trabajadoresById = new Map(trabajadores.map(item => [item.id, item]))
   const ordenesById = new Map(ordenes.map(item => [item.id, item]))
 
-  const enriched = list.map(odt => ({
-    ...odt,
-    costeo: buildOdtCosteo(odt, {
+  const enriched = list.map(odt => {
+    const costeo = buildOdtCosteo(odt, {
       historiales: historialesByOdt.get(odt.id) || [],
       priceByCode,
       trabajador: odt.operarioId ? trabajadoresById.get(odt.operarioId) : null,
       orden: odt.ordenId ? ordenesById.get(odt.ordenId) : null,
       items: itemsByOdt.get(odt.id) || odt.items || [],
       now,
-    }),
-  }))
+    })
+    return {
+      ...odt,
+      costeo: incluirRemuneracion ? costeo : ocultarRemuneracionDeCosteo(costeo),
+    }
+  })
   return Array.isArray(odts) ? enriched : enriched[0]
 }
 
-export function buildProductividadOperarios(odts = []) {
+export function buildProductividadOperarios(odts = [], { incluirCosteo = true } = {}) {
   const byOperario = new Map()
 
   for (const odt of odts) {
@@ -243,11 +267,13 @@ export function buildProductividadOperarios(odts = []) {
       odts: 0,
       unidades: 0,
       produccionHoras: 0,
-      costoMateriales: 0,
-      costoManoObra: 0,
-      costoTotal: 0,
-      ventaTotal: 0,
-      margenEstimado: 0,
+      ...(incluirCosteo ? {
+        costoMateriales: 0,
+        costoManoObra: 0,
+        costoTotal: 0,
+        ventaTotal: 0,
+        margenEstimado: 0,
+      } : {}),
       alertas: {
         materialesSinPrecio: 0,
         manoObraSinSueldo: 0,
@@ -256,29 +282,37 @@ export function buildProductividadOperarios(odts = []) {
     }
     const costeo = odt.costeo || {}
     current.odts += 1
-    current.unidades += Number(costeo.unidades || 0)
-    current.produccionHoras += Number(costeo.produccionHoras || 0)
-    current.costoMateriales += Number(costeo.costoMateriales || 0)
-    current.costoManoObra += Number(costeo.costoManoObra || 0)
-    current.costoTotal += Number(costeo.costoTotal || 0)
-    current.ventaTotal += Number(costeo.ventaTotal || 0)
-    current.margenEstimado += Number(costeo.margenEstimado || 0)
-    if (costeo.alertas?.materialesSinPrecio) current.alertas.materialesSinPrecio += costeo.alertas.materialesSinPrecio
-    if (costeo.alertas?.manoObraSinSueldo) current.alertas.manoObraSinSueldo += 1
-    if (costeo.alertas?.sinHorasProduccion) current.alertas.sinHorasProduccion += 1
+    // La productividad operacional sigue disponible sin abrir el costeo:
+    // cantidades de los items y horas de la OT no son remuneracion ni margen.
+    const unidadesOperativas = costeo.unidades ?? (odt.items || []).reduce((sum, item) => sum + Number(item.cantidad || 0), 0)
+    const horasProduccion = costeo.produccionHoras ?? odt.tiempos?.produccionHoras ?? 0
+    current.unidades += Number(unidadesOperativas || 0)
+    current.produccionHoras += Number(horasProduccion || 0)
+    if (incluirCosteo) {
+      current.costoMateriales += Number(costeo.costoMateriales || 0)
+      current.costoManoObra += Number(costeo.costoManoObra || 0)
+      current.costoTotal += Number(costeo.costoTotal || 0)
+      current.ventaTotal += Number(costeo.ventaTotal || 0)
+      current.margenEstimado += Number(costeo.margenEstimado || 0)
+      if (costeo.alertas?.materialesSinPrecio) current.alertas.materialesSinPrecio += costeo.alertas.materialesSinPrecio
+      if (costeo.alertas?.manoObraSinSueldo) current.alertas.manoObraSinSueldo += 1
+    }
+    if (costeo.alertas?.sinHorasProduccion || !horasProduccion) current.alertas.sinHorasProduccion += 1
     byOperario.set(key, current)
   }
 
   return [...byOperario.values()].map(item => ({
     ...item,
     produccionHoras: round(item.produccionHoras, 1),
-    costoMateriales: roundMoney(item.costoMateriales),
-    costoManoObra: roundMoney(item.costoManoObra),
-    costoTotal: roundMoney(item.costoTotal),
-    ventaTotal: roundMoney(item.ventaTotal),
-    margenEstimado: roundMoney(item.margenEstimado),
+    ...(incluirCosteo ? {
+      costoMateriales: roundMoney(item.costoMateriales),
+      costoManoObra: roundMoney(item.costoManoObra),
+      costoTotal: roundMoney(item.costoTotal),
+      ventaTotal: roundMoney(item.ventaTotal),
+      margenEstimado: roundMoney(item.margenEstimado),
+      costoPorUnidad: item.unidades > 0 ? roundMoney(item.costoTotal / item.unidades) : null,
+      margenPct: item.ventaTotal > 0 ? round((item.margenEstimado / item.ventaTotal) * 100, 1) : null,
+    } : {}),
     unidadesPorHora: item.produccionHoras > 0 ? round(item.unidades / item.produccionHoras, 2) : null,
-    costoPorUnidad: item.unidades > 0 ? roundMoney(item.costoTotal / item.unidades) : null,
-    margenPct: item.ventaTotal > 0 ? round((item.margenEstimado / item.ventaTotal) * 100, 1) : null,
   })).sort((a, b) => b.unidades - a.unidades || b.produccionHoras - a.produccionHoras || a.responsable.localeCompare(b.responsable))
 }

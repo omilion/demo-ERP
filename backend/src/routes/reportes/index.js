@@ -605,23 +605,53 @@ async function buildVentasGerenciales(fastify, query, user, { includeComparison 
   const includeLic = !tipo || tipoText.includes('licit')
 
   const [ordenes, ocs, licitaciones] = await Promise.all([
-    includeOrdenes ? fastify.prisma.orden.findMany({ where: ordenWhere, include: { items: true, cargos: true } }) : [],
-    includeOc ? fastify.prisma.ordenCompraOnline.findMany({ where: ocWhere }) : [],
-    includeLic ? fastify.prisma.cotizacionLicitacion.findMany({ where: licWhere, include: { items: true } }) : [],
+    includeOrdenes ? fastify.prisma.orden.findMany({
+      where: ordenWhere,
+      // El dashboard no necesita traer columnas de despacho, CRM ni auditoria
+      // para calcular los KPIs. Reducir el payload baja memoria y latencia sin
+      // alterar la formula mientras se construye la capa analitica definitiva.
+      select: {
+        id: true, createdAt: true, rutCliente: true, creadorNombre: true, tipo: true,
+        descuentoPct: true, descuentoMonto: true,
+        items: { select: { cantidad: true, precioUnitario: true } },
+        cargos: { select: { valor: true } },
+      },
+    }) : [],
+    includeOc ? fastify.prisma.ordenCompraOnline.findMany({
+      where: ocWhere,
+      select: { fechaHora: true, emailComprador: true, codigoVendedor: true, total: true },
+    }) : [],
+    includeLic ? fastify.prisma.cotizacionLicitacion.findMany({
+      where: licWhere,
+      select: {
+        fecha: true, rutCliente: true, usuario: true, ordenId: true, estado: true, descuentoPct: true,
+        items: { select: { cantidad: true, precio: true, cantAdjudicados: true } },
+      },
+    }) : [],
   ])
 
   const byPeriodo = {}
   const byCliente = {}
   const byVendedor = {}
   const byTipo = {}
+  // Cliente y vendedor no tienen una llave canÃ³nica entre Ã³rdenes, web y
+  // licitaciones (RUT/correo/cÃ³digo/usuario). Para no presentar tres listas
+  // distintas como un ranking Ãºnico, se entregan ademÃ¡s los desgloses limpios
+  // de Ã³rdenes internas, que sÃ­ comparten el mismo modelo.
+  const ordenesPorCliente = {}
+  const ordenesPorVendedor = {}
+  const ordenesPorTipo = {}
   let total = 0
   let count = 0
-  const push = ({ fecha, cliente: rowCliente, vendedor: rowVendedor, tipo: rowTipo, monto }) => {
+  const push = ({ fecha, cliente: rowCliente, vendedor: rowVendedor, tipo: rowTipo, fuente, monto }) => {
     total += monto
     count += 1
     addMetric(byPeriodo, periodKey(fecha, periodo), monto)
-    addMetric(byCliente, rowCliente, monto)
-    addMetric(byVendedor, rowVendedor, monto)
+    // La misma persona puede llegar como RUT, correo, nombre, codigo o usuario
+    // segun la fuente. Se conserva el desglose para compatibilidad, pero cada
+    // clave declara su origen: no es un ranking canÃ³nico hasta normalizarlo.
+    addMetric(byCliente, fuente ? `${fuente} | ${rowCliente || 'sin-dato'}` : rowCliente, monto)
+    addMetric(byVendedor, fuente ? `${fuente} | ${rowVendedor || 'sin-dato'}` : rowVendedor, monto)
     addMetric(byTipo, rowTipo, monto)
   }
 
@@ -637,9 +667,15 @@ async function buildVentasGerenciales(fastify, query, user, { includeComparison 
   const licitacionesUnicas = licitaciones.filter(l => !(l.ordenId && ordenIdsEnResultado.has(l.ordenId)))
   const duplicadas = licitaciones.length - licitacionesUnicas.length
 
-  for (const o of ordenes) push({ fecha: o.createdAt, cliente: o.rutCliente, vendedor: o.creadorNombre, tipo: o.tipo, monto: totalOrden(o) })
-  for (const o of ocs) push({ fecha: o.fechaHora, cliente: o.emailComprador, vendedor: o.codigoVendedor, tipo: 'Venta Web', monto: o.total || 0 })
-  for (const l of licitacionesUnicas) push({ fecha: l.fecha, cliente: l.rutCliente, vendedor: l.usuario, tipo: 'Licitacion', monto: totalLicitacion(l) })
+  for (const o of ordenes) {
+    const monto = totalOrden(o)
+    push({ fecha: o.createdAt, cliente: o.rutCliente, vendedor: o.creadorNombre, tipo: o.tipo, fuente: 'Orden interna', monto })
+    addMetric(ordenesPorCliente, o.rutCliente, monto)
+    addMetric(ordenesPorVendedor, o.creadorNombre, monto)
+    addMetric(ordenesPorTipo, o.tipo, monto)
+  }
+  for (const o of ocs) push({ fecha: o.fechaHora, cliente: o.emailComprador, vendedor: o.codigoVendedor, tipo: 'Venta Web', fuente: 'Venta web', monto: o.total || 0 })
+  for (const l of licitacionesUnicas) push({ fecha: l.fecha, cliente: l.rutCliente, vendedor: l.usuario, tipo: 'Licitacion', fuente: 'Licitacion', monto: totalLicitacion(l) })
 
   const result = {
     filtros: { desde: desde || null, hasta: hasta || null, periodo },
@@ -675,6 +711,15 @@ async function buildVentasGerenciales(fastify, query, user, { includeComparison 
         }]
         : []
     })(),
+    desgloses: {
+      // No se mezclan fuentes hasta contar con una identidad cliente/vendedor
+      // comÃºn. La UI los rotula explÃ­citamente como Ã³rdenes internas.
+      ordenesInternas: {
+        byCliente: ordenesPorCliente,
+        byVendedor: ordenesPorVendedor,
+        byTipo: ordenesPorTipo,
+      },
+    },
     byPeriodo,
     byCliente,
     byVendedor,
@@ -860,6 +905,13 @@ function buildGerencialExportRows(reportes = {}, query = {}) {
     pushGerencialRow(rows, 'Ventas', 'Fuente ordenes', ventas.fuentes?.ordenes?.total || 0, `${ventas.fuentes?.ordenes?.count || 0} operaciones`)
     pushGerencialRow(rows, 'Ventas', 'Fuente OC online', ventas.fuentes?.ocOnline?.total || 0, `${ventas.fuentes?.ocOnline?.count || 0} operaciones`)
     pushGerencialRow(rows, 'Ventas', 'Fuente licitaciones', ventas.fuentes?.licitaciones?.total || 0, `${ventas.fuentes?.licitaciones?.count || 0} operaciones`)
+    const duplicadas = Number(ventas.fuentes?.licitaciones?.duplicadasConOrden || 0)
+    if (duplicadas) {
+      pushGerencialRow(rows, 'Ventas', 'Licitaciones excluidas por duplicado', duplicadas, 'Ya estaban representadas por una orden interna del mismo resultado')
+    }
+    for (const aviso of ventas.advertencias || []) {
+      pushGerencialRow(rows, 'Advertencia de datos', aviso.tipo || 'advertencia', aviso.cantidad || 0, aviso.detalle || '')
+    }
     for (const item of sortedMetricEntries(ventas.byTipo).slice(0, 8)) {
       pushGerencialRow(rows, 'Ventas por tipo', item.label, item.total || 0, `${item.count || 0} operaciones`)
     }

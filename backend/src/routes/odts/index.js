@@ -8,7 +8,7 @@ import itemWorkflowRoute from './item-workflow.js'
 import consumosRoute from './consumos.js'
 import { parseDate, parsePositiveInt } from '../operational-utils.js'
 import { getUserSucursalId } from '../caja/scope.js'
-import { attachOdtCosteos, buildProductividadOperarios } from './costeo.js'
+import { attachOdtCosteos, buildProductividadOperarios, opcionesCosteoOdt } from './costeo.js'
 import { ODT_ESTADOS, ODT_ESTADOS_ABIERTOS, attachOdtMetrics, attachOperarios, buildOperarioCargaItems, isPrismaMissingTable, tipoTallerFilter } from './operations.js'
 
 function defaultProductividadDesde(now = new Date()) {
@@ -243,12 +243,14 @@ export default async function odtsRoutes(fastify) {
         fechaInicio: true,
         fechaTermino: true,
         createdAt: true,
+        items: { where: { eliminado: false }, select: { cantidad: true } },
       },
     })
     const withOperarios = await attachOperarios(fastify.prisma, odts)
     const withMetrics = attachOdtMetrics(withOperarios, now)
-    const withCosteo = await attachOdtCosteos(fastify.prisma, withMetrics, now)
-    const items = buildProductividadOperarios(withCosteo)
+    const opcionesCosteo = opcionesCosteoOdt(request.user)
+    const withCosteo = await attachOdtCosteos(fastify.prisma, withMetrics, now, opcionesCosteo)
+    const items = buildProductividadOperarios(withCosteo, opcionesCosteo)
     return {
       items,
       totalOdts: withCosteo.length,

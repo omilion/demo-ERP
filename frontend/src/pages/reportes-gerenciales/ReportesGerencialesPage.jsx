@@ -173,13 +173,10 @@ function filterVentas(items, filters) {
   })
 }
 
-function sumBy(items, keyFn, valueFn) {
-  const map = new Map()
-  for (const item of items) {
-    const key = keyFn(item) || 'Sin dato'
-    map.set(key, (map.get(key) || 0) + Number(valueFn(item) || 0))
-  }
-  return Array.from(map.entries()).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)
+function metricRows(bucket = {}) {
+  return Object.entries(bucket)
+    .map(([label, metric]) => ({ label, value: Number(metric?.total || 0), count: Number(metric?.count || 0) }))
+    .sort((a, b) => b.value - a.value)
 }
 
 export default function ReportesGerencialesPage() {
@@ -233,6 +230,7 @@ export default function ReportesGerencialesPage() {
   const despachosQuery = useReporteDespachos({ desde: filters.desde || undefined, hasta: filters.hasta || undefined }, perms.despacho)
 
   const ventasProblem = combinedProblem(perms.ventas, [ventasGerencialQuery, ventasQuery])
+  const ventasGerencialProblem = combinedProblem(perms.ventas, [ventasGerencialQuery])
   const cajaProblem = combinedProblem(perms.caja, [cobranzaCajaGerencialQuery, cajaQuery])
   const cobranzaProblem = combinedProblem(perms.cobranza, [cobranzaCajaGerencialQuery, cobranzaQuery])
   const stockProblem = combinedProblem(perms.stock, [stockGerencialQuery, stockQuery])
@@ -274,9 +272,13 @@ export default function ReportesGerencialesPage() {
   const licitacionesPendientesCount = Number(licitacionesGerencialQuery.data?.byResultado?.pendiente?.count ?? licitacionesPendientes.length)
   const riesgoProblem = stockProblem || licitacionesProblem
 
-  const ventaPorTipo = sumBy(ventas, item => item.tipo, item => item.total)
-  const ventaPorVendedor = sumBy(ventas, item => item.creadorNombre, item => item.total)
-  const ventaPorCliente = sumBy(ventas, item => item.cliente?.razonSocial || item.cliente?.nombre || item.rutCliente, item => item.total)
+  // RUT, correo y codigo de vendedor no son una identidad comun. Estos
+  // rankings se limitan a ordenes internas hasta normalizar las tres fuentes.
+  const ordenesInternas = ventasGerencialQuery.data?.desgloses?.ordenesInternas || {}
+  const ventaPorTipo = metricRows(ordenesInternas.byTipo)
+  const ventaPorVendedor = metricRows(ordenesInternas.byVendedor)
+  const ventaPorCliente = metricRows(ordenesInternas.byCliente)
+  const advertenciasVentas = ventasGerencialQuery.data?.advertencias || []
 
   const updateFilter = (key, value) => setFilters(current => ({ ...current, [key]: value }))
   const resetFilters = () => setFilters({ desde: initialRange.desde, hasta: initialRange.hasta, tipo: '', vendedor: '', cliente: '' })
@@ -303,8 +305,8 @@ export default function ReportesGerencialesPage() {
   return (
     <main className="page page-wide">
       <PageHeader
-        title="Reporteria gerencial"
-        subtitle="Vista filtrable de ventas, caja, cobranza, stock critico, licitaciones y pendientes operacionales."
+        title="Actividad comercial y operativa"
+        subtitle="Seguimiento filtrable de operaciones, caja, cobranza, stock, licitaciones y pendientes. No reemplaza indicadores financieros certificados."
         breadcrumb={['Inicio', 'Reportes']}
         actions={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -345,10 +347,15 @@ export default function ReportesGerencialesPage() {
 
       {hasError && <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, fontSize: 13 }}>Algunas fuentes no respondieron. Las secciones disponibles se muestran con los datos cargados.</div>}
       {isLoading && <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--blue-bg)', color: 'var(--blue)', borderRadius: 8, fontSize: 13 }}>Actualizando reportes...</div>}
+      {advertenciasVentas.map(aviso => (
+        <div key={aviso.tipo} role="status" style={{ marginBottom: 12, padding: '10px 14px', background: '#fff8e1', color: '#8a5200', border: '1px solid #f2d08a', borderRadius: 8, fontSize: 13 }}>
+          <strong>Lectura no certificada:</strong> {aviso.detalle}. Finanzas y Comercial deben definir si estas cotizaciones forman parte del indicador comercial.
+        </div>
+      ))}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 22 }}>
-        <KpiCard label="Ventas periodo" value={statusValue(ventasProblem, ventaTotal, money)} sublabel={statusSublabel(ventasProblem, `${num(ventaCount)} operaciones`)} icon="shoppingCart" tone={statusTone(ventasProblem, 'blue')} />
-        <KpiCard label="Ticket promedio" value={statusValue(ventasProblem, ventaTicket, money)} sublabel={statusSublabel(ventasProblem, 'sobre operaciones cargadas')} icon="barChart2" tone={statusTone(ventasProblem)} />
+        <KpiCard label="Actividad comercial" value={statusValue(ventasGerencialProblem, ventaTotal, money)} sublabel={statusSublabel(ventasGerencialProblem, `${num(ventaCount)} operaciones`)} icon="shoppingCart" tone={statusTone(ventasGerencialProblem, 'blue')} />
+        <KpiCard label="Ticket operativo" value={statusValue(ventasGerencialProblem, ventaTicket, money)} sublabel={statusSublabel(ventasGerencialProblem, 'sobre operaciones cargadas')} icon="barChart2" tone={statusTone(ventasGerencialProblem)} />
         <KpiCard label="CxC pendiente" value={statusValue(cobranzaProblem, cobranzaPendiente, money)} sublabel={statusSublabel(cobranzaProblem, `${num(cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.count || cobranzaQuery.data?.stats?.n_pendientes || 0)} docs`)} icon="creditCard" tone={statusTone(cobranzaProblem, 'amber')} />
         <KpiCard label="Caja neta" value={statusValue(cajaProblem, ingresos - egresos, money)} sublabel={statusSublabel(cajaProblem, `${money(ingresos)} ing. / ${money(egresos)} egr.`)} icon="dollarSign" tone={statusTone(cajaProblem)} />
         <KpiCard label="Stock critico" value={statusValue(stockProblem, stockCriticoTotal)} sublabel={statusSublabel(stockProblem, 'productos y materiales')} icon="alertTriangle" tone={statusTone(stockProblem, stockCriticoTotal ? 'red' : 'neutral')} />
@@ -359,8 +366,8 @@ export default function ReportesGerencialesPage() {
 
       {active === 'resumen' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
-          <Panel title="Ventas por tipo" icon="barChart2">
-            <QueryBlock problem={combinedProblem(perms.ventas, [ventasQuery])}>
+          <Panel title="Ordenes internas por tipo" icon="barChart2" action={<Badge tone="gray">sin web ni licitaciones</Badge>}>
+            <QueryBlock problem={ventasGerencialProblem}>
               <GroupList rows={ventaPorTipo} format={money} />
             </QueryBlock>
           </Panel>
@@ -390,22 +397,22 @@ export default function ReportesGerencialesPage() {
 
       {active === 'ventas' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
-          <Panel title="Tendencia y comparativo" icon="trendingUp">
-            <QueryBlock problem={ventasProblem}>
+          <Panel title="Tendencia y comparativo de actividad" icon="trendingUp">
+            <QueryBlock problem={ventasGerencialProblem}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 12 }}>
                 <div><div style={{ color: 'var(--text-3)', fontSize: 11 }}>Vs. período anterior</div><strong style={{ color: Number(ventasGerencialQuery.data?.comparativo?.variacionVentas || 0) < 0 ? 'var(--red)' : 'var(--green-700)', fontSize: 18 }}>{ventasGerencialQuery.data?.comparativo?.variacionVentas == null ? '-' : `${(ventasGerencialQuery.data.comparativo.variacionVentas * 100).toFixed(1)}%`}</strong></div>
                 <div><div style={{ color: 'var(--text-3)', fontSize: 11 }}>Ventas período anterior</div><strong style={{ fontSize: 16 }}>{money(ventasGerencialQuery.data?.comparativo?.periodoAnterior?.total)}</strong></div>
               </div>
-              <BarChart title="Tendencia de ventas" values={ventasGerencialQuery.data?.byPeriodo} />
+              <BarChart title="Tendencia de actividad comercial" values={ventasGerencialQuery.data?.byPeriodo} />
             </QueryBlock>
           </Panel>
-          <Panel title="Por vendedor" icon="user">
-            <QueryBlock problem={combinedProblem(perms.ventas, [ventasQuery])}>
+          <Panel title="Ordenes internas por vendedor" icon="user" action={<Badge tone="gray">sin web ni licitaciones</Badge>}>
+            <QueryBlock problem={ventasGerencialProblem}>
               <GroupList rows={ventaPorVendedor} format={money} />
             </QueryBlock>
           </Panel>
-          <Panel title="Por cliente" icon="users">
-            <QueryBlock problem={combinedProblem(perms.ventas, [ventasQuery])}>
+          <Panel title="Ordenes internas por cliente" icon="users" action={<Badge tone="gray">sin web ni licitaciones</Badge>}>
+            <QueryBlock problem={ventasGerencialProblem}>
               <GroupList rows={ventaPorCliente} format={money} />
             </QueryBlock>
           </Panel>

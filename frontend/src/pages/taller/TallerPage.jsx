@@ -326,7 +326,7 @@ function OdtKanbanCardContent({ odt, canWrite, pending, onEstadoChange, isDraggi
         <span><Icon name="user" size={11} /> {responsable || '-'}</span>
         <span style={{ color: overdue ? 'var(--red)' : 'var(--text-3)' }}><Icon name="clock" size={11} /> {formatAtraso(odt.tiempos)}</span>
         <span><Icon name="tool" size={11} /> {formatDuration(odt.tiempos?.produccionHoras)}</span>
-        <span><Icon name="dollarSign" size={11} /> {fmtMoney(odt.costeo?.costoTotal)}</span>
+        {odt.costeo && <span><Icon name="dollarSign" size={11} /> {fmtMoney(odt.costeo.costoTotal)}</span>}
         <span><Icon name="calendar" size={11} /> {odt.plazo ? new Date(odt.plazo).toLocaleDateString('es-CL') : '-'}</span>
         <span><Icon name="barChart2" size={11} /> {odt.costeo?.unidadesPorHora ?? '-'} u/h</span>
       </div>
@@ -554,7 +554,7 @@ function OdtCosteoPanel({ costeo }) {
   )
 }
 
-function ProductividadPanel({ items = [], totalOdts = 0, onSelectOperario }) {
+function ProductividadPanel({ items = [], totalOdts = 0, onSelectOperario, showCostos = false }) {
   if (!items.length) return null
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)', padding: 16, marginBottom: 16 }}>
@@ -586,8 +586,8 @@ function ProductividadPanel({ items = [], totalOdts = 0, onSelectOperario }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: 11 }}>
               <span style={{ color: 'var(--text-3)' }}>Unidades <b style={{ color: 'var(--text-1)' }}>{item.unidades}</b></span>
               <span style={{ color: 'var(--text-3)' }}>Unid./h <b style={{ color: 'var(--text-1)' }}>{item.unidadesPorHora ?? '-'}</b></span>
-              <span style={{ color: 'var(--text-3)' }}>Costo <b style={{ color: 'var(--text-1)' }}>{fmtMoney(item.costoTotal)}</b></span>
-              <span style={{ color: 'var(--text-3)' }}>Margen <b style={{ color: item.margenEstimado < 0 ? 'var(--red)' : 'var(--green-700)' }}>{fmtMoney(item.margenEstimado)}</b></span>
+              {showCostos && <span style={{ color: 'var(--text-3)' }}>Costo <b style={{ color: 'var(--text-1)' }}>{fmtMoney(item.costoTotal)}</b></span>}
+              {showCostos && <span style={{ color: 'var(--text-3)' }}>Margen <b style={{ color: item.margenEstimado < 0 ? 'var(--red)' : 'var(--green-700)' }}>{fmtMoney(item.margenEstimado)}</b></span>}
             </div>
           </button>
         ))}
@@ -608,6 +608,7 @@ export default function TallerPage() {
   const initialFechaHasta = searchParams.get('fechaHasta') || ''
   const { user } = useAuthStore()
   const canWriteTaller = can(user, 'taller', 'write')
+  const canViewCosteo = can(user, 'costeo', 'read')
   const [tab, setTab]               = useState(initialTipo && TALLER_TABS.some(t => t.id === initialTipo) ? initialTipo : 'all')
   const [search, setSearch]         = useState(initialSearch)
   const [debouncedSearch, setDeb]   = useState(initialSearch)
@@ -688,11 +689,11 @@ export default function TallerPage() {
       </span>
     ) },
     { key: 'tiempos', label: 'Tiempo prod.', render: (_, row) => formatDuration(row.tiempos?.produccionHoras) },
-    { key: 'costeo', label: 'Costo est.', render: (_, row) => (
+    ...(canViewCosteo ? [{ key: 'costeo', label: 'Costo est.', render: (_, row) => (
       <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: row.costeo?.alertas?.materialesSinPrecio || row.costeo?.alertas?.manoObraSinSueldo ? 'var(--amber)' : 'var(--text-1)' }}>
         {fmtMoney(row.costeo?.costoTotal)}
       </span>
-    ) },
+    ) }] : []),
     { key: 'atraso', label: 'Atraso', render: (_, row) => (
       <span style={{ color: row.tiempos?.enAtraso ? 'var(--red)' : 'var(--text-3)', fontWeight: row.tiempos?.enAtraso ? 700 : 500 }}>
         {formatAtraso(row.tiempos)}
@@ -933,6 +934,7 @@ export default function TallerPage() {
         items={productividad.items || []}
         totalOdts={productividad.totalOdts || 0}
         onSelectOperario={setOperarioFilter}
+        showCostos={canViewCosteo}
       />
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>

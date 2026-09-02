@@ -65,6 +65,8 @@ export const ROLE_PERMISSIONS = {
     licitaciones: ['read'],
     proveedores: ['read'],
     rrhh: ['read'],
+    // Debe coincidir con el backend: lectura de nomina no implica ver sueldos.
+    'rrhh.remuneracion': [],
   },
 }
 
