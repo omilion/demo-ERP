@@ -115,6 +115,91 @@ describeDb('reportes gerenciales backend', () => {
     expect(body.byTipo['Venta directa'].total).toBe(expected)
   })
 
+  it('expone el catálogo de filtros y aplica tipos canónicos del sistema', async () => {
+    const opciones = await app.inject({
+      method: 'GET',
+      url: '/api/reportes/gerencial/v1/filtros',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(opciones.statusCode).toBe(200)
+    const filtros = JSON.parse(opciones.body)
+    expect(filtros.tiposVenta).toContain('Compra Ágil')
+    expect(filtros.tiposVenta).toContain('Marketplace')
+    expect(filtros.vendedores.every(v => v.id && v.nombre && !Object.hasOwn(v, 'email'))).toBe(true)
+
+    const cliente = await app.prisma.cliente.findFirst({ select: { id: true } })
+    const orden = await app.prisma.orden.create({
+      data: {
+        nInterno: 915000 + Math.floor(Math.random() * 50000),
+        tipo: 'Compra Ágil',
+        clienteId: cliente.id,
+        rutCliente: `${rut}-agil`,
+        userId: 1,
+        creadorNombre: marker,
+        sucursalId: 1,
+        createdAt: fecha,
+        items: { create: [{ productoId: 1, cantidad: 1, precioUnitario: 2300 }] },
+      },
+    })
+    createdIds.ordenes.push(orden.id)
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/gerencial/ventas?desde=${desde}&hasta=${hasta}&tipo=${encodeURIComponent('Compra Ágil')}&vendedor=${encodeURIComponent(marker)}`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.fuentes.ordenes.count).toBe(1)
+    expect(body.fuentes.ordenes.total).toBe(2300)
+  })
+
+  it('entrega control comercial trazable con comparativo de período', async () => {
+    const cliente = await app.prisma.cliente.findFirst({ select: { id: true, rut: true } })
+    const commercialMarker = `${marker}-COM-${Date.now()}`
+    const current = await app.prisma.orden.create({
+      data: {
+        nInterno: 916000 + Math.floor(Math.random() * 50000),
+        tipo: 'Normal', clienteId: cliente.id, rutCliente: cliente.rut, userId: 1,
+        creadorNombre: commercialMarker, sucursalId: 1, createdAt: fecha,
+        items: { create: [{ productoId: 1, cantidad: 2, precioUnitario: 1000 }] },
+      },
+    })
+    const previous = await app.prisma.orden.create({
+      data: {
+        nInterno: 917000 + Math.floor(Math.random() * 50000),
+        tipo: 'Normal', clienteId: cliente.id, rutCliente: cliente.rut, userId: 1,
+        creadorNombre: commercialMarker, sucursalId: 1, createdAt: new Date('2026-03-15T12:00:00.000Z'),
+        items: { create: [{ productoId: 1, cantidad: 1, precioUnitario: 1000 }] },
+      },
+    })
+    createdIds.ordenes.push(current.id, previous.id)
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/gerencial/v1/comercial?desde=${desde}&hasta=${hasta}&vendedor=${encodeURIComponent(commercialMarker)}`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.meta.estado).toBe('operacional_estimado')
+    expect(body.kpis.ventas).toBe(2000)
+    expect(body.kpis.ordenes).toBe(1)
+    expect(body.kpis.unidades).toBe(2)
+    expect(body.kpis.comparativos.periodoAnterior.ventas).toBe(1000)
+    expect(body.kpis.comparativos.periodoAnterior.variacionVentas).toBe(1)
+    expect(body.rankings.vendedores[0]).toMatchObject({ label: commercialMarker, ventas: 2000, ordenes: 1 })
+
+    const exportRes = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/export/comercial.xlsx?desde=${desde}&hasta=${hasta}&vendedor=${encodeURIComponent(commercialMarker)}`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(exportRes.statusCode).toBe(200)
+    expect(exportRes.headers['content-type']).toContain('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    expect(exportRes.rawPayload.length).toBeGreaterThan(1000)
+  })
+
   it('exporta ventas respetando la sucursal del usuario', async () => {
     const cliente = await app.prisma.cliente.findFirst({ select: { id: true } })
     const scopedMarker = `${marker}-EXP-${Date.now()}`
