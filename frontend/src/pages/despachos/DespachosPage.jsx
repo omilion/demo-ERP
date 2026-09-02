@@ -1,4 +1,4 @@
-import { toast, promptDialog } from '../../store/notif'
+import { confirmDialog, toast, promptDialog } from '../../store/notif'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
@@ -85,10 +85,35 @@ export default function DespachosPage({ defaultTab }) {
   const emitirGuiaSii = async (guiaId) => {
     try {
       const res = await api.post(`/despachos/guias/${guiaId}/emitir-sii`)
-      toast.success(`Guía emitida al SII exitosamente con Folio ${res.data.folio}`)
+      if (res.data.envioError) {
+        toast.error(`Guía emitida con folio ${res.data.folio}, pero no enviada al SII: ${res.data.envioError}`)
+      } else {
+        toast.success(`Guía emitida y enviada al SII con folio ${res.data.folio}${res.data.trackId ? ` · Track ${res.data.trackId}` : ''}`)
+      }
       guiasQuery.refetch()
     } catch (err) {
       toast.error(err?.response?.data?.error || 'Error al emitir la guía al SII')
+    }
+  }
+
+  const enviarGuiaSii = async documento => {
+    if (!await confirmDialog({ title: 'Enviar guía al SII', detail: `Enviar Guía DTE 52 folio ${documento.folio} al SII?` })) return
+    try {
+      const res = await api.post(`/facturacion/documentos/${documento.id}/enviar`)
+      toast.success(`Guía enviada al SII${res.data.trackId ? ` · Track ${res.data.trackId}` : ''}`)
+      guiasQuery.refetch()
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'No se pudo enviar la guía al SII')
+    }
+  }
+
+  const consultarGuiaSii = async documento => {
+    try {
+      const res = await api.get(`/facturacion/documentos/${documento.id}/estado`)
+      toast.success(`Estado SII: ${res.data.documento?.estado || documento.estado}`)
+      guiasQuery.refetch()
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'No se pudo consultar el estado de la guía')
     }
   }
 
@@ -224,8 +249,8 @@ export default function DespachosPage({ defaultTab }) {
       label: 'Estado SII (DTE 52)',
       render: v => v ? (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <Badge tone={v.estado === 'borrador' ? 'amber' : 'green'}>
-            {v.estado === 'borrador' ? 'Borrador (Sin emitir)' : `Emitido (Folio ${v.folio})`}
+          <Badge tone={v.estado === 'borrador' ? 'amber' : v.estado === 'emitido' ? 'blue' : v.estado === 'enviado' ? 'amber' : v.estado === 'aceptado' ? 'green' : 'red'}>
+            {v.estado === 'borrador' ? 'Borrador (Sin emitir)' : v.estado === 'emitido' ? `Emitido · pendiente SII (${v.folio})` : v.estado === 'enviado' ? `Enviado · Track ${v.trackId || 'pendiente'}` : `${String(v.estado).replace(/^./, letter => letter.toUpperCase())} (Folio ${v.folio})`}
           </Badge>
         </div>
       ) : <Badge tone="gray">Sin DTE</Badge>,
@@ -238,6 +263,16 @@ export default function DespachosPage({ defaultTab }) {
           {r.documentoDte?.estado === 'borrador' && canWriteFacturacion && (
             <Btn variant="primary" size="sm" onClick={() => emitirGuiaSii(r.id)}>
               Emitir al SII
+            </Btn>
+          )}
+          {r.documentoDte?.estado === 'emitido' && canWriteFacturacion && (
+            <Btn variant="primary" size="sm" onClick={() => enviarGuiaSii(r.documentoDte)}>
+              Enviar al SII
+            </Btn>
+          )}
+          {r.documentoDte?.estado === 'enviado' && (
+            <Btn variant="secondary" size="sm" onClick={() => consultarGuiaSii(r.documentoDte)}>
+              Consultar estado
             </Btn>
           )}
           {r.documentoDte?.folio && (

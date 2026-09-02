@@ -2170,11 +2170,14 @@ export default async function despachosRoutes(fastify) {
     try {
       const emitido = await engine.emitir(factDoc.id)
       try {
-        await engine.enviar([factDoc.id])
-      } catch {
-        // background sync error does not revert emission
+        const envio = await engine.enviar([factDoc.id])
+        const documento = envio.documentos?.find(item => item.id === factDoc.id) || emitido
+        return { ok: true, documento, folio: emitido.folio, estado: documento.estado, trackId: envio.trackId }
+      } catch (sendError) {
+        // La emisión ya consumió un folio y debe quedar claramente visible
+        // como pendiente de envío; nunca se debe informar falsamente éxito SII.
+        return { ok: false, documento: emitido, folio: emitido.folio, estado: emitido.estado, envioError: sendError?.message || 'No se pudo enviar la guía al SII' }
       }
-      return { ok: true, documento: emitido, folio: emitido.folio, estado: emitido.estado }
     } catch (error) {
       return reply.code(422).send({ error: error?.message || 'No se pudo emitir la guía al SII' })
     }
