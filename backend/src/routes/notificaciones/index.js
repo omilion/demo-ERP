@@ -16,6 +16,13 @@ export default async function notificacionesRoutes(fastify) {
     preHandler: [fastify.authenticate],
   }, async (request) => {
     const prisma = fastify.prisma
+    // La campana no debe intentar renderizar miles de avisos históricos. El
+    // límite queda explícito para que los paneles especializados y las pruebas
+    // puedan consultar un conjunto mayor sin depender de un corte oculto.
+    const requestedLimit = Number.parseInt(request.query?.limite, 10)
+    const limite = Number.isInteger(requestedLimit)
+      ? Math.max(1, Math.min(requestedLimit, 5000))
+      : 100
     const ahora = new Date()
     const en7dias = new Date(Date.now() + 7 * DIA_MS)
     const items = []
@@ -171,7 +178,7 @@ export default async function notificacionesRoutes(fastify) {
            AND stock_critico > 0
            AND (stock - stock_reservado - stock_danado) <= stock_critico
          ORDER BY (stock - stock_reservado - stock_danado) ASC
-         LIMIT 50
+         LIMIT ${limite}
       `
       for (const p of criticos) {
         const disponible = Number(p.disponible)
@@ -417,6 +424,11 @@ export default async function notificacionesRoutes(fastify) {
       return new Date(a.fecha) - new Date(b.fecha)
     })
 
-    return { total: items.length, items: items.slice(0, 100) }
+    return {
+      total: items.length,
+      visibles: Math.min(items.length, limite),
+      truncadas: items.length > limite,
+      items: items.slice(0, limite),
+    }
   })
 }

@@ -45,12 +45,13 @@ describeDb('avisos de bodega y facturacion', () => {
     await app.close()
   })
 
-  const avisos = async (role, extra = null) => {
+  const avisos = async (role, extra = null, limite = null) => {
     const token = app.jwt.sign({
       id: userId, role, nombre: 'Test', permisosExtra: extra,
       scope: 'erp', aud: 'plastimar:erp', tokenType: 'access',
     })
-    const res = await app.inject({ method: 'GET', url: '/api/notificaciones', headers: { authorization: `Bearer ${token}` } })
+    const suffix = limite ? `?limite=${limite}` : ''
+    const res = await app.inject({ method: 'GET', url: `/api/notificaciones${suffix}`, headers: { authorization: `Bearer ${token}` } })
     expect(res.statusCode).toBe(200)
     const cuerpo = res.json()
     return Array.isArray(cuerpo) ? cuerpo : (cuerpo.items || [])
@@ -61,7 +62,11 @@ describeDb('avisos de bodega y facturacion', () => {
     // vendibles contra un critico de 5. Mirando solo el stock fisico, este
     // producto parece sano y el aviso llegaria tarde.
     it('avisa por disponible, no por stock fisico', async () => {
-      const propio = (await avisos('bodeguero'))
+      // La copia realista de plastimar_test contiene miles de productos bajo el
+      // mínimo. La campana se limita por ergonomía; este test solicita el
+      // conjunto completo para verificar que el cálculo no oculta un producto
+      // válido solamente por pertenecer a una posición posterior del ranking.
+      const propio = (await avisos('bodeguero', null, 5000))
         .find(n => n.tipo === 'stock_critico' && String(n.titulo).includes(marca))
       expect(propio).toBeTruthy()
       expect(propio.detalle).toContain('disponible 2')

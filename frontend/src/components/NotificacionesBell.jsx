@@ -16,6 +16,8 @@ export function NotificacionesBell({ dark = true }) {
   const { data } = useNotificaciones()
   const items = data?.items || []
   const total = data?.total || 0
+  const visibles = data?.visibles ?? items.length
+  const truncadas = data?.truncadas === true
 
   useEffect(() => {
     const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
@@ -42,7 +44,9 @@ export function NotificacionesBell({ dark = true }) {
         <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 10000, width: 360, maxHeight: 460, background: '#fff', borderRadius: 10, boxShadow: '0 8px 32px oklch(0 0 0 / 0.18)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 14, color: 'var(--text-1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>Notificaciones</span>
-            <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 400 }}>{total} pendiente{total !== 1 ? 's' : ''}</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 400 }}>
+              {truncadas ? `${visibles} prioritarias de ${total}` : `${total} pendiente${total !== 1 ? 's' : ''}`}
+            </span>
           </div>
           <div style={{ overflowY: 'auto' }}>
             {items.length === 0 ? (
