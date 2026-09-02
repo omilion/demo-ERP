@@ -625,9 +625,21 @@ async function buildVentasGerenciales(fastify, query, user, { includeComparison 
     addMetric(byTipo, rowTipo, monto)
   }
 
+  // Una licitacion adjudicada se convierte en orden de venta y conserva el vinculo en
+  // `ordenId`. Al sumar las tres fuentes sin mirar ese vinculo, ese negocio se contaba
+  // dos veces: como orden y como licitacion. En produccion son 2.390 licitaciones
+  // apuntando a 2.375 ordenes, asi que el total mostrado no era ingreso.
+  //
+  // Se descarta la licitacion cuya orden ya esta en este mismo resultado. Si la orden
+  // quedo fuera del rango o del filtro, la licitacion se conserva: lo que se evita es
+  // contar dos veces, no perder el negocio.
+  const ordenIdsEnResultado = new Set(ordenes.map(o => o.id))
+  const licitacionesUnicas = licitaciones.filter(l => !(l.ordenId && ordenIdsEnResultado.has(l.ordenId)))
+  const duplicadas = licitaciones.length - licitacionesUnicas.length
+
   for (const o of ordenes) push({ fecha: o.createdAt, cliente: o.rutCliente, vendedor: o.creadorNombre, tipo: o.tipo, monto: totalOrden(o) })
   for (const o of ocs) push({ fecha: o.fechaHora, cliente: o.emailComprador, vendedor: o.codigoVendedor, tipo: 'Venta Web', monto: o.total || 0 })
-  for (const l of licitaciones) push({ fecha: l.fecha, cliente: l.rutCliente, vendedor: l.usuario, tipo: 'Licitacion', monto: totalLicitacion(l) })
+  for (const l of licitacionesUnicas) push({ fecha: l.fecha, cliente: l.rutCliente, vendedor: l.usuario, tipo: 'Licitacion', monto: totalLicitacion(l) })
 
   const result = {
     filtros: { desde: desde || null, hasta: hasta || null, periodo },
@@ -636,8 +648,33 @@ async function buildVentasGerenciales(fastify, query, user, { includeComparison 
     fuentes: {
       ordenes: { count: ordenes.length, total: ordenes.reduce((s, o) => s + totalOrden(o), 0) },
       ocOnline: { count: ocs.length, total: ocs.reduce((s, o) => s + (o.total || 0), 0) },
-      licitaciones: { count: licitaciones.length, total: licitaciones.reduce((s, l) => s + totalLicitacion(l), 0) },
+      licitaciones: {
+        count: licitacionesUnicas.length,
+        total: licitacionesUnicas.reduce((s, l) => s + totalLicitacion(l), 0),
+        // Cuantas se descartaron por estar ya contadas como orden. Se informa en vez
+        // de ocultarse: si el numero es alto, el vinculo licitacion-orden esta sano.
+        duplicadasConOrden: duplicadas,
+      },
     },
+    // Cuantas de las licitaciones sumadas todavia no estan adjudicadas.
+    //
+    // No se excluyen aca: si una cotizacion pendiente cuenta o no como venta es la
+    // definicion del KPI, y esa decision es de Finanzas y Comercial, no del reporte.
+    // Pero tampoco se esconde: hoy inflan la CANTIDAD de ventas -y con ella hunden el
+    // ticket promedio- sin que nada lo advirtiera.
+    advertencias: (() => {
+      const pendientes = licitacionesUnicas.filter(l => {
+        const estado = String(l.estado || '').trim().toLowerCase()
+        return estado && estado !== 'adjudicada'
+      }).length
+      return pendientes
+        ? [{
+          tipo: 'licitaciones_no_adjudicadas_incluidas',
+          cantidad: pendientes,
+          detalle: `${pendientes} licitación(es) sin adjudicar están sumadas en el total y la cantidad`,
+        }]
+        : []
+    })(),
     byPeriodo,
     byCliente,
     byVendedor,
