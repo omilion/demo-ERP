@@ -570,6 +570,8 @@ model Orden {
   @@index([clienteId])
   @@index([clienteSucursalId])
   @@index([rutCliente])
+  // Filtro por rango de fechas de la reporteria gerencial.
+  @@index([createdAt])
   @@map("ordenes")
   @@schema("ventas")
 }
@@ -657,6 +659,7 @@ model CobranzaHistorico {
 
   @@index([ordenId])
   @@index([interno])
+  @@index([fechaFactura])
   @@map("cobranza_historico")
   @@schema("ventas")
 }
@@ -759,6 +762,7 @@ model CotizacionLicitacion {
   @@index([idLicitacion])
   @@index([rutCliente])
   @@index([ordenId])
+  @@index([fecha])
   @@map("cotizacion_licitacion")
   @@schema("ventas")
 }
@@ -822,6 +826,7 @@ model OrdenCompraOnline {
   @@index([emailComprador])
   @@index([codigoVendedor])
   @@index([estadoCompra])
+  @@index([fechaHora])
   @@map("orden_compra_online")
   @@schema("ventas")
 }
@@ -1273,6 +1278,7 @@ model MovimientoCaja {
   @@index([sucursalId])
   @@index([gastoTipoId])
   @@index([origenTipo, origenId])
+  @@index([fecha])
   @@map("movimientos_caja")
   @@schema("caja")
 }
@@ -1355,6 +1361,7 @@ model Odt {
   centroCosto            CentroCosto?       @relation(fields: [centroCostoId], references: [id], onDelete: Restrict)
 
   @@index([centroCostoId])
+  @@index([createdAt])
   @@map("odts")
   @@schema("taller")
 }
