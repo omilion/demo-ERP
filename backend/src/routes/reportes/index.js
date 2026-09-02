@@ -96,6 +96,16 @@ function canReadAll(user, modules = []) {
   return modules.every(module => canReadModule(user, module))
 }
 
+function getGerencialSections(user) {
+  return {
+    ventas: canReadModule(user, 'ventas'),
+    cobranzaCaja: canReadAll(user, ['caja', 'cobranza']),
+    stock: canReadModule(user, 'bodega'),
+    licitaciones: canReadModule(user, 'licitaciones'),
+    operaciones: canReadAll(user, ['taller', 'despacho']),
+  }
+}
+
 function normalizeSearchText(value) {
   return String(value ?? '')
     .normalize('NFD')
@@ -882,6 +892,48 @@ async function buildOperacionesGerencial(fastify, query = {}) {
   }
 }
 
+// Contrato estable para la portada gerencial. Antes el navegador coordinaba cinco
+// endpoints de KPI y siete listados al montar la vista; eso multiplicaba round trips,
+// estados de carga y posibilidades de obtener cortes distintos. Este resumen conserva
+// la autorizacion por seccion y calcula solo lo que el usuario puede leer.
+async function buildGerencialResumen(fastify, query = {}, user = null, { includeComparison = true } = {}) {
+  const range = buildDateRange(query.desde, query.hasta)
+  if (range.error) return { error: range.error }
+
+  const sections = getGerencialSections(user)
+  const builders = [
+    ['ventas', sections.ventas, () => buildVentasGerenciales(fastify, query, user, { includeComparison })],
+    ['cobranzaCaja', sections.cobranzaCaja, () => buildCobranzaCajaGerencial(fastify, query, user)],
+    ['stock', sections.stock, () => buildStockGerencial(fastify, query, user)],
+    ['licitaciones', sections.licitaciones, () => buildLicitacionesGerencial(fastify, query, user)],
+    ['operaciones', sections.operaciones, () => buildOperacionesGerencial(fastify, query, user)],
+  ].filter(([, allowed]) => allowed)
+
+  const results = await Promise.all(builders.map(async ([name,, build]) => [name, await build()]))
+  const invalid = results.find(([, report]) => report?.error)
+  if (invalid) return { error: invalid[1].error }
+
+  return {
+    meta: {
+      version: 'gerencial.v1',
+      generadoEn: new Date().toISOString(),
+      estado: 'operacional_no_certificado',
+      // Este sello impide presentar el resumen como un balance o resultado financiero
+      // mientras Finanzas no apruebe la definicion de ingresos, CxC y costos.
+      mensajeEstado: 'Datos operacionales sujetos a conciliacion financiera.',
+    },
+    filtros: {
+      desde: query.desde || null,
+      hasta: query.hasta || null,
+      tipo: query.tipo || null,
+      vendedor: query.vendedor || null,
+      cliente: query.cliente || null,
+      periodo: query.periodo || 'mes',
+    },
+    secciones: Object.fromEntries(results),
+  }
+}
+
 function sortedMetricEntries(bucket = {}, valueKey = 'total') {
   return Object.entries(bucket)
     .map(([label, data]) => ({ label, ...data }))
@@ -1078,6 +1130,16 @@ export default async function reportesRoutes(fastify) {
     if (reporte.error) return reply.code(400).send({ error: reporte.error })
     return reporte
   })
+
+  fastify.get('/gerencial/v1/resumen', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async (request, reply) => {
+    const reporte = await buildGerencialResumen(fastify, request.query, request.user)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    if (!Object.keys(reporte.secciones).length) return reply.code(403).send({ error: 'Sin permisos para ver indicadores gerenciales' })
+    return reporte
+  })
+
   // Reporte stock crítico (productos + materiales bodega taller) — G6
   fastify.get('/stock-critico', {
     preHandler: [fastify.authenticate, fastify.rbac('bodega', 'read')],
@@ -1120,32 +1182,9 @@ export default async function reportesRoutes(fastify) {
   fastify.get('/export/gerencial', {
     preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
   }, async (request, reply) => {
-    const reportes = {}
-    if (canReadModule(request.user, 'ventas') || canReadModule(request.user, 'cobranza')) {
-      const ventas = await buildVentasGerenciales(fastify, request.query, request.user, { includeComparison: false })
-      if (ventas.error) return reply.code(400).send({ error: ventas.error })
-      reportes.ventas = ventas
-    }
-    if (canReadAll(request.user, ['caja', 'cobranza'])) {
-      const cobranzaCaja = await buildCobranzaCajaGerencial(fastify, request.query, request.user)
-      if (cobranzaCaja.error) return reply.code(400).send({ error: cobranzaCaja.error })
-      reportes.cobranzaCaja = cobranzaCaja
-    }
-    if (canReadModule(request.user, 'bodega')) {
-      const stock = await buildStockGerencial(fastify, request.query)
-      if (stock.error) return reply.code(400).send({ error: stock.error })
-      reportes.stock = stock
-    }
-    if (canReadModule(request.user, 'licitaciones')) {
-      const licitaciones = await buildLicitacionesGerencial(fastify, request.query, request.user)
-      if (licitaciones.error) return reply.code(400).send({ error: licitaciones.error })
-      reportes.licitaciones = licitaciones
-    }
-    if (canReadAll(request.user, ['taller', 'despacho'])) {
-      const operaciones = await buildOperacionesGerencial(fastify, request.query)
-      if (operaciones.error) return reply.code(400).send({ error: operaciones.error })
-      reportes.operaciones = operaciones
-    }
+    const resumen = await buildGerencialResumen(fastify, request.query, request.user, { includeComparison: false })
+    if (resumen.error) return reply.code(400).send({ error: resumen.error })
+    const reportes = resumen.secciones
 
     const rows = buildGerencialExportRows(reportes, request.query)
     if (rows.length <= 3) return reply.code(403).send({ error: 'Sin permisos para exportar reportes gerenciales' })
@@ -1165,12 +1204,9 @@ export default async function reportesRoutes(fastify) {
   fastify.get('/export/gerencial.xlsx', {
     preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
   }, async (request, reply) => {
-    const reportes = {}
-    if (canReadModule(request.user, 'ventas') || canReadModule(request.user, 'cobranza')) reportes.ventas = await buildVentasGerenciales(fastify, request.query, request.user)
-    if (canReadAll(request.user, ['caja', 'cobranza'])) reportes.cobranzaCaja = await buildCobranzaCajaGerencial(fastify, request.query, request.user)
-    if (canReadModule(request.user, 'bodega')) reportes.stock = await buildStockGerencial(fastify, request.query)
-    if (canReadModule(request.user, 'licitaciones')) reportes.licitaciones = await buildLicitacionesGerencial(fastify, request.query, request.user)
-    if (canReadAll(request.user, ['taller', 'despacho'])) reportes.operaciones = await buildOperacionesGerencial(fastify, request.query)
+    const resumen = await buildGerencialResumen(fastify, request.query, request.user, { includeComparison: false })
+    if (resumen.error) return reply.code(400).send({ error: resumen.error })
+    const reportes = resumen.secciones
     if (!Object.keys(reportes).length) return reply.code(403).send({ error: 'Sin permisos para exportar reportes gerenciales' })
     const buffer = await buildGerencialXlsx(reportes, request.query)
     return reply

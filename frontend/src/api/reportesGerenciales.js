@@ -1,6 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import api from './client'
 
+export function useReporteGerencialResumen(params = {}, enabled = true) {
+  return useQuery({
+    queryKey: ['reportes-gerenciales', 'gerencial-v1-resumen', params],
+    queryFn: () => api.get('/reportes/gerencial/v1/resumen', { params }).then(r => r.data),
+    enabled,
+    staleTime: 60_000,
+  })
+}
+
 export function useReporteGerencialVentas(params = {}, enabled = true) {
   return useQuery({
     queryKey: ['reportes-gerenciales', 'gerencial-ventas', params],

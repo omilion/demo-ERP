@@ -5,11 +5,7 @@ import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 import { downloadFromBackend } from '../../utils/csv'
 import {
-  useReporteGerencialCobranzaCaja,
-  useReporteGerencialLicitaciones,
-  useReporteGerencialOperaciones,
-  useReporteGerencialStock,
-  useReporteGerencialVentas,
+  useReporteGerencialResumen,
   useReporteDespachos,
   useReporteLicitaciones,
   useReporteOdts,
@@ -137,13 +133,13 @@ function QueryBlock({ problem, children }) {
   return children
 }
 
-function GroupList({ rows, labelKey = 'label', valueKey = 'value', format = num }) {
+function GroupList({ rows, labelKey = 'label', valueKey = 'value', format = num, onRowClick }) {
   if (!rows.length) return <EmptyBlock />
   const max = Math.max(...rows.map(row => Number(row[valueKey] || 0)), 1)
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      {rows.slice(0, 7).map(row => (
-        <div key={row[labelKey]} style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 1fr) minmax(80px, auto)', gap: 12, alignItems: 'center' }}>
+      {rows.slice(0, 7).map(row => {
+        const content = <>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginBottom: 4 }}>
               <span style={{ color: 'var(--text-2)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row[labelKey] || 'Sin dato'}</span>
@@ -153,8 +149,12 @@ function GroupList({ rows, labelKey = 'label', valueKey = 'value', format = num 
             </div>
           </div>
           <strong style={{ textAlign: 'right', fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--text-1)' }}>{format(row[valueKey])}</strong>
-        </div>
-      ))}
+        </>
+        const style = { display: 'grid', gridTemplateColumns: 'minmax(120px, 1fr) minmax(80px, auto)', gap: 12, alignItems: 'center', width: '100%', padding: onRowClick ? '5px 6px' : 0, border: 0, borderRadius: 7, background: 'transparent', textAlign: 'left', cursor: onRowClick ? 'pointer' : 'default' }
+        return onRowClick
+          ? <button key={row[labelKey]} type="button" onClick={() => onRowClick(row)} style={style}>{content}</button>
+          : <div key={row[labelKey]} style={style}>{content}</div>
+      })}
     </div>
   )
 }
@@ -212,9 +212,9 @@ export default function ReportesGerencialesPage() {
   const perms = {
     ventas: can(user, 'ventas'),
     caja: can(user, 'caja'),
-    cobranza: can(user, 'ventas') || can(user, 'cobranza'),
+    cobranza: can(user, 'cobranza'),
     stock: can(user, 'bodega'),
-    licitaciones: can(user, 'licitaciones') || can(user, 'ventas'),
+    licitaciones: can(user, 'licitaciones'),
     taller: can(user, 'taller'),
     despacho: can(user, 'despacho'),
   }
@@ -223,16 +223,23 @@ export default function ReportesGerencialesPage() {
     desde: filters.desde || undefined,
     hasta: filters.hasta || undefined,
   }
-  const ventasGerencialQuery = useReporteGerencialVentas({
+  const summaryParams = {
     ...periodParams,
     tipo: filters.tipo || undefined,
     vendedor: filters.vendedor || undefined,
     cliente: filters.cliente || undefined,
-  }, perms.ventas)
-  const cobranzaCajaGerencialQuery = useReporteGerencialCobranzaCaja(periodParams, perms.caja && perms.cobranza)
-  const stockGerencialQuery = useReporteGerencialStock(periodParams, perms.stock)
-  const licitacionesGerencialQuery = useReporteGerencialLicitaciones(periodParams, perms.licitaciones)
-  const operacionesGerencialQuery = useReporteGerencialOperaciones(periodParams, perms.taller && perms.despacho)
+  }
+  const canReadGerencial = perms.ventas || (perms.caja && perms.cobranza) || perms.stock || perms.licitaciones || (perms.taller && perms.despacho)
+  const canReadFinanzas = perms.caja && perms.cobranza
+  const resumenGerencialQuery = useReporteGerencialResumen(summaryParams, canReadGerencial)
+  const seccionesGerenciales = resumenGerencialQuery.data?.secciones || {}
+  // Las secciones comparten una sola respuesta y el mismo corte de datos. Se conserva
+  // la forma de query para que las tarjetas sigan declarando carga/error por dominio.
+  const ventasGerencialQuery = { ...resumenGerencialQuery, data: seccionesGerenciales.ventas }
+  const cobranzaCajaGerencialQuery = { ...resumenGerencialQuery, data: seccionesGerenciales.cobranzaCaja }
+  const stockGerencialQuery = { ...resumenGerencialQuery, data: seccionesGerenciales.stock }
+  const licitacionesGerencialQuery = { ...resumenGerencialQuery, data: seccionesGerenciales.licitaciones }
+  const operacionesGerencialQuery = { ...resumenGerencialQuery, data: seccionesGerenciales.operaciones }
   // La apertura del panel no debe pedir doce listados a la vez al VPS. Los cinco
   // agregados anteriores resuelven los KPI; el detalle se carga al abrir su pestaña.
   const ventasQuery = useReporteVentas({ tipo: filters.tipo || undefined, scope: 'operacional' }, perms.ventas && active === 'ventas')
@@ -246,8 +253,8 @@ export default function ReportesGerencialesPage() {
   const despachosQuery = useReporteDespachos({ desde: filters.desde || undefined, hasta: filters.hasta || undefined }, perms.despacho && active === 'operacion')
 
   const ventasGerencialProblem = combinedProblem(perms.ventas, [ventasGerencialQuery])
-  const cajaProblem = combinedProblem(perms.caja, [cobranzaCajaGerencialQuery])
-  const cobranzaProblem = combinedProblem(perms.cobranza, [cobranzaCajaGerencialQuery])
+  const cajaProblem = combinedProblem(canReadFinanzas, [cobranzaCajaGerencialQuery])
+  const cobranzaProblem = combinedProblem(canReadFinanzas, [cobranzaCajaGerencialQuery])
   const stockProblem = combinedProblem(perms.stock, [stockGerencialQuery])
   const licitacionesProblem = combinedProblem(perms.licitaciones, [licitacionesGerencialQuery])
   const operacionProblem = combinedProblem(perms.taller && perms.despacho, [operacionesGerencialQuery])
@@ -282,9 +289,7 @@ export default function ReportesGerencialesPage() {
     (operacionesGerencialQuery.data?.despachos?.pendientes || 0)
   )
 
-  const queries = [
-    ventasGerencialQuery, cobranzaCajaGerencialQuery, stockGerencialQuery, licitacionesGerencialQuery, operacionesGerencialQuery,
-  ]
+  const queries = [resumenGerencialQuery]
   const isLoading = queries.some(query => query.isLoading && query.fetchStatus !== 'idle')
   const hasError = queries.some(query => query.isError)
   const licitacionesPendientesCount = Number(licitacionesGerencialQuery.data?.byResultado?.pendiente?.count ?? licitacionesPendientes.length)
@@ -297,10 +302,15 @@ export default function ReportesGerencialesPage() {
   const ventaPorVendedor = metricRows(ordenesInternas.byVendedor)
   const ventaPorCliente = metricRows(ordenesInternas.byCliente)
   const advertenciasVentas = ventasGerencialQuery.data?.advertencias || []
+  const resumenMeta = resumenGerencialQuery.data?.meta
 
   const updateFilter = (key, value) => {
     if (key === 'desde' || key === 'hasta') setPreset('personalizado')
     setFilters(current => ({ ...current, [key]: value }))
+  }
+  const drillVentas = nextFilters => {
+    setFilters(current => ({ ...current, ...nextFilters }))
+    setActive('ventas')
   }
   const applyPreset = nextPreset => {
     const range = rangeForPreset(nextPreset)
@@ -358,7 +368,7 @@ export default function ReportesGerencialesPage() {
               {label}
             </button>
           ))}
-          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>Agregados actualizados: {formatUpdatedAt(Math.max(ventasGerencialQuery.dataUpdatedAt || 0, cobranzaCajaGerencialQuery.dataUpdatedAt || 0, stockGerencialQuery.dataUpdatedAt || 0, licitacionesGerencialQuery.dataUpdatedAt || 0, operacionesGerencialQuery.dataUpdatedAt || 0))}</span>
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>Agregados actualizados: {formatUpdatedAt(resumenGerencialQuery.dataUpdatedAt)}</span>
         </div>
         <label style={{ display: 'grid', gap: 5, fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>
           Desde
@@ -390,6 +400,11 @@ export default function ReportesGerencialesPage() {
 
       {hasError && <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, fontSize: 13 }}>Algunas fuentes no respondieron. Las secciones disponibles se muestran con los datos cargados.</div>}
       {isLoading && <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--blue-bg)', color: 'var(--blue)', borderRadius: 8, fontSize: 13 }}>Actualizando reportes...</div>}
+      {resumenMeta?.estado === 'operacional_no_certificado' && (
+        <div role="status" style={{ marginBottom: 12, padding: '10px 14px', background: '#f0f9ff', color: '#075985', border: '1px solid #bae6fd', borderRadius: 8, fontSize: 13 }}>
+          <strong>Lectura operacional:</strong> {resumenMeta.mensajeEstado} Corte generado {formatUpdatedAt(resumenMeta.generadoEn)}.
+        </div>
+      )}
       {advertenciasVentas.map(aviso => (
         <div key={aviso.tipo} role="status" style={{ marginBottom: 12, padding: '10px 14px', background: '#fff8e1', color: '#8a5200', border: '1px solid #f2d08a', borderRadius: 8, fontSize: 13 }}>
           <strong>Lectura no certificada:</strong> {aviso.detalle}. Finanzas y Comercial deben definir si estas cotizaciones forman parte del indicador comercial.
@@ -397,12 +412,12 @@ export default function ReportesGerencialesPage() {
       ))}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 22 }}>
-        <KpiCard label="Actividad comercial" value={statusValue(ventasGerencialProblem, ventaTotal, money)} sublabel={statusSublabel(ventasGerencialProblem, `${num(ventaCount)} operaciones`)} icon="shoppingCart" tone={statusTone(ventasGerencialProblem, 'blue')} />
-        <KpiCard label="Ticket operativo" value={statusValue(ventasGerencialProblem, ventaTicket, money)} sublabel={statusSublabel(ventasGerencialProblem, 'sobre operaciones cargadas')} icon="barChart2" tone={statusTone(ventasGerencialProblem)} />
-        <KpiCard label="CxC pendiente" value={statusValue(cobranzaProblem, cobranzaPendiente, money)} sublabel={statusSublabel(cobranzaProblem, `${num(cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.count || 0)} docs`)} icon="creditCard" tone={statusTone(cobranzaProblem, 'amber')} />
-        <KpiCard label="Caja neta" value={statusValue(cajaProblem, ingresos - egresos, money)} sublabel={statusSublabel(cajaProblem, `${money(ingresos)} ing. / ${money(egresos)} egr.`)} icon="dollarSign" tone={statusTone(cajaProblem)} />
-        <KpiCard label="Stock critico" value={statusValue(stockProblem, stockCriticoTotal)} sublabel={statusSublabel(stockProblem, 'productos y materiales')} icon="alertTriangle" tone={statusTone(stockProblem, stockCriticoTotal ? 'red' : 'neutral')} />
-        <KpiCard label="Pendientes operacion" value={statusValue(operacionProblem, pendientesOperacionTotal)} sublabel={statusSublabel(operacionProblem, 'taller y despachos')} icon="clock" tone={statusTone(operacionProblem, 'amber')} />
+        <KpiCard label="Actividad comercial" value={statusValue(ventasGerencialProblem, ventaTotal, money)} sublabel={statusSublabel(ventasGerencialProblem, `${num(ventaCount)} operaciones`)} icon="shoppingCart" tone={statusTone(ventasGerencialProblem, 'blue')} onClick={perms.ventas ? () => setActive('ventas') : undefined} />
+        <KpiCard label="Ticket operativo" value={statusValue(ventasGerencialProblem, ventaTicket, money)} sublabel={statusSublabel(ventasGerencialProblem, 'sobre operaciones cargadas')} icon="barChart2" tone={statusTone(ventasGerencialProblem)} onClick={perms.ventas ? () => setActive('ventas') : undefined} />
+        <KpiCard label="CxC pendiente" value={statusValue(cobranzaProblem, cobranzaPendiente, money)} sublabel={statusSublabel(cobranzaProblem, `${num(cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.count || 0)} docs`)} icon="creditCard" tone={statusTone(cobranzaProblem, 'amber')} onClick={canReadFinanzas ? () => navigate('/cobranza') : undefined} />
+        <KpiCard label="Caja neta" value={statusValue(cajaProblem, ingresos - egresos, money)} sublabel={statusSublabel(cajaProblem, `${money(ingresos)} ing. / ${money(egresos)} egr.`)} icon="dollarSign" tone={statusTone(cajaProblem)} onClick={canReadFinanzas ? () => navigate('/caja') : undefined} />
+        <KpiCard label="Stock critico" value={statusValue(stockProblem, stockCriticoTotal)} sublabel={statusSublabel(stockProblem, 'productos y materiales')} icon="alertTriangle" tone={statusTone(stockProblem, stockCriticoTotal ? 'red' : 'neutral')} onClick={perms.stock ? () => setActive('riesgos') : undefined} />
+        <KpiCard label="Pendientes operacion" value={statusValue(operacionProblem, pendientesOperacionTotal)} sublabel={statusSublabel(operacionProblem, 'taller y despachos')} icon="clock" tone={statusTone(operacionProblem, 'amber')} onClick={perms.taller && perms.despacho ? () => setActive('operacion') : undefined} />
       </div>
 
       <Tabs tabs={tabs} active={active} onChange={setActive} />
@@ -411,7 +426,7 @@ export default function ReportesGerencialesPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
           <Panel title="Ordenes internas por tipo" icon="barChart2" action={<Badge tone="gray">sin web ni licitaciones</Badge>}>
             <QueryBlock problem={ventasGerencialProblem}>
-              <GroupList rows={ventaPorTipo} format={money} />
+              <GroupList rows={ventaPorTipo} format={money} onRowClick={row => drillVentas({ tipo: row.label })} />
             </QueryBlock>
           </Panel>
           <Panel title="Caja y cobranza" icon="dollarSign">
@@ -451,12 +466,12 @@ export default function ReportesGerencialesPage() {
           </Panel>
           <Panel title="Ordenes internas por vendedor" icon="user" action={<Badge tone="gray">sin web ni licitaciones</Badge>}>
             <QueryBlock problem={ventasGerencialProblem}>
-              <GroupList rows={ventaPorVendedor} format={money} />
+              <GroupList rows={ventaPorVendedor} format={money} onRowClick={row => drillVentas({ vendedor: row.label })} />
             </QueryBlock>
           </Panel>
           <Panel title="Ordenes internas por cliente" icon="users" action={<Badge tone="gray">sin web ni licitaciones</Badge>}>
             <QueryBlock problem={ventasGerencialProblem}>
-              <GroupList rows={ventaPorCliente} format={money} />
+              <GroupList rows={ventaPorCliente} format={money} onRowClick={row => drillVentas({ cliente: row.label })} />
             </QueryBlock>
           </Panel>
           <Panel title="Ultimas ventas filtradas" icon="shoppingCart" action={<Badge tone="blue">{statusCount(ventasDetailProblem, ventas.length)}</Badge>}>

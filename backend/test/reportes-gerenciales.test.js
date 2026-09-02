@@ -13,12 +13,12 @@ function hasUsableDatabaseUrl() {
   }
 }
 
-function tokenFor(app, role = 'admin', sucursalId = null) {
+function tokenFor(app, role = 'admin', sucursalId = null, permisosExtra = null) {
   return app.jwt.sign({
     id: 1,
     role,
     nombre: `Test ${role}`,
-    permisosExtra: null,
+    permisosExtra,
     sucursalId,
     scope: 'erp',
     aud: 'plastimar:erp',
@@ -344,6 +344,52 @@ describeDb('reportes gerenciales backend', () => {
     const baseOdts = await app.prisma.odt.findMany({ where: { eliminado: false, createdAt: { lte: new Date(2026, 3, 30, 23, 59, 59, 999) } } })
     expect(body.taller.pendientes).toBe(baseOdts.filter(o => String(o.estado || '').toLowerCase() !== 'terminada').length)
     expect(body.despachos.pendientes).toBeGreaterThanOrEqual(1)
+  })
+
+  it('entrega un resumen gerencial versionado con un corte comun y solo secciones autorizadas', async () => {
+    const adminRes = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/gerencial/v1/resumen?desde=${desde}&hasta=${hasta}`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(adminRes.statusCode).toBe(200)
+    const admin = JSON.parse(adminRes.body)
+    expect(admin.meta).toMatchObject({ version: 'gerencial.v1', estado: 'operacional_no_certificado' })
+    expect(new Date(admin.meta.generadoEn).getTime()).not.toBeNaN()
+    expect(admin.filtros).toMatchObject({ desde, hasta, periodo: 'mes' })
+    expect(Object.keys(admin.secciones).sort()).toEqual(['cobranzaCaja', 'licitaciones', 'operaciones', 'stock', 'ventas'])
+    expect(admin.secciones.ventas.total).toBeGreaterThanOrEqual(0)
+    expect(admin.secciones.cobranzaCaja.caja).toBeTruthy()
+
+    // El jefe de taller puede revisar su inventario, pero no recibe ventas, caja,
+    // licitaciones ni operaciones transversales que requieren ademas despacho.
+    const tallerRes = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/gerencial/v1/resumen?desde=${desde}&hasta=${hasta}`,
+      headers: { authorization: `Bearer ${tokenFor(app, 'taller')}` },
+    })
+    expect(tallerRes.statusCode).toBe(200)
+    expect(Object.keys(JSON.parse(tallerRes.body).secciones)).toEqual(['stock'])
+
+    // Un perfil con caja/cobranza otorgadas por permisos extra no hereda ventas.
+    // Esta fue la fuga del export CSV: su condicion anterior usaba "ventas O cobranza".
+    const finanzasSoloToken = tokenFor(app, 'rrhh', null, { caja: ['read'], cobranza: ['read'] })
+    const finanzasSoloRes = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/gerencial/v1/resumen?desde=${desde}&hasta=${hasta}`,
+      headers: { authorization: `Bearer ${finanzasSoloToken}` },
+    })
+    expect(finanzasSoloRes.statusCode).toBe(200)
+    expect(Object.keys(JSON.parse(finanzasSoloRes.body).secciones)).toEqual(['cobranzaCaja'])
+
+    const exportFinanzas = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/export/gerencial?desde=${desde}&hasta=${hasta}`,
+      headers: { authorization: `Bearer ${finanzasSoloToken}` },
+    })
+    expect(exportFinanzas.statusCode).toBe(200)
+    expect(exportFinanzas.body).toContain('Cobranza;CxC pendiente')
+    expect(exportFinanzas.body).not.toContain('Ventas;Total periodo')
   })
 
   it('exporta el consolidado gerencial en CSV', async () => {

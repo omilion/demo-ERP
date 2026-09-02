@@ -10,12 +10,13 @@ Esta tabla distingue expresamente el código preparado de un cierre real en el V
 | Doble conteo licitación→orden | Hecho: se excluye la licitación cuya orden vinculada ya está en el mismo resultado; hay prueba de regresión. | Definir si las licitaciones no adjudicadas pertenecen al indicador y reconciliar contra la fuente oficial. |
 | Remuneraciones y costeo | Hecho: se exige `rrhh.remuneracion` para planillas y se ocultan costos/remuneraciones de ODT sin permiso; hay pruebas negativas. | Desplegar y revisar la matriz final de roles con RRHH. |
 | Filtros de fecha e índices | Hecho: existe la migración de índices temporales y el panel incorpora Mes, Trimestre, YTD y L12M. | Ejecutar migración y `ANALYZE` en una ventana controlada; medir p95 y planes reales en el VPS. |
-| Carga inicial del panel | Hecho: el resumen solicita solo cinco agregados; listados detallados se cargan al abrir su pestaña. Se muestra la hora de la última lectura. | Medir sesión real en producción y, si no cumple presupuesto, agregar caché/rollups. |
+| Carga inicial del panel | Hecho: una API versionada entrega los agregados autorizados en un único corte; listados detallados se cargan al abrir su pestaña. Se muestra la hora de la última lectura. | Medir sesión real en producción y, si no cumple presupuesto, agregar caché/rollups. |
+| Drill-down y exportación | Hecho: KPI y rankings llevan a la pestaña/listado filtrado; CSV/XLSX reutilizan el mismo resumen y no incluyen una sección sin permiso. | Completar trazabilidad financiera factura→pago/NC y mover exportaciones pesadas a cola. |
 | Disco, alertas y backups | Sin cambio de aplicación. | Infraestructura debe configurar capacidad, alertas 75/85/90% y prueba de restauración. |
 | CxC a fecha de corte | Sin cambio: el modelo vigente no recompone saldo insoluto por factura. | Finanzas debe validar fuente y reglas de pagos, notas de crédito y saldos; luego Backend implementa el hecho financiero. |
 | Fechas comprometidas ODT | Sin cambio masivo de datos. | Taller/Datos debe completar y validar la cobertura antes de usar vencimientos como KPI directivo. |
 
-**Pruebas de esta ejecución:** `npm run build` de frontend y 32 pruebas focalizadas de reportes, deduplicación, permisos, RRHH y costeo aprobadas el 2026-09-02. El despliegue queda deliberadamente fuera de este hito.
+**Pruebas de esta ejecución:** `npm run build` de frontend y 33 pruebas focalizadas de reportes, deduplicación, permisos, RRHH y costeo aprobadas el 2026-09-02. El despliegue queda deliberadamente fuera de este hito.
 
 **Próximo hito técnico:** desplegar los commits P0 ya preparados y medir los presupuestos P1 en producción antes de iniciar caché, rollups o exportaciones en cola.
 
