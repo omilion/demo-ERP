@@ -1171,7 +1171,7 @@ describe('Venta directa stock, lifecycle and sucursal scope', () => {
       const updatedProduct = await app.prisma.producto.findUnique({ where: { id: producto.id } })
       expect(updatedProduct.stock).toBe(3)
       const movimiento = await app.prisma.movimientoBodega.findFirst({ where: { ordenId: body.id, productoId: producto.id } })
-      expect(movimiento).toMatchObject({ tipo: 'egreso', cantidad: 2, origenTipo: 'venta_directa', origenId: body.id })
+      expect(movimiento).toMatchObject({ tipo: 'egreso', cantidad: -2, origenTipo: 'venta_directa', origenId: body.id })
     } finally {
       await cleanup(created)
     }

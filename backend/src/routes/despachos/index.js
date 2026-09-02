@@ -584,6 +584,9 @@ export function buildTrackingEventData(input = {}, user = null, now = new Date()
     incidentData.responsable = cleanText(input.responsable)
     incidentData.fechaCompromiso = hasValue(input.fechaCompromiso) ? parseDate(input.fechaCompromiso) : null
     if (hasValue(input.fechaCompromiso) && !incidentData.fechaCompromiso) return { error: 'fechaCompromiso invalida' }
+    if (!incidentData.tipoIncidente || !incidentData.accionTomada || !incidentData.responsable || !incidentData.fechaCompromiso) {
+      return { error: 'Una incidencia requiere tipo, accion tomada, responsable y fecha compromiso' }
+    }
   }
   return {
     data: {
@@ -599,7 +602,12 @@ export function buildTrackingEventData(input = {}, user = null, now = new Date()
 }
 
 export function validateTrackingTransition(previousEstado, nextEstado) {
-  if (!TRACKING_CHAIN[previousEstado]) return null
+  // Sin evento previo no se permite cerrar una venta con un único click. La
+  // cadena siempre arranca explícitamente en Preparado.
+  if (!previousEstado) {
+    if (nextEstado === 'Preparado') return null
+    return { error: 'El primer estado del despacho debe ser Preparado' }
+  }
   // Una incidencia puede complementarse con responsable/acción después del
   // primer aviso; se conserva cada actualización como evento separado.
   if (previousEstado === 'Incidencia' && nextEstado === 'Incidencia') return null
@@ -1084,10 +1092,18 @@ export default async function despachosRoutes(fastify) {
       }
 
       for (const update of plan.updates) {
-        await tx.ordenItem.update({
-          where: { id: update.id },
+        // El plan se calculó antes de abrir la transacción. Condicionar por el
+        // valor anterior evita que dos usuarios sobrescriban el packing y
+        // registren eventos que no cuadran con el saldo real del ítem.
+        const changed = await tx.ordenItem.updateMany({
+          where: { id: update.id, nEntregados: update.cantidadAnterior },
           data: { nEntregados: update.nEntregados },
         })
+        if (changed.count !== 1) {
+          const error = new Error('El packing fue actualizado por otra persona; recargue la orden antes de continuar')
+          error.statusCode = 409
+          throw error
+        }
       }
       const eventos = buildPackingEventRows({
         ordenId,
@@ -1144,6 +1160,9 @@ export default async function despachosRoutes(fastify) {
     const built = buildTrackingEventData(parsed.data, request.user)
     if (built.error) return reply.code(400).send({ error: built.error })
     const traceBefore = await buildDespachoTrackingTrace(fastify.prisma, id)
+    if (traceBefore.latest && built.data.fechaEvento < traceBefore.latest.fechaEvento) {
+      return reply.code(409).send({ error: 'La fecha del evento no puede ser anterior al último estado registrado' })
+    }
     const transition = validateTrackingTransition(traceBefore.latest?.estado, built.data.estado)
     if (transition?.error) return reply.code(409).send({ error: transition.error })
 
@@ -1258,6 +1277,16 @@ export default async function despachosRoutes(fastify) {
     })
     return fastify.prisma.$transaction(async (tx) => {
       const despacho = await tx.despacho.create({ data })
+      // Tomar la venta deja la primera evidencia logística. Ningún evento
+      // posterior puede saltar directamente a Entregado.
+      await tx.despachoTrackingEvento.create({
+        data: {
+          despachoId: despacho.id,
+          estado: 'Preparado',
+          usuario: userLabel(request.user),
+          observacion: 'Despacho creado en Bodega',
+        },
+      })
       await applyOrdenEntregaSync(tx, entregaSync)
       // Tomar la venta en bodega ES la preparacion. Sin esto la orden seguia en
       // CREADA mientras bodega ya la estaba armando, y el estado formal solo se movia

@@ -595,12 +595,25 @@ describe('Bodega product safeguards', () => {
     })
 
     try {
+      const dano = await app.inject({
+        method: 'POST',
+        url: `/api/productos/${producto.id}/movimientos`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          tipo: 'dano',
+          cantidad: 2,
+          motivoCategoria: 'Dano',
+          motivo: 'recorte inutilizable',
+        },
+      })
+      expect(dano.statusCode).toBe(201)
+
       const merma = await app.inject({
         method: 'POST',
         url: `/api/productos/${producto.id}/movimientos`,
         headers: { authorization: `Bearer ${token}` },
         payload: {
-          tipo: 'egreso',
+          tipo: 'merma',
           cantidad: 2,
           motivoCategoria: 'Merma',
           motivo: 'recorte inutilizable',
@@ -610,7 +623,7 @@ describe('Bodega product safeguards', () => {
       const mermaBody = JSON.parse(merma.body)
       expect(mermaBody.stockFinal).toBe(3)
       expect(mermaBody.movimiento).toMatchObject({
-        tipo: 'egreso',
+        tipo: 'merma',
         cantidad: -2,
         motivo: 'Merma: recorte inutilizable',
         origenTipo: 'manual',
@@ -635,6 +648,31 @@ describe('Bodega product safeguards', () => {
     } finally {
       await app.prisma.movimientoBodega.deleteMany({ where: { productoId: producto.id } })
       await app.prisma.producto.deleteMany({ where: { id: producto.id } })
+    }
+  })
+
+  it('accepts only one concurrent egreso against the same available unit', async () => {
+    const producto = await app.prisma.producto.create({
+      data: {
+        codigoInterno: testCode(), nombre: 'Producto concurrencia stock', bodega: 'Inventario',
+        stock: 1, stockCritico: 0, precioLista: 1000,
+      },
+    })
+    try {
+      const post = () => app.inject({
+        method: 'POST',
+        url: `/api/productos/${producto.id}/movimientos`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { tipo: 'egreso', cantidad: 1, motivoCategoria: 'Perdida', motivo: 'Salida concurrente QA' },
+      })
+      const responses = await Promise.all([post(), post()])
+      expect(responses.map(response => response.statusCode).sort()).toEqual([201, 409])
+      const reloaded = await app.prisma.producto.findUnique({ where: { id: producto.id } })
+      expect(reloaded.stock).toBe(0)
+      expect(await app.prisma.movimientoBodega.count({ where: { productoId: producto.id } })).toBe(1)
+    } finally {
+      await app.prisma.movimientoBodega.deleteMany({ where: { productoId: producto.id } })
+      await app.prisma.producto.delete({ where: { id: producto.id } })
     }
   })
 
@@ -680,7 +718,7 @@ describe('Bodega product safeguards', () => {
         payload: {
           tipo: 'egreso',
           cantidad: 4,
-          motivoCategoria: 'Merma',
+          motivoCategoria: 'Perdida',
           motivo: 'prorrata test',
         },
       })

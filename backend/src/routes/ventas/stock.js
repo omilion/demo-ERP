@@ -94,7 +94,9 @@ export async function applyVentaStockDeltas(tx, { deltas, ordenId, nInterno, tip
       data: {
         productoId: productId,
         tipo: delta > 0 ? 'egreso' : 'ingreso',
-        cantidad: Math.abs(delta),
+        // El kardex conserva la cantidad con signo: egreso negativo e ingreso
+        // positivo. Las ventas eran el único flujo que invertía esa convención.
+        cantidad: -delta,
         stockAnterior: Number(producto.stock || 0),
         stockPosterior: Number(producto.stock || 0) - delta,
         reservadoFinal: Number(producto.stockReservado || 0),

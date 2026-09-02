@@ -13,6 +13,7 @@ import {
   buildPackingUpdatePlan,
   resolveDespachoOrderBy,
   resolveDispatchTraceability,
+  validateTrackingTransition,
   validateDispatchFilterCoherence,
 } from '../src/routes/despachos/index.js'
 
@@ -531,18 +532,22 @@ describe('dispatch tracking helpers', () => {
     expect(buildTrackingEventData({ estado: 'Preparado', fechaEvento: 'bad-date' })).toEqual({
       error: 'fechaEvento invalida',
     })
-    expect(buildTrackingEventData({ estado: 'Incidencia', observacion: 'Sin responsable' })).toMatchObject({
-      data: {
-        estado: 'Incidencia',
-        observacion: 'Sin responsable',
-        tipoIncidente: null,
-        accionTomada: null,
-        responsable: null,
-        fechaCompromiso: null,
-      },
+    expect(buildTrackingEventData({ estado: 'Incidencia', observacion: 'Sin responsable' })).toEqual({
+      error: 'Una incidencia requiere tipo, accion tomada, responsable y fecha compromiso',
     })
     expect(buildTrackingEventData({ estado: 'Preparado', tipoIncidente: 'Retraso' })).toEqual({
       error: 'campos de incidencia solo aplican a estado Incidencia',
     })
+  })
+
+  it('requires Preparado as the first event and respects the operational chain', () => {
+    expect(validateTrackingTransition(undefined, 'Entregado')).toEqual({
+      error: 'El primer estado del despacho debe ser Preparado',
+    })
+    expect(validateTrackingTransition(undefined, 'Preparado')).toBeNull()
+    expect(validateTrackingTransition('Preparado', 'Entregado')).toEqual({
+      error: 'Transición inválida: Preparado → Entregado',
+    })
+    expect(validateTrackingTransition('Preparado', 'Patio')).toBeNull()
   })
 })

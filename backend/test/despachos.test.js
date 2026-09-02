@@ -312,22 +312,21 @@ describe('despachos legacy matrix parity', () => {
       })
       expect(invalid.statusCode).toBe(400)
 
-      const enRuta = await app.inject({
+      const patio = await app.inject({
         method: 'POST',
         url: `/api/despachos/${despacho.id}/tracking`,
         headers: { authorization: `Bearer ${adminToken}` },
         payload: {
-          estado: 'en ruta',
+          estado: 'Patio',
           transporte: 'Transportista QA',
           ubicacion: 'Valparaiso',
           observacion: 'Carga retirada',
-          fechaEvento: '2026-06-02T10:00:00.000Z',
         },
       })
-      expect(enRuta.statusCode).toBe(200)
-      expect(JSON.parse(enRuta.body).evento).toMatchObject({
+      expect(patio.statusCode).toBe(200)
+      expect(JSON.parse(patio.body).evento).toMatchObject({
         despachoId: despacho.id,
-        estado: 'En ruta',
+        estado: 'Patio',
         transporte: 'Transportista QA',
         ubicacion: 'Valparaiso',
         usuario: 'Test admin',
@@ -342,14 +341,24 @@ describe('despachos legacy matrix parity', () => {
       expect(JSON.parse(list.body).items[0]).toMatchObject({
         id: despacho.id,
         transporte: 'Transportista QA',
-        tracking: { estado: 'En ruta', ubicacion: 'Valparaiso' },
+        tracking: { estado: 'Patio', ubicacion: 'Valparaiso' },
       })
+
+      for (const estado of ['Didáctico', 'Reparto']) {
+        const transition = await app.inject({
+          method: 'POST',
+          url: `/api/despachos/${despacho.id}/tracking`,
+          headers: { authorization: `Bearer ${adminToken}` },
+          payload: { estado },
+        })
+        expect(transition.statusCode).toBe(200)
+      }
 
       const delivered = await app.inject({
         method: 'POST',
         url: `/api/despachos/${despacho.id}/tracking`,
         headers: { authorization: `Bearer ${adminToken}` },
-        payload: { estado: 'Entregado', fechaEvento: '2026-06-02T12:00:00.000Z' },
+        payload: { estado: 'Entregado' },
       })
       expect(delivered.statusCode).toBe(200)
       expect(JSON.parse(delivered.body).latest.estado).toBe('Entregado')
@@ -360,7 +369,7 @@ describe('despachos legacy matrix parity', () => {
         headers: { authorization: `Bearer ${adminToken}` },
       })
       expect(trace.statusCode).toBe(200)
-      expect(JSON.parse(trace.body).eventos.map(evento => evento.estado)).toEqual(['Entregado', 'En ruta'])
+      expect(JSON.parse(trace.body).eventos.map(evento => evento.estado)).toEqual(['Entregado', 'Reparto', 'Didáctico', 'Patio', 'Preparado'])
       const order = await app.prisma.orden.findUnique({ where: { id: fixture.orden.id } })
       expect(order.estadoEntrega).toBe('Entregada')
     } finally {
@@ -395,11 +404,7 @@ describe('despachos legacy matrix parity', () => {
         headers: { authorization: `Bearer ${adminToken}` },
         payload: { estado: 'Incidencia', observacion: 'Falta responsable' },
       })
-      expect(legacyIncident.statusCode).toBe(200)
-      expect(JSON.parse(legacyIncident.body).evento).toMatchObject({
-        estado: 'Incidencia',
-        observacion: 'Falta responsable',
-      })
+      expect(legacyIncident.statusCode).toBe(400)
 
       const incident = await app.inject({
         method: 'POST',
@@ -422,14 +427,6 @@ describe('despachos legacy matrix parity', () => {
         accionTomada: 'Preparar reposicion',
         responsable: 'Bodega',
       })
-
-      const normalTrack = await app.inject({
-        method: 'POST',
-        url: `/api/despachos/${despachoB.id}/tracking`,
-        headers: { authorization: `Bearer ${adminToken}` },
-        payload: { estado: 'Preparado' },
-      })
-      expect(normalTrack.statusCode).toBe(200)
 
       const list = await app.inject({
         method: 'GET',

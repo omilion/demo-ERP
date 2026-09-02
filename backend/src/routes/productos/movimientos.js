@@ -96,6 +96,15 @@ export function buildMovimientoMotivo({ tipo, cantidad, stockActual, motivo, mot
   if (hasValue(motivoCategoria) && !categoria) {
     return { error: 'motivoCategoria invalido' }
   }
+  // Merma y daño cambian estados distintos del inventario. Permitir que se
+  // anoten como un egreso genérico destruye el indicador de dañado y permite
+  // descontar merma sin pasar antes por la cuarentena física.
+  const categoriaEsperada = tipo === 'merma' ? 'Merma' : tipo === 'dano' ? 'Dano' : null
+  if (categoriaEsperada && categoria !== categoriaEsperada) {
+    return { error: `${tipo} requiere motivoCategoria ${categoriaEsperada}` }
+  }
+  if (categoria === 'Merma' && tipo !== 'merma') return { error: 'Merma debe registrarse con tipo merma' }
+  if (categoria === 'Dano' && tipo !== 'dano') return { error: 'Dano debe registrarse con tipo dano' }
   if (!categoria) return { motivo: detail }
 
   const isReduction = ['egreso', 'dano', 'merma'].includes(tipo) || (tipo === 'ajuste' && Number(cantidad) < Number(stockActual || 0))
@@ -240,40 +249,44 @@ export default async function movimientosProductoRoutes(fastify) {
     if (tipo === 'ajuste' && !can(request.user?.role, 'bodega', 'delete', request.user?.permisosExtra)) {
       return reply.code(403).send({ error: 'Forbidden' })
     }
-    const qty = parseInt(cantidad, 10)
-    const prod = await fastify.prisma.producto.findUnique({ where: { id } })
-    if (!prod) return reply.code(404).send({ error: 'Producto no encontrado' })
-    const builtMotivo = buildMovimientoMotivo({
-      tipo,
-      cantidad: qty,
-      stockActual: prod.stock,
-      motivo,
-      motivoCategoria,
-    })
-    if (builtMotivo.error) return reply.code(400).send({ error: builtMotivo.error })
+    const qty = Number(cantidad)
+    if (!Number.isInteger(qty)) return reply.code(400).send({ error: 'cantidad invalida' })
 
     const traceability = await resolveTraceability(fastify.prisma, request.body || {}, { user: request.user })
     if (traceability.error) return reply.code(traceability.status || 400).send({ error: traceability.error })
 
-    const plan = buildStockMovementPlan({
-      tipo,
-      cantidad: qty,
-      stock: prod.stock,
-      stockReservado: prod.stockReservado,
-      stockDanado: prod.stockDanado,
-    })
-    if (plan.error) return reply.code(plan.error.includes('supera') || plan.error.includes('previamente') ? 409 : 400).send({ error: plan.error })
     const userId = request.user?.id || 1
 
     const result = await fastify.prisma.$transaction(async (tx) => {
-      await tx.producto.update({
-        where: { id },
+      // Bajo READ COMMITTED dos usuarios pueden haber leído el mismo saldo.
+      // El update condicionado funciona como compare-and-swap: uno registra el
+      // movimiento y el otro recibe conflicto para recargar el producto.
+      const prod = await tx.producto.findUnique({ where: { id } })
+      if (!prod) return { error: 'Producto no encontrado', status: 404 }
+      const builtMotivo = buildMovimientoMotivo({ tipo, cantidad: qty, stockActual: prod.stock, motivo, motivoCategoria })
+      if (builtMotivo.error) return { error: builtMotivo.error, status: 400 }
+      const plan = buildStockMovementPlan({
+        tipo,
+        cantidad: qty,
+        stock: prod.stock,
+        stockReservado: prod.stockReservado,
+        stockDanado: prod.stockDanado,
+      })
+      if (plan.error) return { error: plan.error, status: plan.error.includes('supera') || plan.error.includes('previamente') ? 409 : 400 }
+      const updated = await tx.producto.updateMany({
+        where: {
+          id,
+          stock: Number(prod.stock || 0),
+          stockReservado: Number(prod.stockReservado || 0),
+          stockDanado: Number(prod.stockDanado || 0),
+        },
         data: {
           stock: plan.final.stock,
           stockReservado: plan.final.reservado,
           stockDanado: plan.final.danado,
         },
       })
+      if (updated.count !== 1) return { error: 'El stock cambió mientras registraba el movimiento; recargue el producto e intente nuevamente', status: 409 }
       if (plan.stockDelta < 0) {
         await reduceProductoProveedorStock(tx, id, Math.abs(plan.stockDelta))
       }
@@ -302,6 +315,7 @@ export default async function movimientosProductoRoutes(fastify) {
         stockDisponible: plan.final.disponible,
       }
     })
+    if (result.error) return reply.code(result.status || 400).send({ error: result.error })
     return reply.code(201).send(result)
   })
 }
