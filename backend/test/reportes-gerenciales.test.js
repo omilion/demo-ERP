@@ -110,8 +110,8 @@ describeDb('reportes gerenciales backend', () => {
     expect(body.fuentes.ordenes.total).toBe(expected)
     expect(body.total).toBe(expected)
     expect(body.byPeriodo['2026-04-15'].total).toBe(expected)
-    expect(body.byCliente[rut].total).toBe(expected)
-    expect(body.byVendedor[marker].total).toBe(expected)
+    expect(body.byCliente[`Orden interna | ${rut}`].total).toBe(expected)
+    expect(body.byVendedor[`Orden interna | ${marker}`].total).toBe(expected)
     expect(body.byTipo['Venta directa'].total).toBe(expected)
   })
 
@@ -200,9 +200,9 @@ describeDb('reportes gerenciales backend', () => {
     // Solo A: C es 'Normal' -la venta simple- y ya no cae en venta directa.
     expect(body.fuentes.ordenes.count).toBe(1)
     expect(body.fuentes.ordenes.total).toBe(1000)
-    expect(body.byVendedor[`${scopedMarker}-A`].total).toBe(1000)
-    expect(body.byVendedor[`${scopedMarker}-C`]).toBeUndefined()
-    expect(body.byVendedor[`${scopedMarker}-B`]).toBeUndefined()
+    expect(body.byVendedor[`Orden interna | ${scopedMarker}-A`].total).toBe(1000)
+    expect(body.byVendedor[`Orden interna | ${scopedMarker}-C`]).toBeUndefined()
+    expect(body.byVendedor[`Orden interna | ${scopedMarker}-B`]).toBeUndefined()
 
     // La venta simple se reporta bajo su propio tipo, no se pierde.
     const gerencialSimple = await app.inject({
@@ -212,7 +212,7 @@ describeDb('reportes gerenciales backend', () => {
     })
     const bodySimple = JSON.parse(gerencialSimple.body)
     expect(bodySimple.fuentes.ordenes.count).toBe(1)
-    expect(bodySimple.byVendedor[`${scopedMarker}-C`].total).toBe(2000)
+    expect(bodySimple.byVendedor[`Orden interna | ${scopedMarker}-C`].total).toBe(2000)
   })
 
   it('cuadra cuentas por cobrar y caja contra registros fuente', async () => {

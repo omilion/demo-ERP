@@ -213,8 +213,10 @@ describe('Módulo de Sugerencias de OC y Órdenes de Compra a Proveedores', () =
       },
     })
     expect(mov).toBeDefined()
-    expect(mov.tipo).toBe('INGRESO')
+    expect(mov.tipo).toBe('ingreso')
     expect(mov.cantidad).toBe(40)
+    expect(mov.stockAnterior).toBe(stockAntes)
+    expect(mov.stockPosterior).toBe(stockAntes + 40)
 
     const tiempos = await app.inject({
       method: 'GET',

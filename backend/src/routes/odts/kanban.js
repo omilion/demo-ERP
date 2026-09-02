@@ -1,7 +1,7 @@
 import { parsePositiveInt } from '../operational-utils.js'
 import { ODT_ESTADOS_ABIERTOS, attachOdtMetrics, attachOperarios, attachOrdenes, attachTalleres } from './operations.js'
 import { buildOdtListWhere, sortOdtsOperativas } from './list.js'
-import { attachOdtCosteos } from './costeo.js'
+import { attachOdtCosteos, opcionesCosteoOdt } from './costeo.js'
 
 const KANBAN_DEFAULT_LIMIT = 1000
 const KANBAN_MAX_LIMIT = 2000
@@ -62,7 +62,7 @@ export default async function kanbanOdts(fastify) {
     const withTalleres = await attachTalleres(fastify.prisma, withOrdenes)
     const withOperarios = await attachOperarios(fastify.prisma, withTalleres)
     const withMetrics = attachOdtMetrics(withOperarios)
-    const withCosteo = await attachOdtCosteos(fastify.prisma, withMetrics)
+    const withCosteo = await attachOdtCosteos(fastify.prisma, withMetrics, new Date(), opcionesCosteoOdt(request.user))
 
     return {
       items: withCosteo,

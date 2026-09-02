@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { resolveOrdenForWrite } from '../relation-guards.js'
 import { getUserSucursalId } from '../caja/scope.js'
 import { can } from '../../middleware/rbac.js'
-import { ODT_ESTADOS, applyOdtStateSideEffects, buildOdtUpdateBitacoraEntries, getAuditUsuario, isTerminalOdtEstado, validateOperario } from './operations.js'
+import { ODT_ESTADOS, applyOdtStateSideEffects, buildOdtUpdateBitacoraEntries, getAuditUsuario, isTerminalOdtEstado, validateOdtEstadoTransition, validateOperario } from './operations.js'
 
 const Schema = z.object({
   tipo: z.enum(['Corte', 'Espumas', 'Confecciones', 'Madera', 'Externo']).optional(),
@@ -69,7 +69,7 @@ async function lockOdtWorkflow(tx, odtId) {
   }
 }
 
-export function getOdtClosureBlocker({ current, pendientes = 0, controlCalidad } = {}) {
+export function getOdtClosureBlocker({ current, pendientes = 0, pendienteDetalle = '', controlCalidad } = {}) {
   if (current?.estado !== 'Control calidad') {
     return 'La OT debe estar en Control calidad antes de cerrarse.'
   }
@@ -77,7 +77,7 @@ export function getOdtClosureBlocker({ current, pendientes = 0, controlCalidad }
     return 'Registra la aprobacion y observacion de Control de calidad antes de cerrar la OT.'
   }
   if (Number(pendientes) > 0) {
-    return `No se puede cerrar: quedan ${pendientes} tarea(s) de taller sin marcar lista o cancelada.`
+    return `No se puede cerrar: quedan ${pendientes} etapa(s) de taller sin marcar lista o cancelada.${pendienteDetalle ? ` ${pendienteDetalle}` : ''}`
   }
   return null
 }
@@ -127,6 +127,8 @@ export default async function updateOdt(fastify) {
       if (data.fechaIngreso) data.fechaIngreso = new Date(data.fechaIngreso)
       if (data.fechaInicio) data.fechaInicio = new Date(data.fechaInicio)
       if (data.fechaTermino) data.fechaTermino = new Date(data.fechaTermino)
+      const transicionInvalida = validateOdtEstadoTransition(current.estado, data.estado)
+      if (transicionInvalida) return reply.code(409).send({ error: transicionInvalida })
       const updateData = applyOdtStateSideEffects(data, current)
       const bitacoraEntries = buildOdtUpdateBitacoraEntries({
         current,
@@ -166,13 +168,28 @@ export default async function updateOdt(fastify) {
           error.statusCode = 404
           throw error
         }
-        const pendientes = await tx.odtItemTaller.count({
+        const transicionInvalida = validateOdtEstadoTransition(txCurrent.estado, body.estado)
+        if (transicionInvalida) {
+          const error = new Error(transicionInvalida)
+          error.statusCode = 409
+          throw error
+        }
+        const pendientes = await tx.odtItemTaller.findMany({
           where: {
             odtItem: { is: { odtId: id, eliminado: false } },
-            estado: { notIn: ['listo', 'cancelado'] },
+            estado: { notIn: ['listo', 'Listo', 'cancelado'] },
           },
+          select: {
+            estado: true,
+            odtItem: { select: { nombre: true, codigoInterno: true } },
+            taller: { select: { nombre: true } },
+          },
+          take: 20,
         })
-        const blocker = getOdtClosureBlocker({ current: txCurrent, pendientes, controlCalidad: body.controlCalidad })
+        const pendienteDetalle = pendientes
+          .map(item => `${item.odtItem?.codigoInterno || item.odtItem?.nombre || 'item'} en ${item.taller?.nombre || 'taller'} (${item.estado})`)
+          .join('; ')
+        const blocker = getOdtClosureBlocker({ current: txCurrent, pendientes: pendientes.length, pendienteDetalle, controlCalidad: body.controlCalidad })
         if (blocker) {
           const error = new Error(blocker)
           error.statusCode = 409

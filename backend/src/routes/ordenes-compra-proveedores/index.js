@@ -577,16 +577,28 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
             }
 
             if (producto) {
-              await tx.producto.update({
-                where: { id: producto.id },
+              const stockAnterior = Number(producto.stock || 0)
+              const stockReservado = Number(producto.stockReservado || 0)
+              const stockDanado = Number(producto.stockDanado || 0)
+              const stockUpdated = await tx.producto.updateMany({
+                where: { id: producto.id, stock: stockAnterior, stockReservado, stockDanado },
                 data: { stock: { increment: qty } },
               })
+              if (stockUpdated.count !== 1) {
+                const error = new Error('El stock cambió mientras se recepcionaba la OC; recargue e intente nuevamente')
+                error.statusCode = 409
+                throw error
+              }
 
               await tx.movimientoBodega.create({
                 data: {
                   productoId: producto.id,
-                  tipo: 'INGRESO',
+                  tipo: 'ingreso',
                   cantidad: qty,
+                  stockAnterior,
+                  stockPosterior: stockAnterior + qty,
+                  reservadoFinal: stockReservado,
+                  danadoFinal: stockDanado,
                   motivo: `Recepción Orden de Compra ${oc.numeroOc}`,
                   origenTipo: 'orden_compra_proveedor',
                   origenId: oc.id,
@@ -621,12 +633,15 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
             }
           }
 
-          await tx.ordenCompraProveedorItem.update({
-            where: { id: item.id },
-            data: {
-              cantidadRecepcionada: nuevaTotalRecepcionada,
-            },
+          const itemUpdated = await tx.ordenCompraProveedorItem.updateMany({
+            where: { id: item.id, cantidadRecepcionada: item.cantidadRecepcionada },
+            data: { cantidadRecepcionada: nuevaTotalRecepcionada },
           })
+          if (itemUpdated.count !== 1) {
+            const error = new Error('La OC fue recepcionada por otra persona; recargue e intente nuevamente')
+            error.statusCode = 409
+            throw error
+          }
         }
 
         const nextEstado = allCompleted ? 'Completada' : 'Recepcionada Parcial'
@@ -646,7 +661,7 @@ export default async function ordenesCompraProveedoresRoutes(fastify) {
       }
     } catch (err) {
       fastify.log.error(err)
-      return reply.code(500).send({ error: 'Error al recepcionar orden de compra: ' + err.message })
+      return reply.code(err.statusCode || 500).send({ error: (err.statusCode ? '' : 'Error al recepcionar orden de compra: ') + err.message })
     }
   })
 

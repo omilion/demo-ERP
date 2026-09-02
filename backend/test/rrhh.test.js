@@ -16,6 +16,10 @@ async function buildRrhhHandlers(prisma) {
         authenticate: async () => {},
         rbac: () => async () => {},
         prisma,
+        // El modulo registra un hook para ocultar remuneraciones a quien no
+        // corresponde. Sin este stub el registro se corta antes de las sub-rutas y
+        // los handlers quedan sin definir, que es como se noto.
+        addHook: () => {},
         get: (path, _opts, handler) => { handlers[`GET ${path}`] = handler },
         post: (path, _opts, handler) => { handlers[`POST ${path}`] = handler },
         put: (path, _opts, handler) => { handlers[`PUT ${path}`] = handler },

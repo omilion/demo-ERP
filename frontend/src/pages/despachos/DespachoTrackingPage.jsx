@@ -1,11 +1,23 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Badge, Btn, PageHeader } from '../../components/shared'
 import { useDespacho, useDespachoTracking, useCreateDespachoTrackingEvento } from '../../api/despachos'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
-import { TRACKING_ESTADOS, INCIDENT_TYPES, trackingTone, showError, input, cardStyle } from './shared'
+import { INCIDENT_TYPES, trackingTone, showError, input, cardStyle } from './shared'
 import { Mono, Field, Footer } from './shared-ui'
+
+const NEXT_TRACKING_STATES = {
+  Preparado: ['Patio', 'Incidencia', 'Retenido'],
+  Patio: ['Didáctico', 'Incidencia', 'Reprogramado', 'Retenido'],
+  Didáctico: ['Reparto', 'Incidencia', 'Reprogramado', 'Retenido'],
+  Reparto: ['Entregado', 'Incidencia', 'Reprogramado', 'Retenido', 'Devuelto'],
+  Incidencia: ['Incidencia', 'Patio', 'Didáctico', 'Reparto'],
+  Reprogramado: ['Patio'],
+  Retenido: ['Patio'],
+  Devuelto: [],
+  Entregado: [],
+}
 
 // Tracking logistico de un despacho (estado, ubicacion, incidencias).
 // Pagina propia (antes modal popup) para llegar directo desde la lista de
@@ -52,8 +64,18 @@ function TrackingForm({ row, canWrite, onCancel }) {
     responsable: '',
     fechaCompromiso: '',
   })
+  const allowedStates = latest ? (NEXT_TRACKING_STATES[latest.estado] || []) : ['Preparado']
+
+  useEffect(() => {
+    setForm(prev => ({
+      ...prev,
+      estado: allowedStates.includes(prev.estado) ? prev.estado : (allowedStates[0] || ''),
+    }))
+  }, [latest?.id, latest?.estado])
+
   const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
   const save = () => {
+    if (!form.estado || !allowedStates.includes(form.estado)) return
     const esIncidencia = form.estado === 'Incidencia'
     const payload = {
       estado: form.estado,
@@ -68,8 +90,10 @@ function TrackingForm({ row, canWrite, onCancel }) {
       payload.responsable = form.responsable.trim() || undefined
       payload.fechaCompromiso = form.fechaCompromiso || undefined
     }
-    createTrackingMut.mutate({ despachoId: row.id, ...payload }, { onError: showError })
-    setForm(prev => ({ ...prev, observacion: '', fechaEvento: '', tipoIncidente: '', accionTomada: '', responsable: '', fechaCompromiso: '' }))
+    createTrackingMut.mutate({ despachoId: row.id, ...payload }, {
+      onSuccess: () => setForm(prev => ({ ...prev, observacion: '', fechaEvento: '', tipoIncidente: '', accionTomada: '', responsable: '', fechaCompromiso: '' })),
+      onError: showError,
+    })
   }
 
   return (
@@ -85,11 +109,11 @@ function TrackingForm({ row, canWrite, onCancel }) {
       {row.origenTipo === 'manual' && row.motivoOperacion && <div style={{ margin: '-5px 0 12px', fontSize: 12, color: 'var(--text-2)' }}>Motivo: <strong>{row.motivoOperacion}</strong></div>}
       {trace.estadoFlujoFormal && <div style={{ margin: '-5px 0 12px', fontSize: 12, color: 'var(--text-2)' }}>Estado formal de la orden: <strong>{trace.estadoFlujoFormal}</strong></div>}
 
-      {canWrite && (
+      {canWrite && allowedStates.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 10 }}>
-          <Field label="Estado">
+          <Field label={latest ? 'Siguiente estado' : 'Estado inicial'}>
             <select value={form.estado} onChange={event => set('estado', event.target.value)} style={input}>
-              {TRACKING_ESTADOS.map(estado => <option key={estado} value={estado}>{estado}</option>)}
+              {allowedStates.map(estado => <option key={estado} value={estado}>{estado}</option>)}
             </select>
           </Field>
           <Field label="Transporte">
@@ -130,9 +154,10 @@ function TrackingForm({ row, canWrite, onCancel }) {
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: canWrite ? 'space-between' : 'flex-end', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+      {canWrite && latest && allowedStates.length === 0 && <div style={{ margin: '-2px 0 12px', color: 'var(--text-3)', fontSize: 12 }}>Este despacho terminó su recorrido. No admite más cambios de tracking.</div>}
+      <div style={{ display: 'flex', justifyContent: canWrite && allowedStates.length > 0 ? 'space-between' : 'flex-end', alignItems: 'center', gap: 12, marginBottom: 12 }}>
         {isLoading && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Cargando...</span>}
-        {canWrite && <Footer saving={createTrackingMut.isPending} onClose={onCancel} onSave={save} closeLabel="Volver" />}
+        {canWrite && allowedStates.length > 0 && <Footer saving={createTrackingMut.isPending} onClose={onCancel} onSave={save} closeLabel="Volver" />}
       </div>
 
       <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>

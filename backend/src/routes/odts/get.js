@@ -1,7 +1,7 @@
 import { getUserSucursalId } from '../caja/scope.js'
 import { computeTotal } from '../ventas/helpers.js'
 import { attachOdtMetrics, attachOperarios } from './operations.js'
-import { attachOdtCosteos } from './costeo.js'
+import { attachOdtCosteos, opcionesCosteoOdt } from './costeo.js'
 
 export default async function getOdt(fastify) {
   fastify.get('/:id', {
@@ -51,7 +51,7 @@ export default async function getOdt(fastify) {
 
     const withOperario = await attachOperarios(fastify.prisma, o)
     const withMetrics = attachOdtMetrics(withOperario)
-    const withCosteo = await attachOdtCosteos(fastify.prisma, withMetrics)
+    const withCosteo = await attachOdtCosteos(fastify.prisma, withMetrics, new Date(), opcionesCosteoOdt(request.user))
     const cleanNombre = (o.clienteNombre || '').trim()
     const hasValidNombre = cleanNombre && cleanNombre !== '-' && cleanNombre !== 'Busqueda N Interno'
     const clienteNombre = hasValidNombre ? cleanNombre : (orden?.cliente?.nombre || null)

@@ -14,6 +14,20 @@ function testCode(prefix = 'TEST') {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+function tokenConPermisos(app, accessToken, { role, nombre, permisosExtra }) {
+  const base = app.jwt.decode(accessToken)
+  return app.jwt.sign({
+    id: base.id,
+    authVersion: base.authVersion,
+    role,
+    nombre,
+    permisosExtra,
+    scope: 'erp',
+    aud: 'plastimar:erp',
+    tokenType: 'access',
+  })
+}
+
 describe('GET /api/productos', () => {
   let app, token
 
@@ -408,14 +422,8 @@ describe('POST /api/productos', () => {
   })
 
   it('requires bodega write when create payload touches stock or price fields', async () => {
-    const catalogoOnlyToken = app.jwt.sign({
-      id: 999999,
-      role: 'vendedor',
-      nombre: 'Catalogo extra',
-      permisosExtra: { catalogo: ['write'] },
-      scope: 'erp',
-      aud: 'plastimar:erp',
-      tokenType: 'access',
+    const catalogoOnlyToken = tokenConPermisos(app, token, {
+      role: 'vendedor', nombre: 'Catalogo extra', permisosExtra: { catalogo: ['write'] },
     })
     const res = await app.inject({
       method: 'POST',
@@ -601,12 +609,25 @@ describe('Bodega product safeguards', () => {
     })
 
     try {
+      const dano = await app.inject({
+        method: 'POST',
+        url: `/api/productos/${producto.id}/movimientos`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          tipo: 'dano',
+          cantidad: 2,
+          motivoCategoria: 'Dano',
+          motivo: 'recorte inutilizable',
+        },
+      })
+      expect(dano.statusCode).toBe(201)
+
       const merma = await app.inject({
         method: 'POST',
         url: `/api/productos/${producto.id}/movimientos`,
         headers: { authorization: `Bearer ${token}` },
         payload: {
-          tipo: 'egreso',
+          tipo: 'merma',
           cantidad: 2,
           motivoCategoria: 'Merma',
           motivo: 'recorte inutilizable',
@@ -616,7 +637,7 @@ describe('Bodega product safeguards', () => {
       const mermaBody = JSON.parse(merma.body)
       expect(mermaBody.stockFinal).toBe(3)
       expect(mermaBody.movimiento).toMatchObject({
-        tipo: 'egreso',
+        tipo: 'merma',
         cantidad: -2,
         motivo: 'Merma: recorte inutilizable',
         origenTipo: 'manual',
@@ -641,6 +662,31 @@ describe('Bodega product safeguards', () => {
     } finally {
       await app.prisma.movimientoBodega.deleteMany({ where: { productoId: producto.id } })
       await app.prisma.producto.deleteMany({ where: { id: producto.id } })
+    }
+  })
+
+  it('accepts only one concurrent egreso against the same available unit', async () => {
+    const producto = await app.prisma.producto.create({
+      data: {
+        codigoInterno: testCode(), nombre: 'Producto concurrencia stock', bodega: 'Inventario',
+        stock: 1, stockCritico: 0, precioLista: 1000,
+      },
+    })
+    try {
+      const post = () => app.inject({
+        method: 'POST',
+        url: `/api/productos/${producto.id}/movimientos`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { tipo: 'egreso', cantidad: 1, motivoCategoria: 'Perdida', motivo: 'Salida concurrente QA' },
+      })
+      const responses = await Promise.all([post(), post()])
+      expect(responses.map(response => response.statusCode).sort()).toEqual([201, 409])
+      const reloaded = await app.prisma.producto.findUnique({ where: { id: producto.id } })
+      expect(reloaded.stock).toBe(0)
+      expect(await app.prisma.movimientoBodega.count({ where: { productoId: producto.id } })).toBe(1)
+    } finally {
+      await app.prisma.movimientoBodega.deleteMany({ where: { productoId: producto.id } })
+      await app.prisma.producto.delete({ where: { id: producto.id } })
     }
   })
 
@@ -686,7 +732,7 @@ describe('Bodega product safeguards', () => {
         payload: {
           tipo: 'egreso',
           cantidad: 4,
-          motivoCategoria: 'Merma',
+          motivoCategoria: 'Perdida',
           motivo: 'prorrata test',
         },
       })
@@ -749,14 +795,8 @@ describe('Bodega product safeguards', () => {
         precioLista: 7777,
       },
     })
-    const catalogoOnlyToken = app.jwt.sign({
-      id: 999998,
-      role: 'vendedor',
-      nombre: 'Catalogo write',
-      permisosExtra: { catalogo: ['write'] },
-      scope: 'erp',
-      aud: 'plastimar:erp',
-      tokenType: 'access',
+    const catalogoOnlyToken = tokenConPermisos(app, token, {
+      role: 'vendedor', nombre: 'Catalogo write', permisosExtra: { catalogo: ['write'] },
     })
 
     const res = await app.inject({

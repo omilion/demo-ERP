@@ -36,6 +36,13 @@ const PERMISSIONS = {
     clientes: ['read'],
     ventas:   ['read'],
   },
+  // Jefe de taller. El nombre del rol es generico por historia, pero corresponde al
+  // "Jefe de Taller" de los documentos del cliente: gestiona la OT, la cierra y
+  // aprueba la calidad de lo que sale de SU taller.
+  //
+  // De que taller es jefe no se sabe por el rol -este da gestion sobre todos- sino
+  // por `Taller.jefeId`. Sin esa distincion, el jefe de Corte aprobaria lo que sale
+  // de Espumas.
   taller:       {
     reportes: ['read'],
     taller:   ['read', 'write'],
@@ -69,6 +76,11 @@ const PERMISSIONS = {
     licitaciones: ['read'],
     proveedores:  ['read'],
     rrhh:         ['read'],
+    // Ver la nomina no es ver los sueldos. Una cuenta de observacion podia listar a
+    // todo el personal con su sueldo liquido, y hay dos activas. Se niega explicito
+    // porque los permisos por funcion heredan del modulo: sin esta linea, `rrhh:read`
+    // le daria tambien la remuneracion.
+    'rrhh.remuneracion': [],
   },
 }
 

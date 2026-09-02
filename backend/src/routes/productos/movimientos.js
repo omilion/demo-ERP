@@ -96,6 +96,15 @@ export function buildMovimientoMotivo({ tipo, cantidad, stockActual, motivo, mot
   if (hasValue(motivoCategoria) && !categoria) {
     return { error: 'motivoCategoria invalido' }
   }
+  // Merma y daño cambian estados distintos del inventario. Permitir que se
+  // anoten como un egreso genérico destruye el indicador de dañado y permite
+  // descontar merma sin pasar antes por la cuarentena física.
+  const categoriaEsperada = tipo === 'merma' ? 'Merma' : tipo === 'dano' ? 'Dano' : null
+  if (categoriaEsperada && categoria !== categoriaEsperada) {
+    return { error: `${tipo} requiere motivoCategoria ${categoriaEsperada}` }
+  }
+  if (categoria === 'Merma' && tipo !== 'merma') return { error: 'Merma debe registrarse con tipo merma' }
+  if (categoria === 'Dano' && tipo !== 'dano') return { error: 'Dano debe registrarse con tipo dano' }
   if (!categoria) return { motivo: detail }
 
   const isReduction = ['egreso', 'dano', 'merma'].includes(tipo) || (tipo === 'ajuste' && Number(cantidad) < Number(stockActual || 0))
@@ -252,7 +261,7 @@ export default async function movimientosProductoRoutes(fastify) {
     if (tipo === 'ajuste' && !can(request.user?.role, 'bodega', 'delete', request.user?.permisosExtra)) {
       return reply.code(403).send({ error: 'Forbidden' })
     }
-    const qty = parseInt(cantidad, 10)
+    const qty = Number(cantidad)
     if (!Number.isInteger(qty)) return reply.code(400).send({ error: 'cantidad invalida' })
 
     const traceability = await resolveTraceability(fastify.prisma, request.body || {}, { user: request.user })
@@ -262,24 +271,17 @@ export default async function movimientosProductoRoutes(fastify) {
 
     try {
       const result = await fastify.prisma.$transaction(async (tx) => {
-      // Leer, validar y escribir bajo el mismo candado. El cálculo anterior
-      // usaba un producto leído antes de entrar a la transacción y podía
-      // sobrescribir el movimiento simultáneo de otro operario.
-      await lockProductoStock(tx, id)
-      const prod = await tx.producto.findUnique({ where: { id } })
-      if (!prod) {
-        const missing = new Error('Producto no encontrado')
-        missing.statusCode = 404
-        throw missing
-      }
-      const builtMotivo = buildMovimientoMotivo({
-        tipo,
-        cantidad: qty,
-        stockActual: prod.stock,
-        motivo,
-        motivoCategoria,
-      })
-      if (builtMotivo.error) throwStockPlanError(builtMotivo.error)
+        // El candado coincide con los flujos de venta; el CAS protege además
+        // contra cualquier escritor que aún no tome ese candado.
+        await lockProductoStock(tx, id)
+        const prod = await tx.producto.findUnique({ where: { id } })
+        if (!prod) {
+          const missing = new Error('Producto no encontrado')
+          missing.statusCode = 404
+          throw missing
+        }
+        const builtMotivo = buildMovimientoMotivo({ tipo, cantidad: qty, stockActual: prod.stock, motivo, motivoCategoria })
+        if (builtMotivo.error) throwStockPlanError(builtMotivo.error)
       const plan = buildStockMovementPlan({
         tipo,
         cantidad: qty,
@@ -287,15 +289,21 @@ export default async function movimientosProductoRoutes(fastify) {
         stockReservado: prod.stockReservado,
         stockDanado: prod.stockDanado,
       })
-      if (plan.error) throwStockPlanError(plan.error)
-      await tx.producto.update({
-        where: { id },
+        if (plan.error) throwStockPlanError(plan.error)
+        const updated = await tx.producto.updateMany({
+          where: {
+            id,
+            stock: Number(prod.stock || 0),
+            stockReservado: Number(prod.stockReservado || 0),
+            stockDanado: Number(prod.stockDanado || 0),
+          },
         data: {
           stock: plan.final.stock,
           stockReservado: plan.final.reservado,
           stockDanado: plan.final.danado,
         },
       })
+      if (updated.count !== 1) return { error: 'El stock cambió mientras registraba el movimiento; recargue el producto e intente nuevamente', status: 409 }
       if (plan.stockDelta < 0) {
         await reduceProductoProveedorStock(tx, id, Math.abs(plan.stockDelta))
       }

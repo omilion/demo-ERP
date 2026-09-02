@@ -1,7 +1,7 @@
 import { applyDateRange, parsePagination, parsePositiveInt } from '../operational-utils.js'
 import { getUserSucursalId } from '../caja/scope.js'
 import { ODT_ESTADOS, attachOdtMetrics, attachOperarios, attachOrdenes, attachTalleres, normalizeOdtFechaField, tipoTallerFilter } from './operations.js'
-import { attachOdtCosteos } from './costeo.js'
+import { attachOdtCosteos, opcionesCosteoOdt } from './costeo.js'
 
 function addAnd(where, clause) {
   where.AND = [...(where.AND || []), clause]
@@ -151,7 +151,7 @@ export default async function listOdts(fastify) {
 
     const withOperarios = await attachOperarios(fastify.prisma, withTalleres)
     const withMetrics = attachOdtMetrics(withOperarios)
-    const withCosteo = await attachOdtCosteos(fastify.prisma, withMetrics)
+    const withCosteo = await attachOdtCosteos(fastify.prisma, withMetrics, new Date(), opcionesCosteoOdt(request.user))
     return {
       items: withCosteo,
       total,
