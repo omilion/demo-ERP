@@ -401,13 +401,20 @@ async function getOrdenRowsByWhere(fastify, where) {
     include: { items: { where: { eliminado: false } }, cargos: true, packingBultos: true },
     orderBy: { createdAt: 'desc' },
   })
+  // Las ventas nuevas vinculan al cliente por clienteId. rutCliente sólo existe
+  // en datos legacy, por lo que usarlo como única llave hacía que la Matriz
+  // mostrara "-" aunque la relación estuviera correcta.
   const ruts = [...new Set(ordenes.map(o => o.rutCliente).filter(Boolean))]
+  const clienteIds = [...new Set(ordenes.map(o => o.clienteId).filter(Boolean))]
   const ordenIds = ordenes.map(o => o.id)
   const allProductIds = [...new Set(ordenes.flatMap(o => (o.items || []).map(i => i.productoId)).filter(Boolean))]
   const [clientesArr, odtsArr, cotizArr, guiasArr, movsArr, multasArr, despachosArr, productosArr] = await Promise.all([
-    ruts.length ? fastify.prisma.cliente.findMany({
-      where: { rut: { in: ruts } },
-      select: { rut: true, razonSocial: true, nombre: true, email: true, conflictivo: true, conflictivoDetalle: true },
+    (ruts.length || clienteIds.length) ? fastify.prisma.cliente.findMany({
+      where: { OR: [
+        ...(ruts.length ? [{ rut: { in: ruts } }] : []),
+        ...(clienteIds.length ? [{ id: { in: clienteIds } }] : []),
+      ] },
+      select: { id: true, rut: true, razonSocial: true, nombre: true, email: true, conflictivo: true, conflictivoDetalle: true },
     }) : [],
     ordenIds.length ? fastify.prisma.odt.findMany({
       where: { ordenId: { in: ordenIds }, eliminado: false },
@@ -454,7 +461,8 @@ async function getOrdenRowsByWhere(fastify, where) {
       select: { id: true, estadoInventario: true },
     }) : [],
   ])
-  const clienteMap = Object.fromEntries(clientesArr.map(c => [c.rut, c]))
+  const clienteByRut = Object.fromEntries(clientesArr.filter(c => c.rut).map(c => [c.rut, c]))
+  const clienteById = Object.fromEntries(clientesArr.map(c => [c.id, c]))
   const productoInvMap = new Map(productosArr.map(p => [p.id, p.estadoInventario]))
   const odtMap = {}; for (const o of odtsArr) (odtMap[o.ordenId] ||= []).push(o)
   const guiaIds = guiasArr.map(guia => guia.id)
@@ -493,7 +501,7 @@ async function getOrdenRowsByWhere(fastify, where) {
     const facturadoTotal = documentos.filter(isFacturaMovimiento).reduce((s, d) => s + signedAmount(d), 0)
     const ncTotal = documentos.filter(isNcMovimiento).reduce((s, d) => s + signedAmount(d), 0)
     const ndTotal = documentos.filter(isNdMovimiento).reduce((s, d) => s + signedAmount(d), 0)
-    const cliente = clienteMap[o.rutCliente] || null
+    const cliente = clienteById[o.clienteId] || clienteByRut[o.rutCliente] || null
     const odts = odtMap[o.id] || []
     const guias = guiasMap[o.id] || []
     const despachos = despachosMap[o.id] || []
@@ -509,7 +517,7 @@ async function getOrdenRowsByWhere(fastify, where) {
       nInterno: o.nInterno,
       fecha: o.createdAt,
       tipo: o.tipo,
-      cliente: o.rutCliente,
+      cliente: cliente?.rut || o.rutCliente || null,
       nombreCliente: cliente?.razonSocial || cliente?.nombre || null,
       emailCliente: cliente?.email || null,
       clienteConflictivo: cliente?.conflictivo || false,
@@ -539,6 +547,10 @@ async function getOrdenRowsByWhere(fastify, where) {
       odtCount: odts.length,
       guias,
       guiasCount: guias.length,
+      // Sin esta propiedad la UI recibía guía y estado logístico, pero perdía
+      // el despacho que ya había sido programado en la columna correspondiente.
+      despachos,
+      despachosCount: despachos.length,
       documentos,
       documentosCount: documentos.length,
       documentosLegacy,

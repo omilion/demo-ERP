@@ -53,7 +53,7 @@ async function createOrder(app, marker, overrides = {}) {
       estadoPago: overrides.estadoPago || 'No pagada',
       estadoEntrega: overrides.estadoEntrega || 'Pendiente entrega',
       clienteId: cliente.id,
-      rutCliente: cliente.rut,
+      rutCliente: Object.prototype.hasOwnProperty.call(overrides, 'rutCliente') ? overrides.rutCliente : cliente.rut,
       userId: user.id,
       sucursalId: overrides.sucursalId,
       createdAt: overrides.createdAt || new Date(),
@@ -80,6 +80,8 @@ async function cleanup(app, fixture) {
   await app.prisma.movimientoCaja.deleteMany({ where: { ordenId: fixture.orden.id } }).catch(() => {})
   await app.prisma.multa.deleteMany({ where: { ordenId: fixture.orden.id } }).catch(() => {})
   await app.prisma.cotizacionLicitacion.deleteMany({ where: { ordenId: fixture.orden.id } }).catch(() => {})
+  await app.prisma.guiaDespacho.deleteMany({ where: { ordenId: fixture.orden.id } }).catch(() => {})
+  await app.prisma.despacho.deleteMany({ where: { ordenId: fixture.orden.id } }).catch(() => {})
   await app.prisma.orden.delete({ where: { id: fixture.orden.id } }).catch(() => {})
   await app.prisma.producto.delete({ where: { id: fixture.product.id } }).catch(() => {})
   await app.prisma.cliente.delete({ where: { id: fixture.cliente.id } }).catch(() => {})
@@ -135,6 +137,35 @@ describe('matriz ventas legacy parity', () => {
       await cleanup(app, todayOrder)
       await cleanup(app, otherSucursal)
       await cleanup(app, oldOrder)
+    }
+  })
+
+  it('muestra cliente y salida programada aunque la orden moderna no copie rutCliente', async () => {
+    const marker = `relacion-cliente-${Date.now()}`
+    const fixture = await createOrder(app, marker, { sucursalId: 9110, rutCliente: null })
+    try {
+      const despacho = await app.prisma.despacho.create({
+        data: { ordenId: fixture.orden.id, sucursalId: 9110, tipoDespacho: 'Despacho cliente', transporte: 'Camión prueba' },
+      })
+      const guia = await app.prisma.guiaDespacho.create({
+        data: { ordenId: fixture.orden.id, despachoId: despacho.id, nGuia: `G-${marker}`, fechaGuia: new Date() },
+      })
+      const res = await app.inject({
+        method: 'GET', url: `/api/matriz-ventas?nInterno=${fixture.orden.nInterno}`,
+        headers: { authorization: `Bearer ${tokenFor(app, 'admin', 9110)}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const row = JSON.parse(res.body).items.find(item => item.id === fixture.orden.id)
+      expect(row).toMatchObject({
+        nombreCliente: fixture.cliente.razonSocial,
+        cliente: fixture.cliente.rut,
+        despachosCount: 1,
+        guiasCount: 1,
+      })
+      expect(row.despachos.map(item => item.id)).toContain(despacho.id)
+      expect(row.guias.map(item => item.id)).toContain(guia.id)
+    } finally {
+      await cleanup(app, fixture)
     }
   })
 
