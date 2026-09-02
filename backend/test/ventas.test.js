@@ -1504,6 +1504,10 @@ describe('Venta directa stock, lifecycle and sucursal scope', () => {
       expect(ordenAnulada.eliminada).toBe(true)
       expect(ordenAnulada.abono).toBe(0)
       expect(ordenAnulada.estadoPago).toBe('No pagada')
+      expect(ordenAnulada.estadoFlujoFormal).toBe('ANULADA')
+      expect(await app.prisma.ordenEstadoFlujoHistorial.findFirst({
+        where: { ordenId: venta.id, estadoAnterior: 'CREADA', estadoNuevo: 'ANULADA' },
+      })).toBeTruthy()
 
       const activar = await app.inject({
         method: 'POST',
@@ -1519,6 +1523,10 @@ describe('Venta directa stock, lifecycle and sucursal scope', () => {
       expect(ordenActiva.eliminada).toBe(false)
       expect(ordenActiva.abono).toBe(1000)
       expect(ordenActiva.estadoPago).toBe('Parcial')
+      expect(ordenActiva.estadoFlujoFormal).toBe('CREADA')
+      expect(await app.prisma.ordenEstadoFlujoHistorial.findFirst({
+        where: { ordenId: venta.id, estadoAnterior: 'ANULADA', estadoNuevo: 'CREADA' },
+      })).toBeTruthy()
     } finally {
       await cleanup(created)
     }

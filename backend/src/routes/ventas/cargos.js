@@ -176,7 +176,11 @@ export default async function ventaCargosRoutes(fastify) {
             fecham: fecha,
           },
         })
-        return { updated }
+        // La anulación no puede dejar el flujo formal en CREADA: la UI y las
+        // integraciones consultan ambas dimensiones. avanzarEstadoFlujo deja
+        // además la bitácora inmutable con el actor de la anulación.
+        const formal = await avanzarEstadoFlujo(tx, id, 'ANULADA', request.user, 'Anulación de venta')
+        return { updated: formal?.orden || updated }
       })
       if (result.statusCode) return reply.code(result.statusCode).send({ error: result.error })
       return result.updated
@@ -223,6 +227,7 @@ export default async function ventaCargosRoutes(fastify) {
         const abono = await getActiveNonReferentialPayments(tx, id)
         const total = computeTotal(orden.items, orden.descuentoPct, orden.cargos, orden.descuentoMonto)
         const estadoPago = abono <= 0 ? 'No pagada' : abono >= total ? 'Pagada' : 'Parcial'
+        const reabreFlujoFormal = orden.estadoFlujoFormal === 'ANULADA'
         const updated = await tx.orden.update({
           where: { id },
           data: {
@@ -230,10 +235,27 @@ export default async function ventaCargosRoutes(fastify) {
             eliminada: false,
             abono,
             estadoPago,
+            ...(reabreFlujoFormal ? { estadoFlujoFormal: 'CREADA', fechaEstadoFlujo: fecha } : {}),
             userMod: usuario,
             fecham: fecha,
           },
         })
+        // ANULADA es terminal para el flujo normal, pero la reactivación es un
+        // acto administrativo explícito. Se abre una nueva etapa y se conserva
+        // la evidencia del salto excepcional, en lugar de ocultarlo.
+        if (reabreFlujoFormal) {
+          await tx.ordenEstadoFlujoHistorial.create({
+            data: {
+              ordenId: id,
+              estadoAnterior: 'ANULADA',
+              estadoNuevo: 'CREADA',
+              motivo: 'Reactivación administrativa de venta',
+              usuarioId: request.user.id,
+              usuarioNombre: usuario,
+              usuarioRol: request.user.role || null,
+            },
+          })
+        }
         return { updated }
       })
       if (result.statusCode) return reply.code(result.statusCode).send({ error: result.error })

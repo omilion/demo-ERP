@@ -1,6 +1,7 @@
 import { getUserSucursalId } from '../caja/scope.js'
 import { applyVentaStockDeltas, buildStockDeltasFromItems, isVentaDirectaStockTipo } from './stock.js'
 import { puedeGestionarTipoVenta } from './tipos-permitidos.js'
+import { avanzarEstadoFlujo } from './estado-flujo-formal.js'
 
 function userLabel(user) {
   return user?.nombre || user?.username || null
@@ -59,6 +60,7 @@ export default async function deleteVenta(fastify) {
             fecham: fecha,
           },
         })
+        await avanzarEstadoFlujo(tx, id, 'ANULADA', request.user, 'Anulación de venta')
         return { status: 204 }
       })
       if (result.status !== 204) return reply.code(result.status).send(result.payload)

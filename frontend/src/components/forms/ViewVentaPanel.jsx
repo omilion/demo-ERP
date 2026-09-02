@@ -100,6 +100,21 @@ function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespac
   const cargosTotal = (v.cargos || []).reduce((s, c) => s + Number(c.valor || 0), 0)
   const totalBase = subtotal + cargosTotal
   const descuentoMonto = resolvedDiscountAmount(totalBase, descuento, v.descuentoMonto)
+  const tipoNormalizado = normalizeText(v.tipo)
+  const detalleComercial = [
+    ...(tipoNormalizado === 'marketplace' ? [
+      ['Canal Marketplace', v.marketplaceCanal],
+      ['Referencia externa', v.marketplaceReferencia],
+      ['Comisión', v.marketplaceComisionMonto != null
+        ? `${v.marketplaceComisionPct != null ? `${v.marketplaceComisionPct}% · ` : ''}${fmt(v.marketplaceComisionMonto)}`
+        : null],
+    ] : []),
+    ...(['licitacion', 'convenio marco', 'compra agil', 'trato directo'].includes(tipoNormalizado) && v.licitacion
+      ? [[tipoNormalizado === 'convenio marco' ? 'Orden de compra' : 'Identificador comercial', v.licitacion]]
+      : []),
+    ...(v.plazoEntregaDias != null ? [['Plazo comprometido', `${v.plazoEntregaDias} días ${v.plazoEntregaTipo || 'corridos'}`]] : []),
+    ...(v.enviosParciales ? [['Despachos', 'Envíos parciales permitidos']] : []),
+  ].filter(([, value]) => value !== null && value !== undefined && value !== '')
 
   return (
     <>
@@ -124,6 +139,20 @@ function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespac
           )}
         </div>
       </div>
+
+      {detalleComercial.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <FormDivider label="Condiciones comerciales" />
+          <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, margin: 0 }}>
+            {detalleComercial.map(([label, value]) => (
+              <div key={label} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', minWidth: 0 }}>
+                <dt style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>{label}</dt>
+                <dd style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-1)', overflowWrap: 'anywhere' }}>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
 
       {/* Estados */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8, marginBottom: 14 }}>
@@ -992,6 +1021,21 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
     const dtesValidos = doc => ['emitido', 'enviado', 'aceptado'].includes(doc.estado)
     const totalNC = dtes.filter(d => d.tipoDte === 61 && dtesValidos(d)).reduce((s, d) => s + Number(d.totales?.total || 0), 0)
     const totalND = dtes.filter(d => d.tipoDte === 56 && dtesValidos(d)).reduce((s, d) => s + Number(d.totales?.total || 0), 0)
+    const tipoNormalizado = normalizeText(v.tipo)
+    const detalleComercial = [
+      ...(tipoNormalizado === 'marketplace' ? [
+        ['Canal Marketplace', v.marketplaceCanal],
+        ['Referencia externa', v.marketplaceReferencia],
+        ['Comisión', v.marketplaceComisionMonto != null
+          ? `${v.marketplaceComisionPct != null ? `${v.marketplaceComisionPct}% · ` : ''}${fmt(v.marketplaceComisionMonto)}`
+          : null],
+      ] : []),
+      ...(['licitacion', 'convenio marco', 'compra agil', 'trato directo'].includes(tipoNormalizado) && v.licitacion
+        ? [[tipoNormalizado === 'convenio marco' ? 'Orden de compra' : 'Identificador comercial', v.licitacion]]
+        : []),
+      ...(v.plazoEntregaDias != null ? [['Plazo comprometido', `${v.plazoEntregaDias} días ${v.plazoEntregaTipo || 'corridos'}`]] : []),
+      ...(v.enviosParciales ? [['Despachos', 'Envíos parciales permitidos']] : []),
+    ].filter(([, value]) => value !== null && value !== undefined && value !== '')
 
     return (
       <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
@@ -1070,6 +1114,20 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                   )
                 })()}
               </div>
+
+              {detalleComercial.length > 0 && (
+                <>
+                  <FormDivider label="Condiciones comerciales" />
+                  <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, margin: '0 0 14px' }}>
+                    {detalleComercial.map(([label, value]) => (
+                      <div key={label} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', minWidth: 0 }}>
+                        <dt style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>{label}</dt>
+                        <dd style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-1)', overflowWrap: 'anywhere' }}>{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </>
+              )}
 
               {items.length > 0 && (
                 <>
