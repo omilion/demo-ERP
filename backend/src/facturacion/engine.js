@@ -315,6 +315,10 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
         throw new Error(`El documento folio ${doc.folio ?? '?'} no está emitido (estado: ${doc.estado}).`);
       }
       if (!doc.xml) throw new Error(`El documento folio ${doc.folio ?? '?'} no tiene XML.`);
+      // Los documentos antiguos pueden haberse emitido antes de que una
+      // validación fuera endurecida. Revalidar el receptor impide enviarlos
+      // al SII con un XML que será rechazado y evita perder trazabilidad.
+      resolveDatosReceptor(doc, doc.receptor || {});
       docs.push(doc);
     }
 
