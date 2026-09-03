@@ -1153,7 +1153,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
     if (!w) toast.warning('Habilita popups para imprimir')
   }
   function handlePasarTaller() {
-    navigate(`/pasar-taller?ordenId=${id}`)
+    navigate(`/excepciones-taller?ordenId=${id}`)
   }
 
   const tipoSolicitado = forceTipo || searchParams.get('tipo') || TIPO_DEFAULT

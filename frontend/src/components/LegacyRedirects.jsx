@@ -26,3 +26,11 @@ export function LicitacionesLegacyRedirect({ destination = 'crm' }) {
   if (destination === 'reportes') return <Navigate to="/reportes/gerenciales" replace />
   return <Navigate to="/crm" replace />
 }
+
+// "Pasar a Taller" nombraba una accion que la venta ya hace sola. La pantalla
+// hoy resuelve las excepciones de esa automatizacion, asi que la ruta cambio de
+// nombre; se preserva la query para no romper los enlaces con ?ordenId=.
+export function PasarTallerLegacyRedirect() {
+  const { search } = useLocation()
+  return <Navigate to={`/excepciones-taller${search || ''}`} replace />
+}

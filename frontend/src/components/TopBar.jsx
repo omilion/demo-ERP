@@ -5,6 +5,7 @@ import { Icon } from './shared'
 import api from '../api/client'
 import { can, canAny, getUserRole, hasRole } from '../utils/permissions'
 import { NotificacionesBell } from './NotificacionesBell'
+import { useExcepcionesTallerCount } from '../api/pasarTaller'
 import plastimarLogo from '../assets/plastimar-logo.webp'
 
 const HIGHLIGHT_STYLES = {
@@ -43,11 +44,15 @@ const NAV_GROUPS = [
     { label: 'Matriz Ventas', route: '/ventas', module: 'ventas' },
     { label: 'CRM', route: '/crm', module: 'ventas' },
     { label: 'Clientes', route: '/clientes', module: 'clientes' },
+    // Misma pantalla que en el menu Taller: el vendedor es quien puede explicar
+    // la venta y el taller quien necesita el trabajo. Si vive en un solo menu,
+    // el otro rol no se entera de que hay algo detenido.
+    { label: 'Excepciones de Taller', route: '/excepciones-taller', module: 'ventas', permission: 'write', badge: 'excepcionesTaller' },
   ] },
   { label: 'Taller', items: [
     { label: 'Órdenes de Taller', route: '/taller', module: 'taller' },
     { label: 'Taller de Corte', route: '/taller-corte', module: 'taller' },
-    { label: 'Pasar a Taller', route: '/pasar-taller', module: 'taller', permission: 'write' },
+    { label: 'Excepciones de Taller', route: '/excepciones-taller', module: 'taller', permission: 'write', badge: 'excepcionesTaller' },
     { label: 'Bitacora', route: '/bitacora-taller', module: 'taller' },
     { label: 'Historial Materiales', route: '/historial-materiales', module: 'taller' },
   ] },
@@ -141,7 +146,23 @@ function canUseNavItem(user, item) {
   return can(user, item.module, item.permission || 'read')
 }
 
+const alertCountStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  minWidth: 18,
+  height: 18,
+  padding: '0 5px',
+  borderRadius: 9,
+  background: 'var(--red)',
+  color: '#fff',
+  fontSize: 11,
+  fontWeight: 700,
+  lineHeight: 1,
+}
+
 const DropdownItem = ({ item, isLast, currentPath, handleNav, onCloseAll }) => {
+  const { data: excepcionesCount = 0 } = useExcepcionesTallerCount({ enabled: item.badge === 'excepcionesTaller' })
   const [isSubOpen, setIsSubOpen] = useState(false)
   const subTimer = useRef()
   const hlStyle = item.highlight ? (typeof item.highlight === 'string' ? HIGHLIGHT_STYLES[item.highlight] || HIGHLIGHT_STYLES.amber : HIGHLIGHT_STYLES.amber) : null
@@ -186,7 +207,12 @@ const DropdownItem = ({ item, isLast, currentPath, handleNav, onCloseAll }) => {
           transition: 'background 0.1s',
         }}
       >
-        <span>{item.label}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+          {item.label}
+          {item.badge === 'excepcionesTaller' && excepcionesCount > 0 && (
+            <span style={alertCountStyle}>{excepcionesCount}</span>
+          )}
+        </span>
         {hasChildren && (
           <span style={{ display: 'inline-flex', alignItems: 'center', opacity: 0.7, transform: isSubOpen ? 'translateX(2px)' : 'none', transition: 'transform 0.15s' }}>
             <Icon name="chevronRight" size={11} color={hlStyle ? hlStyle.color : undefined} />
@@ -250,6 +276,10 @@ const DropdownItem = ({ item, isLast, currentPath, handleNav, onCloseAll }) => {
 }
 
 const DropdownGroup = ({ group, currentPath }) => {
+  // El contador vive dentro del desplegable, asi que el grupo necesita su propia
+  // senal: sin ella habria que abrir cada menu para descubrir que hay algo.
+  const grupoConAlertas = group.items.some(item => item.badge === 'excepcionesTaller')
+  const { data: excepcionesCount = 0 } = useExcepcionesTallerCount({ enabled: grupoConAlertas })
   const [open, setOpen] = useState(false)
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
   const handleNav = useSmartNavigate()
@@ -306,6 +336,12 @@ const DropdownGroup = ({ group, currentPath }) => {
         background: open || isActive ? 'rgba(255,255,255,0.18)' : 'transparent', transition: 'background 0.15s',
       }}>
         {group.label}
+        {grupoConAlertas && excepcionesCount > 0 && (
+          <span
+            title={`${excepcionesCount} venta(s) con productos que no llegaron a taller`}
+            style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--red)', display: 'inline-block' }}
+          />
+        )}
         <span style={{ marginLeft: 1, opacity: 0.6, display: 'inline-block', transform: open ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }}>
           <Icon name="chevronDown" size={11} />
         </span>
