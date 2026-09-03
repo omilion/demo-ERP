@@ -200,6 +200,28 @@ describeDb('reportes gerenciales backend', () => {
     expect(exportRes.rawPayload.length).toBeGreaterThan(1000)
   })
 
+  it('entrega las pestañas operación, finanzas y riesgos con corte y fuente declarados', async () => {
+    const endpoints = [
+      ['operacion', 'operacional_actual'],
+      ['finanzas', 'operacional_no_contable'],
+      ['riesgos', 'riesgo_operacional_actual'],
+    ]
+    for (const [section, estado] of endpoints) {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/reportes/gerencial/v1/${section}?desde=${desde}&hasta=${hasta}`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(res.statusCode, `${section}: ${res.body}`).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.meta.estado).toBe(estado)
+      expect(body.meta.mensajeEstado).toBeTruthy()
+      expect(body.filtros.desde).toBe(desde)
+      expect(body.filtros.hasta).toBe(hasta)
+      expect(body.kpis).toBeTruthy()
+    }
+  })
+
   it('exporta ventas respetando la sucursal del usuario', async () => {
     const cliente = await app.prisma.cliente.findFirst({ select: { id: true } })
     const scopedMarker = `${marker}-EXP-${Date.now()}`

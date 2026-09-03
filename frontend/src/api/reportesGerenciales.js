@@ -19,6 +19,33 @@ export function useReporteComercialGerencial(params = {}, enabled = true) {
   })
 }
 
+export function useReporteOperacionGerencial(params = {}, enabled = true) {
+  return useQuery({
+    queryKey: ['reportes-gerenciales', 'gerencial-v1-operacion', params],
+    queryFn: () => api.get('/reportes/gerencial/v1/operacion', { params }).then(r => r.data),
+    enabled,
+    staleTime: 60_000,
+  })
+}
+
+export function useReporteFinanzasGerencial(params = {}, enabled = true) {
+  return useQuery({
+    queryKey: ['reportes-gerenciales', 'gerencial-v1-finanzas', params],
+    queryFn: () => api.get('/reportes/gerencial/v1/finanzas', { params }).then(r => r.data),
+    enabled,
+    staleTime: 60_000,
+  })
+}
+
+export function useReporteRiesgosGerencial(params = {}, enabled = true) {
+  return useQuery({
+    queryKey: ['reportes-gerenciales', 'gerencial-v1-riesgos', params],
+    queryFn: () => api.get('/reportes/gerencial/v1/riesgos', { params }).then(r => r.data),
+    enabled,
+    staleTime: 60_000,
+  })
+}
+
 export function useReporteGerencialResumen(params = {}, enabled = true) {
   return useQuery({
     queryKey: ['reportes-gerenciales', 'gerencial-v1-resumen', params],
