@@ -245,7 +245,7 @@ export async function resolveCajaMovementTraceability(prisma, data, options = {}
   let ordenId = data.ordenId ?? null
   const gastoTipoId = data.gastoTipoId ?? null
   const origenTipoInput = cleanText(data.origenTipo)
-  const allowedOrigenTipos = new Set(['manual', 'orden', 'gasto'])
+  const allowedOrigenTipos = new Set(['manual', 'orden', 'gasto', 'pago_proveedor'])
 
   if (data.tipo === 'Ingreso' && gastoTipoId) {
     return { status: 400, error: 'gastoTipoId solo aplica a egresos' }
@@ -293,6 +293,10 @@ export async function resolveCajaMovementTraceability(prisma, data, options = {}
 
   if (origenTipo === 'gasto' && !gastoTipoId) {
     return { status: 400, error: 'origenTipo gasto requiere gastoTipoId' }
+  }
+
+  if (origenTipo === 'pago_proveedor' && !origenId) {
+    return { status: 400, error: 'origenTipo pago_proveedor requiere origenId' }
   }
 
   if (origenTipo === 'orden' && origenId !== ordenId) {
