@@ -23,8 +23,16 @@ la función queda disponible por defecto; para un entorno que declare
 
 - Cualquier usuario autenticado puede pulsar **Reportar observación** o usar
   `Alt + Shift + F`.
-- El reporte guarda ruta, rol, módulo, entidad identificable, categoría,
-  impacto, navegador y una captura de la superficie operativa.
+- El primer paso clasifica el reporte como **Falla**, **Falta** o **Mejora**;
+  no se mezclan bugs bloqueantes con solicitudes de funcionalidad.
+- Todo reporte guarda ruta, rol, módulo/submódulo, entidad identificable,
+  origen del flujo, navegador y una captura de la superficie operativa.
+- Una **Falla** exige severidad (`bloqueante`, `alta`, `media`, `baja`) y
+  reproducibilidad; puede incluir el comportamiento esperado.
+- Una **Falta** exige qué elemento falta y si bloquea el flujo; puede explicar
+  para qué se necesita.
+- Una **Mejora** exige la propuesta y puede documentar qué existe hoy y el
+  impacto esperado.
 - Las entradas de formulario y los elementos marcados con
   `data-feedback-redact` se enmascaran antes de capturar.
 - El usuario debe describir qué ocurrió y, si corresponde, qué esperaba que
@@ -38,6 +46,9 @@ la función queda disponible por defecto; para un entorno que declare
 Estados: `nuevo → clasificado → en_progreso → validacion_usuario → resuelto`.
 Los casos no aplicables se cierran como `descartado`. Antes de resolver, dejar
 un commit, prueba, ticket o decisión gerencial en **Referencia de solución**.
+
+El panel permite filtrar por tipo y muestra contadores por tipo dentro de cada
+módulo; úsalo para distinguir rápidamente bugs, brechas funcionales y mejoras.
 
 El sistema limita a 12 reportes por usuario por hora. Las capturas expiran
 operativamente según la política de retención y no se deben exportar fuera del

@@ -6,8 +6,9 @@ import { z } from 'zod'
 
 const MAX_SCREENSHOT_BYTES = 2_500_000
 const MAX_REPORTS_PER_HOUR = 12
-const CATEGORIES = ['error_funcional', 'ux', 'datos', 'permisos', 'integracion', 'rendimiento', 'capacitacion']
-const SEVERITIES = ['baja', 'media', 'alta', 'critica']
+const CATEGORIES = ['falla', 'falta', 'mejora']
+const SEVERITIES = ['bloqueante', 'alta', 'media', 'baja']
+const REPRODUCIBILITIES = ['siempre', 'a_veces', 'una_vez']
 const STATUSES = ['nuevo', 'clasificado', 'en_progreso', 'validacion_usuario', 'resuelto', 'descartado']
 const PRIORITIES = ['baja', 'normal', 'alta', 'urgente']
 
@@ -70,15 +71,34 @@ const createSchema = z.object({
   flowOrigin: z.string().trim().max(80).optional().nullable(),
   externalApi: z.boolean().optional(),
   category: z.enum(CATEGORIES),
-  severity: z.enum(SEVERITIES),
+  severity: z.enum(SEVERITIES).nullable().optional(),
+  esReproducible: z.enum(REPRODUCIBILITIES).nullable().optional(),
+  comportamientoEsperado: z.string().trim().max(2000).optional().nullable(),
+  queFalta: z.string().trim().max(500).optional().nullable(),
+  paraQueSeNecesita: z.string().trim().max(2000).optional().nullable(),
+  bloqueaFlujo: z.boolean().nullable().optional(),
+  queExisteHoy: z.string().trim().max(2000).optional().nullable(),
+  queSePropone: z.string().trim().max(2000).optional().nullable(),
+  impactoEsperado: z.string().trim().max(2000).optional().nullable(),
   note: z.string().trim().min(5, 'Describe el hallazgo con al menos 5 caracteres.').max(4000),
-  expected: z.string().trim().max(2000).optional().nullable(),
   browser: z.string().trim().max(300).optional().nullable(),
   viewport: z.string().trim().max(60).optional().nullable(),
   appVersion: z.string().trim().max(120).optional().nullable(),
   annotation: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), width: z.number().min(0).max(1), height: z.number().min(0).max(1) }).optional().nullable(),
   screenshot: z.string().max(MAX_SCREENSHOT_BYTES * 1.38 + 100).optional().nullable(),
   sanitizedError: z.record(z.string(), z.unknown()).optional().nullable(),
+}).superRefine((value, context) => {
+  if (value.category === 'falla') {
+    if (!value.severity) context.addIssue({ code: z.ZodIssueCode.custom, path: ['severity'], message: 'Indica la severidad de la falla.' })
+    if (!value.esReproducible) context.addIssue({ code: z.ZodIssueCode.custom, path: ['esReproducible'], message: 'Indica si la falla es reproducible.' })
+  }
+  if (value.category === 'falta') {
+    if (!value.queFalta?.trim()) context.addIssue({ code: z.ZodIssueCode.custom, path: ['queFalta'], message: 'Indica qué falta.' })
+    if (typeof value.bloqueaFlujo !== 'boolean') context.addIssue({ code: z.ZodIssueCode.custom, path: ['bloqueaFlujo'], message: 'Indica si bloquea el flujo.' })
+  }
+  if (value.category === 'mejora' && !value.queSePropone?.trim()) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['queSePropone'], message: 'Indica la mejora propuesta.' })
+  }
 })
 
 const updateSchema = z.object({
@@ -167,9 +187,16 @@ export default async function pilotFeedbackRoutes(fastify) {
         flowOrigin: asOptionalText(data.flowOrigin, 80),
         externalApi: Boolean(data.externalApi),
         category: data.category,
-        severity: data.severity,
+        severity: data.category === 'falla' ? data.severity : null,
+        esReproducible: data.category === 'falla' ? data.esReproducible : null,
+        comportamientoEsperado: data.category === 'falla' && data.comportamientoEsperado ? sanitizeText(data.comportamientoEsperado) : null,
+        queFalta: data.category === 'falta' && data.queFalta ? sanitizeText(data.queFalta) : null,
+        paraQueSeNecesita: data.category === 'falta' && data.paraQueSeNecesita ? sanitizeText(data.paraQueSeNecesita) : null,
+        bloqueaFlujo: data.category === 'falta' ? data.bloqueaFlujo : null,
+        queExisteHoy: data.category === 'mejora' && data.queExisteHoy ? sanitizeText(data.queExisteHoy) : null,
+        queSePropone: data.category === 'mejora' && data.queSePropone ? sanitizeText(data.queSePropone) : null,
+        impactoEsperado: data.category === 'mejora' && data.impactoEsperado ? sanitizeText(data.impactoEsperado) : null,
         note: sanitizeText(data.note),
-        expected: data.expected ? sanitizeText(data.expected) : null,
         browser: asOptionalText(data.browser, 300),
         viewport: asOptionalText(data.viewport, 60),
         appVersion: asOptionalText(data.appVersion, 120),
@@ -188,14 +215,18 @@ export default async function pilotFeedbackRoutes(fastify) {
 
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     if (!isAdmin(request)) return forbidden(reply)
+    const category = request.query?.category ? String(request.query.category) : null
+    const severity = request.query?.severity ? String(request.query.severity) : null
+    if (category && !CATEGORIES.includes(category)) return reply.code(400).send({ error: 'Tipo de feedback inválido.' })
+    if (severity && !SEVERITIES.includes(severity)) return reply.code(400).send({ error: 'Severidad de falla inválida.' })
     const limit = Math.max(1, Math.min(Number(request.query?.limit) || 100, 250))
     const where = {
       ...(request.query?.status ? { status: String(request.query.status) } : {}),
       ...(request.query?.module ? { module: String(request.query.module) } : {}),
-      ...(request.query?.severity ? { severity: String(request.query.severity) } : {}),
-      ...(request.query?.category ? { category: String(request.query.category) } : {}),
+      ...(severity ? { severity } : {}),
+      ...(category ? { category } : {}),
     }
-    const [items, total] = await Promise.all([
+    const [items, total, byCategory, byModuleCategory] = await Promise.all([
       fastify.prisma.pilotFeedback.findMany({
         where,
         orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
@@ -203,8 +234,14 @@ export default async function pilotFeedbackRoutes(fastify) {
         include: { reporter: { select: { id: true, nombre: true, email: true, role: true } } },
       }),
       fastify.prisma.pilotFeedback.count({ where }),
+      fastify.prisma.pilotFeedback.groupBy({ by: ['category'], where, _count: { _all: true } }),
+      fastify.prisma.pilotFeedback.groupBy({ by: ['module', 'category'], where, _count: { _all: true } }),
     ])
-    return { items: items.map(publicItem), total }
+    return {
+      items: items.map(publicItem), total,
+      byCategory: Object.fromEntries(byCategory.map(item => [item.category, item._count._all])),
+      byModuleCategory: byModuleCategory.map(item => ({ module: item.module, category: item.category, total: item._count._all })),
+    }
   })
 
   fastify.patch('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {

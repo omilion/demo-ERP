@@ -120,6 +120,31 @@ model AuditLog {
   @@schema("auth")
 }
 
+enum PilotFeedbackCategory {
+  falla
+  falta
+  mejora
+
+  @@schema("auth")
+}
+
+enum PilotFeedbackSeverity {
+  bloqueante
+  alta
+  media
+  baja
+
+  @@schema("auth")
+}
+
+enum PilotFeedbackReproducibility {
+  siempre
+  a_veces
+  una_vez
+
+  @@schema("auth")
+}
+
 // Evidencia de marcha blanca. Se mantiene en auth porque pertenece al usuario,
 // pero no se mezcla con la auditoría inmutable de transacciones del ERP.
 model PilotFeedback {
@@ -137,12 +162,19 @@ model PilotFeedback {
   workflowState       String?   @map("workflow_state")
   flowOrigin          String?   @map("flow_origin")
   externalApi         Boolean   @default(false) @map("external_api")
-  category            String
-  severity            String    @default("media")
+  category            PilotFeedbackCategory
+  severity            PilotFeedbackSeverity?
+  esReproducible      PilotFeedbackReproducibility? @map("es_reproducible")
+  queFalta            String?   @map("que_falta")
+  paraQueSeNecesita   String?   @map("para_que_se_necesita")
+  bloqueaFlujo        Boolean?  @map("bloquea_flujo")
+  queExisteHoy        String?   @map("que_existe_hoy")
+  queSePropone        String?   @map("que_se_propone")
+  impactoEsperado     String?   @map("impacto_esperado")
   priority            String?   @default("normal")
   status              String    @default("nuevo")
   note                String
-  expected            String?
+  comportamientoEsperado String? @map("comportamiento_esperado")
   browser             String?
   viewport            String?
   appVersion          String?   @map("app_version")

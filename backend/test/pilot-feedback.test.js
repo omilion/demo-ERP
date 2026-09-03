@@ -52,8 +52,8 @@ describe('feedback de marcha blanca', () => {
       method: 'POST', url: '/api/feedback', headers: { authorization: `Bearer ${reporterToken}` },
       payload: {
         module: 'bodega', submodule: 'picking', route: '/bodega/picking', entityType: 'venta', entityId: 20440,
-        category: 'error_funcional', severity: 'alta', note: 'Al confirmar el picking no se actualiza el estado de la venta.',
-        expected: 'La venta debe quedar en packing.', externalApi: false,
+        category: 'falla', severity: 'alta', esReproducible: 'siempre', note: 'Al confirmar el picking no se actualiza el estado de la venta.',
+        comportamientoEsperado: 'La venta debe quedar en packing.', externalApi: false,
         screenshot: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL9YQAAAABJRU5ErkJggg==',
         annotation: { x: 0.1, y: 0.2, width: 0.2, height: 0.1 },
       },
@@ -61,9 +61,33 @@ describe('feedback de marcha blanca', () => {
     expect(response.statusCode).toBe(201)
     const body = JSON.parse(response.body)
     feedbackId = body.item.id
-    expect(body.item).toMatchObject({ module: 'bodega', status: 'nuevo', severity: 'alta', hasScreenshot: true })
+    expect(body.item).toMatchObject({ module: 'bodega', status: 'nuevo', category: 'falla', severity: 'alta', esReproducible: 'siempre', hasScreenshot: true })
     expect(body.item.screenshotPath).toBeUndefined()
     expect(body.item.note).not.toContain('token=')
+  })
+
+  it('distingue falla, falta y mejora, y exige su señal específica', async () => {
+    const invalid = await app.inject({
+      method: 'POST', url: '/api/feedback', headers: { authorization: `Bearer ${reporterToken}` },
+      payload: { module: 'ventas', route: '/ventas/nueva', category: 'falla', note: 'La acción no responde al confirmar.' },
+    })
+    expect(invalid.statusCode).toBe(400)
+
+    const base = { module: 'ventas', route: '/ventas/nueva', note: 'Observación de prueba con contexto suficiente.', externalApi: false }
+    const [missing, improvement] = await Promise.all([
+      app.inject({ method: 'POST', url: '/api/feedback', headers: { authorization: `Bearer ${reporterToken}` }, payload: { ...base, category: 'falta', queFalta: 'Campo de referencia de OC', paraQueSeNecesita: 'Conciliar la venta con la orden del cliente.', bloqueaFlujo: true } }),
+      app.inject({ method: 'POST', url: '/api/feedback', headers: { authorization: `Bearer ${reporterToken}` }, payload: { ...base, category: 'mejora', queExisteHoy: 'El listado obliga a abrir cada venta.', queSePropone: 'Agregar vista rápida con los datos del despacho.', impactoEsperado: 'Reduce clics del bodeguero.' } }),
+    ])
+    expect(missing.statusCode).toBe(201)
+    expect(improvement.statusCode).toBe(201)
+
+    const list = await app.inject({ method: 'GET', url: '/api/feedback?module=ventas', headers: { authorization: `Bearer ${adminToken}` } })
+    const body = JSON.parse(list.body)
+    expect(body.byCategory).toMatchObject({ falta: 1, mejora: 1 })
+    expect(body.byModuleCategory).toEqual(expect.arrayContaining([
+      expect.objectContaining({ module: 'ventas', category: 'falta', total: 1 }),
+      expect.objectContaining({ module: 'ventas', category: 'mejora', total: 1 }),
+    ]))
   })
 
   it('restringe el triage y la evidencia a administración', async () => {
