@@ -34,6 +34,7 @@ model User {
   trabajador                 Trabajador?      @relation("TrabajadorUsuario")
   reglasDescuentoCreadas     DescuentoRegla[] @relation("DescuentoReglaCreadaPor")
   reglasDescuentoModificadas DescuentoRegla[] @relation("DescuentoReglaModificadaPor")
+  feedbackMarchaBlanca       PilotFeedback[]
 
   @@index([codigoVendedor])
   @@map("users")
@@ -116,6 +117,54 @@ model AuditLog {
   @@index([method])
   @@index([createdAt])
   @@map("audit_log")
+  @@schema("auth")
+}
+
+// Evidencia de marcha blanca. Se mantiene en auth porque pertenece al usuario,
+// pero no se mezcla con la auditoría inmutable de transacciones del ERP.
+model PilotFeedback {
+  id                  String    @id @default(uuid()) @db.Uuid
+  userId              Int?      @map("user_id")
+  reporterName        String?   @map("reporter_name")
+  reporterEmail       String?   @map("reporter_email")
+  reporterRole        String?   @map("reporter_role")
+  module              String
+  submodule           String?
+  route               String
+  entityType          String?   @map("entity_type")
+  entityId            String?   @map("entity_id")
+  relatedEntities     Json?     @map("related_entities")
+  workflowState       String?   @map("workflow_state")
+  flowOrigin          String?   @map("flow_origin")
+  externalApi         Boolean   @default(false) @map("external_api")
+  category            String
+  severity            String    @default("media")
+  priority            String?   @default("normal")
+  status              String    @default("nuevo")
+  note                String
+  expected            String?
+  browser             String?
+  viewport            String?
+  appVersion          String?   @map("app_version")
+  annotation          Json?
+  screenshotPath      String?   @map("screenshot_path")
+  screenshotMime      String?   @map("screenshot_mime")
+  screenshotSha256    String?   @map("screenshot_sha256")
+  redactionVersion    String?   @map("redaction_version")
+  sanitizedError      Json?     @map("sanitized_error")
+  assigneeId          Int?      @map("assignee_id")
+  resolutionReference String?   @map("resolution_reference")
+  resolutionNote      String?   @map("resolution_note")
+  retentionUntil      DateTime? @map("retention_until")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  reporter User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([module, createdAt])
+  @@index([userId, createdAt])
+  @@map("pilot_feedback")
   @@schema("auth")
 }
 

@@ -95,6 +95,7 @@ const NAV_GROUPS = [
     { label: 'Asistente IA', route: '/asistente', roles: ['admin'] },
     { label: 'IA Balance', route: '/admin/ia-balance', roles: ['admin'] },
     { label: 'Integridad', route: '/admin/integridad', roles: ['admin'] },
+    { label: 'Feedback marcha blanca', route: '/admin/feedback', roles: ['admin'] },
   ] },
 ]
 
