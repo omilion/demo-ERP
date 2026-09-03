@@ -2,7 +2,7 @@ export const ROLE_PERMISSIONS = {
   admin: { '*': ['read', 'write', 'delete'] },
   vendedor: {
     reportes: ['read'],
-    ventas: ['read', 'write'],    licitaciones: ['read', 'write'],
+    ventas: ['read', 'write'],    licitaciones: ['read', 'write'],
     clientes: ['read', 'write'],
     catalogo: ['read'],
     despacho: ['read'],
@@ -13,7 +13,7 @@ export const ROLE_PERMISSIONS = {
   // no un permiso de modulo distinto aqui.
   coordinador_comercial: {
     reportes: ['read'],
-    ventas: ['read', 'write'],    licitaciones: ['read', 'write'],
+    ventas: ['read', 'write'],    licitaciones: ['read', 'write'],
     clientes: ['read', 'write'],
     catalogo: ['read'],
     despacho: ['read'],
@@ -96,6 +96,9 @@ function decidir(perms, moduleName, permission) {
 
 export function can(user, moduleName, permission = 'read') {
   if (!user || !moduleName) return false
+  if (Array.isArray(moduleName)) {
+    return moduleName.some(m => can(user, m, permission))
+  }
 
   const rolePerms = ROLE_PERMISSIONS[getUserRole(user)]
   if (rolePerms?.['*']) return true

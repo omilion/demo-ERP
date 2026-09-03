@@ -289,11 +289,11 @@ async function buildPagoWhere(prisma, query = {}, user = null) {
   }
   if (noPagadaFactura === '1' || noPagadaFactura === 'true') {
     clauses.push(documentoWhere('Factura'))
-    clauses.push({ saldo: { gt: 0 }, estado: { not: 'Anulado' } })
+    clauses.push({ estado: { in: ['Pendiente', 'No pagada', 'No pagado', 'Abonado', 'Abonada', 'Vencido', 'Vencida'] } })
   }
   if (noPagadaBoleta === '1' || noPagadaBoleta === 'true') {
     clauses.push(documentoWhere('Boleta'))
-    clauses.push({ saldo: { gt: 0 }, estado: { not: 'Anulado' } })
+    clauses.push({ estado: { in: ['Pendiente', 'No pagada', 'No pagado', 'Abonado', 'Abonada', 'Vencido', 'Vencida'] } })
   }
   if (desde || hasta) {
     const fechaDoc = {}
@@ -519,9 +519,25 @@ async function anularPagoProveedor(fastify, request, reply) {
   return reply.code(result.status).send(result.payload)
 }
 
+function pagoProveedorScopeWhere(user, extra = {}) {
+  const userSucursalId = getUserSucursalId(user)
+  return {
+    eliminado: false,
+    ...(userSucursalId ? { sucursalId: userSucursalId } : {}),
+    ...extra,
+  }
+}
+
+function noPagadaDocumentoWhere(user, documento) {
+  return pagoProveedorScopeWhere(user, {
+    ...(documentoWhere(documento) || { documento }),
+    estado: { in: ['Pendiente', 'No pagada', 'No pagado', 'Abonado', 'Abonada', 'Vencido', 'Vencida'] },
+  })
+}
+
 export default async function pagosProveedoresRoutes(fastify) {
   fastify.get('/', {
-    preHandler: [fastify.authenticate, fastify.rbac('caja.pagos_proveedores', 'read')],
+    preHandler: [fastify.authenticate, fastify.rbac(['proveedores', 'caja.pagos_proveedores'], 'read')],
   }, async (request) => {
     const { page = '1' } = request.query
     const LIMIT = 100
@@ -599,10 +615,10 @@ export default async function pagosProveedoresRoutes(fastify) {
         _sum: { saldo: true },
       }),
       fastify.prisma.pagoProveedor.count({
-        where: { ...baseScope, documento: 'Factura', saldo: { gt: 0 }, estado: { not: 'Anulado' } },
+        where: noPagadaDocumentoWhere(request.user, 'Factura'),
       }),
       fastify.prisma.pagoProveedor.count({
-        where: { ...baseScope, documento: 'Boleta', saldo: { gt: 0 }, estado: { not: 'Anulado' } },
+        where: noPagadaDocumentoWhere(request.user, 'Boleta'),
       }),
     ])
 
@@ -625,7 +641,7 @@ export default async function pagosProveedoresRoutes(fastify) {
   })
 
   fastify.get('/export', {
-    preHandler: [fastify.authenticate, fastify.rbac('caja.pagos_proveedores', 'read')],
+    preHandler: [fastify.authenticate, fastify.rbac(['proveedores', 'caja.pagos_proveedores'], 'read')],
   }, async (request, reply) => {
     const detail = request.query.detalle === '1' || request.query.detalle === 'true'
     const where = await buildPagoWhere(fastify.prisma, request.query, request.user)
@@ -642,7 +658,7 @@ export default async function pagosProveedoresRoutes(fastify) {
   })
 
   fastify.get('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('caja.pagos_proveedores', 'read')],
+    preHandler: [fastify.authenticate, fastify.rbac(['proveedores', 'caja.pagos_proveedores'], 'read')],
   }, async (request, reply) => {
     const id = parseOptionalInt(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID invalido' })
@@ -663,7 +679,7 @@ export default async function pagosProveedoresRoutes(fastify) {
   })
 
   fastify.post('/', {
-    preHandler: [fastify.authenticate, fastify.rbac('caja.pagos_proveedores', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac(['proveedores', 'caja.pagos_proveedores'], 'write')],
   }, async (request, reply) => {
     const b = request.body || {}
     const proveedorId = parseOptionalInt(b.proveedorId)
@@ -1057,7 +1073,7 @@ export default async function pagosProveedoresRoutes(fastify) {
   })
 
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('caja.pagos_proveedores', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac(['proveedores', 'caja.pagos_proveedores'], 'write')],
   }, async (request, reply) => {
     const id = parseOptionalInt(request.params.id)
     if (!id) return reply.code(400).send({ error: 'ID invalido' })
@@ -1149,10 +1165,10 @@ export default async function pagosProveedoresRoutes(fastify) {
   })
 
   fastify.post('/:id/anular', {
-    preHandler: [fastify.authenticate, fastify.rbac('caja.pagos_proveedores', 'delete')],
+    preHandler: [fastify.authenticate, fastify.rbac(['proveedores', 'caja.pagos_proveedores'], 'delete')],
   }, async (request, reply) => anularPagoProveedor(fastify, request, reply))
 
   fastify.delete('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('caja.pagos_proveedores', 'delete')],
+    preHandler: [fastify.authenticate, fastify.rbac(['proveedores', 'caja.pagos_proveedores'], 'delete')],
   }, async (request, reply) => anularPagoProveedor(fastify, request, reply))
 }

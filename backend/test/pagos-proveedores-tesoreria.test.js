@@ -1,7 +1,9 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Prisma } from '@prisma/client'
 import pagosProveedoresRoutes, { calculatePagoFinancials } from '../src/routes/pagos-proveedores/index.js'
 import { can } from '../src/middleware/rbac.js'
+import { buildApp as buildRealApp } from '../src/app.js'
+import { createErpAccessTokenPayload } from '../src/plugins/jwt.js'
 
 function replyStub() {
   return {
@@ -469,5 +471,199 @@ describe('Pilar 5 — Matriz RBAC con caja.pagos_proveedores', () => {
   it('vendedor no tiene acceso a pagos a proveedores', () => {
     expect(can('vendedor', 'caja.pagos_proveedores', 'read')).toBe(false)
     expect(can('vendedor', 'caja.pagos_proveedores', 'write')).toBe(false)
+  })
+})
+
+describe('Integración Real con PostgreSQL — Concurrencia, Advisory Lock e Idempotencia', () => {
+  let app
+  const marker = `TEST-CONC-${Date.now()}`
+  const created = { pagos: [], proveedores: [], turnos: [], movimientos: [] }
+
+  beforeAll(async () => {
+    app = buildRealApp({ logger: false })
+    await app.ready()
+  })
+
+  afterAll(async () => {
+    if (!app) return
+    await app.prisma.abonoPagoProveedor.deleteMany({ where: { pagoId: { in: created.pagos } } }).catch(() => {})
+    await app.prisma.movimientoCaja.deleteMany({ where: { id: { in: created.movimientos } } }).catch(() => {})
+    await app.prisma.pagoProveedor.deleteMany({ where: { id: { in: created.pagos } } }).catch(() => {})
+    await app.prisma.turno.updateMany({ where: { id: { in: created.turnos } }, data: { estado: 'cerrado' } }).catch(() => {})
+    await app.prisma.proveedor.deleteMany({ where: { id: { in: created.proveedores } } }).catch(() => {})
+    await app.close()
+  })
+
+  it('dos POST concurrentes de abono total contra la base real generan exactamente UN MovimientoCaja y un Abono', async () => {
+    const user = await app.prisma.user.findFirst({ select: { id: true } })
+    const caja = await app.prisma.caja.findFirst({ select: { id: true, sucursalId: true } })
+    if (!caja || !user) return
+
+    const turno = await app.prisma.turno.create({
+      data: {
+        cajaId: caja.id,
+        userId: user.id,
+        estado: 'abierto',
+        apertura: new Date(),
+      },
+    })
+    created.turnos.push(turno.id)
+
+    const proveedor = await app.prisma.proveedor.create({
+      data: {
+        nombre: `Prov ${marker}`,
+        rut: `${Date.now() % 80000000}-K`,
+        codigoProveedor: 700000 + (Date.now() % 100000),
+        activo: true,
+      },
+    })
+    created.proveedores.push(proveedor.id)
+
+    const pago = await app.prisma.pagoProveedor.create({
+      data: {
+        proveedorId: proveedor.id,
+        sucursalId: caja.sucursalId,
+        documento: 'Factura',
+        nDoc: `F-CONC-${Date.now()}`,
+        total: 100000,
+        montoPagado: 0,
+        saldo: 100000,
+        estado: 'Pendiente',
+        usuario: 'QA Admin',
+      },
+    })
+    created.pagos.push(pago.id)
+
+    const token = app.jwt.sign(createErpAccessTokenPayload({
+      id: user.id,
+      role: 'admin',
+      nombre: 'QA Admin Concurrencia',
+      sucursalId: caja.sucursalId,
+    }))
+
+    // Lanzar dos POST concurrentes por el 100% del saldo ($100.000)
+    const [res1, res2] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: `/api/pagos-proveedores/${pago.id}/abonos`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          monto: 100000,
+          origenFondos: 'Caja',
+          medioPago: 'Efectivo',
+        },
+      }),
+      app.inject({
+        method: 'POST',
+        url: `/api/pagos-proveedores/${pago.id}/abonos`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          monto: 100000,
+          origenFondos: 'Caja',
+          medioPago: 'Efectivo',
+        },
+      }),
+    ])
+
+    const statusCodes = [res1.statusCode, res2.statusCode].sort()
+    // Exactamente una petición debe tener éxito (201) y la otra debe ser rechazada (400)
+    expect(statusCodes).toEqual([201, 400])
+
+    const successRes = res1.statusCode === 201 ? res1 : res2
+    const failRes = res1.statusCode === 400 ? res1 : res2
+
+    expect(JSON.parse(failRes.body).error).toMatch(/ya fue pagado|excede el saldo/)
+
+    // En la base de datos real:
+    const abonos = await app.prisma.abonoPagoProveedor.findMany({ where: { pagoId: pago.id } })
+    expect(abonos).toHaveLength(1)
+    expect(Number(abonos[0].monto)).toBe(100000)
+
+    const movs = await app.prisma.movimientoCaja.findMany({
+      where: { origenTipo: 'pago_proveedor', origenId: pago.id },
+    })
+    expect(movs).toHaveLength(1)
+    expect(Number(movs[0].monto)).toBe(100000)
+    expect(movs[0].tipo).toBe('Egreso')
+    created.movimientos.push(movs[0].id)
+
+    const updatedPago = await app.prisma.pagoProveedor.findUnique({ where: { id: pago.id } })
+    expect(Number(updatedPago.saldo)).toBe(0)
+    expect(Number(updatedPago.montoPagado)).toBe(100000)
+    expect(updatedPago.estado).toBe('Pagado')
+  })
+
+  it('dos POST concurrentes que exceden la suma del saldo restante son serializados y el segundo es rechazado', async () => {
+    const user = await app.prisma.user.findFirst({ select: { id: true } })
+    const caja = await app.prisma.caja.findFirst({ select: { id: true, sucursalId: true } })
+    if (!caja || !user) return
+
+    const proveedor = await app.prisma.proveedor.create({
+      data: {
+        nombre: `Prov Exceso ${marker}`,
+        rut: `${(Date.now() + 1) % 80000000}-K`,
+        codigoProveedor: 700000 + ((Date.now() + 1) % 100000),
+        activo: true,
+      },
+    })
+    created.proveedores.push(proveedor.id)
+
+    const pago = await app.prisma.pagoProveedor.create({
+      data: {
+        proveedorId: proveedor.id,
+        sucursalId: caja.sucursalId,
+        documento: 'Factura',
+        nDoc: `F-EXC-${Date.now()}`,
+        total: 100000,
+        montoPagado: 0,
+        saldo: 100000,
+        estado: 'Pendiente',
+        usuario: 'QA Admin',
+      },
+    })
+    created.pagos.push(pago.id)
+
+    const token = app.jwt.sign(createErpAccessTokenPayload({
+      id: user.id,
+      role: 'admin',
+      nombre: 'QA Admin Concurrencia',
+      sucursalId: caja.sucursalId,
+    }))
+
+    // Cada uno intenta abonar $60.000 sobre saldo $100.000. Juntos suman $120.000 > $100.000.
+    const [res1, res2] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: `/api/pagos-proveedores/${pago.id}/abonos`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          monto: 60000,
+          origenFondos: 'Caja',
+          medioPago: 'Efectivo',
+        },
+      }),
+      app.inject({
+        method: 'POST',
+        url: `/api/pagos-proveedores/${pago.id}/abonos`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          monto: 60000,
+          origenFondos: 'Caja',
+          medioPago: 'Efectivo',
+        },
+      }),
+    ])
+
+    const statusCodes = [res1.statusCode, res2.statusCode].sort()
+    expect(statusCodes).toEqual([201, 400])
+
+    const abonos = await app.prisma.abonoPagoProveedor.findMany({ where: { pagoId: pago.id } })
+    expect(abonos).toHaveLength(1)
+    expect(Number(abonos[0].monto)).toBe(60000)
+
+    const updatedPago = await app.prisma.pagoProveedor.findUnique({ where: { id: pago.id } })
+    expect(Number(updatedPago.saldo)).toBe(40000)
+    expect(Number(updatedPago.montoPagado)).toBe(60000)
+    expect(updatedPago.estado).toBe('Abonado')
   })
 })

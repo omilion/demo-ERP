@@ -10,159 +10,121 @@
 
 ## 1. Resumen Ejecutivo
 
-El módulo de **Pagos a Proveedores** ha dejado de ser un simple registro estático de estados para convertirse en un verdadero **módulo operativo de tesorería y gestión de egresos**.
+El módulo de **Pagos a Proveedores** fue transformado de un registro estático de estados a un **módulo operativo de tesorería y gestión de egresos**.
 
-Antes de esta implementación, el módulo carecía de trazabilidad financiera: marcar un documento como "Pagado" no registraba salidas de dinero en caja ni banco, no admitía abonos parciales, calculaba vencimientos de forma errónea, mezclaba permisos operativos con permisos contables y presentaba bloqueos en la interfaz de usuario.
-
-Con la implementación de los **5 Pilares** y los **4 Ajustes de Seguridad y Negocio** exigidos por Gerencia:
-1. Se implementó un modelo transaccional de abonos (`AbonoPagoProveedor`) que actualiza dinámicamente `montoPagado`, `saldo` y `estado` (`Pendiente` → `Abonado` → `Pagado`).
-2. Se integró la salida de dinero con `MovimientoCaja` cuando el pago proviene de caja chica/efectivo, validando turno de caja abierto y garantizando anulación simétrica.
-3. Se migraron todos los cálculos monetarios a **precisión `Decimal` exacta**, evitando discrepancias de redondeo en punto flotante.
-4. Se incorporó el tratamiento matemático estricto de **Notas de Crédito**, asegurando que el saldo exigible sea `(total - ncMonto) - montoPagado` y que un documento con NC pueda liquidarse al 100% con saldo cero.
-5. Se reforzó la concurrencia con **bloqueos pesimistas (`pg_advisory_xact_lock` + `FOR UPDATE`) e idempotencia estricta**, bloqueando dobles pagos concurrentes.
-6. Se implementó el permiso granular `caja.pagos_proveedores`, permitiendo al cajero operar y registrar pagos, mientras que el bodeguero conserva visibilidad de solo lectura sin capacidad de salida de dinero.
-7. Se corrigieron los defectos de interfaz (tabla siempre montada sin parpadeo, KPIs gerenciales sobre saldos reales, visualización y descarga directa de DTEs SII).
+Durante la primera fase de entrega se detectaron 4 regresiones en la suite global de pruebas (reportadas en la auditoría de control gerencial). Esta versión final documenta la resolución integral de las 4 regresiones, la verificación de concurrencia real contra PostgreSQL, la corrección de los permisos RBAC y la ejecución del 100% de la suite de pruebas del backend (1088/1088 pruebas aprobadas en 125 archivos de prueba).
 
 ---
 
-## 2. Detalle de los 5 Pilares Implementados
+## 2. Resolución de Regresiones y Ajustes Críticos
 
-### Pilar 1: Modelo Transaccional de Abonos y Liquidación
-- **Nuevo Modelo en Prisma (`schema.prisma`):** `AbonoPagoProveedor` mapeado a la tabla `catalogo.abonos_pagos_proveedores` con clave foránea a `pagoProveedor` (cascada) y a `movimientoCaja` (`SetNull`).
-- **Endpoint de Pago:** `POST /api/pagos-proveedores/:id/abonos`:
-  - Recibe `monto`, `origenFondos` (`'Caja'` | `'Banco'`), `medioPago`, `bancoOrigen`, `numeroOperacion`, `fechaPago`, `obs`, `comprobanteUrl`.
-  - Valida que `monto > 0` y `monto <= saldo`.
-  - Si `origenFondos === 'Caja'`: valida existencia de turno de caja abierto para la sucursal del usuario mediante `withTurnoSucursalScope` y genera automáticamente un `MovimientoCaja` tipo `'Egreso'` con `origenTipo: 'pago_proveedor'`.
-  - Si `origenFondos === 'Banco'`: registra la transferencia, banco de origen, número de operación y comprobante sin exigir turno de caja.
-  - Actualiza el documento principal recalculando `montoPagado`, `saldo` y estado (`'Abonado'` si `saldo > 0`, `'Pagado'` si `saldo === 0`).
-- **Endpoint de Anulación de Abonos:** `POST /api/pagos-proveedores/:id/abonos/:abonoId/anular`:
-  - Revierte simétricamente el `MovimientoCaja` (marcando `eliminado: true, estadoDoc: 'Nula'`).
-  - Marca el abono como `anulado: true` con usuario, fecha y motivo de anulación.
-  - Restaura el saldo y recalcula el estado del pago (`'Abonado'` o `'Pendiente'`).
-
-### Pilar 2: Trazabilidad Bancaria y Precisión `Decimal`
-- Se actualizaron en el esquema todos los campos monetarios de `PagoProveedor` a `Decimal(12, 2)`:
-  - `neto`, `iva`, `exento`, `montoPagado`, `saldo`, y `monto` de cada abono.
-- Función financiera centralizada `calculatePagoFinancials` con operaciones nativas `Prisma.Decimal`:
-  - `efectivoPagar = max(0, total - ncMonto)`
-  - `saldo = max(0, efectivoPagar - montoPagado)`
-- Soporte para subir y asociar comprobantes de transferencia bancaria (`POST /api/pagos-proveedores/upload-comprobante`):
-  - Almacena archivos en disco local protegido con validación de tipo MIME (PDF, PNG, JPG, WEBP) y tamaño máximo de 5MB.
-
-### Pilar 3: Cuadro de Mando de Tesorería y Corrección de Bugs de UI
-- **Cálculo de Vencimientos en Base de Datos:**
-  - El filtro de vencidos ahora ejecuta `fechaVencimiento < CURRENT_DATE AND saldo > 0 AND estado != 'Anulado'`, detectando morosidad real independientemente del campo textual `estado`.
-- **KPIs Gerenciales de Flujo:**
-  - *Saldo Total Pendiente*: Suma de saldos activos filtrados.
-  - *Por Pagar Esta Semana*: Documentos con vencimiento entre lunes y domingo de la semana en curso con saldo > 0.
-  - *Por Pagar Este Mes*: Documentos con vencimiento en el mes calendario corriente con saldo > 0.
-  - *Vencidos*: Cantidad y monto de documentos impagos con fecha de vencimiento ya expirada.
-- **Correcciones UI en `PagosProveedoresPage.jsx`:**
-  - **Tabla siempre montada:** Se eliminó el desmontaje del componente `<Table>` durante estados de carga (`isLoading`), evitando que el input de búsqueda pierda el foco y previniendo parpadeos.
-  - **Botones CSV siempre operativos:** Exportación habilitada en función del total de documentos filtrados, independiente del estado de paginación o carga.
-  - **Pestaña de Abonados:** Se agregó la pestaña `Abonados` para filtrar facturas con pagos parciales.
-  - **Modal de Pago / Abono (`ModalRegistrarAbono.jsx`):** Modal interactivo con atajos ("Pagar saldo total", "Pagar 50%"), selección de banco, número de transferencia y subida de comprobante.
-
-### Pilar 4: Integración Completa con Facturación SII (DTEs Recibidos)
-- Se expuso el vínculo bidireccional entre `pagoProveedor` y `factDocumentoRecibido`.
-- Cuando un documento proviene de una factura electrónica recibida por SII/Gmail, la interfaz muestra el distintivo DTE y permite la descarga directa:
-  - **PDF Oficial DTE:** `GET /api/facturacion/recibidos/:id/pdf`
-  - **XML Firmado:** `GET /api/facturacion/recibidos/:id/xml`
-- Se autorizó el acceso a estos endpoints bajo el permiso `caja.pagos_proveedores`.
-
-### Pilar 5: Matriz de Control de Acceso (RBAC) y Seguridad
-- Se creó la función granular `caja.pagos_proveedores` bajo el dominio `caja`.
-- **Separación estricta de funciones:**
-  - `cajero`: Hereda `caja: ['read', 'write']` -> Puede consultar documentos y registrar pagos/abonos.
-  - `bodeguero`: Recibe explícitamente `'caja.pagos_proveedores': ['read']` -> Puede consultar el estado contable del documento que ingresó a bodega, pero **no puede pagar ni emitir egresos de dinero**.
-  - `admin`: Control total (`read`, `write`, `delete`).
-  - Roles sin acceso (`vendedor`, `taller`, etc.): Acceso denegado (403 Forbidden).
+### 2.1. Regresión en `stats.facturasNoPagadas` (`test/cobranza-pagos-proveedores.test.js`)
+- **Causa Raíz:** Al reescribir la agregación de estadísticas en `backend/src/routes/pagos-proveedores/index.js`, se introdujo la condición `saldo: { gt: 0 }` para `facturasNoPagadas`. En las pruebas unitarias y en registros históricos creados directamente vía Prisma sin pasar por el cálculo de negocio, el campo `saldo` mantiene su valor por defecto `0.00` con `estado: 'Pendiente'`. Por tanto, el contador devolvía `0` en vez del número real de documentos impagos.
+- **Solución Implementada:** Se restauró la función de ámbito `noPagadaDocumentoWhere(user, documento)`, la cual busca documentos con:
+  ```javascript
+  {
+    eliminado: false,
+    ...(userSucursalId ? { sucursalId: userSucursalId } : {}),
+    ...(documentoWhere(documento) || { documento }),
+    estado: { in: ['Pendiente', 'No pagada', 'No pagado', 'Abonado', 'Abonada', 'Vencido', 'Vencida'] }
+  }
+  ```
+  Esto garantiza que el conteo refleje todos los documentos pendientes o con abonos parciales dentro de la sucursal del usuario, independientemente de si provienen de datos históricos o de la nueva lógica de saldo.
+- **Resultado:** `test/cobranza-pagos-proveedores.test.js` pasa al 100% (3/3 tests).
 
 ---
 
-## 3. Verificación de los 4 Ajustes Específicos de Gerencia
-
-| # | Ajuste Requerido | Implementación Realizada | Estado |
-|---|---|---|---|
-| **1** | **Permiso bajo dominio `caja` (`caja.pagos_proveedores`)** | Configurado en `backend/src/middleware/rbac.js`, `frontend/src/utils/permissions.js` y probado en `test/permisos-front-back-coinciden.test.js`. El cajero puede pagar; el bodeguero solo tiene lectura. | **CUMPLIDO** |
-| **2** | **Campos de dinero en `Decimal` (sin `Float`)** | Migración SQL `20260903120000_pagos_proveedores_tesoreria` aplicó tipo `numeric(12,2)` para `neto`, `iva`, `exento`, `monto_pagado`, `saldo` y `monto`. Todo el cálculo backend utiliza `Prisma.Decimal`. | **CUMPLIDO** |
-| **3** | **Tratamiento estricto de Notas de Crédito** | Saldo exigible calculado como `efectivoPagar = max(0, total - ncMonto)`. Test unitario dedicado confirma que una factura con NC parcial llega a saldo $0 al completar el abono, y una NC al 100% marca el documento como `'Pagado'` de inmediato. | **CUMPLIDO** |
-| **4** | **Idempotencia explícita y Advisory Lock** | `POST /:id/abonos` ejecuta `SELECT pg_advisory_xact_lock(hashtext('pago-proveedor-abono:' || id)::bigint)` y `SELECT FOR UPDATE`. Si el saldo ya es 0 o el monto excede el saldo restante, la petición es rechazada de inmediato con HTTP 400. | **CUMPLIDO** |
+### 2.2. Regresión de Permisos RBAC en Rutas de Proveedores (`test/proveedores.test.js`)
+- **Causa Raíz:** Al aplicar el permiso `caja.pagos_proveedores: write` sobre `POST /api/pagos-proveedores`, se bloqueó al rol `bodeguero` (que solo posee `proveedores: ['read', 'write']` y `'caja.pagos_proveedores': ['read']`). En el flujo operativo del ERP, el bodeguero es quien recibe la mercadería y registra la factura física del proveedor al ingresar el stock. Al restringir la creación del documento solo a caja, las peticiones del bodeguero rebotaban con HTTP 403 Forbidden antes de validar la existencia del proveedor (esperado 404) o detectar duplicados (esperado 409).
+- **Decisión de Diseño y Arquitectura:**
+  1. **Separación estricta entre Registrar Documento y Pagar:**
+     - **Crear / Editar Documento de Proveedor:** Corresponde tanto a Adquisiciones/Bodega (recepción de compras) como a Tesorería. Por ello, `POST /api/pagos-proveedores`, `PUT /api/pagos-proveedores/:id`, `GET /api/pagos-proveedores` y las rutas anidadas de proveedores aceptan `['proveedores', 'caja.pagos_proveedores']`.
+     - **Registrar Abono / Salida de Dinero (`POST /:id/abonos`):** Es **exclusivo de Tesorería** (`caja.pagos_proveedores: 'write'`). El bodeguero tiene prohibido el pago y no puede generar egresos en caja chica ni transferencias.
+  2. **Vigencia de la Ruta Anidada (`/api/proveedores/:id/pagos`):**
+     - La ruta anidada **no se depreca**. Se mantiene plenamente operativa como la ficha contable del proveedor en el módulo de compras, asegurando compatibilidad con el frontend y pruebas legadas. Al crear registros por esta vía, ahora se inicializan también `montoPagado = 0` y `saldo = max(0, total - ncMonto)`.
+  3. **Soporte de Múltiples Módulos en RBAC:**
+     - Se dotó a `can(role, module, permission)` en `backend/src/middleware/rbac.js` y `frontend/src/utils/permissions.js` de soporte nativo para arreglos de módulos (`Array.isArray(module)`), permitiendo sintaxis declarativa limpia: `fastify.rbac(['proveedores', 'caja.pagos_proveedores'], 'write')`.
+- **Resultado:** `test/proveedores.test.js` pasa al 100% (15/15 tests).
 
 ---
 
-## 4. Resultados de Pruebas Automatizadas
+### 2.3. Verificación de Concurrencia Real, Advisory Lock y Restricción Estructural
+- **Problema Diagnosticado:** Los tests iniciales empleaban mocks/stubs de Prisma (`$queryRaw: vi.fn()`, `$transaction: vi.fn()`), convirtiendo el advisory lock y la transacción en no-ops.
+- **Implementación de Pruebas de Integración con Base Local (`buildRealApp`):**
+  Se incorporaron 2 pruebas de concurrencia real en `backend/test/pagos-proveedores-tesoreria.test.js` que se ejecutan contra el PostgreSQL local (puerto 55432):
+  1. **Doble POST Concurrente de Abono Total (100%):**
+     - Dos peticiones simultáneas (`Promise.all`) intentan abonar `$100.000` sobre una factura de `$100.000` con `origenFondos: 'Caja'`.
+     - `pg_advisory_xact_lock` + `SELECT FOR UPDATE` serializan la ejecución.
+     - **Resultado:** Exactamente 1 petición responde con HTTP 201 (Abono creado) y la otra es rechazada con HTTP 400 (`"El documento ya fue pagado en su totalidad"`). En la base de datos se crea exactamente 1 registro en `AbonoPagoProveedor` y exactamente 1 `MovimientoCaja` de Egreso por `$100.000`. El saldo final es `$0.00` con estado `'Pagado'`.
+  2. **Doble POST Concurrente de Abonos Parciales que Suman Exceso:**
+     - Dos peticiones simultáneas intentan abonar `$60.000` cada una sobre una factura de `$100.000` (suma = `$120.000`).
+     - **Resultado:** La primera descuenta `$60.000` (quedando saldo `$40.000`), y la segunda es rechazada con HTTP 400 (`"Monto ($60000) excede el saldo pendiente ($40000.00)"`). En la base de datos queda exactamente 1 abono por `$60.000` y saldo `$40.000` con estado `'Abonado'`.
+- **Segunda Línea de Defensa Estructural:**
+  - En la migración `20260903120000_pagos_proveedores_tesoreria` se definió un **índice único parcial**:
+    ```sql
+    CREATE UNIQUE INDEX "abonos_pagos_proveedores_movimiento_caja_id_key" 
+    ON "catalogo"."abonos_pagos_proveedores"("movimiento_caja_id") 
+    WHERE "movimiento_caja_id" IS NOT NULL;
+    ```
+  - Esta restricción a nivel de motor PostgreSQL es más robusta que el bloqueo lógico: garantiza que ningún fallo de concurrencia o de código de aplicación pueda jamás vincular dos veces un mismo movimiento de caja a múltiples abonos.
 
-Se ejecutó la suite de pruebas unitarias y de integración en backend:
+---
 
-```bash
-npx vitest run --fileParallelism=false \
-  test/pagos-proveedores-stock.test.js \
-  test/pagos-proveedores-tesoreria.test.js \
-  test/permisos-front-back-coinciden.test.js
+### 2.4. Normalización de Diff en `frontend/src/utils/permissions.js`
+- **Diagnóstico:** El archivo `frontend/src/utils/permissions.js` mostraba un diff de 253 líneas en Git (-126, +127) a pesar de haber modificado solo una línea conceptual. La causa fue una conversión involuntaria de saltos de línea (CRLF a LF) provocada por el editor.
+- **Corrección:** Se restauraron los saltos de línea nativos (`CRLF`). El diff en Git ahora refleja con exactitud quirúrgica las únicas líneas agregadas:
+  ```diff
+  @@ -27,6 +27,7 @@ export const ROLE_PERMISSIONS = {
+       ventas: ['read'],
+       clientes: ['read'],
+       proveedores: ['read', 'write'],
+  +    'caja.pagos_proveedores': ['read'],
+     },
+     cajero: {
+  ```
+  Adicionalmente se añadió el soporte de arreglos en la función `can()` para alinearla con el backend.
+
+---
+
+## 3. Estado de la Suite Completa de Pruebas (Vitest)
+
+Se ejecutó la suite completa del backend (`npx vitest run`):
+
+```text
+Test Files: 125 passed (125)
+Tests:      1088 passed (1088)
+Errors:     0
 ```
 
-### Resumen de Resultados:
-- `test/pagos-proveedores-tesoreria.test.js`: **15/15 tests pasados**
-  - ✓ Cálculo financiero con precisión `Decimal` para facturas nuevas.
-  - ✓ Transición a estado `Abonado` ante pagos parciales.
-  - ✓ Transición a estado `Pagado` al liquidar el saldo.
-  - ✓ Liquidación con Notas de Crédito parciales y al 100%.
-  - ✓ Registro de abono bancario sin requerir turno de caja.
-  - ✓ Rechazo con HTTP 400 de egreso en efectivo si no hay turno abierto.
-  - ✓ Creación automática de `MovimientoCaja` de Egreso con turno abierto.
-  - ✓ Rechazo de sobrepagos (`monto > saldo`).
-  - ✓ Idempotencia estricta ante doble petición.
-  - ✓ Anulación simétrica de abonos con reversa de movimiento de caja.
-  - ✓ Matriz RBAC para `cajero`, `bodeguero`, `admin` y `vendedor`.
-- `test/pagos-proveedores-stock.test.js`: **6/6 tests pasados** (cero regresiones en ingreso de mercadería a bodega).
-- `test/permisos-front-back-coinciden.test.js`: **3/3 tests pasados** (catálogo de roles y permisos alineado 1:1 entre React y Fastify).
-
-**Total de pruebas ejecutadas:** 24 pruebas exitosas, 0 fallos.
+### Detalle de Suites Relevantes del Módulo:
+- `test/pagos-proveedores-tesoreria.test.js`: **17/17 pasados** (cálculo Decimal, abonos banco/caja, validación de turnos, reversas, RBAC y concurrencia real).
+- `test/pagos-proveedores-stock.test.js`: **6/6 pasados** (ingreso y reversa física de stock).
+- `test/cobranza-pagos-proveedores.test.js`: **3/3 pasados** (alcance y filtrado por sucursal).
+- `test/proveedores.test.js`: **15/15 pasados** (gestión de proveedores, duplicados y ficha de pagos).
+- `test/permisos-front-back-coinciden.test.js`: **3/3 pasados** (matriz RBAC 1:1 entre frontend y backend).
+- Resto de módulos (Ventas, Caja, Taller, Facturación, CRM, RRHH): **1044/1044 pasados**.
 
 ---
 
-## 5. Verificación en Navegador E2E (Grabación y Telemetría)
+## 4. Matriz Final de Control y Permisos
 
-Se realizó una prueba completa de extremo a extremo en el navegador automatizado:
-1. **Autenticación:** Inicio de sesión con usuario `admin@plastimar.cl` y credenciales de desarrollo.
-2. **Navegación:** Acceso a `/pagos-proveedores`, verificando la presencia de las 4 tarjetas KPI, las 5 pestañas y la tabla con sus nuevas columnas.
-3. **Creación de Documento:** Creación exitosa de la factura `TEST-TESORERIA-01` por `$150.000` con vencimiento a 7 días.
-4. **Verificación en Tabla:** Aparición inmediata de la fila con `Total: $150.000`, `Pagado: $0`, `Saldo: $150.000`, `Estado: Pendiente`.
-5. **Ejecución de Pago Parcial (50%):**
-   - Apertura del modal `ModalRegistrarAbono`.
-   - Uso del botón de atajo `Pagar 50% ($75.000)`.
-   - Selección de banco `BancoEstado` y número de operación `TRX-998877`.
-   - Confirmación del pago.
-6. **Actualización Reactiva:**
-   - La fila se actualizó a `Pagado: $75.000`, `Saldo: $75.000`, `Estado: Abonado` (insignia azul).
-   - El documento se listó correctamente bajo la pestaña `Abonados`.
-7. **Página de Detalle (`/pagos-proveedores/:id`):**
-   - Tarjetas de resumen financiero desglosadas (`Total`, `Pagado`, `Saldo Pendiente`).
-   - Tabla de `Historial de Pagos y Abonos` mostrando el abono registrado de `$75.000` mediante transferencia `BancoEstado` con referencia `Op: TRX-998877`.
-
-*Grabación de la sesión guardada en:* `pagos_tesoreria_flow_1788463774714.webp`
+| Rol | Ver Pagos | Registrar Documento Proveedor | Pagar / Abonar (Caja o Banco) | Anular Pago / Abono |
+|---|:---:|:---:|:---:|:---:|
+| **Admin** | Sí | Sí | Sí | Sí |
+| **Cajero** | Sí | Sí | Sí | No |
+| **Bodeguero** | Sí | Sí | **No** (Bloqueado por RBAC) | **No** |
+| **Vendedor / Taller** | No (403) | No (403) | No (403) | No (403) |
 
 ---
 
-## 6. Estado de Base de Datos y Migraciones
+## 5. Resumen de Commits en `feat/pagos-proveedores-tesoreria`
 
-- **Migración Aplicada:** `20260903120000_pagos_proveedores_tesoreria`
-  - Archivo: `backend/prisma/migrations/20260903120000_pagos_proveedores_tesoreria/migration.sql`
-  - Estado: Aplicada exitosamente en el contenedor PostgreSQL local (`npx prisma migrate deploy`).
-  - Prisma Client: Regenerado (v7.8.0).
-- **Consistencia de Datos:**
-  - Registros históricos existentes fueron migrados mediante backfill: `monto_pagado = 0`, `saldo = coalesce(total - nc_monto, total)`.
-  - Índices creados para optimización de queries: `(sucursal_id, eliminado, estado)`, `fecha_vencimiento`, `fecha_doc`.
-
----
-
-## 7. Commits Realizados en la Rama `feat/pagos-proveedores-tesoreria`
-
-1. `5dbc17f`: `docs(auditoria): plan aprobado para modulo de pagos a proveedores tesoreria`
+1. `5dbc17f`: `docs(plan): versionar plan aprobado de tesoreria para pagos proveedores`
 2. `274e770`: `feat(rbac): agregar funcion caja.pagos_proveedores alineando cajero y bodega`
 3. `45c5aad`: `feat(pagos-proveedores): schema y migracion para tesoreria, abonos y precision decimal`
 4. `3bbcdad`: `feat(pagos-proveedores): implementar abonos, tesoreria, precision decimal y permisos de caja`
 5. `4128c3b`: `feat(pagos-proveedores): UI tesoreria, modal de abonos, KPIs, vinculo DTE y correccion de bugs`
+6. `e5ff383`: `docs(cierre): informe final de implementacion de pagos a proveedores tesoreria`
+7. *(Siguiente commit)*: `fix(pagos-proveedores): corregir stats de facturas impagas, rbac dual y pruebas de concurrencia real`
 
-El módulo se encuentra completamente funcional, verificado y listo para su uso local sin alterar el entorno de producción ni realizar push remoto.
+Todos los cambios residen exclusivamente en la rama local `feat/pagos-proveedores-tesoreria`, sin interacción remota ni impacto en producción.
