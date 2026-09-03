@@ -1,7 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Shell } from './components/Shell'
-import { LicitacionesLegacyRedirect, OdtLegacyRedirect } from './components/LegacyRedirects'
+import { LicitacionesLegacyRedirect, OdtLegacyRedirect, PasarTallerLegacyRedirect } from './components/LegacyRedirects'
 import LoginPage from './pages/login/LoginPage'
 import DashboardPage, { DashboardOperativoPage } from './pages/dashboard/DashboardPage'
 import MatrizVentasPage from './pages/matriz-ventas/MatrizVentasPage'
@@ -165,7 +165,8 @@ export const router = createBrowserRouter([
       { path: 'bitacora-taller', element: protect(<BitacoraTallerPage />, { module: 'taller' }) },
       { path: 'historial-materiales', element: protect(<HistorialMaterialesPage />, { module: 'taller' }) },
       { path: 'stock-ingresos', element: protect(<StockIngresosPage />, { module: 'bodega' }) },
-      { path: 'pasar-taller', element: protect(<PasarTallerPage />, { requirements: [['taller', 'write'], ['ventas', 'write']] }) },
+      { path: 'excepciones-taller', element: protect(<PasarTallerPage />, { requirements: [['taller', 'write'], ['ventas', 'write']] }) },
+      { path: 'pasar-taller', element: <PasarTallerLegacyRedirect /> },
       { path: 'consulta-precios', element: protect(<ConsultaPreciosPage />, { module: 'catalogo' }) },
       { path: 'reportes/gerenciales', element: protect(<ReportesGerencialesPage />, { module: 'reportes' }) },
       { path: 'reportes/comisiones', element: <ProtectedRoute allowedRoles={['admin']}><ReportesComisionesPage /></ProtectedRoute> },

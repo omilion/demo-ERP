@@ -862,7 +862,7 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, ca
           <Icon name="refreshCw" size={14} /> Nota de Crédito Interna
         </button>
       )}
-      <button onClick={() => navigate(`/pasar-taller?ordenId=${v.id}`)} style={opBtnStyle('var(--amber)')}>
+      <button onClick={() => navigate(`/excepciones-taller?ordenId=${v.id}`)} style={opBtnStyle('var(--amber)')}>
         <Icon name="tool" size={14} /> Notificar a Taller
       </button>
       {canEmitirDte && (

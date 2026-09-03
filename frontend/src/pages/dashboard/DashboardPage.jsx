@@ -640,7 +640,7 @@ export function DashboardOperativoPage() {
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
             {canWriteTaller && <ActionRow icon="plusCircle" label="Nueva OT" onClick={() => navigate('/taller/nueva')} />}
             <ActionRow icon="edit" label="Registrar Bitácora" onClick={() => navigate('/bitacora-taller')} />
-            {canWriteTaller && <ActionRow icon="package" label="Pasar a Taller" onClick={() => navigate('/pasar-taller')} />}
+            {canWriteTaller && <ActionRow icon="package" label="Excepciones de Taller" onClick={() => navigate('/excepciones-taller')} />}
             <ActionRow icon="layers" label="Historial Materiales" onClick={() => navigate('/historial-materiales')} />
           </SectionCard>
         )}
