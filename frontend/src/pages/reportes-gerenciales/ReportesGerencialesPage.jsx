@@ -497,31 +497,50 @@ function ScopeBanner({ title, children }) {
 
 function OperationalDashboard({ data, navigate }) {
   const kpis = data?.kpis || {}
-  const trend = groupCommercialTrend((data?.tendencia || []).map(point => ({ label: point.label, ventas: point.ingresos })), data?.filtros?.desde, data?.filtros?.hasta)
-  const trendValues = Object.fromEntries(trend.rows.map(row => [row.label, row.value]))
+  const buildTrend = key => groupCommercialTrend((data?.tendencia || []).map(point => ({ label: point.label, ventas: point[key] })), data?.filtros?.desde, data?.filtros?.hasta)
+  const trendOtIngresos = buildTrend('ingresos')
+  const trendOtTerminadas = buildTrend('terminadas')
+  const trendDespachos = buildTrend('despachosIngresados')
+  const trendEntregas = buildTrend('entregas')
+  const valuesFor = trend => Object.fromEntries(trend.rows.map(row => [row.label, row.value]))
   const estados = data?.estadoOdt || []
   const prioridades = data?.prioridadOdt || []
+  const antiguedad = data?.antiguedadBacklog || []
+  const despacho = data?.analisisDespachos || {}
+  const cycle = kpis.cicloPromedioHoras == null ? 'Sin dato' : `${Math.round(kpis.cicloPromedioHoras)} h`
 
   return <div style={{ display: 'grid', gap: 16, marginTop: 16 }}>
     <ScopeBanner title="Lectura operacional">{data?.meta?.mensajeEstado}</ScopeBanner>
     <section aria-label="Indicadores operacionales" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
       <CommercialMetric label="Backlog actual" value={num(kpis.backlog)} detail="OT no cerradas ahora" tone={kpis.backlog ? 'amber' : 'green'} />
-      <CommercialMetric label="OT vencidas" value={num(kpis.vencidas)} detail="contra compromiso actual" tone={kpis.vencidas ? 'red' : 'green'} />
-      <CommercialMetric label="OT en riesgo" value={num(kpis.enRiesgo)} detail="vencen en los próximos 7 días" tone={kpis.enRiesgo ? 'amber' : 'green'} />
-      <CommercialMetric label="Sin compromiso" value={num(kpis.sinCompromiso)} detail="backlog sin fecha de entrega" tone={kpis.sinCompromiso ? 'amber' : 'green'} />
-      <CommercialMetric label="Ingresos período" value={num(kpis.ingresos)} detail="OT creadas en el rango" tone="green" />
-      <CommercialMetric label="Terminadas período" value={num(kpis.terminadas)} detail="por fecha de término" tone="green" />
-      <CommercialMetric label="Despachos pendientes" value={num(kpis.despachosPendientes)} detail="estado actual" tone={kpis.despachosPendientes ? 'amber' : 'green'} />
-      <CommercialMetric label="Entregas período" value={num(kpis.entregas)} detail="por fecha de entrega" tone="green" />
+      <CommercialMetric label="OT vencidas" value={num(kpis.vencidas)} detail={`${num(kpis.enRiesgo)} en riesgo · ${num(kpis.sinCompromiso)} sin compromiso`} tone={kpis.vencidas ? 'red' : kpis.enRiesgo ? 'amber' : 'green'} />
+      <CommercialMetric label="Tasa de cierre" value={percent(kpis.tasaCierre)} detail="terminadas / OT ingresadas; no es OTIF" tone="green" />
+      <CommercialMetric label="Ciclo promedio OT" value={cycle} detail="inicio o creación hasta término" tone={kpis.cicloPromedioHoras == null ? 'amber' : 'green'} />
+      <CommercialMetric label="Despachos ingresados" value={num(kpis.despachosIngresados)} detail="creados en el período" tone="green" />
+      <CommercialMetric label="Entregas registradas" value={num(kpis.entregas)} detail={`${percent(kpis.relacionEntregasVsIngresos)} vs. ingresos; no confirma recepción`} tone="green" />
+      <CommercialMetric label="Incidencias / multas" value={`${num(kpis.despachosConIncidencia)} / ${num(kpis.despachosConMulta)}`} detail={`${num(kpis.despachosParciales)} despachos parciales`} tone={kpis.despachosConIncidencia || kpis.despachosConMulta ? 'red' : kpis.despachosParciales ? 'amber' : 'green'} />
+      <CommercialMetric label="Pendientes de despacho" value={num(kpis.despachosPendientes)} detail="estado actual, fuera del corte histórico" tone={kpis.despachosPendientes ? 'amber' : 'green'} />
     </section>
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1.1fr) minmax(280px, .9fr)', gap: 16 }}>
-      <Panel title="Ingresos de OT en el período" icon="trendingUp" action={<Badge tone="blue">por {trend.groupLabel}</Badge>}>
-        <div style={{ marginBottom: 8, color: 'var(--text-3)', fontSize: 12 }}>OT creadas entre <strong>{compactDate(data?.filtros?.desde)}</strong> y <strong>{compactDate(data?.filtros?.hasta)}</strong>. Cada barra representa un bloque completo.</div>
-        <BarChart title="Ingresos de órdenes de taller" values={trendValues} format={num} maxPoints={trend.maxPoints} />
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
+      <Panel title="Flujo de órdenes de taller" icon="trendingUp" action={<Badge tone="blue">por {trendOtIngresos.groupLabel}</Badge>}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}><div><div style={{ fontSize: 11, color: 'var(--text-3)' }}>Ingresadas</div><strong>{num(kpis.ingresos)}</strong></div><div><div style={{ fontSize: 11, color: 'var(--text-3)' }}>Terminadas</div><strong>{num(kpis.terminadas)}</strong></div></div>
+        <BarChart title="OT ingresadas" values={valuesFor(trendOtIngresos)} format={num} maxPoints={trendOtIngresos.maxPoints} />
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border)' }}><div style={{ marginBottom: 4, color: 'var(--text-3)', fontSize: 11 }}>OT terminadas en el mismo rango</div><BarChart title="OT terminadas" values={valuesFor(trendOtTerminadas)} format={num} color="var(--blue)" maxPoints={trendOtTerminadas.maxPoints} /></div>
       </Panel>
-      <Panel title="Backlog por estado" icon="wrench">
+      <Panel title="Backlog y envejecimiento" icon="wrench">
         <GroupList rows={estados} format={num} />
+        {!!antiguedad.length && <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}><div style={{ marginBottom: 8, fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase' }}>Antigüedad desde ingreso</div><GroupList rows={antiguedad} format={num} /></div>}
         {!!prioridades.length && <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}><div style={{ marginBottom: 8, fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase' }}>Por prioridad</div><GroupList rows={prioridades} format={num} /></div>}
+      </Panel>
+    </div>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
+      <Panel title="Flujo de despachos" icon="truck" action={<Badge tone="blue">por {trendDespachos.groupLabel}</Badge>}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}><div><div style={{ fontSize: 11, color: 'var(--text-3)' }}>Ingresados</div><strong>{num(kpis.despachosIngresados)}</strong></div><div><div style={{ fontSize: 11, color: 'var(--text-3)' }}>Entregas registradas</div><strong>{num(kpis.entregas)}</strong></div></div>
+        <BarChart title="Despachos ingresados" values={valuesFor(trendDespachos)} format={num} maxPoints={trendDespachos.maxPoints} />
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border)' }}><div style={{ marginBottom: 4, color: 'var(--text-3)', fontSize: 11 }}>Entregas registradas en el mismo rango</div><BarChart title="Entregas registradas" values={valuesFor(trendEntregas)} format={num} color="var(--blue)" maxPoints={trendEntregas.maxPoints} /></div>
+      </Panel>
+      <Panel title="Distribución de despachos ingresados" icon="barChart2">
+        <div style={{ display: 'grid', gap: 16 }}><div><div style={{ marginBottom: 7, fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase' }}>Por tipo / canal</div><GroupList rows={despacho.porTipo || []} format={num} /></div><div style={{ paddingTop: 12, borderTop: '1px solid var(--border)' }}><div style={{ marginBottom: 7, fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase' }}>Por transporte</div><GroupList rows={despacho.porTransporte || []} format={num} /></div><div style={{ paddingTop: 12, borderTop: '1px solid var(--border)' }}><div style={{ marginBottom: 7, fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase' }}>Principales comunas</div><GroupList rows={despacho.porComuna || []} format={num} /></div></div>
       </Panel>
     </div>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 16 }}>
@@ -928,9 +947,11 @@ export default function ReportesGerencialesPage() {
         </> : active === 'operacion' ? <>
           <KpiCard label="Backlog actual" value={statusValue(operacionV1Problem, operacionGerencialV1Query.data?.kpis?.backlog)} sublabel={statusSublabel(operacionV1Problem, 'OT no cerradas ahora')} icon="wrench" tone={statusTone(operacionV1Problem, 'amber')} />
           <KpiCard label="OT vencidas" value={statusValue(operacionV1Problem, operacionGerencialV1Query.data?.kpis?.vencidas)} sublabel={statusSublabel(operacionV1Problem, 'contra compromiso actual')} icon="alertTriangle" tone={statusTone(operacionV1Problem, 'red')} />
-          <KpiCard label="OT en riesgo" value={statusValue(operacionV1Problem, operacionGerencialV1Query.data?.kpis?.enRiesgo)} sublabel={statusSublabel(operacionV1Problem, 'próximos 7 días')} icon="clock" tone={statusTone(operacionV1Problem, 'amber')} />
-          <KpiCard label="Ingresos período" value={statusValue(operacionV1Problem, operacionGerencialV1Query.data?.kpis?.ingresos)} sublabel={statusSublabel(operacionV1Problem, 'OT creadas en el rango')} icon="trendingUp" tone={statusTone(operacionV1Problem)} />
-          <KpiCard label="Terminadas período" value={statusValue(operacionV1Problem, operacionGerencialV1Query.data?.kpis?.terminadas)} sublabel={statusSublabel(operacionV1Problem, 'por fecha de término')} icon="package" tone={statusTone(operacionV1Problem)} />
+          <KpiCard label="Tasa de cierre" value={statusValue(operacionV1Problem, operacionGerencialV1Query.data?.kpis?.tasaCierre, percent)} sublabel={statusSublabel(operacionV1Problem, 'terminadas / OT ingresadas')} icon="trendingUp" tone={statusTone(operacionV1Problem)} />
+          <KpiCard label="Ciclo promedio OT" value={operacionV1Problem ? statusValue(operacionV1Problem) : operacionGerencialV1Query.data?.kpis?.cicloPromedioHoras == null ? 'Sin dato' : `${Math.round(operacionGerencialV1Query.data.kpis.cicloPromedioHoras)} h`} sublabel={statusSublabel(operacionV1Problem, 'inicio o creación hasta término')} icon="clock" tone={statusTone(operacionV1Problem)} />
+          <KpiCard label="Despachos ingresados" value={statusValue(operacionV1Problem, operacionGerencialV1Query.data?.kpis?.despachosIngresados)} sublabel={statusSublabel(operacionV1Problem, 'creados en el período')} icon="truck" tone={statusTone(operacionV1Problem)} />
+          <KpiCard label="Entregas registradas" value={statusValue(operacionV1Problem, operacionGerencialV1Query.data?.kpis?.entregas)} sublabel={statusSublabel(operacionV1Problem, 'no confirma recepción')} icon="package" tone={statusTone(operacionV1Problem)} />
+          <KpiCard label="Incidencias" value={statusValue(operacionV1Problem, operacionGerencialV1Query.data?.kpis?.despachosConIncidencia)} sublabel={statusSublabel(operacionV1Problem, `${num(operacionGerencialV1Query.data?.kpis?.despachosConMulta || 0)} multas`)} icon="alertTriangle" tone={statusTone(operacionV1Problem, 'red')} />
           <KpiCard label="Despachos pendientes" value={statusValue(operacionV1Problem, operacionGerencialV1Query.data?.kpis?.despachosPendientes)} sublabel={statusSublabel(operacionV1Problem, 'estado actual')} icon="truck" tone={statusTone(operacionV1Problem, 'amber')} />
         </> : active === 'finanzas' ? <>
           <KpiCard label="Ingresos de caja" value={statusValue(finanzasV1Problem, finanzasGerencialV1Query.data?.kpis?.ingresos, money)} sublabel={statusSublabel(finanzasV1Problem, 'movimientos del período')} icon="dollarSign" tone={statusTone(finanzasV1Problem)} />

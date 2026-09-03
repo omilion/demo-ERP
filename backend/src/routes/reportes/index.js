@@ -1214,16 +1214,39 @@ function tallyByLabel(items, getLabel) {
     .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
 }
 
-function operationalTrend({ ingresos = [], terminadas = [], entregas = [] } = {}) {
+function operationalTrend({ ingresos = [], terminadas = [], despachosIngresados = [], entregas = [] } = {}) {
   const byDay = new Map()
   const ensure = label => {
-    if (!byDay.has(label)) byDay.set(label, { label, ingresos: 0, terminadas: 0, entregas: 0 })
+    if (!byDay.has(label)) byDay.set(label, { label, ingresos: 0, terminadas: 0, despachosIngresados: 0, entregas: 0 })
     return byDay.get(label)
   }
   ingresos.forEach(item => { const label = gerencialDateLabel(item.createdAt); if (label !== 'Sin fecha') ensure(label).ingresos += 1 })
   terminadas.forEach(item => { const label = gerencialDateLabel(item.fechaTermino); if (label !== 'Sin fecha') ensure(label).terminadas += 1 })
+  despachosIngresados.forEach(item => { const label = gerencialDateLabel(item.createdAt); if (label !== 'Sin fecha') ensure(label).despachosIngresados += 1 })
   entregas.forEach(item => { const label = gerencialDateLabel(item.fechaEntrega); if (label !== 'Sin fecha') ensure(label).entregas += 1 })
   return [...byDay.values()].sort((a, b) => a.label.localeCompare(b.label))
+}
+
+function operationalBacklogAging(backlog = [], now = new Date()) {
+  const labels = ['0-2 días', '3-7 días', '8-14 días', '15+ días', 'Sin fecha de ingreso']
+  const bucket = Object.fromEntries(labels.map(label => [label, 0]))
+  backlog.forEach(item => {
+    if (!item.createdAt) { bucket['Sin fecha de ingreso'] += 1; return }
+    const days = Math.max(0, Math.floor((now.getTime() - new Date(item.createdAt).getTime()) / 86_400_000))
+    const label = days <= 2 ? '0-2 días' : days <= 7 ? '3-7 días' : days <= 14 ? '8-14 días' : '15+ días'
+    bucket[label] += 1
+  })
+  return labels.map(label => ({ label, value: bucket[label] }))
+}
+
+function averageCycleHours(items = []) {
+  const hours = items.map(item => {
+    const start = item.fechaInicio || item.createdAt
+    if (!start || !item.fechaTermino) return null
+    const value = (new Date(item.fechaTermino).getTime() - new Date(start).getTime()) / 3_600_000
+    return Number.isFinite(value) && value >= 0 ? value : null
+  }).filter(value => value != null)
+  return hours.length ? hours.reduce((sum, value) => sum + value, 0) / hours.length : null
 }
 
 async function buildOperacionesGerencialV1(fastify, query = {}, user = null) {
@@ -1248,18 +1271,23 @@ async function buildOperacionesGerencialV1(fastify, query = {}, user = null) {
     ...(odtScope ? { AND: [odtScope] } : {}),
   }
   const openDispatchWhere = { eliminado: false, fechaEntrega: null }
+  const dispatchCreatedWhere = { eliminado: false, createdAt: { gte: range.gte, lte: range.lte } }
   const deliveredWhere = { eliminado: false, fechaEntrega: { gte: range.gte, lte: range.lte } }
-  const odtSelect = { id: true, estado: true, prioridad: true, clienteNombre: true, createdAt: true, fechaEntregaCompromiso: true, plazo: true, fechaTermino: true, sucursalId: true, ordenId: true }
-  const despachoSelect = { id: true, interno: true, contacto: true, comuna: true, transporte: true, createdAt: true, fechaInterno: true, fechaEntrega: true, parcial: true, tieneMulta: true, ordenId: true, odtId: true }
+  const odtSelect = { id: true, estado: true, prioridad: true, clienteNombre: true, createdAt: true, fechaInicio: true, fechaEntregaCompromiso: true, plazo: true, fechaTermino: true, sucursalId: true, ordenId: true }
+  const despachoSelect = {
+    id: true, interno: true, contacto: true, comuna: true, transporte: true, tipoDespacho: true, createdAt: true, fechaInterno: true, fechaEntrega: true, parcial: true, tieneMulta: true, ordenId: true, odtId: true,
+    trackingEventos: { where: { estado: 'Incidencia' }, select: { id: true, tipoIncidente: true, fechaEvento: true } },
+  }
 
-  const [backlog, ingresos, terminadas, despachosPendientes, entregas] = await Promise.all([
+  const [backlog, ingresos, terminadas, despachosPendientes, despachosIngresados, entregas] = await Promise.all([
     findGerencialDetail(fastify.prisma.odt, { where: openWhere, select: odtSelect }, 'El backlog de Ã³rdenes de taller'),
     findGerencialDetail(fastify.prisma.odt, { where: createdWhere, select: odtSelect }, 'Las Ã³rdenes ingresadas del perÃ­odo'),
     findGerencialDetail(fastify.prisma.odt, { where: completedWhere, select: odtSelect }, 'Las Ã³rdenes terminadas del perÃ­odo'),
     findGerencialDetail(fastify.prisma.despacho, { where: openDispatchWhere, select: despachoSelect }, 'Los despachos pendientes'),
+    findGerencialDetail(fastify.prisma.despacho, { where: dispatchCreatedWhere, select: despachoSelect }, 'Los despachos ingresados del período'),
     findGerencialDetail(fastify.prisma.despacho, { where: deliveredWhere, select: despachoSelect }, 'Las entregas del perÃ­odo'),
   ])
-  const problem = [backlog, ingresos, terminadas, despachosPendientes, entregas].find(result => result.error)
+  const problem = [backlog, ingresos, terminadas, despachosPendientes, despachosIngresados, entregas].find(result => result.error)
   if (problem?.error) return problem
 
   const now = new Date()
@@ -1276,6 +1304,11 @@ async function buildOperacionesGerencialV1(fastify, query = {}, user = null) {
     const severity = item => dueDate(item) ? new Date(dueDate(item)).getTime() : Number.MAX_SAFE_INTEGER
     return severity(a) - severity(b) || new Date(a.createdAt) - new Date(b.createdAt)
   }).slice(0, 20)
+  const despachoDelPeriodo = [...new Map([...despachosIngresados.items, ...entregas.items].map(item => [item.id, item])).values()]
+  const despachosConIncidencia = despachoDelPeriodo.filter(item => item.trackingEventos?.length).length
+  const despachosConMulta = despachoDelPeriodo.filter(item => item.tieneMulta).length
+  const despachosParciales = despachoDelPeriodo.filter(item => item.parcial).length
+  const tasaCierre = ingresos.count ? terminadas.count / ingresos.count : null
 
   return {
     meta: {
@@ -1292,15 +1325,29 @@ async function buildOperacionesGerencialV1(fastify, query = {}, user = null) {
       sinCompromiso: withoutCommitment.length,
       ingresos: ingresos.count,
       terminadas: terminadas.count,
+      tasaCierre,
+      cicloPromedioHoras: averageCycleHours(terminadas.items),
       despachosPendientes: despachosPendientes.count,
+      despachosIngresados: despachosIngresados.count,
       entregas: entregas.count,
+      relacionEntregasVsIngresos: despachosIngresados.count ? entregas.count / despachosIngresados.count : null,
+      despachosConIncidencia,
+      despachosConMulta,
+      despachosParciales,
     },
-    tendencia: operationalTrend({ ingresos: ingresos.items, terminadas: terminadas.items, entregas: entregas.items }),
+    tendencia: operationalTrend({ ingresos: ingresos.items, terminadas: terminadas.items, despachosIngresados: despachosIngresados.items, entregas: entregas.items }),
     estadoOdt: tallyByLabel(backlog.items, item => item.estado),
     prioridadOdt: tallyByLabel(backlog.items, item => item.prioridad),
+    antiguedadBacklog: operationalBacklogAging(backlog.items, now),
     backlog: orderedBacklog.map(odt => ({ ...odt, compromiso: dueDate(odt), diasAtraso: dueDate(odt) ? Math.floor((now.getTime() - new Date(dueDate(odt)).getTime()) / 86_400_000) : null })),
     despachos: despachosPendientes.items.sort((a, b) => new Date(a.fechaInterno || a.createdAt) - new Date(b.fechaInterno || b.createdAt)).slice(0, 20),
+    analisisDespachos: {
+      porTipo: tallyByLabel(despachosIngresados.items, item => item.tipoDespacho),
+      porTransporte: tallyByLabel(despachosIngresados.items, item => item.transporte),
+      porComuna: tallyByLabel(despachosIngresados.items, item => item.comuna),
+    },
     brechas: [
+      { codigo: 'despacho-exitoso', titulo: 'Despacho exitoso', detalle: 'Una entrega registrada no equivale a entrega exitosa. Para medir cumplimiento real faltan fecha comprometida estructurada y comprobante de recepción o conformidad.' },
       { codigo: 'backlog-historico', titulo: 'Backlog histÃ³rico', detalle: 'El sistema no conserva snapshots diarios de estado; no se puede reconstruir con certeza cuÃ¡ntas OT estaban abiertas en una fecha pasada.' },
       { codigo: 'cumplimiento', titulo: 'Cumplimiento de plazo', detalle: 'No se muestra una tasa OTIF: sin hitos histÃ³ricos de compromiso, entrega y conformidad, cualquier porcentaje serÃ­a engaÃ±oso.' },
     ],
@@ -1814,6 +1861,14 @@ async function buildComercialXlsx(reporte, query = {}) {
   resumen.getCell('A2').value = `Período: ${query.desde || 'Inicio'} a ${query.hasta || 'Hoy'}`
   resumen.getCell('A2').font = { italic: true, color: { argb: 'FF475569' } }
   resumen.getRow(3).values = ['Indicador', 'Valor', 'Detalle']
+  const filtrosAplicados = [
+    `Período: ${query.desde || 'Inicio'} a ${query.hasta || 'Hoy'}`,
+    `Tipo: ${query.tipo || 'Todos'}`,
+    `Vendedor: ${query.vendedor || 'Todos'}`,
+    `Cliente/RUT: ${query.cliente || 'Todos'}`,
+    `Sucursal: ${query.sucursalId || 'Todas'}`,
+  ].join(' · ')
+  resumen.getCell('A2').value = filtrosAplicados
   const kpis = reporte.kpis || {}
   const margin = kpis.margen || {}
   const inventory = kpis.inventario || {}
@@ -1906,8 +1961,12 @@ function buildOperacionGerencialXlsx(reporte) {
       ['OT en riesgo', kpis.enRiesgo || 0, 'Vencen dentro de 7 días'],
       ['Ingresos del período', kpis.ingresos || 0, 'OT creadas en el rango'],
       ['Terminadas del período', kpis.terminadas || 0, 'Por fecha de término'],
+      ['Tasa de cierre', kpis.tasaCierre == null ? 'Sin base' : `${(kpis.tasaCierre * 100).toFixed(1)}%`, 'Terminadas / OT ingresadas; no es OTIF'],
+      ['Ciclo promedio OT (horas)', kpis.cicloPromedioHoras ?? null, 'Inicio o creación hasta término'],
       ['Despachos pendientes', kpis.despachosPendientes || 0, 'Estado actual'],
+      ['Despachos ingresados', kpis.despachosIngresados || 0, 'Creados en el período'],
       ['Entregas del período', kpis.entregas || 0, 'Por fecha de entrega'],
+      ['Incidencias de despacho', kpis.despachosConIncidencia || 0, `${kpis.despachosConMulta || 0} con multa · ${kpis.despachosParciales || 0} parciales`],
     ],
     sheets: [
       { sheetName: 'Backlog OT', sheetTitle: 'Órdenes de taller abiertas', columns: [
@@ -1916,6 +1975,13 @@ function buildOperacionGerencialXlsx(reporte) {
       { sheetName: 'Despachos', sheetTitle: 'Despachos pendientes actuales', columns: [
         { key: 'interno', label: 'N° interno' }, { key: 'contacto', label: 'Contacto', width: 28 }, { key: 'comuna', label: 'Comuna' }, { key: 'transporte', label: 'Transporte' }, { key: 'fechaInterno', label: 'Ingreso' },
       ], rows: reporte.despachos || [] },
+      { sheetName: 'Distribución despacho', sheetTitle: 'Despachos ingresados por segmento', columns: [
+        { key: 'dimension', label: 'Dimensión' }, { key: 'label', label: 'Valor' }, { key: 'value', label: 'Despachos' },
+      ], rows: [
+        ...(reporte.analisisDespachos?.porTipo || []).map(row => ({ ...row, dimension: 'Tipo / canal' })),
+        ...(reporte.analisisDespachos?.porTransporte || []).map(row => ({ ...row, dimension: 'Transporte' })),
+        ...(reporte.analisisDespachos?.porComuna || []).map(row => ({ ...row, dimension: 'Comuna' })),
+      ] },
     ],
   })
 }

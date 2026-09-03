@@ -219,6 +219,13 @@ describeDb('reportes gerenciales backend', () => {
       expect(body.filtros.desde).toBe(desde)
       expect(body.filtros.hasta).toBe(hasta)
       expect(body.kpis).toBeTruthy()
+      if (section === 'operacion') {
+        expect(body.kpis).toHaveProperty('despachosIngresados')
+        expect(body.kpis).toHaveProperty('despachosConIncidencia')
+        expect(body.kpis).toHaveProperty('tasaCierre')
+        expect(Array.isArray(body.antiguedadBacklog)).toBe(true)
+        expect(body.analisisDespachos).toBeTruthy()
+      }
 
       const exportRes = await app.inject({
         method: 'GET',
