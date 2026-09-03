@@ -6,7 +6,7 @@ import { useReporteComisiones } from '../../api/reportesGerenciales'
 import { downloadFromBackend } from '../../utils/csv'
 import BotonExportar from '../../components/BotonExportar'
 
-const DEFAULT_TIPOS = ['Todos', 'Venta sala', 'Venta directa', 'Normal', 'Venta Web', 'Convenio Marco', 'Licitaci\u00f3n']
+const DEFAULT_TIPOS = ['Todos', 'Normal', 'Licitaci\u00f3n', 'Compra \u00c1gil', 'Convenio Marco', 'Trato Directo', 'Venta Web', 'Venta Sala', 'Marketplace']
 const money = value => Number(value || 0).toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })
 const num = value => Number(value || 0).toLocaleString('es-CL')
 const pct = value => value === null || value === undefined ? '-' : `${Number(value || 0).toLocaleString('es-CL', { maximumFractionDigits: 2 })}%`
@@ -91,13 +91,16 @@ export default function ReportesComisionesPage() {
     { key: 'reglaNombre', label: 'Regla', render: v => v || <span style={muted}>Sin regla</span> },
     { key: 'reglaScope', label: 'Alcance', render: v => scopeBadge(v) },
     { key: 'estadoPago', label: 'Pago', render: v => <Badge tone={v === 'Pagada' ? 'green' : v === 'Parcial' ? 'amber' : 'gray'}>{v || '-'}</Badge> },
+    { key: 'estadoEntrega', label: 'Entrega', render: v => <Badge tone={v === 'Entregada' ? 'green' : v === 'Parcial' ? 'amber' : 'gray'}>{v || '-'}</Badge> },
+    { key: 'estadoFactura', label: 'Factura', render: v => <Badge tone={v === 'DTE vigente' || v === 'Facturación legacy' ? 'green' : 'gray'}>{v || '-'}</Badge> },
+    { key: 'isEligible', label: 'Devengable', required: true, render: (v, row) => <span title={row.motivoNoElegible || 'Venta lista para calcular comisión'}><Badge tone={v ? 'green' : 'amber'}>{v ? 'Sí' : row.motivoNoElegible || 'No'}</Badge></span> },
   ]
 
   return (
     <main className="page page-wide">
       <PageHeader
         title="Comisiones"
-        subtitle="Ventas y comision estimada por vendedor"
+        subtitle="Comisión estimada por venta elegible, con regla, DTE, pago y entrega trazables."
         breadcrumb={['Inicio', 'Reportes', 'Comisiones']}
         actions={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -121,7 +124,7 @@ export default function ReportesComisionesPage() {
         <FilterLabel label="Vendedor">
           <select value={filters.vendedorId} onChange={event => updateFilter('vendedorId', event.target.value)} style={controlStyle}>
             <option value="">Todos</option>
-            {vendedores.map(vendedor => <option key={vendedor.id} value={vendedor.id}>{vendedor.nombre || vendedor.email}</option>)}
+            {vendedores.map(vendedor => <option key={vendedor.id} value={vendedor.id}>{(vendedor.nombre || vendedor.email) + (vendedor.codigoVendedor ? ' · cód. ' + vendedor.codigoVendedor : '')}</option>)}
           </select>
         </FilterLabel>
         <FilterLabel label="Estado pago">
@@ -139,12 +142,16 @@ export default function ReportesComisionesPage() {
         {reportQuery.isFetching && <Badge tone="blue">Actualizando</Badge>}
         {reportQuery.isError && <Badge tone="red">Reporte no disponible</Badge>}
       </div>
+      <div role="status" style={{ marginTop: -8, marginBottom: 18, padding: '10px 12px', border: '1px solid #bae6fd', borderRadius: 8, background: '#f0f9ff', color: '#075985', fontSize: 12, lineHeight: 1.45 }}>
+        <strong>Lectura del reporte:</strong> los totales y los resúmenes laterales corresponden a la <strong>página visible</strong> para no recalcular miles de ventas al navegar. La exportación entrega el filtro completo hasta 10.000 ventas; si lo supera, se debe acotar el período.
+      </div>
 
       <div className="kpi-strip">
-        <KpiCard label="Ventas" value={num(data.totales?.count || 0)} icon="shoppingCart" sublabel={`${num(total)} registros filtrados`} />
-        <KpiCard label="Total vendido" value={money(data.totales?.totalVendido)} icon="dollarSign" tone="blue" sublabel="Base venta" />
-        <KpiCard label="Total cobrado" value={money(data.totales?.totalCobrado)} icon="creditCard" tone="amber" sublabel="Caja real no referencial" />
-        <KpiCard label="Comision estimada" value={money(data.totales?.totalComision)} icon="barChart2" tone="neutral" sublabel="Segun reglas activas" />
+        <KpiCard label="Ventas en página" value={num(data.totales?.count || 0)} icon="shoppingCart" sublabel={`${num(total)} registros filtrados`} />
+        <KpiCard label="Vendido en página" value={money(data.totales?.totalVendido)} icon="dollarSign" tone="blue" sublabel="Base venta" />
+        <KpiCard label="Cobrado en página" value={money(data.totales?.totalCobrado)} icon="creditCard" tone="amber" sublabel="Caja real no referencial" />
+        <KpiCard label="Comisión en página" value={money(data.totales?.totalComision)} icon="barChart2" tone="neutral" sublabel="Según reglas activas y elegibilidad" />
+        <KpiCard label="Sin asignación" value={num(data.totales?.sinVendedorComisionable)} icon="alertTriangle" tone={data.totales?.sinVendedorComisionable ? 'amber' : 'green'} sublabel="ventas sin vendedor comisionable" />
       </div>
 
       <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(260px, 0.6fr)', gap: 16, alignItems: 'start' }}>
@@ -162,8 +169,8 @@ export default function ReportesComisionesPage() {
         </div>
 
         <aside style={{ display: 'grid', gap: 14 }}>
-          <SummaryPanel title="Por vendedor" rows={byVendedor} />
-          <SummaryPanel title="Por tipo de venta" rows={byTipo} />
+          <SummaryPanel title="Por vendedor · página" rows={byVendedor} />
+          <SummaryPanel title="Por tipo de venta · página" rows={byTipo} />
         </aside>
       </section>
     </main>

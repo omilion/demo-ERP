@@ -495,6 +495,107 @@ function ScopeBanner({ title, children }) {
   </div>
 }
 
+function ExecutiveActionCard({ title, value, detail, tone = 'green', icon, action, onClick }) {
+  const accent = tone === 'red' ? 'var(--red)' : tone === 'amber' ? 'var(--amber)' : tone === 'blue' ? 'var(--blue)' : 'var(--green-600)'
+  const content = <>
+    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ color: 'var(--text-3)', fontSize: 11, fontWeight: 700, letterSpacing: .35, textTransform: 'uppercase' }}>{title}</div>
+        <strong style={{ display: 'block', marginTop: 6, color: 'var(--text-1)', fontFamily: "'DM Mono', monospace", fontSize: 22, letterSpacing: -0.8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</strong>
+      </div>
+      <span style={{ display: 'grid', placeItems: 'center', width: 32, height: 32, flex: '0 0 auto', borderRadius: 8, background: `${accent}14` }}><Icon name={icon} size={16} color={accent} /></span>
+    </div>
+    <div style={{ minHeight: 30, marginTop: 8, color: 'var(--text-3)', fontSize: 11, lineHeight: 1.35 }}>{detail}</div>
+    {action && <div style={{ marginTop: 10, color: accent, fontSize: 12, fontWeight: 700 }}>{action} →</div>}
+  </>
+  const style = { minWidth: 0, padding: '14px 15px', border: '1px solid var(--border)', borderTop: `3px solid ${accent}`, borderRadius: 10, background: '#fff', boxShadow: 'var(--shadow-sm)', textAlign: 'left', fontFamily: 'inherit' }
+  return onClick
+    ? <button type="button" onClick={onClick} style={{ ...style, cursor: 'pointer' }}>{content}</button>
+    : <article style={style}>{content}</article>
+}
+
+function ExecutiveSummaryDashboard({ ventas, cobranzaCaja, stock, licitaciones, operaciones, problems, onOpen, meta, desde, hasta }) {
+  const ventasProblem = problems?.ventas
+  const finanzasProblem = problems?.finanzas
+  const stockProblem = problems?.stock
+  const licitacionesProblem = problems?.licitaciones
+  const operacionesProblem = problems?.operaciones
+  const totalVentas = Number(ventas?.total || 0)
+  const ordenes = Number(ventas?.count || 0)
+  const comparativo = ventas?.comparativo || {}
+  const caja = cobranzaCaja?.caja || {}
+  const cxc = cobranzaCaja?.cuentasPorCobrar || {}
+  const flujoNeto = Number(caja.ingresos || 0) - Number(caja.egresos || 0)
+  const pendientesCxC = Number(cxc.porCobrar || 0)
+  const documentosCxC = Number(cxc.count || 0)
+  const taller = operaciones?.taller || {}
+  const despachos = operaciones?.despachos || {}
+  const productosCriticos = Number(stock?.stockCritico?.totales?.productosCriticos || 0)
+  const materialesCriticos = Number(stock?.stockCritico?.totales?.materialesCriticos || 0)
+  const totalCriticos = productosCriticos + materialesCriticos
+  const licitacionesPendientes = Number(licitaciones?.byResultado?.pendiente?.count || 0)
+  const mix = metricRows(ventas?.desgloses?.ordenesInternas?.byTipo || {})
+  const prioridades = []
+
+  if (!stockProblem && totalCriticos) prioridades.push({ tone: 'red', title: `${num(totalCriticos)} ítems con stock crítico`, detail: `${num(productosCriticos)} productos y ${num(materialesCriticos)} materiales bajo su umbral actual.`, tab: 'riesgos' })
+  if (!operacionesProblem && Number(taller.vencidas || 0)) prioridades.push({ tone: 'red', title: `${num(taller.vencidas)} OT vencidas`, detail: `${num(taller.enRiesgo || 0)} adicionales comprometen los próximos 7 días.`, tab: 'operacion' })
+  if (!operacionesProblem && Number(despachos.vencidos || 0)) prioridades.push({ tone: 'red', title: `${num(despachos.vencidos)} despachos vencidos`, detail: 'Pendientes de despacho cuyo compromiso ya está vencido en el corte.', tab: 'operacion' })
+  if (!finanzasProblem && pendientesCxC > 0) prioridades.push({ tone: 'amber', title: `${money(pendientesCxC)} de CxC pendiente`, detail: `${num(documentosCxC)} documentos de la fuente de cobranza para el período seleccionado.`, tab: 'finanzas' })
+  if (!licitacionesProblem && licitacionesPendientes) prioridades.push({ tone: 'amber', title: `${num(licitacionesPendientes)} licitaciones pendientes`, detail: 'Requieren revisión comercial dentro del período seleccionado.', tab: 'riesgos' })
+  if (!operacionesProblem && !Number(taller.vencidas || 0) && Number(taller.enRiesgo || 0)) prioridades.push({ tone: 'amber', title: `${num(taller.enRiesgo)} OT en riesgo`, detail: 'Con compromiso dentro de los próximos 7 días.', tab: 'operacion' })
+
+  return <div style={{ display: 'grid', gap: 16, marginTop: 16 }}>
+    <ScopeBanner title="Corte ejecutivo">
+      {meta?.mensajeEstado || 'Datos consolidados disponibles.'} Período comercial y financiero: <strong>{compactDate(desde)} — {compactDate(hasta)}</strong>. Tipo, vendedor, sucursal y cliente segmentan solo Comercial; stock y backlog son estados al corte.
+    </ScopeBanner>
+
+    <section aria-label="Indicadores ejecutivos" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
+      <ExecutiveActionCard title="Ventas operacionales" value={statusValue(ventasProblem, totalVentas, money)} detail={statusSublabel(ventasProblem, `${num(ordenes)} órdenes internas; no incluye web ni licitaciones.`)} tone="blue" icon="shoppingCart" action={ventasProblem ? null : 'Abrir análisis comercial'} onClick={!ventasProblem ? () => onOpen('ventas') : undefined} />
+      <ExecutiveActionCard title="Flujo de caja" value={statusValue(finanzasProblem, flujoNeto, money)} detail={statusSublabel(finanzasProblem, `${money(caja.ingresos)} ingresos − ${money(caja.egresos)} egresos; no es saldo bancario.`)} tone={flujoNeto < 0 ? 'red' : 'green'} icon="dollarSign" action={finanzasProblem ? null : 'Abrir flujo y cobranza'} onClick={!finanzasProblem ? () => onOpen('finanzas') : undefined} />
+      <ExecutiveActionCard title="CxC pendiente registrada" value={finanzasProblem ? statusValue(finanzasProblem) : documentosCxC ? money(pendientesCxC) : 'Sin documentos'} detail={statusSublabel(finanzasProblem, documentosCxC ? `${num(documentosCxC)} documentos de cobranza en el período.` : 'No hay documentos en la fuente para el período seleccionado.') } tone={pendientesCxC ? 'amber' : 'green'} icon="creditCard" action={finanzasProblem ? null : 'Abrir flujo y cobranza'} onClick={!finanzasProblem ? () => onOpen('finanzas') : undefined} />
+      <ExecutiveActionCard title="Backlog de taller" value={statusValue(operacionesProblem, taller.pendientes)} detail={statusSublabel(operacionesProblem, `${num(taller.vencidas)} vencidas · ${num(taller.enRiesgo)} en riesgo; estado al corte.`)} tone={taller.vencidas ? 'red' : taller.pendientes ? 'amber' : 'green'} icon="wrench" action={operacionesProblem ? null : 'Abrir cumplimiento operacional'} onClick={!operacionesProblem ? () => onOpen('operacion') : undefined} />
+      <ExecutiveActionCard title="Stock crítico actual" value={statusValue(stockProblem, totalCriticos)} detail={statusSublabel(stockProblem, `${num(productosCriticos)} productos · ${num(materialesCriticos)} materiales bajo umbral.`)} tone={totalCriticos ? 'red' : 'green'} icon="alertTriangle" action={stockProblem ? null : 'Abrir riesgos y calidad'} onClick={!stockProblem ? () => onOpen('riesgos') : undefined} />
+      <ExecutiveActionCard title="Despachos pendientes" value={statusValue(operacionesProblem, despachos.pendientes)} detail={statusSublabel(operacionesProblem, `${num(despachos.vencidos)} vencidos; estado al corte, no entregas del período.`)} tone={despachos.vencidos ? 'red' : despachos.pendientes ? 'amber' : 'green'} icon="truck" action={operacionesProblem ? null : 'Abrir cumplimiento operacional'} onClick={!operacionesProblem ? () => onOpen('operacion') : undefined} />
+    </section>
+
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(360px, 1.2fr) minmax(300px, .8fr)', gap: 16 }}>
+      <Panel title="Prioridades para decidir" icon="alertTriangle" action={<Badge tone={prioridades.some(item => item.tone === 'red') ? 'red' : prioridades.length ? 'amber' : 'green'}>{prioridades.length}</Badge>}>
+        {prioridades.length ? <div style={{ display: 'grid', gap: 8 }}>{prioridades.slice(0, 6).map(item => <button key={item.title} type="button" onClick={() => onOpen(item.tab)} style={{ display: 'grid', gridTemplateColumns: '8px minmax(0, 1fr) auto', alignItems: 'center', gap: 10, padding: '10px 8px', border: 0, borderBottom: '1px solid var(--border)', background: 'transparent', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}><span style={{ width: 8, height: 8, borderRadius: 99, background: item.tone === 'red' ? 'var(--red)' : 'var(--amber)' }} /><span><strong style={{ display: 'block', fontSize: 13 }}>{item.title}</strong><span style={{ display: 'block', marginTop: 3, color: 'var(--text-3)', fontSize: 12, lineHeight: 1.35 }}>{item.detail}</span></span><span style={{ color: 'var(--green-700)', fontSize: 12, fontWeight: 700 }}>Ver</span></button>)}</div> : <EmptyBlock text="No se detectan alertas activas en las fuentes disponibles para este corte." />}
+      </Panel>
+      <Panel title="Cómo leer esta portada" icon="barChart2">
+        <div style={{ display: 'grid', gap: 12, color: 'var(--text-2)', fontSize: 12, lineHeight: 1.45 }}>
+          <div><strong>Comercial:</strong> órdenes internas creadas en el rango y con los filtros comerciales aplicados.</div>
+          <div><strong>Caja y CxC:</strong> documentos y movimientos fechados en el rango; no constituyen balance ni saldo bancario certificado.</div>
+          <div><strong>Operación y stock:</strong> carga pendiente, compromisos y existencias vigentes al corte, no una serie histórica.</div>
+          <div><strong>Acción:</strong> cada tarjeta abre el módulo que contiene el análisis, la segmentación y el detalle trazable.</div>
+        </div>
+      </Panel>
+    </div>
+
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+      <Panel title="Mix comercial del período" icon="shoppingCart" action={<Badge tone="gray">órdenes internas</Badge>}>
+        <QueryBlock problem={ventasProblem}><GroupList rows={mix} format={money} onRowClick={row => onOpen('ventas', { tipo: row.label })} /></QueryBlock>
+      </Panel>
+      <Panel title="Comparación comercial" icon="trendingUp">
+        <QueryBlock problem={ventasProblem}>
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div><div style={{ color: 'var(--text-3)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>Período anterior equivalente</div><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginTop: 5 }}><strong style={{ fontSize: 20 }}>{money(comparativo?.periodoAnterior?.total)}</strong><Delta value={comparativo?.variacionVentas} /></div><div style={{ marginTop: 4, color: 'var(--text-3)', fontSize: 12 }}>{compactDate(comparativo?.periodoAnterior?.rango?.desde)} — {compactDate(comparativo?.periodoAnterior?.rango?.hasta)}</div></div>
+            <div style={{ paddingTop: 10, borderTop: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11, lineHeight: 1.4 }}>{comparativo?.criterio || 'Se compara un rango anterior de igual cantidad de días.'}</div>
+          </div>
+        </QueryBlock>
+      </Panel>
+      <Panel title="Señales de cobertura" icon="clipboard">
+        <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: 'var(--text-2)', fontSize: 13 }}>Licitaciones pendientes</span><strong>{statusValue(licitacionesProblem, licitacionesPendientes)}</strong></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: 'var(--text-2)', fontSize: 13 }}>OT en riesgo</span><strong>{statusValue(operacionesProblem, taller.enRiesgo)}</strong></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: 'var(--text-2)', fontSize: 13 }}>Movimientos de caja</span><strong>{statusValue(finanzasProblem, caja.count)}</strong></div>
+          <div style={{ paddingTop: 10, borderTop: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11, lineHeight: 1.4 }}>Estas señales no reemplazan metas, presupuesto ni margen neto: esas fuentes aún no están modeladas como control gerencial certificado.</div>
+        </div>
+      </Panel>
+    </div>
+  </div>
+}
+
 function OperationalDashboard({ data, navigate }) {
   const kpis = data?.kpis || {}
   const buildTrend = key => groupCommercialTrend((data?.tendencia || []).map(point => ({ label: point.label, ventas: point[key] })), data?.filtros?.desde, data?.filtros?.hasta)
@@ -841,8 +942,10 @@ export default function ReportesGerencialesPage() {
   return (
     <main className="page page-wide">
       <PageHeader
-        title="Actividad comercial y operativa"
-        subtitle="Seguimiento filtrable de operaciones, caja, cobranza, stock, licitaciones y pendientes. No reemplaza indicadores financieros certificados."
+        title={active === 'resumen' ? 'Resumen ejecutivo' : 'Actividad comercial y operativa'}
+        subtitle={active === 'resumen'
+          ? 'Corte de decisión con alcance explícito por fuente. No reemplaza estados financieros ni indicadores certificados.'
+          : 'Seguimiento filtrable de operaciones, caja, cobranza, stock, licitaciones y pendientes. No reemplaza indicadores financieros certificados.'}
         breadcrumb={['Inicio', 'Reportes']}
         actions={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -922,21 +1025,24 @@ export default function ReportesGerencialesPage() {
       {!['ventas', 'resumen'].includes(active) && <div style={{ margin: '-6px 0 14px', color: 'var(--text-3)', fontSize: 12 }}>
         En esta pestaña el filtro aplicable es solo el <strong>período</strong>. Los filtros comerciales se ocultan para no sugerir una segmentación que estas fuentes aún no comparten.
       </div>}
+      {active === 'resumen' && <div style={{ margin: '-6px 0 14px', color: 'var(--text-3)', fontSize: 12 }}>
+        En el resumen, <strong>tipo de venta, vendedor, sucursal y cliente aplican solo a Comercial</strong>. Caja, cobranza, licitaciones y operación conservan el período y su propio alcance, indicado en cada tarjeta.
+      </div>}
 
       {hasError && <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, fontSize: 13 }}>Algunas fuentes no respondieron. Las secciones disponibles se muestran con los datos cargados.</div>}
       {isLoading && <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--blue-bg)', color: 'var(--blue)', borderRadius: 8, fontSize: 13 }}>Actualizando reportes...</div>}
-      {resumenMeta?.estado === 'operacional_no_certificado' && (
+      {active !== 'resumen' && resumenMeta?.estado === 'operacional_no_certificado' && (
         <div role="status" style={{ marginBottom: 12, padding: '10px 14px', background: '#f0f9ff', color: '#075985', border: '1px solid #bae6fd', borderRadius: 8, fontSize: 13 }}>
           <strong>Lectura operacional:</strong> {resumenMeta.mensajeEstado} Corte generado {formatUpdatedAt(resumenMeta.generadoEn)}.
         </div>
       )}
-      {advertenciasVentas.map(aviso => (
+      {active === 'ventas' && advertenciasVentas.map(aviso => (
         <div key={aviso.tipo} role="status" style={{ marginBottom: 12, padding: '10px 14px', background: '#fff8e1', color: '#8a5200', border: '1px solid #f2d08a', borderRadius: 8, fontSize: 13 }}>
           <strong>Lectura no certificada:</strong> {aviso.detalle}. Finanzas y Comercial deben definir si estas cotizaciones forman parte del indicador comercial.
         </div>
       ))}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 22 }}>
+      {active !== 'resumen' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 22 }}>
         {active === 'ventas' ? <>
           <KpiCard label="Ventas de órdenes" value={statusValue(comercialProblem, comercialGerencialQuery.data?.kpis?.ventas, money)} sublabel={statusSublabel(comercialProblem, `${num(comercialGerencialQuery.data?.kpis?.ordenes || 0)} órdenes`)} icon="shoppingCart" tone={statusTone(comercialProblem, 'blue')} />
           <KpiCard label="Unidades vendidas" value={statusValue(comercialProblem, comercialGerencialQuery.data?.kpis?.unidades)} sublabel={statusSublabel(comercialProblem, 'en el período filtrado')} icon="package" tone={statusTone(comercialProblem)} />
@@ -974,40 +1080,22 @@ export default function ReportesGerencialesPage() {
         <KpiCard label="Stock critico" value={statusValue(stockProblem, stockCriticoTotal)} sublabel={statusSublabel(stockProblem, 'productos y materiales')} icon="alertTriangle" tone={statusTone(stockProblem, stockCriticoTotal ? 'red' : 'neutral')} onClick={perms.stock ? () => setActive('riesgos') : undefined} />
         <KpiCard label="Pendientes operacion" value={statusValue(operacionProblem, pendientesOperacionTotal)} sublabel={statusSublabel(operacionProblem, 'taller y despachos')} icon="clock" tone={statusTone(operacionProblem, 'amber')} onClick={perms.taller && perms.despacho ? () => setActive('operacion') : undefined} />
         </>}
-      </div>
+      </div>}
 
       <Tabs tabs={tabs} active={active} onChange={setActive} />
 
-      {active === 'resumen' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
-          <Panel title="Ordenes internas por tipo" icon="barChart2" action={<Badge tone="gray">sin web ni licitaciones</Badge>}>
-            <QueryBlock problem={ventasGerencialProblem}>
-              <GroupList rows={ventaPorTipo} format={money} onRowClick={row => drillVentas({ tipo: row.label })} />
-            </QueryBlock>
-          </Panel>
-          <Panel title="Caja y cobranza" icon="dollarSign">
-            <div style={{ display: 'grid', gap: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Ingresos caja</span><strong>{statusValue(cajaProblem, ingresos, money)}</strong></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Egresos caja</span><strong>{statusValue(cajaProblem, egresos, money)}</strong></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Cobrado historico</span><strong>{statusValue(cobranzaProblem, cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.cobrado || 0, money)}</strong></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Pendiente CxC</span><strong style={{ color: cobranzaProblem ? 'var(--text-3)' : 'var(--amber)' }}>{statusValue(cobranzaProblem, cobranzaPendiente, money)}</strong></div>
-            </div>
-          </Panel>
-          <Panel title="Alertas activas" icon="alertTriangle">
-            <div style={{ display: 'grid', gap: 9 }}>
-              <button onClick={() => setActive('riesgos')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', cursor: 'pointer' }}>
-                <span style={{ color: 'var(--text-2)', fontSize: 13 }}>Stock critico</span><Badge tone={stockProblem ? 'gray' : stockCriticoTotal ? 'red' : 'green'}>{statusCount(stockProblem, stockCriticoTotal)}</Badge>
-              </button>
-              <button onClick={() => setActive('riesgos')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', cursor: 'pointer' }}>
-                <span style={{ color: 'var(--text-2)', fontSize: 13 }}>Licitaciones pendientes</span><Badge tone={licitacionesPendientesCount ? 'amber' : 'green'}>{statusCount(licitacionesProblem, licitacionesPendientesCount)}</Badge>
-              </button>
-              <button onClick={() => setActive('operacion')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', cursor: 'pointer' }}>
-                <span style={{ color: 'var(--text-2)', fontSize: 13 }}>Taller / despachos</span><Badge tone={pendientesOperacionTotal ? 'amber' : 'green'}>{statusCount(operacionProblem, pendientesOperacionTotal)}</Badge>
-              </button>
-            </div>
-          </Panel>
-        </div>
-      )}
+      {active === 'resumen' && <ExecutiveSummaryDashboard
+        ventas={ventasGerencialQuery.data}
+        cobranzaCaja={cobranzaCajaGerencialQuery.data}
+        stock={stockGerencialQuery.data}
+        licitaciones={licitacionesGerencialQuery.data}
+        operaciones={operacionesGerencialQuery.data}
+        problems={{ ventas: ventasGerencialProblem, finanzas: cobranzaProblem, stock: stockProblem, licitaciones: licitacionesProblem, operaciones: operacionProblem }}
+        meta={resumenMeta}
+        desde={filters.desde}
+        hasta={filters.hasta}
+        onOpen={(tab, nextFilters) => nextFilters ? drillVentas(nextFilters) : setActive(tab)}
+      />}
 
       {active === 'ventas' && (
         <QueryBlock problem={comercialProblem}>

@@ -26,6 +26,7 @@ describe('reportes comisiones vendedores', () => {
     reglas: [],
     ordenes: [],
     movimientosCaja: [],
+    facturas: [],
     users: [],
   }
 
@@ -50,6 +51,7 @@ describe('reportes comisiones vendedores', () => {
   })
 
   afterAll(async () => {
+    await app.prisma.factDocumento.deleteMany({ where: { id: { in: created.facturas } } }).catch(() => {})
     await app.prisma.movimientoCaja.deleteMany({ where: { id: { in: created.movimientosCaja } } }).catch(() => {})
     await app.prisma.comisionReglaTramo.deleteMany({ where: { reglaId: { in: created.reglas } } }).catch(() => {})
     await app.prisma.comisionRegla.deleteMany({ where: { id: { in: created.reglas } } }).catch(() => {})
@@ -74,6 +76,8 @@ describe('reportes comisiones vendedores', () => {
     estadoPago = 'Pagada',
     estadoEntrega = 'Entregada',
     facturado,
+    userId = vendedor.id,
+    creadorNombre = vendedor.nombre,
   } = {}) {
     const total = cantidad * precioUnitario
     const orden = await app.prisma.orden.create({
@@ -81,8 +85,8 @@ describe('reportes comisiones vendedores', () => {
         nInterno: 950000 + created.ordenes.length + Math.floor(Math.random() * 1000),
         tipo,
         clienteId: cliente.id,
-        userId: vendedor.id,
-        creadorNombre: vendedor.nombre,
+        userId,
+        creadorNombre,
         rutCliente: `COM-${Date.now()}`,
         sucursalId: 1,
         createdAt,
@@ -135,7 +139,7 @@ describe('reportes comisiones vendedores', () => {
     })
     const rule = await createRule({
       nombre: 'Reporte vendedor venta sala',
-      tipoVenta: 'Venta sala',
+      tipoVenta: 'Venta Sala',
       vendedorId: vendedor.id,
       modalidad: 'FIJA',
       base: 'VENDIDO',
@@ -157,7 +161,7 @@ describe('reportes comisiones vendedores', () => {
     expect(body.rows).toHaveLength(1)
     expect(body.rows[0]).toMatchObject({
       ordenId: orden.id,
-      tipoVenta: 'Venta sala',
+      tipoVenta: 'Venta Sala',
       vendedorId: vendedor.id,
       totalVendido: 2000,
       totalCobrado: 1000,
@@ -168,6 +172,89 @@ describe('reportes comisiones vendedores', () => {
       reglaScope: 'vendedor_tipo',
     })
     expect(body.totales.totalComision).toBe(60)
+  })
+
+  it('normaliza Entregado legacy y reconoce un DTE vigente aunque facturado legacy sea cero', async () => {
+    const rule = await createRule({
+      nombre: 'Reporte marketplace con DTE',
+      tipoVenta: 'Marketplace',
+      vendedorId: vendedor.id,
+      modalidad: 'FIJA',
+      base: 'VENDIDO',
+      porcentaje: 4,
+      prioridad: 100010,
+      vigenteDesde: new Date('2026-01-01T00:00:00Z'),
+    })
+    const orden = await createOrden({
+      tipo: 'Marketplace',
+      cantidad: 2,
+      precioUnitario: 1000,
+      estadoEntrega: 'Entregado',
+      facturado: 0,
+    })
+    const factura = await app.prisma.factDocumento.create({
+      data: { ordenId: orden.id, tipoDte: 39, estado: 'emitido' },
+    })
+    created.facturas.push(factura.id)
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/reportes/comisiones?desde=2026-06-01&hasta=2026-06-30&tipoVenta=marketplace&vendedorId=${vendedor.id}`,
+      headers: { authorization: `Bearer ${adminToken}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const row = JSON.parse(res.body).rows.find(item => item.ordenId === orden.id)
+    expect(row).toMatchObject({
+      reglaId: rule.id,
+      estadoEntrega: 'Entregada',
+      estadoFactura: 'DTE vigente',
+      isEligible: true,
+      comisionEstimada: 80,
+    })
+  })
+
+  it('no paga una regla global a una venta que quedó en una cuenta no vendedora', async () => {
+    const adminCreador = await app.prisma.user.create({
+      data: {
+        email: `comisiones-admin-${Date.now()}@example.com`,
+        passwordHash: 'test',
+        role: 'admin',
+        nombre: 'Administrador que ingresó venta',
+        activo: true,
+      },
+    })
+    created.users.push(adminCreador.id)
+    const rule = await createRule({
+      nombre: 'Global marketplace sin cuenta vendedora',
+      tipoVenta: 'Marketplace',
+      modalidad: 'FIJA',
+      base: 'VENDIDO',
+      porcentaje: 3,
+      prioridad: 100020,
+      vigenteDesde: new Date('2026-01-01T00:00:00Z'),
+    })
+    const orden = await createOrden({
+      tipo: 'Marketplace',
+      precioUnitario: 3000,
+      userId: adminCreador.id,
+      creadorNombre: 'Ejecutiva escrita en legado',
+    })
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/reportes/comisiones?desde=2026-06-01&hasta=2026-06-30&tipoVenta=marketplace',
+      headers: { authorization: `Bearer ${adminToken}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const row = JSON.parse(res.body).rows.find(item => item.ordenId === orden.id)
+    expect(row).toMatchObject({
+      vendedorComisionable: false,
+      reglaId: null,
+      isEligible: false,
+      comisionEstimada: 0,
+    })
+    expect(row.motivoNoElegible).toMatch(/sin vendedor comisionable/)
+    expect(rule.id).toBeTruthy()
   })
 
   it('usa pagos reales de caja para base COBRADO y excluye referenciales, eliminados y fuera de fecha', async () => {
