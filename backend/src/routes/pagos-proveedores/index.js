@@ -503,6 +503,9 @@ export default async function pagosProveedoresRoutes(fastify) {
     }
 
     const detalles = normalizeDetalles(Array.isArray(b.detalles) ? b.detalles : [])
+    if (b.ingresaStock && detalles.length === 0) {
+      return reply.code(400).send({ error: 'Debe incluir al menos una línea con código interno para aplicar stock' })
+    }
     const stockInvalid = b.ingresaStock
       ? detalles.find(d => d.cantidad <= 0 || (d.destino === 'producto' && !Number.isInteger(d.cantidad)))
       : null

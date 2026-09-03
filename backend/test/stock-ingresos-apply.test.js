@@ -118,6 +118,23 @@ describe('stock ingresos apply helper', () => {
     ]))
   })
 
+  it('locks product stock with the shared ventas key before applying an ingress', async () => {
+    const tx = buildStockTx({
+      productos: [{ id: 71, codigoInterno: 'LOCK-1', stock: 4, precioLista: 100 }],
+    })
+    tx.$executeRaw = vi.fn()
+
+    await validateAndApplyStockIngreso({
+      tx,
+      detalles: [{ codigoInterno: 'LOCK-1', destino: 'producto', cantidad: 1, precio: 100 }],
+      pago: { id: 72, proveedorId: 1, documento: 'Factura', nDoc: 'LOCK-72', usuario: 'QA' },
+      userId: 7,
+    })
+
+    expect(tx.$executeRaw).toHaveBeenCalledOnce()
+    expect(tx.__state.productRows.get('LOCK-1').stock).toBe(5)
+  })
+
   it('acumula cantidad del mismo proveedor y usa costo de ultima compra', async () => {
     const tx = buildStockTx({
       productos: [{ id: 1, codigoInterno: 'P1', stock: 0, precioLista: 0 }],
