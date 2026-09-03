@@ -28,6 +28,7 @@ const PERMISSIONS = {
     ventas:      ['read'],
     clientes:    ['read'],
     proveedores: ['read', 'write'],
+    'caja.pagos_proveedores': ['read'],
   },
   cajero:       {
     reportes: ['read'],
