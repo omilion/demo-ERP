@@ -689,7 +689,7 @@ export default function ReportesGerencialesPage() {
   ), [filters.tipo, tiposVentaSistema])
   const resumenGerencialQuery = useReporteGerencialResumen(summaryParams, canReadGerencial)
   const comercialGerencialQuery = useReporteComercialGerencial(summaryParams, perms.ventas && active === 'ventas')
-  const operacionGerencialV1Query = useReporteOperacionGerencial({ ...periodParams, sucursalId: filters.sucursalId || undefined }, perms.taller && perms.despacho && active === 'operacion')
+  const operacionGerencialV1Query = useReporteOperacionGerencial(periodParams, perms.taller && perms.despacho && active === 'operacion')
   const finanzasGerencialV1Query = useReporteFinanzasGerencial(periodParams, canReadFinanzas && active === 'finanzas')
   const riesgosGerencialV1Query = useReporteRiesgosGerencial(periodParams, (perms.stock || perms.licitaciones || perms.ventas) && active === 'riesgos')
   const seccionesGerenciales = resumenGerencialQuery.data?.secciones || {}
@@ -803,17 +803,11 @@ export default function ReportesGerencialesPage() {
       resumen: { path: '/reportes/export/gerencial.xlsx', name: 'reporte_gerencial' },
     }
     const current = exports[active] || exports.resumen
+    const appliedFilters = ['ventas', 'resumen'].includes(active) ? summaryParams : periodParams
     return downloadFromBackend(
-    current.path,
-    `${current.name}_${new Date().toISOString().slice(0, 10)}.xlsx`,
-    {
-      desde: filters.desde || undefined,
-      hasta: filters.hasta || undefined,
-      tipo: filters.tipo || undefined,
-      vendedor: filters.vendedor || undefined,
-      cliente: filters.cliente || undefined,
-      sucursalId: filters.sucursalId || undefined,
-    },
+      current.path,
+      `${current.name}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      appliedFilters,
     )
   }
 
