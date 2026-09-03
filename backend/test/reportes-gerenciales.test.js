@@ -219,6 +219,15 @@ describeDb('reportes gerenciales backend', () => {
       expect(body.filtros.desde).toBe(desde)
       expect(body.filtros.hasta).toBe(hasta)
       expect(body.kpis).toBeTruthy()
+
+      const exportRes = await app.inject({
+        method: 'GET',
+        url: `/api/reportes/export/${section}.xlsx?desde=${desde}&hasta=${hasta}`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(exportRes.statusCode, `${section} export: ${exportRes.body}`).toBe(200)
+      expect(exportRes.headers['content-type']).toContain('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      expect(exportRes.rawPayload.length).toBeGreaterThan(1000)
     }
   })
 

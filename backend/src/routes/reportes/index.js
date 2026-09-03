@@ -1866,6 +1866,115 @@ async function buildComercialXlsx(reporte, query = {}) {
   return workbook.xlsx.writeBuffer()
 }
 
+async function buildGerencialV1Xlsx({ name, title, reporte, summaryRows = [], sheets = [] }) {
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = 'Plastimar Sisgestion'
+  workbook.created = new Date()
+  const resumen = workbook.addWorksheet('Resumen')
+  styleGerencialWorksheet(resumen, title)
+  resumen.getCell('A2').value = `Período: ${reporte.filtros?.desde || 'Inicio'} a ${reporte.filtros?.hasta || 'Hoy'}`
+  resumen.getCell('A2').font = { italic: true, color: { argb: 'FF475569' } }
+  resumen.getRow(3).values = ['Indicador', 'Valor', 'Detalle']
+  summaryRows.forEach(row => resumen.addRow(row))
+  resumen.addRow([])
+  resumen.addRow(['Corte y fuente', reporte.meta?.mensajeEstado || '', ''])
+  resumen.getColumn(2).numFmt = '#,##0'
+  resumen.getColumn(1).width = 30
+  resumen.getColumn(2).width = 24
+  resumen.getColumn(3).width = 54
+
+  sheets.forEach(({ sheetName, sheetTitle, columns, rows, moneyColumns = [], percentColumns = [] }) => {
+    const sheet = workbook.addWorksheet(sheetName)
+    styleGerencialWorksheet(sheet, sheetTitle)
+    sheet.getRow(3).values = columns.map(column => column.label)
+    rows.forEach(row => sheet.addRow(columns.map(column => row[column.key] ?? null)))
+    sheet.columns.forEach((column, index) => { column.width = columns[index]?.width || 22 })
+    moneyColumns.forEach(index => { sheet.getColumn(index).numFmt = '#,##0' })
+    percentColumns.forEach(index => { sheet.getColumn(index).numFmt = '0.0%;[Red]-0.0%' })
+    sheet.autoFilter = { from: 'A3', to: `${String.fromCharCode(64 + columns.length)}${Math.max(3, rows.length + 3)}` }
+  })
+  return workbook.xlsx.writeBuffer()
+}
+
+function buildOperacionGerencialXlsx(reporte) {
+  const kpis = reporte.kpis || {}
+  return buildGerencialV1Xlsx({
+    name: 'operacion', title: 'Control operacional', reporte,
+    summaryRows: [
+      ['Backlog actual', kpis.backlog || 0, 'OT no cerradas al momento de consultar'],
+      ['OT vencidas', kpis.vencidas || 0, 'Contra compromiso actual'],
+      ['OT en riesgo', kpis.enRiesgo || 0, 'Vencen dentro de 7 días'],
+      ['Ingresos del período', kpis.ingresos || 0, 'OT creadas en el rango'],
+      ['Terminadas del período', kpis.terminadas || 0, 'Por fecha de término'],
+      ['Despachos pendientes', kpis.despachosPendientes || 0, 'Estado actual'],
+      ['Entregas del período', kpis.entregas || 0, 'Por fecha de entrega'],
+    ],
+    sheets: [
+      { sheetName: 'Backlog OT', sheetTitle: 'Órdenes de taller abiertas', columns: [
+        { key: 'id', label: 'OT', width: 12 }, { key: 'clienteNombre', label: 'Cliente', width: 34 }, { key: 'estado', label: 'Estado' }, { key: 'prioridad', label: 'Prioridad' }, { key: 'compromiso', label: 'Compromiso' }, { key: 'diasAtraso', label: 'Días atraso' },
+      ], rows: reporte.backlog || [] },
+      { sheetName: 'Despachos', sheetTitle: 'Despachos pendientes actuales', columns: [
+        { key: 'interno', label: 'N° interno' }, { key: 'contacto', label: 'Contacto', width: 28 }, { key: 'comuna', label: 'Comuna' }, { key: 'transporte', label: 'Transporte' }, { key: 'fechaInterno', label: 'Ingreso' },
+      ], rows: reporte.despachos || [] },
+    ],
+  })
+}
+
+function buildFinanzasGerencialXlsx(reporte) {
+  const kpis = reporte.kpis || {}
+  return buildGerencialV1Xlsx({
+    name: 'finanzas', title: 'Flujo y cobranza operacional', reporte,
+    summaryRows: [
+      ['Ingresos de caja', kpis.ingresos || 0, 'Movimientos registrados en el período'],
+      ['Egresos de caja', kpis.egresos || 0, 'Movimientos registrados en el período'],
+      ['Flujo neto', kpis.flujoNeto || 0, 'Ingresos menos egresos; no es saldo bancario'],
+      ['CxC pendiente registrada', kpis.carteraPendienteRegistrada || 0, `${kpis.documentosPendientes || 0} documentos con estado pendiente`],
+      ['Documentos emitidos', kpis.documentosEmitidos || 0, 'Fecha factura dentro del período'],
+      ['Flujo período anterior', kpis.comparativoFlujo?.flujoNeto || 0, kpis.comparativoFlujo?.rango?.criterio || 'Período comparable'],
+    ],
+    sheets: [
+      { sheetName: 'Antigüedad CxC', sheetTitle: 'Cartera pendiente por antigüedad', columns: [
+        { key: 'label', label: 'Tramo' }, { key: 'monto', label: 'Monto' }, { key: 'documentos', label: 'Documentos' },
+      ], rows: reporte.antiguedad || [], moneyColumns: [2] },
+      { sheetName: 'Cartera pendiente', sheetTitle: 'Documentos pendientes más antiguos', columns: [
+        { key: 'interno', label: 'Interno' }, { key: 'ndoc', label: 'Documento' }, { key: 'cliente', label: 'Cliente', width: 34 }, { key: 'rut', label: 'RUT' }, { key: 'fechaFactura', label: 'Factura' }, { key: 'valorFactura', label: 'Valor' }, { key: 'ejecutiva', label: 'Ejecutiva' },
+      ], rows: reporte.cartera || [], moneyColumns: [6] },
+      { sheetName: 'Medios de pago', sheetTitle: 'Ingresos por medio de pago', columns: [
+        { key: 'label', label: 'Medio de pago' }, { key: 'value', label: 'Ingresos' },
+      ], rows: reporte.mediosPago || [], moneyColumns: [2] },
+    ],
+  })
+}
+
+function buildRiesgosGerencialXlsx(reporte) {
+  const kpis = reporte.kpis || {}
+  return buildGerencialV1Xlsx({
+    name: 'riesgos', title: 'Riesgos operacionales', reporte,
+    summaryRows: [
+      ['Productos críticos', kpis.productosCriticos || 0, 'Stock actual bajo umbral'],
+      ['Materiales críticos', kpis.materialesCriticos || 0, 'Bodega de taller actual'],
+      ['Lotes no aprobados', kpis.lotesBloqueados || 0, 'Con disponibilidad'],
+      ['Excepciones abiertas', kpis.excepcionesAbiertas || 0, `${kpis.excepcionesVencidas || 0} vencidas`],
+      ['Licitaciones pendientes', kpis.licitacionesPendientes || 0, 'Pendientes de resolución'],
+      ['Umbrales sin configurar', kpis.umbralesSinConfigurar || 0, 'SKUs sin stock crítico'],
+    ],
+    sheets: [
+      { sheetName: 'Productos críticos', sheetTitle: 'Productos con stock crítico', columns: [
+        { key: 'codigoInterno', label: 'Código' }, { key: 'nombre', label: 'Producto', width: 36 }, { key: 'stock', label: 'Stock' }, { key: 'stockCritico', label: 'Umbral' },
+      ], rows: reporte.stock?.productos || [] },
+      { sheetName: 'Materiales críticos', sheetTitle: 'Materiales de taller críticos', columns: [
+        { key: 'codigoInterno', label: 'Código' }, { key: 'nombre', label: 'Material', width: 36 }, { key: 'stock', label: 'Stock' }, { key: 'stockCritico', label: 'Umbral' },
+      ], rows: reporte.stock?.materiales || [] },
+      { sheetName: 'Lotes calidad', sheetTitle: 'Lotes de calidad no aprobada', columns: [
+        { key: 'codigo', label: 'Lote' }, { key: 'estadoCalidad', label: 'Estado calidad' }, { key: 'cantidadDisponible', label: 'Disponible' }, { key: 'observacion', label: 'Observación', width: 40 }, { key: 'recibidoAt', label: 'Recepción' },
+      ], rows: (reporte.lotes || []).map(item => ({ ...item, material: item.item?.nombre || '' })) },
+      { sheetName: 'Excepciones', sheetTitle: 'Excepciones abiertas', columns: [
+        { key: 'id', label: 'ID' }, { key: 'severidad', label: 'Severidad' }, { key: 'estado', label: 'Estado' }, { key: 'venceAt', label: 'Vence' }, { key: 'ordenId', label: 'Orden' },
+      ], rows: reporte.excepciones || [] },
+    ],
+  })
+}
+
 export default async function reportesRoutes(fastify) {
   registerComisionesReportRoutes(fastify)
   registerMovimientosAnormalesReportRoutes(fastify)
@@ -2065,6 +2174,45 @@ export default async function reportesRoutes(fastify) {
     return reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="control_comercial_${new Date().toISOString().slice(0, 10)}.xlsx"`)
+      .send(Buffer.from(buffer))
+  })
+
+  fastify.get('/export/operacion.xlsx', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async (request, reply) => {
+    if (!canReadAll(request.user, ['taller', 'despacho'])) return reply.code(403).send({ error: 'Sin permiso para exportar análisis operacional' })
+    const reporte = await buildOperacionesGerencialV1(fastify, request.query, request.user)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    const buffer = await buildOperacionGerencialXlsx(reporte)
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="control_operacional_${new Date().toISOString().slice(0, 10)}.xlsx"`)
+      .send(Buffer.from(buffer))
+  })
+
+  fastify.get('/export/finanzas.xlsx', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async (request, reply) => {
+    if (!canReadAll(request.user, ['caja', 'cobranza'])) return reply.code(403).send({ error: 'Sin permiso para exportar análisis financiero' })
+    const reporte = await buildFinanzasGerencialV1(fastify, request.query, request.user)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    const buffer = await buildFinanzasGerencialXlsx(reporte)
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="flujo_cobranza_${new Date().toISOString().slice(0, 10)}.xlsx"`)
+      .send(Buffer.from(buffer))
+  })
+
+  fastify.get('/export/riesgos.xlsx', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async (request, reply) => {
+    if (![canReadModule(request.user, 'bodega'), canReadModule(request.user, 'licitaciones'), canReadModule(request.user, 'ventas')].some(Boolean)) return reply.code(403).send({ error: 'Sin permiso para exportar riesgos' })
+    const reporte = await buildRiesgosGerencialV1(fastify, request.query, request.user)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    const buffer = await buildRiesgosGerencialXlsx(reporte)
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="riesgos_operacionales_${new Date().toISOString().slice(0, 10)}.xlsx"`)
       .send(Buffer.from(buffer))
   })
 

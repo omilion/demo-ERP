@@ -794,9 +794,18 @@ export default function ReportesGerencialesPage() {
     setClienteInput('')
     setFilters({ ...rangeForPreset('ytd'), tipo: '', vendedor: '', cliente: '', sucursalId: '' })
   }
-  const exportGerencial = () => downloadFromBackend(
-    active === 'ventas' ? '/reportes/export/comercial.xlsx' : '/reportes/export/gerencial.xlsx',
-    `${active === 'ventas' ? 'control_comercial' : 'reporte_gerencial'}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+  const exportGerencial = () => {
+    const exports = {
+      ventas: { path: '/reportes/export/comercial.xlsx', name: 'control_comercial' },
+      operacion: { path: '/reportes/export/operacion.xlsx', name: 'control_operacional' },
+      finanzas: { path: '/reportes/export/finanzas.xlsx', name: 'flujo_cobranza' },
+      riesgos: { path: '/reportes/export/riesgos.xlsx', name: 'riesgos_operacionales' },
+      resumen: { path: '/reportes/export/gerencial.xlsx', name: 'reporte_gerencial' },
+    }
+    const current = exports[active] || exports.resumen
+    return downloadFromBackend(
+    current.path,
+    `${current.name}_${new Date().toISOString().slice(0, 10)}.xlsx`,
     {
       desde: filters.desde || undefined,
       hasta: filters.hasta || undefined,
@@ -805,7 +814,8 @@ export default function ReportesGerencialesPage() {
       cliente: filters.cliente || undefined,
       sucursalId: filters.sucursalId || undefined,
     },
-  )
+    )
+  }
 
   const tabs = [
     { id: 'resumen', label: 'Resumen' },
