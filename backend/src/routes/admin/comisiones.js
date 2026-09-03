@@ -1,16 +1,9 @@
+import { GRAFIAS_VENTA_DIRECTA, TIPO_VENTA_VALUES, normalizeTipoVenta } from '../ventas/estados-normalize.js'
+
 const TIPO_VENTA_TODOS = 'Todos'
-const TIPOS_VENTA = [
-  'Venta sala',
-  'Venta directa',
-  'Normal',
-  'Venta Web',
-  'Convenio Marco',
-  'Licitaci\u00f3n',
-]
+const TIPOS_VENTA = TIPO_VENTA_VALUES
 const MODALIDADES = ['FIJA', 'ESCALA_MONTO']
 const BASES = ['VENDIDO', 'COBRADO']
-
-const LICITACION_MOJIBAKE = 'Licitaci\u00c3\u00b3n'
 
 function aliasKey(value) {
   return String(value ?? '')
@@ -21,17 +14,6 @@ function aliasKey(value) {
     .replace(/[-_]+/g, ' ')
     .replace(/\s+/g, ' ')
 }
-
-const TIPO_VENTA_ALIASES = new Map([
-  ...TIPOS_VENTA.map(tipo => [aliasKey(tipo), tipo]),
-  [aliasKey('Venta Sala'), 'Venta sala'],
-  [aliasKey('venta-sala'), 'Venta sala'],
-  [aliasKey('venta-directa'), 'Venta directa'],
-  [aliasKey('normal'), 'Normal'],
-  [aliasKey('venta-web'), 'Venta Web'],
-  [aliasKey('convenio-marco'), 'Convenio Marco'],
-  [aliasKey('licitacion'), 'Licitaci\u00f3n'],
-])
 
 function parseId(value) {
   const id = Number(value)
@@ -80,9 +62,10 @@ function parseTipoVenta(value, { partial = false } = {}) {
 
   const raw = String(value).trim()
   if (!raw || aliasKey(raw) === aliasKey(TIPO_VENTA_TODOS)) return null
-  if (raw === LICITACION_MOJIBAKE) return 'Licitaci\u00f3n'
-
-  const tipoVenta = TIPO_VENTA_ALIASES.get(aliasKey(raw))
+  // Venta directa es una grafía legacy de la venta de mostrador. Las reglas se
+  // guardan en el tipo canónico Venta Sala para que una sola regla cubra ambas.
+  const tipoVenta = normalizeTipoVenta(raw)
+    || (GRAFIAS_VENTA_DIRECTA.some(item => aliasKey(item) === aliasKey(raw)) ? 'Venta Sala' : null)
   if (!tipoVenta) return { error: 'tipoVenta invalido' }
   return tipoVenta
 }
@@ -119,13 +102,16 @@ function parseTramos(value, { required = false } = {}) {
   if (invalid) return invalid
 
   tramos.sort((a, b) => a.montoDesde - b.montoDesde)
+  if (tramos[0]?.montoDesde !== 0) return { error: 'el primer tramo debe comenzar en 0' }
   for (let i = 1; i < tramos.length; i += 1) {
     const previous = tramos[i - 1]
     const current = tramos[i]
     if (previous.montoHasta === null || current.montoDesde < previous.montoHasta) {
       return { error: 'tramos no pueden traslaparse' }
     }
+    if (current.montoDesde > previous.montoHasta) return { error: 'tramos deben ser continuos, sin montos sin comisión' }
   }
+  if (tramos.at(-1)?.montoHasta !== null) return { error: 'el último tramo debe quedar sin límite superior' }
   return tramos
 }
 
@@ -296,6 +282,32 @@ async function assertVendedorExists(prisma, vendedorId) {
   return Boolean(user)
 }
 
+function datesOverlap(left, right) {
+  const leftStart = left.vigenteDesde ? new Date(left.vigenteDesde).getTime() : Number.NEGATIVE_INFINITY
+  const leftEnd = left.vigenteHasta ? new Date(left.vigenteHasta).getTime() : Number.POSITIVE_INFINITY
+  const rightStart = right.vigenteDesde ? new Date(right.vigenteDesde).getTime() : Number.NEGATIVE_INFINITY
+  const rightEnd = right.vigenteHasta ? new Date(right.vigenteHasta).getTime() : Number.POSITIVE_INFINITY
+  return leftStart <= rightEnd && rightStart <= leftEnd
+}
+
+// La prioridad resuelve reglas de distinto alcance (por ejemplo, global vs.
+// vendedor). Dos reglas con exactamente el mismo alcance, prioridad y vigencia
+// antes se resolvían por ID de creación sin que el administrador lo viera.
+async function findAmbiguousRule(prisma, candidate, excludeId = null) {
+  if (!candidate.activo) return null
+  const rules = await prisma.comisionRegla.findMany({
+    where: {
+      activo: true,
+      vendedorId: candidate.vendedorId ?? null,
+      tipoVenta: candidate.tipoVenta ?? null,
+      prioridad: candidate.prioridad,
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    select: { id: true, nombre: true, vigenteDesde: true, vigenteHasta: true },
+  })
+  return rules.find(rule => datesOverlap(candidate, rule)) || null
+}
+
 export default async function comisionesAdminRoutes(fastify) {
   const adminRead = fastify.rbac('admin', 'read', { allowExtra: false })
   const adminWrite = fastify.rbac('admin', 'write', { allowExtra: false })
@@ -357,6 +369,8 @@ export default async function comisionesAdminRoutes(fastify) {
     if (!await assertVendedorExists(fastify.prisma, parsed.data.vendedorId)) {
       return reply.code(400).send({ error: 'vendedorId no corresponde a vendedor activo' })
     }
+    const ambiguous = await findAmbiguousRule(fastify.prisma, parsed.data)
+    if (ambiguous) return reply.code(409).send({ error: `Existe una regla activa con el mismo alcance, prioridad y vigencia: ${ambiguous.nombre} (#${ambiguous.id})` })
 
     const rule = await fastify.prisma.comisionRegla.create({
       data: {
@@ -408,9 +422,13 @@ export default async function comisionesAdminRoutes(fastify) {
       activo: Object.hasOwn(parsed.data, 'activo') ? parsed.data.activo : current.activo,
     }
 
-    const nextTramos = Object.hasOwn(parsed.data, 'tramos')
+    const nextTramosRaw = Object.hasOwn(parsed.data, 'tramos')
       ? parsed.data.tramos
       : current.tramos.map(mapTramo)
+    const nextTramos = next.modalidad === 'ESCALA_MONTO'
+      ? parseTramos(nextTramosRaw, { required: true })
+      : []
+    if (nextTramos?.error) return reply.code(400).send({ error: nextTramos.error })
 
     if (next.vigenteDesde && next.vigenteHasta && new Date(next.vigenteHasta) < new Date(next.vigenteDesde)) {
       return reply.code(400).send({ error: 'vigenteHasta no puede ser anterior a vigenteDesde' })
@@ -424,6 +442,8 @@ export default async function comisionesAdminRoutes(fastify) {
     if (!await assertVendedorExists(fastify.prisma, next.vendedorId)) {
       return reply.code(400).send({ error: 'vendedorId no corresponde a vendedor activo' })
     }
+    const ambiguous = await findAmbiguousRule(fastify.prisma, next, id)
+    if (ambiguous) return reply.code(409).send({ error: `Existe una regla activa con el mismo alcance, prioridad y vigencia: ${ambiguous.nombre} (#${ambiguous.id})` })
 
     const updated = await fastify.prisma.$transaction(async (tx) => {
       await tx.comisionRegla.update({

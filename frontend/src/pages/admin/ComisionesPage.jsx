@@ -12,7 +12,7 @@ import {
 import { useUsuarios } from '../../api/usuarios'
 
 const DEFAULT_META = {
-  tiposVenta: ['Todos', 'Venta sala', 'Venta directa', 'Normal', 'Venta Web', 'Convenio Marco', 'Licitaci\u00f3n'],
+  tiposVenta: ['Todos', 'Normal', 'Licitaci\u00f3n', 'Compra \u00c1gil', 'Convenio Marco', 'Trato Directo', 'Venta Web', 'Venta Sala', 'Marketplace'],
   modalidades: ['FIJA', 'ESCALA_MONTO'],
   bases: ['VENDIDO', 'COBRADO'],
 }
@@ -130,6 +130,18 @@ function validateForm(form) {
       if (toNumber(tramo.montoDesde) === null || toNumber(tramo.porcentaje) === null) return 'Tramos incompletos'
       if (tramo.montoHasta !== '' && toNumber(tramo.montoHasta) === null) return 'Monto hasta invalido'
     }
+    const tramos = form.tramos
+      .map(tramo => ({ desde: toNumber(tramo.montoDesde), hasta: tramo.montoHasta === '' ? null : toNumber(tramo.montoHasta) }))
+      .sort((a, b) => a.desde - b.desde)
+    if (tramos[0]?.desde !== 0) return 'El primer tramo debe comenzar en $0'
+    for (let index = 1; index < tramos.length; index += 1) {
+      const previo = tramos[index - 1]
+      const actual = tramos[index]
+      if (previo.hasta === null) return 'Solo el último tramo puede quedar sin límite'
+      if (actual.desde < previo.hasta) return 'Los tramos no pueden traslaparse'
+      if (actual.desde > previo.hasta) return 'Los tramos deben ser continuos, sin montos sin comisión'
+    }
+    if (tramos.at(-1)?.hasta !== null) return 'El último tramo debe quedar sin límite superior'
   }
   return ''
 }
@@ -264,7 +276,7 @@ export default function ComisionesPage() {
     <main className="page page-wide">
       <PageHeader
         title="Comisiones"
-        subtitle="Reglas comerciales para calculo estimado por vendedor"
+        subtitle="Reglas para calcular comisión devengable por venta. No generan una liquidación ni un pago."
         breadcrumb={['Inicio', 'Admin', 'Comisiones']}
         actions={<Btn variant="secondary" icon="refreshCw" size="sm" onClick={() => reglasQuery.refetch()} disabled={reglasQuery.isFetching}>Actualizar</Btn>}
       />
@@ -282,12 +294,15 @@ export default function ComisionesPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 14 }}>
               <div>
                 <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-1)' }}>{editingId ? 'Editar regla' : 'Nueva regla'}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>Administra alcance, base y vigencia.</div>
+                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>Define a quién aplica, cómo se calcula y desde cuándo.</div>
               </div>
               {editingId && <Badge tone="blue">#{editingId}</Badge>}
             </div>
 
             {error && <div style={{ marginBottom: 14, padding: '9px 11px', borderRadius: 8, background: 'var(--red-bg)', color: 'var(--red)', fontSize: 12, fontWeight: 700 }}>{error}</div>}
+            <div style={{ marginBottom: 14, padding: '9px 11px', borderRadius: 8, border: '1px solid #bae6fd', background: '#f0f9ff', color: '#075985', fontSize: 12, lineHeight: 1.45 }}>
+              <strong>Cómo se resuelve una regla:</strong> primero vendedor específico, luego tipo de venta específico, después la prioridad más alta. La comisión se calcula solo si la venta está pagada, entregada y tiene DTE o facturación trazable.
+            </div>
 
             <FormField label="Nombre" required>
               <Input value={form.nombre} onChange={v => setField('nombre', v)} placeholder="Ej: Venta sala vendedor senior" disabled={pending} />
@@ -302,7 +317,7 @@ export default function ComisionesPage() {
                 <Select
                   value={form.vendedorId}
                   onChange={v => setField('vendedorId', v)}
-                  options={[{ value: '', label: 'Global' }, ...vendedores.map(v => ({ value: String(v.id), label: v.nombre || v.email }))]}
+                  options={[{ value: '', label: 'Global' }, ...vendedores.map(v => ({ value: String(v.id), label: (v.nombre || v.email) + (v.codigoVendedor ? ' · cód. ' + v.codigoVendedor : '') }))]}
                   disabled={pending}
                 />
               </FormField>
@@ -312,9 +327,12 @@ export default function ComisionesPage() {
               <FormField label="Modalidad">
                 <Select value={form.modalidad} onChange={v => setField('modalidad', v)} options={modalidadOptions} disabled={pending} />
               </FormField>
-              <FormField label="Base">
+              <FormField label="Base de cálculo">
                 <Select value={form.base} onChange={v => setField('base', v)} options={baseOptions} disabled={pending} />
               </FormField>
+            </div>
+            <div style={{ marginTop: -8, marginBottom: 14, color: 'var(--text-3)', fontSize: 11, lineHeight: 1.4 }}>
+              <strong>Vendido:</strong> aplica el porcentaje al total neto de la venta. <strong>Cobrado:</strong> aplica al pago real registrado en Caja. En ambos casos se descuentan multas y notas de crédito antes de calcular.
             </div>
 
             {form.modalidad === 'FIJA' ? (
@@ -323,7 +341,8 @@ export default function ComisionesPage() {
               </FormField>
             ) : (
               <div style={{ marginBottom: 18 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>Tramos</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 4 }}>Tramos por monto de cada venta</div>
+                <div style={{ marginBottom: 8, color: 'var(--text-3)', fontSize: 11, lineHeight: 1.4 }}>Los tramos deben cubrir desde $0, sin huecos ni traslapes. El último “Hasta” se deja vacío para no dejar montos sin comisión.</div>
                 <div style={{ display: 'grid', gap: 8 }}>
                   {form.tramos.map((tramo, index) => (
                     <div key={index} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 92px 32px', gap: 8, alignItems: 'center' }}>
@@ -352,7 +371,7 @@ export default function ComisionesPage() {
             </div>
 
             <div style={fieldGrid}>
-              <FormField label="Prioridad">
+              <FormField label="Prioridad (mayor gana)">
                 <Input value={form.prioridad} onChange={v => setField('prioridad', v)} type="number" placeholder="100" disabled={pending} />
               </FormField>
               <label style={checkStyle}>

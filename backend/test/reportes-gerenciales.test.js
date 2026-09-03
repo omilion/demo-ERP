@@ -200,6 +200,44 @@ describeDb('reportes gerenciales backend', () => {
     expect(exportRes.rawPayload.length).toBeGreaterThan(1000)
   })
 
+  it('entrega las pestañas operación, finanzas y riesgos con corte y fuente declarados', async () => {
+    const endpoints = [
+      ['operacion', 'operacional_actual'],
+      ['finanzas', 'operacional_no_contable'],
+      ['riesgos', 'riesgo_operacional_actual'],
+    ]
+    for (const [section, estado] of endpoints) {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/reportes/gerencial/v1/${section}?desde=${desde}&hasta=${hasta}`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(res.statusCode, `${section}: ${res.body}`).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.meta.estado).toBe(estado)
+      expect(body.meta.mensajeEstado).toBeTruthy()
+      expect(body.filtros.desde).toBe(desde)
+      expect(body.filtros.hasta).toBe(hasta)
+      expect(body.kpis).toBeTruthy()
+      if (section === 'operacion') {
+        expect(body.kpis).toHaveProperty('despachosIngresados')
+        expect(body.kpis).toHaveProperty('despachosConIncidencia')
+        expect(body.kpis).toHaveProperty('tasaCierre')
+        expect(Array.isArray(body.antiguedadBacklog)).toBe(true)
+        expect(body.analisisDespachos).toBeTruthy()
+      }
+
+      const exportRes = await app.inject({
+        method: 'GET',
+        url: `/api/reportes/export/${section}.xlsx?desde=${desde}&hasta=${hasta}`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(exportRes.statusCode, `${section} export: ${exportRes.body}`).toBe(200)
+      expect(exportRes.headers['content-type']).toContain('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      expect(exportRes.rawPayload.length).toBeGreaterThan(1000)
+    }
+  })
+
   it('exporta ventas respetando la sucursal del usuario', async () => {
     const cliente = await app.prisma.cliente.findFirst({ select: { id: true } })
     const scopedMarker = `${marker}-EXP-${Date.now()}`

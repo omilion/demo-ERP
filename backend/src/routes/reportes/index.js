@@ -17,6 +17,9 @@ import { registerMovimientosAnormalesReportRoutes } from './movimientos-anormale
 import ExcelJS from 'exceljs'
 
 const VENTA_DIRECTA_TIPOS = TIPOS_VENTA_MOSTRADOR
+// Las vistas directivas se cargan por pestaña y nunca deben convertir una
+// consulta de detalle amplia en una respuesta parcial que parezca exacta.
+const GERENCIAL_ANALYTICS_DETAIL_LIMIT = 25_000
 
 function buildDateRange(desde, hasta) {
   const gte = desde ? parseDate(desde) : null
@@ -43,6 +46,16 @@ function applyRange(where, field, range) {
   if (range.gte) where[field].gte = range.gte
   if (range.lte) where[field].lte = range.lte
   return where
+}
+
+function localDateKey(value) {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function periodKey(date, periodo = 'mes') {
@@ -832,8 +845,8 @@ function shiftRangeOneYear(range) {
 function rangeMetadata(range) {
   if (!range?.gte || !range?.lte) return null
   return {
-    desde: range.gte.toISOString().slice(0, 10),
-    hasta: range.lte.toISOString().slice(0, 10),
+    desde: localDateKey(range.gte),
+    hasta: localDateKey(range.lte),
   }
 }
 
@@ -1161,6 +1174,349 @@ async function buildComercialGerencial(fastify, query = {}, user = null) {
     },
     inventario: canReadCosts ? { sinVentaPeriodo } : null,
     brechas,
+  }
+}
+
+async function findGerencialDetail(model, args, label) {
+  const count = await model.count({ where: args.where })
+  if (count > GERENCIAL_ANALYTICS_DETAIL_LIMIT) {
+    return { error: `${label} supera el lÃ­mite seguro de ${GERENCIAL_ANALYTICS_DETAIL_LIMIT.toLocaleString('es-CL')} registros. Acota el perÃ­odo para no afectar la operaciÃ³n.` }
+  }
+  const items = await model.findMany({ ...args, take: GERENCIAL_ANALYTICS_DETAIL_LIMIT })
+  return { count, items }
+}
+
+function gerencialDateLabel(value) {
+  return localDateKey(value) || 'Sin fecha'
+}
+
+function gerencialRangeMetadata(range, criterio) {
+  return {
+    desde: localDateKey(range.gte),
+    hasta: localDateKey(range.lte),
+    criterio,
+  }
+}
+
+function gerencialOdtScope(user, rawSucursalId) {
+  const sucursalId = getUserSucursalId(user) || parsePositiveInt(rawSucursalId)
+  return sucursalId ? { OR: [{ sucursalId }, { sucursalId: null }] } : null
+}
+
+function tallyByLabel(items, getLabel) {
+  const bucket = {}
+  items.forEach(item => {
+    const label = getLabel(item) || 'Sin dato'
+    bucket[label] = (bucket[label] || 0) + 1
+  })
+  return Object.entries(bucket)
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
+}
+
+function operationalTrend({ ingresos = [], terminadas = [], despachosIngresados = [], entregas = [] } = {}) {
+  const byDay = new Map()
+  const ensure = label => {
+    if (!byDay.has(label)) byDay.set(label, { label, ingresos: 0, terminadas: 0, despachosIngresados: 0, entregas: 0 })
+    return byDay.get(label)
+  }
+  ingresos.forEach(item => { const label = gerencialDateLabel(item.createdAt); if (label !== 'Sin fecha') ensure(label).ingresos += 1 })
+  terminadas.forEach(item => { const label = gerencialDateLabel(item.fechaTermino); if (label !== 'Sin fecha') ensure(label).terminadas += 1 })
+  despachosIngresados.forEach(item => { const label = gerencialDateLabel(item.createdAt); if (label !== 'Sin fecha') ensure(label).despachosIngresados += 1 })
+  entregas.forEach(item => { const label = gerencialDateLabel(item.fechaEntrega); if (label !== 'Sin fecha') ensure(label).entregas += 1 })
+  return [...byDay.values()].sort((a, b) => a.label.localeCompare(b.label))
+}
+
+function operationalBacklogAging(backlog = [], now = new Date()) {
+  const labels = ['0-2 días', '3-7 días', '8-14 días', '15+ días', 'Sin fecha de ingreso']
+  const bucket = Object.fromEntries(labels.map(label => [label, 0]))
+  backlog.forEach(item => {
+    if (!item.createdAt) { bucket['Sin fecha de ingreso'] += 1; return }
+    const days = Math.max(0, Math.floor((now.getTime() - new Date(item.createdAt).getTime()) / 86_400_000))
+    const label = days <= 2 ? '0-2 días' : days <= 7 ? '3-7 días' : days <= 14 ? '8-14 días' : '15+ días'
+    bucket[label] += 1
+  })
+  return labels.map(label => ({ label, value: bucket[label] }))
+}
+
+function averageCycleHours(items = []) {
+  const hours = items.map(item => {
+    const start = item.fechaInicio || item.createdAt
+    if (!start || !item.fechaTermino) return null
+    const value = (new Date(item.fechaTermino).getTime() - new Date(start).getTime()) / 3_600_000
+    return Number.isFinite(value) && value >= 0 ? value : null
+  }).filter(value => value != null)
+  return hours.length ? hours.reduce((sum, value) => sum + value, 0) / hours.length : null
+}
+
+async function buildOperacionesGerencialV1(fastify, query = {}, user = null) {
+  const range = buildDateRange(query.desde, query.hasta)
+  if (range.error) return { error: range.error }
+  if (!range.gte || !range.lte) return { error: 'Desde y hasta son obligatorios para la actividad operacional' }
+
+  const odtScope = gerencialOdtScope(user, query.sucursalId)
+  const openWhere = {
+    eliminado: false,
+    estado: { notIn: ['Terminada', 'Entregada', 'Anulada'] },
+    ...(odtScope ? { AND: [odtScope] } : {}),
+  }
+  const createdWhere = {
+    eliminado: false,
+    createdAt: { gte: range.gte, lte: range.lte },
+    ...(odtScope ? { AND: [odtScope] } : {}),
+  }
+  const completedWhere = {
+    eliminado: false,
+    fechaTermino: { gte: range.gte, lte: range.lte },
+    ...(odtScope ? { AND: [odtScope] } : {}),
+  }
+  const openDispatchWhere = { eliminado: false, fechaEntrega: null }
+  const dispatchCreatedWhere = { eliminado: false, createdAt: { gte: range.gte, lte: range.lte } }
+  const deliveredWhere = { eliminado: false, fechaEntrega: { gte: range.gte, lte: range.lte } }
+  const odtSelect = { id: true, estado: true, prioridad: true, clienteNombre: true, createdAt: true, fechaInicio: true, fechaEntregaCompromiso: true, plazo: true, fechaTermino: true, sucursalId: true, ordenId: true }
+  const despachoSelect = {
+    id: true, interno: true, contacto: true, comuna: true, transporte: true, tipoDespacho: true, createdAt: true, fechaInterno: true, fechaEntrega: true, parcial: true, tieneMulta: true, ordenId: true, odtId: true,
+    trackingEventos: { where: { estado: 'Incidencia' }, select: { id: true, tipoIncidente: true, fechaEvento: true } },
+  }
+
+  const [backlog, ingresos, terminadas, despachosPendientes, despachosIngresados, entregas] = await Promise.all([
+    findGerencialDetail(fastify.prisma.odt, { where: openWhere, select: odtSelect }, 'El backlog de Ã³rdenes de taller'),
+    findGerencialDetail(fastify.prisma.odt, { where: createdWhere, select: odtSelect }, 'Las Ã³rdenes ingresadas del perÃ­odo'),
+    findGerencialDetail(fastify.prisma.odt, { where: completedWhere, select: odtSelect }, 'Las Ã³rdenes terminadas del perÃ­odo'),
+    findGerencialDetail(fastify.prisma.despacho, { where: openDispatchWhere, select: despachoSelect }, 'Los despachos pendientes'),
+    findGerencialDetail(fastify.prisma.despacho, { where: dispatchCreatedWhere, select: despachoSelect }, 'Los despachos ingresados del período'),
+    findGerencialDetail(fastify.prisma.despacho, { where: deliveredWhere, select: despachoSelect }, 'Las entregas del perÃ­odo'),
+  ])
+  const problem = [backlog, ingresos, terminadas, despachosPendientes, despachosIngresados, entregas].find(result => result.error)
+  if (problem?.error) return problem
+
+  const now = new Date()
+  const dueDate = odt => odt.fechaEntregaCompromiso || odt.plazo || null
+  const overdue = backlog.items.filter(odt => dueDate(odt) && new Date(dueDate(odt)) < now)
+  const atRisk = backlog.items.filter(odt => {
+    const due = dueDate(odt)
+    if (!due) return false
+    const days = (new Date(due).getTime() - now.getTime()) / 86_400_000
+    return days >= 0 && days <= 7
+  })
+  const withoutCommitment = backlog.items.filter(odt => !dueDate(odt))
+  const orderedBacklog = [...backlog.items].sort((a, b) => {
+    const severity = item => dueDate(item) ? new Date(dueDate(item)).getTime() : Number.MAX_SAFE_INTEGER
+    return severity(a) - severity(b) || new Date(a.createdAt) - new Date(b.createdAt)
+  }).slice(0, 20)
+  const despachoDelPeriodo = [...new Map([...despachosIngresados.items, ...entregas.items].map(item => [item.id, item])).values()]
+  const despachosConIncidencia = despachoDelPeriodo.filter(item => item.trackingEventos?.length).length
+  const despachosConMulta = despachoDelPeriodo.filter(item => item.tieneMulta).length
+  const despachosParciales = despachoDelPeriodo.filter(item => item.parcial).length
+  const tasaCierre = ingresos.count ? terminadas.count / ingresos.count : null
+
+  return {
+    meta: {
+      generadoEn: new Date().toISOString(),
+      estado: 'operacional_actual',
+      mensajeEstado: 'El backlog, sus vencimientos y los despachos pendientes son estado actual al momento de consultar. El perÃ­odo seleccionado solo gobierna ingresos, terminaciones y entregas ocurridas en ese rango.',
+      limiteDetalle: GERENCIAL_ANALYTICS_DETAIL_LIMIT,
+    },
+    filtros: { ...gerencialRangeMetadata(range, 'Actividad creada, terminada o entregada dentro del rango seleccionado.'), sucursalId: query.sucursalId || null },
+    kpis: {
+      backlog: backlog.count,
+      vencidas: overdue.length,
+      enRiesgo: atRisk.length,
+      sinCompromiso: withoutCommitment.length,
+      ingresos: ingresos.count,
+      terminadas: terminadas.count,
+      tasaCierre,
+      cicloPromedioHoras: averageCycleHours(terminadas.items),
+      despachosPendientes: despachosPendientes.count,
+      despachosIngresados: despachosIngresados.count,
+      entregas: entregas.count,
+      relacionEntregasVsIngresos: despachosIngresados.count ? entregas.count / despachosIngresados.count : null,
+      despachosConIncidencia,
+      despachosConMulta,
+      despachosParciales,
+    },
+    tendencia: operationalTrend({ ingresos: ingresos.items, terminadas: terminadas.items, despachosIngresados: despachosIngresados.items, entregas: entregas.items }),
+    estadoOdt: tallyByLabel(backlog.items, item => item.estado),
+    prioridadOdt: tallyByLabel(backlog.items, item => item.prioridad),
+    antiguedadBacklog: operationalBacklogAging(backlog.items, now),
+    backlog: orderedBacklog.map(odt => ({ ...odt, compromiso: dueDate(odt), diasAtraso: dueDate(odt) ? Math.floor((now.getTime() - new Date(dueDate(odt)).getTime()) / 86_400_000) : null })),
+    despachos: despachosPendientes.items.sort((a, b) => new Date(a.fechaInterno || a.createdAt) - new Date(b.fechaInterno || b.createdAt)).slice(0, 20),
+    analisisDespachos: {
+      porTipo: tallyByLabel(despachosIngresados.items, item => item.tipoDespacho),
+      porTransporte: tallyByLabel(despachosIngresados.items, item => item.transporte),
+      porComuna: tallyByLabel(despachosIngresados.items, item => item.comuna),
+    },
+    brechas: [
+      { codigo: 'despacho-exitoso', titulo: 'Despacho exitoso', detalle: 'Una entrega registrada no equivale a entrega exitosa. Para medir cumplimiento real faltan fecha comprometida estructurada y comprobante de recepción o conformidad.' },
+      { codigo: 'backlog-historico', titulo: 'Backlog histÃ³rico', detalle: 'El sistema no conserva snapshots diarios de estado; no se puede reconstruir con certeza cuÃ¡ntas OT estaban abiertas en una fecha pasada.' },
+      { codigo: 'cumplimiento', titulo: 'Cumplimiento de plazo', detalle: 'No se muestra una tasa OTIF: sin hitos histÃ³ricos de compromiso, entrega y conformidad, cualquier porcentaje serÃ­a engaÃ±oso.' },
+    ],
+  }
+}
+
+function isPendingCobranza(item) {
+  return String(item?.estado || '').trim().toUpperCase() === 'PENDIENTE'
+}
+
+function cobranzaBucket(item, cutoff) {
+  if (!item.fechaFactura) return 'Sin fecha'
+  const days = Math.max(0, Math.floor((cutoff.getTime() - new Date(item.fechaFactura).getTime()) / 86_400_000))
+  return days <= 30 ? '0-30 dÃ­as' : days <= 60 ? '31-60 dÃ­as' : days <= 90 ? '61-90 dÃ­as' : '91+ dÃ­as'
+}
+
+function cajaTotals(items) {
+  return items.reduce((acc, item) => {
+    const amount = Math.abs(Number(item.monto || 0))
+    if (String(item.tipo || '').toLowerCase() === 'ingreso') acc.ingresos += amount
+    if (String(item.tipo || '').toLowerCase() === 'egreso') acc.egresos += amount
+    return acc
+  }, { ingresos: 0, egresos: 0 })
+}
+
+function cajaTrend(items) {
+  const days = new Map()
+  items.forEach(item => {
+    const label = gerencialDateLabel(item.fecha)
+    if (label === 'Sin fecha') return
+    const current = days.get(label) || { label, ingresos: 0, egresos: 0, neto: 0 }
+    const amount = Math.abs(Number(item.monto || 0))
+    if (String(item.tipo || '').toLowerCase() === 'ingreso') current.ingresos += amount
+    if (String(item.tipo || '').toLowerCase() === 'egreso') current.egresos += amount
+    current.neto = current.ingresos - current.egresos
+    days.set(label, current)
+  })
+  return [...days.values()].sort((a, b) => a.label.localeCompare(b.label))
+}
+
+async function buildFinanzasGerencialV1(fastify, query = {}, user = null) {
+  const range = buildDateRange(query.desde, query.hasta)
+  if (range.error) return { error: range.error }
+  if (!range.gte || !range.lte) return { error: 'Desde y hasta son obligatorios para el flujo financiero' }
+  const previous = previousDateRange(range)
+  const cobranzaScope = await buildCobranzaHistoricoScopeWhere(fastify.prisma, user)
+  const buildCajaWhere = targetRange => withMovimientoSucursalScope(user, applyRange({ eliminado: false, NOT: { medioPago: { equals: 'Referencial', mode: 'insensitive' } } }, 'fecha', targetRange))
+  const issuedWhere = mergeCobranzaWhere(applyRange({}, 'fechaFactura', range), cobranzaScope)
+  const openCxcWhere = mergeCobranzaWhere({ fechaFactura: { lte: range.lte }, estado: { equals: 'PENDIENTE', mode: 'insensitive' } }, cobranzaScope)
+  const cobranzaSelect = { id: true, interno: true, ndoc: true, cliente: true, rut: true, fechaFactura: true, valorFactura: true, monto: true, estado: true, ejecutiva: true }
+  const cajaSelect = { id: true, tipo: true, monto: true, medioPago: true, fecha: true, referencia: true, ordenId: true, sucursalId: true }
+
+  const [cajaActual, cajaAnterior, documentosPeriodo, cxcAbierta] = await Promise.all([
+    findGerencialDetail(fastify.prisma.movimientoCaja, { where: buildCajaWhere(range), select: cajaSelect }, 'Los movimientos de caja del perÃ­odo'),
+    findGerencialDetail(fastify.prisma.movimientoCaja, { where: buildCajaWhere(previous), select: cajaSelect }, 'Los movimientos de caja comparables'),
+    findGerencialDetail(fastify.prisma.cobranzaHistorico, { where: issuedWhere, select: cobranzaSelect }, 'Los documentos de cobranza del perÃ­odo'),
+    findGerencialDetail(fastify.prisma.cobranzaHistorico, { where: openCxcWhere, select: cobranzaSelect }, 'La cartera pendiente'),
+  ])
+  const problem = [cajaActual, cajaAnterior, documentosPeriodo, cxcAbierta].find(result => result.error)
+  if (problem?.error) return problem
+
+  const actual = cajaTotals(cajaActual.items)
+  const anterior = cajaTotals(cajaAnterior.items)
+  const neto = actual.ingresos - actual.egresos
+  const netoAnterior = anterior.ingresos - anterior.egresos
+  const cxcMonto = cxcAbierta.items.reduce((sum, item) => sum + Math.max(0, Number(item.valorFactura || 0)), 0)
+  const aging = ['0-30 dÃ­as', '31-60 dÃ­as', '61-90 dÃ­as', '91+ dÃ­as', 'Sin fecha'].map(label => ({ label, monto: 0, documentos: 0 }))
+  const agingByLabel = new Map(aging.map(item => [item.label, item]))
+  cxcAbierta.items.forEach(item => {
+    const target = agingByLabel.get(cobranzaBucket(item, range.lte))
+    target.monto += Math.max(0, Number(item.valorFactura || 0))
+    target.documentos += 1
+  })
+  const mediosPago = {}
+  cajaActual.items.forEach(item => {
+    if (String(item.tipo || '').toLowerCase() !== 'ingreso') return
+    const label = item.medioPago || 'Sin medio de pago'
+    mediosPago[label] = (mediosPago[label] || 0) + Math.abs(Number(item.monto || 0))
+  })
+
+  return {
+    meta: {
+      generadoEn: new Date().toISOString(),
+      estado: 'operacional_no_contable',
+      mensajeEstado: 'Flujo construido desde movimientos de caja y cartera registrada. No es saldo bancario, balance, utilidad ni margen neto contable.',
+      limiteDetalle: GERENCIAL_ANALYTICS_DETAIL_LIMIT,
+    },
+    filtros: gerencialRangeMetadata(range, 'Flujo por fecha de movimiento de caja; documentos emitidos por fecha de factura.'),
+    kpis: {
+      ingresos: actual.ingresos,
+      egresos: actual.egresos,
+      flujoNeto: neto,
+      documentosEmitidos: documentosPeriodo.count,
+      carteraPendienteRegistrada: cxcMonto,
+      documentosPendientes: cxcAbierta.count,
+      comparativoFlujo: {
+        rango: gerencialRangeMetadata(previous, 'Mismo nÃºmero de dÃ­as inmediatamente anteriores al inicio del perÃ­odo seleccionado.'),
+        flujoNeto: netoAnterior,
+        variacion: percentageChange(neto, netoAnterior),
+      },
+    },
+    tendencia: cajaTrend(cajaActual.items),
+    antiguedad: aging.filter(item => item.documentos > 0),
+    mediosPago: Object.entries(mediosPago).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value),
+    cartera: cxcAbierta.items.sort((a, b) => new Date(a.fechaFactura || 0) - new Date(b.fechaFactura || 0)).slice(0, 20),
+    brechas: [
+      { codigo: 'saldo-bancario', titulo: 'Saldo bancario no conciliado', detalle: 'No se muestra saldo de banco ni disponibilidad real: esta fuente contiene movimientos ERP, no conciliaciÃ³n bancaria certificada.' },
+      { codigo: 'pagos-parciales', titulo: 'Pagos parciales', detalle: 'La cartera pendiente usa el valor de documentos que continÃºan con estado PENDIENTE. Hasta normalizar abonos y notas de crÃ©dito no se debe interpretar como deuda neta definitiva.' },
+    ],
+  }
+}
+
+async function buildRiesgosGerencialV1(fastify, query = {}, user = null) {
+  const range = buildDateRange(query.desde, query.hasta)
+  if (range.error) return { error: range.error }
+  if (!range.gte || !range.lte) return { error: 'Desde y hasta son obligatorios para riesgos' }
+  const canReadStock = canReadModule(user, 'bodega')
+  const canReadLicitaciones = canReadModule(user, 'licitaciones')
+  const canReadSales = canReadModule(user, 'ventas')
+  const [stock, licitaciones, lotes, excepciones] = await Promise.all([
+    canReadStock ? buildStockGerencial(fastify, query) : null,
+    canReadLicitaciones ? buildLicitacionesGerencial(fastify, query, user) : null,
+    canReadStock ? findGerencialDetail(fastify.prisma.bodegaTallerLote, {
+      where: { estadoCalidad: { notIn: ['aprobado', 'Aprobado', 'APROBADO'] }, cantidadDisponible: { gt: 0 } },
+      select: { id: true, codigo: true, cantidadDisponible: true, estadoCalidad: true, observacion: true, recibidoAt: true, item: { select: { id: true, codigoInterno: true, nombre: true } } },
+    }, 'Los lotes de calidad no aprobada') : null,
+    canReadSales ? findGerencialDetail(fastify.prisma.excepcionAlerta, {
+      where: { estado: { notIn: ['RESUELTA', 'CERRADA'] } },
+      select: { id: true, estado: true, severidad: true, venceAt: true, createdAt: true, ordenId: true, regla: { select: { codigo: true, nombre: true, rolResponsable: true } } },
+    }, 'Las alertas de excepciÃ³n abiertas') : null,
+  ])
+  const problem = [stock, licitaciones, lotes, excepciones].find(result => result?.error)
+  if (problem?.error) return problem
+  const now = new Date()
+  const products = stock?.stockCritico?.productos || []
+  const materials = stock?.stockCritico?.materiales || []
+  const pendingBid = licitaciones?.byResultado?.pendiente || { count: 0, total: 0 }
+  const overdueExceptions = (excepciones?.items || []).filter(item => item.venceAt && new Date(item.venceAt) < now)
+  const withoutThreshold = canReadStock ? await Promise.all([
+    fastify.prisma.producto.count({ where: { activo: true, stockCritico: { lte: 0 } } }),
+    fastify.prisma.bodegaTaller.count({ where: { activo: true, stockCritico: { lte: 0 } } }),
+  ]) : [0, 0]
+
+  return {
+    meta: {
+      generadoEn: new Date().toISOString(),
+      estado: 'riesgo_operacional_actual',
+      mensajeEstado: 'Stock crÃ­tico, calidad de lotes y excepciones son estado actual. Las licitaciones se acotan por fecha de creaciÃ³n del perÃ­odo seleccionado.',
+      limiteDetalle: GERENCIAL_ANALYTICS_DETAIL_LIMIT,
+    },
+    filtros: gerencialRangeMetadata(range, 'Movimientos y licitaciones del perÃ­odo; riesgos de stock, calidad y excepciones al momento de consultar.'),
+    kpis: {
+      productosCriticos: products.length,
+      materialesCriticos: materials.length,
+      lotesBloqueados: lotes?.count || 0,
+      excepcionesAbiertas: excepciones?.count || 0,
+      excepcionesVencidas: overdueExceptions.length,
+      licitacionesPendientes: pendingBid.count,
+      montoLicitacionesPendientes: pendingBid.total,
+      umbralesSinConfigurar: withoutThreshold[0] + withoutThreshold[1],
+    },
+    stock: { productos: products.slice(0, 20), materiales: materials.slice(0, 20), movimientos: stock?.movimientos || null },
+    lotes: (lotes?.items || []).sort((a, b) => String(a.estadoCalidad).localeCompare(String(b.estadoCalidad))).slice(0, 20),
+    excepciones: (excepciones?.items || []).sort((a, b) => new Date(a.venceAt || 0) - new Date(b.venceAt || 0)).slice(0, 20),
+    licitaciones: { pendiente: pendingBid, resumen: licitaciones?.byResultado || null },
+    brechas: [
+      { codigo: 'cobertura', titulo: 'Cobertura y quiebre proyectado', detalle: 'No se calcula dÃ­a de quiebre por SKU: faltan demanda pronosticada y lead time confiable por proveedor.' },
+      { codigo: 'stock-snapshot', titulo: 'HistÃ³rico de stock', detalle: 'El stock crÃ­tico es la existencia actual; sin snapshots diarios no se puede asegurar la fecha histÃ³rica en que ocurriÃ³ un quiebre.' },
+    ],
   }
 }
 
@@ -1505,6 +1861,14 @@ async function buildComercialXlsx(reporte, query = {}) {
   resumen.getCell('A2').value = `Período: ${query.desde || 'Inicio'} a ${query.hasta || 'Hoy'}`
   resumen.getCell('A2').font = { italic: true, color: { argb: 'FF475569' } }
   resumen.getRow(3).values = ['Indicador', 'Valor', 'Detalle']
+  const filtrosAplicados = [
+    `Período: ${query.desde || 'Inicio'} a ${query.hasta || 'Hoy'}`,
+    `Tipo: ${query.tipo || 'Todos'}`,
+    `Vendedor: ${query.vendedor || 'Todos'}`,
+    `Cliente/RUT: ${query.cliente || 'Todos'}`,
+    `Sucursal: ${query.sucursalId || 'Todas'}`,
+  ].join(' · ')
+  resumen.getCell('A2').value = filtrosAplicados
   const kpis = reporte.kpis || {}
   const margin = kpis.margen || {}
   const inventory = kpis.inventario || {}
@@ -1555,6 +1919,126 @@ async function buildComercialXlsx(reporte, query = {}) {
     stock.getColumn(4).numFmt = '#,##0'
   }
   return workbook.xlsx.writeBuffer()
+}
+
+async function buildGerencialV1Xlsx({ name, title, reporte, summaryRows = [], sheets = [] }) {
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = 'Plastimar Sisgestion'
+  workbook.created = new Date()
+  const resumen = workbook.addWorksheet('Resumen')
+  styleGerencialWorksheet(resumen, title)
+  resumen.getCell('A2').value = `Período: ${reporte.filtros?.desde || 'Inicio'} a ${reporte.filtros?.hasta || 'Hoy'}`
+  resumen.getCell('A2').font = { italic: true, color: { argb: 'FF475569' } }
+  resumen.getRow(3).values = ['Indicador', 'Valor', 'Detalle']
+  summaryRows.forEach(row => resumen.addRow(row))
+  resumen.addRow([])
+  resumen.addRow(['Corte y fuente', reporte.meta?.mensajeEstado || '', ''])
+  resumen.getColumn(2).numFmt = '#,##0'
+  resumen.getColumn(1).width = 30
+  resumen.getColumn(2).width = 24
+  resumen.getColumn(3).width = 54
+
+  sheets.forEach(({ sheetName, sheetTitle, columns, rows, moneyColumns = [], percentColumns = [] }) => {
+    const sheet = workbook.addWorksheet(sheetName)
+    styleGerencialWorksheet(sheet, sheetTitle)
+    sheet.getRow(3).values = columns.map(column => column.label)
+    rows.forEach(row => sheet.addRow(columns.map(column => row[column.key] ?? null)))
+    sheet.columns.forEach((column, index) => { column.width = columns[index]?.width || 22 })
+    moneyColumns.forEach(index => { sheet.getColumn(index).numFmt = '#,##0' })
+    percentColumns.forEach(index => { sheet.getColumn(index).numFmt = '0.0%;[Red]-0.0%' })
+    sheet.autoFilter = { from: 'A3', to: `${String.fromCharCode(64 + columns.length)}${Math.max(3, rows.length + 3)}` }
+  })
+  return workbook.xlsx.writeBuffer()
+}
+
+function buildOperacionGerencialXlsx(reporte) {
+  const kpis = reporte.kpis || {}
+  return buildGerencialV1Xlsx({
+    name: 'operacion', title: 'Control operacional', reporte,
+    summaryRows: [
+      ['Backlog actual', kpis.backlog || 0, 'OT no cerradas al momento de consultar'],
+      ['OT vencidas', kpis.vencidas || 0, 'Contra compromiso actual'],
+      ['OT en riesgo', kpis.enRiesgo || 0, 'Vencen dentro de 7 días'],
+      ['Ingresos del período', kpis.ingresos || 0, 'OT creadas en el rango'],
+      ['Terminadas del período', kpis.terminadas || 0, 'Por fecha de término'],
+      ['Tasa de cierre', kpis.tasaCierre == null ? 'Sin base' : `${(kpis.tasaCierre * 100).toFixed(1)}%`, 'Terminadas / OT ingresadas; no es OTIF'],
+      ['Ciclo promedio OT (horas)', kpis.cicloPromedioHoras ?? null, 'Inicio o creación hasta término'],
+      ['Despachos pendientes', kpis.despachosPendientes || 0, 'Estado actual'],
+      ['Despachos ingresados', kpis.despachosIngresados || 0, 'Creados en el período'],
+      ['Entregas del período', kpis.entregas || 0, 'Por fecha de entrega'],
+      ['Incidencias de despacho', kpis.despachosConIncidencia || 0, `${kpis.despachosConMulta || 0} con multa · ${kpis.despachosParciales || 0} parciales`],
+    ],
+    sheets: [
+      { sheetName: 'Backlog OT', sheetTitle: 'Órdenes de taller abiertas', columns: [
+        { key: 'id', label: 'OT', width: 12 }, { key: 'clienteNombre', label: 'Cliente', width: 34 }, { key: 'estado', label: 'Estado' }, { key: 'prioridad', label: 'Prioridad' }, { key: 'compromiso', label: 'Compromiso' }, { key: 'diasAtraso', label: 'Días atraso' },
+      ], rows: reporte.backlog || [] },
+      { sheetName: 'Despachos', sheetTitle: 'Despachos pendientes actuales', columns: [
+        { key: 'interno', label: 'N° interno' }, { key: 'contacto', label: 'Contacto', width: 28 }, { key: 'comuna', label: 'Comuna' }, { key: 'transporte', label: 'Transporte' }, { key: 'fechaInterno', label: 'Ingreso' },
+      ], rows: reporte.despachos || [] },
+      { sheetName: 'Distribución despacho', sheetTitle: 'Despachos ingresados por segmento', columns: [
+        { key: 'dimension', label: 'Dimensión' }, { key: 'label', label: 'Valor' }, { key: 'value', label: 'Despachos' },
+      ], rows: [
+        ...(reporte.analisisDespachos?.porTipo || []).map(row => ({ ...row, dimension: 'Tipo / canal' })),
+        ...(reporte.analisisDespachos?.porTransporte || []).map(row => ({ ...row, dimension: 'Transporte' })),
+        ...(reporte.analisisDespachos?.porComuna || []).map(row => ({ ...row, dimension: 'Comuna' })),
+      ] },
+    ],
+  })
+}
+
+function buildFinanzasGerencialXlsx(reporte) {
+  const kpis = reporte.kpis || {}
+  return buildGerencialV1Xlsx({
+    name: 'finanzas', title: 'Flujo y cobranza operacional', reporte,
+    summaryRows: [
+      ['Ingresos de caja', kpis.ingresos || 0, 'Movimientos registrados en el período'],
+      ['Egresos de caja', kpis.egresos || 0, 'Movimientos registrados en el período'],
+      ['Flujo neto', kpis.flujoNeto || 0, 'Ingresos menos egresos; no es saldo bancario'],
+      ['CxC pendiente registrada', kpis.carteraPendienteRegistrada || 0, `${kpis.documentosPendientes || 0} documentos con estado pendiente`],
+      ['Documentos emitidos', kpis.documentosEmitidos || 0, 'Fecha factura dentro del período'],
+      ['Flujo período anterior', kpis.comparativoFlujo?.flujoNeto || 0, kpis.comparativoFlujo?.rango?.criterio || 'Período comparable'],
+    ],
+    sheets: [
+      { sheetName: 'Antigüedad CxC', sheetTitle: 'Cartera pendiente por antigüedad', columns: [
+        { key: 'label', label: 'Tramo' }, { key: 'monto', label: 'Monto' }, { key: 'documentos', label: 'Documentos' },
+      ], rows: reporte.antiguedad || [], moneyColumns: [2] },
+      { sheetName: 'Cartera pendiente', sheetTitle: 'Documentos pendientes más antiguos', columns: [
+        { key: 'interno', label: 'Interno' }, { key: 'ndoc', label: 'Documento' }, { key: 'cliente', label: 'Cliente', width: 34 }, { key: 'rut', label: 'RUT' }, { key: 'fechaFactura', label: 'Factura' }, { key: 'valorFactura', label: 'Valor' }, { key: 'ejecutiva', label: 'Ejecutiva' },
+      ], rows: reporte.cartera || [], moneyColumns: [6] },
+      { sheetName: 'Medios de pago', sheetTitle: 'Ingresos por medio de pago', columns: [
+        { key: 'label', label: 'Medio de pago' }, { key: 'value', label: 'Ingresos' },
+      ], rows: reporte.mediosPago || [], moneyColumns: [2] },
+    ],
+  })
+}
+
+function buildRiesgosGerencialXlsx(reporte) {
+  const kpis = reporte.kpis || {}
+  return buildGerencialV1Xlsx({
+    name: 'riesgos', title: 'Riesgos operacionales', reporte,
+    summaryRows: [
+      ['Productos críticos', kpis.productosCriticos || 0, 'Stock actual bajo umbral'],
+      ['Materiales críticos', kpis.materialesCriticos || 0, 'Bodega de taller actual'],
+      ['Lotes no aprobados', kpis.lotesBloqueados || 0, 'Con disponibilidad'],
+      ['Excepciones abiertas', kpis.excepcionesAbiertas || 0, `${kpis.excepcionesVencidas || 0} vencidas`],
+      ['Licitaciones pendientes', kpis.licitacionesPendientes || 0, 'Pendientes de resolución'],
+      ['Umbrales sin configurar', kpis.umbralesSinConfigurar || 0, 'SKUs sin stock crítico'],
+    ],
+    sheets: [
+      { sheetName: 'Productos críticos', sheetTitle: 'Productos con stock crítico', columns: [
+        { key: 'codigoInterno', label: 'Código' }, { key: 'nombre', label: 'Producto', width: 36 }, { key: 'stock', label: 'Stock' }, { key: 'stockCritico', label: 'Umbral' },
+      ], rows: reporte.stock?.productos || [] },
+      { sheetName: 'Materiales críticos', sheetTitle: 'Materiales de taller críticos', columns: [
+        { key: 'codigoInterno', label: 'Código' }, { key: 'nombre', label: 'Material', width: 36 }, { key: 'stock', label: 'Stock' }, { key: 'stockCritico', label: 'Umbral' },
+      ], rows: reporte.stock?.materiales || [] },
+      { sheetName: 'Lotes calidad', sheetTitle: 'Lotes de calidad no aprobada', columns: [
+        { key: 'codigo', label: 'Lote' }, { key: 'estadoCalidad', label: 'Estado calidad' }, { key: 'cantidadDisponible', label: 'Disponible' }, { key: 'observacion', label: 'Observación', width: 40 }, { key: 'recibidoAt', label: 'Recepción' },
+      ], rows: (reporte.lotes || []).map(item => ({ ...item, material: item.item?.nombre || '' })) },
+      { sheetName: 'Excepciones', sheetTitle: 'Excepciones abiertas', columns: [
+        { key: 'id', label: 'ID' }, { key: 'severidad', label: 'Severidad' }, { key: 'estado', label: 'Estado' }, { key: 'venceAt', label: 'Vence' }, { key: 'ordenId', label: 'Orden' },
+      ], rows: reporte.excepciones || [] },
+    ],
+  })
 }
 
 export default async function reportesRoutes(fastify) {
@@ -1645,6 +2129,33 @@ export default async function reportesRoutes(fastify) {
     return reporte
   })
 
+  fastify.get('/gerencial/v1/operacion', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async (request, reply) => {
+    if (!canReadAll(request.user, ['taller', 'despacho'])) return reply.code(403).send({ error: 'Sin permiso para indicadores operacionales' })
+    const reporte = await buildOperacionesGerencialV1(fastify, request.query, request.user)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    return reporte
+  })
+
+  fastify.get('/gerencial/v1/finanzas', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async (request, reply) => {
+    if (!canReadAll(request.user, ['caja', 'cobranza'])) return reply.code(403).send({ error: 'Sin permiso para indicadores financieros' })
+    const reporte = await buildFinanzasGerencialV1(fastify, request.query, request.user)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    return reporte
+  })
+
+  fastify.get('/gerencial/v1/riesgos', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async (request, reply) => {
+    if (![canReadModule(request.user, 'bodega'), canReadModule(request.user, 'licitaciones'), canReadModule(request.user, 'ventas')].some(Boolean)) return reply.code(403).send({ error: 'Sin permiso para indicadores de riesgo' })
+    const reporte = await buildRiesgosGerencialV1(fastify, request.query, request.user)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    return reporte
+  })
+
   fastify.get('/stock-critico', {
     preHandler: [fastify.authenticate, fastify.rbac('bodega', 'read')],
   }, async () => {
@@ -1729,6 +2240,45 @@ export default async function reportesRoutes(fastify) {
     return reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="control_comercial_${new Date().toISOString().slice(0, 10)}.xlsx"`)
+      .send(Buffer.from(buffer))
+  })
+
+  fastify.get('/export/operacion.xlsx', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async (request, reply) => {
+    if (!canReadAll(request.user, ['taller', 'despacho'])) return reply.code(403).send({ error: 'Sin permiso para exportar análisis operacional' })
+    const reporte = await buildOperacionesGerencialV1(fastify, request.query, request.user)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    const buffer = await buildOperacionGerencialXlsx(reporte)
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="control_operacional_${new Date().toISOString().slice(0, 10)}.xlsx"`)
+      .send(Buffer.from(buffer))
+  })
+
+  fastify.get('/export/finanzas.xlsx', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async (request, reply) => {
+    if (!canReadAll(request.user, ['caja', 'cobranza'])) return reply.code(403).send({ error: 'Sin permiso para exportar análisis financiero' })
+    const reporte = await buildFinanzasGerencialV1(fastify, request.query, request.user)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    const buffer = await buildFinanzasGerencialXlsx(reporte)
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="flujo_cobranza_${new Date().toISOString().slice(0, 10)}.xlsx"`)
+      .send(Buffer.from(buffer))
+  })
+
+  fastify.get('/export/riesgos.xlsx', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async (request, reply) => {
+    if (![canReadModule(request.user, 'bodega'), canReadModule(request.user, 'licitaciones'), canReadModule(request.user, 'ventas')].some(Boolean)) return reply.code(403).send({ error: 'Sin permiso para exportar riesgos' })
+    const reporte = await buildRiesgosGerencialV1(fastify, request.query, request.user)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    const buffer = await buildRiesgosGerencialXlsx(reporte)
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="riesgos_operacionales_${new Date().toISOString().slice(0, 10)}.xlsx"`)
       .send(Buffer.from(buffer))
   })
 
