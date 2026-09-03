@@ -3,7 +3,7 @@ import { computeVentaFinancialState } from './financial.js'
 import { parseDate, parsePagination, parsePositiveInt } from '../operational-utils.js'
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere, parseOrdenScope } from '../historico/corte.js'
 import { getUserSucursalId } from '../caja/scope.js'
-import { attachEstadoFlujo, GRAFIAS_CONVENIO_MARCO, GRAFIAS_LICITACION } from './estados-normalize.js'
+import { attachEstadoFlujo, GRAFIAS_CONVENIO_MARCO, GRAFIAS_LICITACION, TIPOS_VENTA_MOSTRADOR, grafiasDeTipoVenta, normalizeTipoVenta } from './estados-normalize.js'
 import { whereTiposVentaPermitidos } from './tipos-permitidos.js'
 
 function normalizeTipo(value) {
@@ -22,6 +22,10 @@ function buildTipoWhere(tipo) {
   if (text === 'licitacion-convenio' || text === 'licitacion convenio') return { in: [...GRAFIAS_LICITACION, ...GRAFIAS_CONVENIO_MARCO] }
   if (text === 'licitacion') return { in: [...GRAFIAS_LICITACION] }
   if (text === 'convenio-marco' || text === 'convenio marco' || text === 'convenio') return { in: [...GRAFIAS_CONVENIO_MARCO] }
+  if (text === 'venta-directa' || text === 'venta directa') return { in: TIPOS_VENTA_MOSTRADOR }
+  const canonico = normalizeTipoVenta(tipo)
+  if (canonico === 'Venta Sala') return { in: TIPOS_VENTA_MOSTRADOR }
+  if (canonico) return { in: grafiasDeTipoVenta(canonico) }
   return tipo
 }
 

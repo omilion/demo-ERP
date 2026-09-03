@@ -11,7 +11,7 @@ import { buildCobranzaHistoricoScopeWhere, mergeCobranzaWhere } from '../cobranz
 import { attachConsultaPreciosData } from '../productos/pricing.js'
 import { buildProveedorWhere, proveedorOrderBy } from '../proveedores/helpers.js'
 import { buildBodegaTallerWhere, enrichBodegaTallerItems, filterStockCriticoItems } from '../bodega-taller/helpers.js'
-import { GRAFIAS_CONVENIO_MARCO, GRAFIAS_LICITACION, TIPOS_VENTA_MOSTRADOR, grafiasDeTipoVenta } from '../ventas/estados-normalize.js'
+import { GRAFIAS_CONVENIO_MARCO, GRAFIAS_LICITACION, TIPO_VENTA_VALUES, TIPOS_VENTA_MOSTRADOR, grafiasDeTipoVenta, normalizeTipoVenta } from '../ventas/estados-normalize.js'
 import { registerComisionesReportRoutes } from './comisiones.js'
 import { registerMovimientosAnormalesReportRoutes } from './movimientos-anormales.js'
 import ExcelJS from 'exceljs'
@@ -94,6 +94,59 @@ function canReadModule(user, module) {
 
 function canReadAll(user, modules = []) {
   return modules.every(module => canReadModule(user, module))
+}
+
+function getGerencialSections(user) {
+  return {
+    ventas: canReadModule(user, 'ventas'),
+    cobranzaCaja: canReadAll(user, ['caja', 'cobranza']),
+    stock: canReadModule(user, 'bodega'),
+    licitaciones: canReadModule(user, 'licitaciones'),
+    operaciones: canReadAll(user, ['taller', 'despacho']),
+  }
+}
+
+// El selector usa tipos canónicos, pero el desglose histórico aún puede traer
+// "Venta directa". Esa grafía se conserva como equivalencia de mostrador;
+// "Normal" sigue siendo un tipo independiente.
+function resolveGerencialTipoVenta(tipo) {
+  const raw = String(tipo || '').trim()
+  if (!raw) return { raw: '', canonico: null, grafias: null }
+
+  const key = normalizeSearchText(raw).replace(/[\s-]+/g, ' ')
+  if (key === 'venta directa') return { raw, canonico: 'Venta Sala', grafias: VENTA_DIRECTA_TIPOS }
+
+  const canonico = normalizeTipoVenta(raw)
+  if (canonico === 'Venta Sala') return { raw, canonico, grafias: VENTA_DIRECTA_TIPOS }
+  if (canonico) return { raw, canonico, grafias: grafiasDeTipoVenta(canonico) }
+
+  // Permite investigar una grafía legacy no catalogada, sin incorporarla al
+  // selector oficial de tipos de venta.
+  return { raw, canonico: null, grafias: null }
+}
+
+async function resolveGerencialVendedor(prisma, vendedor) {
+  const texto = String(vendedor || '').trim()
+  if (!texto) return null
+
+  // La UI selecciona a la persona; Venta Web guarda su código, por lo que se
+  // resuelve antes de consultar cada fuente para no mezclar responsables.
+  const usuario = await prisma.user.findFirst({
+    where: {
+      activo: true,
+      role: 'vendedor',
+      OR: [
+        { nombre: { equals: texto, mode: 'insensitive' } },
+        { codigoVendedor: { equals: texto, mode: 'insensitive' } },
+      ],
+    },
+    select: { nombre: true, codigoVendedor: true },
+  })
+
+  return {
+    nombre: usuario?.nombre || texto,
+    codigo: usuario?.codigoVendedor || texto,
+  }
 }
 
 function normalizeSearchText(value) {
@@ -581,28 +634,31 @@ async function buildVentasGerenciales(fastify, query, user, { includeComparison 
   const range = buildDateRange(desde, hasta)
   if (range.error) return { error: range.error }
   const corte = await getPrimerRegistroInterno(fastify.prisma)
-  const tipoText = String(tipo || '').toLowerCase()
-  const sucursalId = getUserSucursalId(user)
+  const tipoFiltro = resolveGerencialTipoVenta(tipo)
+  const vendedorFiltro = await resolveGerencialVendedor(fastify.prisma, vendedor)
+  const sucursalUsuarioId = getUserSucursalId(user)
+  const sucursalFiltroId = query.sucursalId ? parsePositiveInt(query.sucursalId) : null
+  if (query.sucursalId && !sucursalFiltroId) return { error: 'sucursalId inválido' }
+  const sucursalId = sucursalUsuarioId || sucursalFiltroId
   const ordenWhere = mergeWhere(applyRange({ eliminada: false, ...(sucursalId ? { sucursalId } : {}) }, 'createdAt', range), buildOrdenScopeWhere('operacional', corte))
   if (rut || cliente) ordenWhere.rutCliente = { contains: rut || cliente, mode: 'insensitive' }
-  if (vendedor) ordenWhere.creadorNombre = { contains: vendedor, mode: 'insensitive' }
-  if (tipoText === 'venta-sala' || tipoText === 'venta-directa') ordenWhere.tipo = { in: VENTA_DIRECTA_TIPOS }
-  else if (tipoText === 'convenio-marco' || tipoText === 'convenio') ordenWhere.tipo = { in: [...GRAFIAS_CONVENIO_MARCO] }
-  else if (tipo) ordenWhere.tipo = { contains: tipo.replace(/-/g, ' '), mode: 'insensitive' }
+  if (vendedorFiltro) ordenWhere.creadorNombre = { contains: vendedorFiltro.nombre, mode: 'insensitive' }
+  if (tipoFiltro.grafias) ordenWhere.tipo = { in: tipoFiltro.grafias }
+  else if (tipoFiltro.raw) ordenWhere.tipo = { contains: tipoFiltro.raw.replace(/-/g, ' '), mode: 'insensitive' }
 
   const ocWhere = applyRange({}, 'fechaHora', range)
   if (sucursalId) ocWhere.sucursalId = sucursalId
-  if (vendedor) ocWhere.codigoVendedor = { contains: vendedor, mode: 'insensitive' }
+  if (vendedorFiltro) ocWhere.codigoVendedor = { contains: vendedorFiltro.codigo, mode: 'insensitive' }
   if (cliente) ocWhere.emailComprador = { contains: cliente, mode: 'insensitive' }
 
   const licWhere = applyRange({}, 'fecha', range)
   if (sucursalId) licWhere.sucursalId = sucursalId
   if (rut || cliente) licWhere.rutCliente = { contains: rut || cliente, mode: 'insensitive' }
-  if (vendedor) licWhere.usuario = { contains: vendedor, mode: 'insensitive' }
+  if (vendedorFiltro) licWhere.usuario = { contains: vendedorFiltro.nombre, mode: 'insensitive' }
 
-  const includeOrdenes = !tipo || ['venta', 'normal', 'sala', 'directa', 'convenio'].some(t => tipoText.includes(t))
-  const includeOc = !tipo || tipoText.includes('web')
-  const includeLic = !tipo || tipoText.includes('licit')
+  const includeOrdenes = !tipo || Boolean(tipoFiltro.grafias || tipoFiltro.raw)
+  const includeOc = !tipo || tipoFiltro.canonico === 'Venta Web'
+  const includeLic = !tipo || tipoFiltro.canonico === 'Licitación'
 
   const [ordenes, ocs, licitaciones] = await Promise.all([
     includeOrdenes ? fastify.prisma.orden.findMany({
@@ -746,6 +802,368 @@ async function buildVentasGerenciales(fastify, query, user, { includeComparison 
   return result
 }
 
+const COMMERCIAL_DETAIL_ORDER_LIMIT = 25_000
+
+function commercialTipoLabel(tipo) {
+  const key = normalizeSearchText(tipo).replace(/[\s-]+/g, ' ')
+  if (key === 'venta directa') return 'Venta Sala'
+  return normalizeTipoVenta(tipo) || tipo || 'Sin tipo'
+}
+
+function sumOrdenesComerciales(ordenes = []) {
+  return ordenes.reduce((acc, orden) => {
+    const total = totalOrden(orden)
+    acc.ventas += total
+    acc.ordenes += 1
+    acc.unidades += (orden.items || []).reduce((sum, item) => sum + Number(item.cantidad || 0), 0)
+    return acc
+  }, { ventas: 0, ordenes: 0, unidades: 0 })
+}
+
+function shiftRangeOneYear(range) {
+  if (!range.gte || !range.lte) return null
+  const gte = new Date(range.gte)
+  const lte = new Date(range.lte)
+  gte.setFullYear(gte.getFullYear() - 1)
+  lte.setFullYear(lte.getFullYear() - 1)
+  return { gte, lte }
+}
+
+function rangeMetadata(range) {
+  if (!range?.gte || !range?.lte) return null
+  return {
+    desde: range.gte.toISOString().slice(0, 10),
+    hasta: range.lte.toISOString().slice(0, 10),
+  }
+}
+
+async function buildComercialOrdenWhere(fastify, query = {}, user = null, range) {
+  const corte = await getPrimerRegistroInterno(fastify.prisma)
+  const tipoFiltro = resolveGerencialTipoVenta(query.tipo)
+  const vendedorFiltro = await resolveGerencialVendedor(fastify.prisma, query.vendedor)
+  const sucursalUsuarioId = getUserSucursalId(user)
+  const sucursalFiltroId = query.sucursalId ? parsePositiveInt(query.sucursalId) : null
+  if (query.sucursalId && !sucursalFiltroId) return { error: 'sucursalId inválido' }
+
+  const where = mergeWhere(
+    applyRange({
+      eliminada: false,
+      ...(sucursalUsuarioId ? { sucursalId: sucursalUsuarioId } : sucursalFiltroId ? { sucursalId: sucursalFiltroId } : {}),
+    }, 'createdAt', range),
+    buildOrdenScopeWhere('operacional', corte),
+  )
+
+  if (query.cliente) where.rutCliente = { contains: query.cliente, mode: 'insensitive' }
+  if (vendedorFiltro) where.creadorNombre = { contains: vendedorFiltro.nombre, mode: 'insensitive' }
+  if (tipoFiltro.grafias) where.tipo = { in: tipoFiltro.grafias }
+  else if (tipoFiltro.raw) where.tipo = { contains: tipoFiltro.raw.replace(/-/g, ' '), mode: 'insensitive' }
+  return { where }
+}
+
+async function loadComercialOrdenes(fastify, query, user, range, { detail = false } = {}) {
+  const built = await buildComercialOrdenWhere(fastify, query, user, range)
+  if (built.error) return built
+
+  if (detail) {
+    const count = await fastify.prisma.orden.count({ where: built.where })
+    if (count > COMMERCIAL_DETAIL_ORDER_LIMIT) {
+      return {
+        error: `El rango contiene ${count.toLocaleString('es-CL')} órdenes. Acótelo para proteger el servidor y obtener el detalle comercial.`,
+      }
+    }
+  }
+
+  const ordenes = await fastify.prisma.orden.findMany({
+    where: built.where,
+    select: {
+      id: true,
+      createdAt: true,
+      tipo: true,
+      clienteId: true,
+      rutCliente: true,
+      creadorNombre: true,
+      sucursalId: true,
+      descuentoPct: true,
+      descuentoMonto: true,
+      items: {
+        where: { eliminado: false },
+        select: { productoId: true, codigoInterno: true, nombre: true, cantidad: true, precioUnitario: true },
+      },
+      cargos: { select: { valor: true } },
+    },
+    ...(detail ? { take: COMMERCIAL_DETAIL_ORDER_LIMIT } : {}),
+  })
+  return { ordenes }
+}
+
+function calculateUnitCost(producto, historicalCostByCode) {
+  const snapshot = producto?.costeoSnapshots?.[0]
+  if (Number(snapshot?.costoTransferencia || 0) > 0) return { costo: Number(snapshot.costoTransferencia), origen: 'costeo' }
+
+  const proveedores = (producto?.proveedores || []).filter(p => Number(p.costo || 0) > 0)
+  if (proveedores.length) {
+    const weightedQty = proveedores.reduce((sum, p) => sum + Math.max(0, Number(p.cantidad || 0)), 0)
+    const costo = weightedQty > 0
+      ? proveedores.reduce((sum, p) => sum + Number(p.costo || 0) * Math.max(0, Number(p.cantidad || 0)), 0) / weightedQty
+      : proveedores.reduce((sum, p) => sum + Number(p.costo || 0), 0) / proveedores.length
+    return { costo, origen: 'proveedor' }
+  }
+
+  const historical = historicalCostByCode.get(producto?.codigoInterno)
+  if (Number(historical || 0) > 0) return { costo: Number(historical), origen: 'compra_historica' }
+  return { costo: null, origen: null }
+}
+
+function toRankRows(bucket = {}, sortKey = 'ventas', limit = 10) {
+  return Object.entries(bucket)
+    .map(([label, metric]) => ({ label, ...metric }))
+    .sort((a, b) => Number(b[sortKey] || 0) - Number(a[sortKey] || 0))
+    .slice(0, limit)
+}
+
+async function buildComercialGerencial(fastify, query = {}, user = null) {
+  const range = buildDateRange(query.desde, query.hasta)
+  if (range.error) return { error: range.error }
+  if (!range.gte || !range.lte) return { error: 'Desde y hasta son obligatorios para el análisis comercial' }
+  const previousRange = previousDateRange(range)
+  const lastYearRange = shiftRangeOneYear(range)
+
+  const [current, previous, lastYear] = await Promise.all([
+    loadComercialOrdenes(fastify, query, user, range, { detail: true }),
+    loadComercialOrdenes(fastify, query, user, previousRange, { detail: true }),
+    loadComercialOrdenes(fastify, query, user, lastYearRange, { detail: true }),
+  ])
+  if (current.error || previous.error || lastYear.error) return { error: current.error || previous.error || lastYear.error }
+
+  const ordenes = current.ordenes
+  const actual = sumOrdenesComerciales(ordenes)
+  const periodoAnterior = sumOrdenesComerciales(previous.ordenes)
+  const mismoPeriodoAnoAnterior = sumOrdenesComerciales(lastYear.ordenes)
+  const productIds = [...new Set(ordenes.flatMap(orden => orden.items.map(item => item.productoId).filter(Boolean)))]
+  const canReadCosts = canReadModule(user, 'bodega')
+  const canReadClients = canReadModule(user, 'clientes')
+
+  const [productos, clientes] = await Promise.all([
+    productIds.length ? fastify.prisma.producto.findMany({
+      where: { id: { in: productIds } },
+      select: {
+        id: true, codigoInterno: true, nombre: true, categoria: true, stock: true, stockCritico: true,
+        subcategoria: { select: { nombre: true, categoria: { select: { nombre: true } } } },
+        ...(canReadCosts ? {
+          proveedores: { where: { activo: true }, select: { costo: true, cantidad: true } },
+          costeoSnapshots: { take: 1, orderBy: { createdAt: 'desc' }, select: { costoTransferencia: true } },
+        } : {}),
+      },
+    }) : [],
+    canReadClients
+      ? fastify.prisma.cliente.findMany({
+        where: { id: { in: [...new Set(ordenes.map(orden => orden.clienteId).filter(Boolean))] } },
+        select: { id: true, rut: true, nombre: true, razonSocial: true },
+      })
+      : [],
+  ])
+
+  const historicalCostByCode = new Map()
+  if (canReadCosts) {
+    const codes = productos.map(producto => producto.codigoInterno).filter(Boolean)
+    if (codes.length) {
+      const costs = await fastify.prisma.detalleFacturaProveedor.groupBy({
+        by: ['codigoInterno'],
+        where: { codigoInterno: { in: codes }, precio: { gt: 0 } },
+        _avg: { precio: true },
+      })
+      costs.forEach(row => historicalCostByCode.set(row.codigoInterno, Number(row._avg.precio || 0)))
+    }
+  }
+
+  const productosById = new Map(productos.map(producto => [producto.id, producto]))
+  const clientesById = new Map(clientes.map(cliente => [cliente.id, cliente]))
+  const canales = {}
+  const vendedores = {}
+  const clientesMetric = {}
+  const productosMetric = {}
+  const tendencia = {}
+  let ventasLineas = 0
+  let ventasConCosto = 0
+  let costoEstimado = 0
+  let lineasConCosto = 0
+  let lineasTotal = 0
+
+  for (const orden of ordenes) {
+    const total = totalOrden(orden)
+    const tipo = commercialTipoLabel(orden.tipo)
+    const vendedor = orden.creadorNombre || 'Sin vendedor asignado'
+    const cliente = clientesById.get(orden.clienteId)
+    const clienteLabel = cliente?.razonSocial || cliente?.nombre || orden.rutCliente || 'Sin cliente identificado'
+    const clientKey = cliente?.id ? `id:${cliente.id}` : orden.rutCliente ? `rut:${orden.rutCliente}` : `orden:${orden.id}`
+    const day = periodKey(orden.createdAt, 'dia')
+
+    for (const [bucket, key] of [[canales, tipo], [vendedores, vendedor], [tendencia, day]]) {
+      if (!bucket[key]) bucket[key] = { ventas: 0, ordenes: 0, unidades: 0 }
+      bucket[key].ventas += total
+      bucket[key].ordenes += 1
+      bucket[key].unidades += orden.items.reduce((sum, item) => sum + Number(item.cantidad || 0), 0)
+    }
+    if (!clientesMetric[clientKey]) clientesMetric[clientKey] = { nombre: clienteLabel, ventas: 0, ordenes: 0, unidades: 0 }
+    clientesMetric[clientKey].ventas += total
+    clientesMetric[clientKey].ordenes += 1
+    clientesMetric[clientKey].unidades += orden.items.reduce((sum, item) => sum + Number(item.cantidad || 0), 0)
+
+    for (const item of orden.items) {
+      const producto = productosById.get(item.productoId)
+      const key = item.productoId ? `id:${item.productoId}` : `codigo:${item.codigoInterno || item.nombre || item.id}`
+      const ventaLinea = Number(item.cantidad || 0) * Number(item.precioUnitario || 0)
+      const categoria = producto?.subcategoria?.categoria?.nombre || producto?.categoria || 'Sin categoría'
+      const label = producto?.nombre || item.nombre || item.codigoInterno || 'Producto sin nombre'
+      if (!productosMetric[key]) productosMetric[key] = {
+        productoId: item.productoId || null,
+        codigo: producto?.codigoInterno || item.codigoInterno || null,
+        nombre: label,
+        categoria,
+        ventas: 0,
+        unidades: 0,
+        costo: 0,
+        ventasConCosto: 0,
+        lineasConCosto: 0,
+        stock: producto?.stock ?? null,
+        stockCritico: producto?.stockCritico ?? null,
+      }
+      const metric = productosMetric[key]
+      metric.ventas += ventaLinea
+      metric.unidades += Number(item.cantidad || 0)
+      ventasLineas += ventaLinea
+      lineasTotal += 1
+
+      if (canReadCosts) {
+        const cost = calculateUnitCost(producto, historicalCostByCode)
+        if (cost.costo != null) {
+          const costoLinea = Number(item.cantidad || 0) * cost.costo
+          metric.costo += costoLinea
+          metric.ventasConCosto += ventaLinea
+          metric.lineasConCosto += 1
+          costoEstimado += costoLinea
+          ventasConCosto += ventaLinea
+          lineasConCosto += 1
+        }
+      }
+    }
+  }
+
+  const totalClientes = Object.keys(clientesMetric).length
+  const recurrentesPeriodo = Object.values(clientesMetric).filter(cliente => cliente.ordenes >= 2).length
+  const durationDays = Math.max(1, Math.round((range.lte.getTime() - range.gte.getTime()) / 86_400_000) + 1)
+  const productosRank = Object.values(productosMetric)
+    .map(producto => {
+      const margen = producto.ventasConCosto - producto.costo
+      const margenPct = producto.ventasConCosto > 0 ? margen / producto.ventasConCosto : null
+      const diasCobertura = producto.stock != null && producto.unidades > 0
+        ? producto.stock / (producto.unidades / durationDays)
+        : null
+      return { ...producto, margen, margenPct, diasCobertura }
+    })
+    .sort((a, b) => b.ventas - a.ventas)
+
+  const inventario = canReadCosts
+    ? await fastify.prisma.producto.findMany({
+      where: { activo: true, stock: { gt: 0 } },
+      select: {
+        id: true, codigoInterno: true, nombre: true, categoria: true, stock: true, stockCritico: true,
+        proveedores: { where: { activo: true }, select: { costo: true, cantidad: true } },
+        costeoSnapshots: { take: 1, orderBy: { createdAt: 'desc' }, select: { costoTransferencia: true } },
+      },
+    })
+    : []
+  const vendidosIds = new Set(productIds)
+  const inventarioValorizado = inventario.map(producto => {
+    const cost = calculateUnitCost(producto, historicalCostByCode)
+    return {
+      productoId: producto.id,
+      codigo: producto.codigoInterno,
+      nombre: producto.nombre,
+      categoria: producto.categoria || 'Sin categoría',
+      stock: producto.stock,
+      stockCritico: producto.stockCritico,
+      costoUnitario: cost.costo,
+      valor: cost.costo != null ? producto.stock * cost.costo : null,
+      vendidoEnPeriodo: vendidosIds.has(producto.id),
+    }
+  })
+  const inventarioConCosto = inventarioValorizado.filter(producto => producto.valor != null)
+  const sinVentaPeriodo = inventarioConCosto
+    .filter(producto => !producto.vendidoEnPeriodo)
+    .sort((a, b) => b.valor - a.valor)
+    .slice(0, 8)
+
+  const ventasComparables = actual.ventas
+  const variation = base => base.ventas > 0 ? (actual.ventas - base.ventas) / base.ventas : null
+  const margin = ventasConCosto - costoEstimado
+  const brechas = [
+    { codigo: 'metas', titulo: 'Metas y presupuesto', detalle: 'No existe una fuente de metas o presupuesto aprobada; no se muestra cumplimiento ni forecast.' },
+    { codigo: 'comisiones', titulo: 'Comisiones', detalle: 'La fuente de comisiones no está normalizada por venta; no se incluye como KPI ejecutivo.' },
+    { codigo: 'ltv', titulo: 'LTV y canasta', detalle: 'La identidad histórica de clientes no está normalizada entre órdenes, web y licitaciones; se muestra recurrencia solo dentro del período filtrado.' },
+  ]
+  if (canReadCosts && ventasLineas > 0 && ventasConCosto === 0) {
+    brechas.unshift({ codigo: 'costos', titulo: 'Costo no trazable', detalle: 'Las líneas vendidas del período no tienen costo de costeo, proveedor ni compra histórica utilizable; el margen y la valorización se bloquean en vez de mostrarse como $0.' })
+  }
+
+  return {
+    meta: {
+      generadoEn: new Date().toISOString(),
+      estado: 'operacional_estimado',
+      mensajeEstado: 'Ventas basadas en órdenes internas operacionales. El margen usa costo de costeo, proveedor o compra histórica disponible; no es margen neto contable.',
+      limiteOrdenesDetalle: COMMERCIAL_DETAIL_ORDER_LIMIT,
+    },
+    filtros: { desde: query.desde, hasta: query.hasta, tipo: query.tipo || null, vendedor: query.vendedor || null, cliente: query.cliente || null, sucursalId: query.sucursalId || null },
+    kpis: {
+      ventas: actual.ventas,
+      ordenes: actual.ordenes,
+      unidades: actual.unidades,
+      ticketPromedio: actual.ordenes ? actual.ventas / actual.ordenes : 0,
+      clientesUnicos: totalClientes,
+      clientesRecurrentesPeriodo: recurrentesPeriodo,
+      tasaRecompraPeriodo: totalClientes ? recurrentesPeriodo / totalClientes : 0,
+      margen: canReadCosts ? {
+        visible: true,
+        monto: margin,
+        pct: ventasConCosto ? margin / ventasConCosto : null,
+        coberturaVentasPct: ventasLineas ? ventasConCosto / ventasLineas : 0,
+        coberturaLineasPct: lineasTotal ? lineasConCosto / lineasTotal : 0,
+      } : { visible: false },
+      comparativos: {
+        periodoAnterior: {
+          ...periodoAnterior,
+          rango: rangeMetadata(previousRange),
+          criterio: 'Mismo número de días inmediatamente anteriores al inicio del período seleccionado.',
+          variacionVentas: variation(periodoAnterior),
+        },
+        mismoPeriodoAnoAnterior: {
+          ...mismoPeriodoAnoAnterior,
+          rango: rangeMetadata(lastYearRange),
+          criterio: 'Mismas fechas del año calendario anterior.',
+          variacionVentas: variation(mismoPeriodoAnoAnterior),
+        },
+      },
+      inventario: canReadCosts ? {
+        visible: true,
+        productosConStock: inventarioValorizado.length,
+        valorizacionEstimada: inventarioConCosto.reduce((sum, producto) => sum + Number(producto.valor || 0), 0),
+        coberturaValorizacionPct: inventarioValorizado.length ? inventarioConCosto.length / inventarioValorizado.length : 0,
+        sinVentaPeriodo: sinVentaPeriodo.length,
+      } : { visible: false },
+    },
+    tendencia: toRankRows(tendencia, 'ventas', 500).sort((a, b) => a.label.localeCompare(b.label)),
+    rankings: {
+      canales: toRankRows(canales),
+      vendedores: toRankRows(vendedores),
+      clientes: canReadClients ? Object.values(clientesMetric).sort((a, b) => b.ventas - a.ventas).slice(0, 10) : [],
+      productos: productosRank.slice(0, 12),
+      coberturaInventario: productosRank.filter(producto => producto.diasCobertura != null).sort((a, b) => a.diasCobertura - b.diasCobertura).slice(0, 12),
+    },
+    inventario: canReadCosts ? { sinVentaPeriodo } : null,
+    brechas,
+  }
+}
+
 async function buildCobranzaCajaGerencial(fastify, query = {}, user = null) {
   const range = buildDateRange(query.desde, query.hasta)
   if (range.error) return { error: range.error }
@@ -879,6 +1297,48 @@ async function buildOperacionesGerencial(fastify, query = {}) {
       pendientes: despachosPendientes.length,
       vencidos: despachosPendientes.filter(d => d.fechaEntrega && new Date(d.fechaEntrega) < now).length,
     },
+  }
+}
+
+// Contrato estable para la portada gerencial. Antes el navegador coordinaba cinco
+// endpoints de KPI y siete listados al montar la vista; eso multiplicaba round trips,
+// estados de carga y posibilidades de obtener cortes distintos. Este resumen conserva
+// la autorizacion por seccion y calcula solo lo que el usuario puede leer.
+async function buildGerencialResumen(fastify, query = {}, user = null, { includeComparison = true } = {}) {
+  const range = buildDateRange(query.desde, query.hasta)
+  if (range.error) return { error: range.error }
+
+  const sections = getGerencialSections(user)
+  const builders = [
+    ['ventas', sections.ventas, () => buildVentasGerenciales(fastify, query, user, { includeComparison })],
+    ['cobranzaCaja', sections.cobranzaCaja, () => buildCobranzaCajaGerencial(fastify, query, user)],
+    ['stock', sections.stock, () => buildStockGerencial(fastify, query, user)],
+    ['licitaciones', sections.licitaciones, () => buildLicitacionesGerencial(fastify, query, user)],
+    ['operaciones', sections.operaciones, () => buildOperacionesGerencial(fastify, query, user)],
+  ].filter(([, allowed]) => allowed)
+
+  const results = await Promise.all(builders.map(async ([name,, build]) => [name, await build()]))
+  const invalid = results.find(([, report]) => report?.error)
+  if (invalid) return { error: invalid[1].error }
+
+  return {
+    meta: {
+      version: 'gerencial.v1',
+      generadoEn: new Date().toISOString(),
+      estado: 'operacional_no_certificado',
+      // Este sello impide presentar el resumen como un balance o resultado financiero
+      // mientras Finanzas no apruebe la definicion de ingresos, CxC y costos.
+      mensajeEstado: 'Datos operacionales sujetos a conciliacion financiera.',
+    },
+    filtros: {
+      desde: query.desde || null,
+      hasta: query.hasta || null,
+      tipo: query.tipo || null,
+      vendedor: query.vendedor || null,
+      cliente: query.cliente || null,
+      periodo: query.periodo || 'mes',
+    },
+    secciones: Object.fromEntries(results),
   }
 }
 
@@ -1035,6 +1495,68 @@ async function buildGerencialXlsx(reportes, query = {}) {
   return workbook.xlsx.writeBuffer()
 }
 
+async function buildComercialXlsx(reporte, query = {}) {
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = 'Plastimar Sisgestion'
+  workbook.created = new Date()
+
+  const resumen = workbook.addWorksheet('Control comercial')
+  styleGerencialWorksheet(resumen, 'Centro de control comercial')
+  resumen.getCell('A2').value = `Período: ${query.desde || 'Inicio'} a ${query.hasta || 'Hoy'}`
+  resumen.getCell('A2').font = { italic: true, color: { argb: 'FF475569' } }
+  resumen.getRow(3).values = ['Indicador', 'Valor', 'Detalle']
+  const kpis = reporte.kpis || {}
+  const margin = kpis.margen || {}
+  const inventory = kpis.inventario || {}
+  resumen.addRows([
+    ['Ventas de órdenes', kpis.ventas || 0, `${kpis.ordenes || 0} órdenes`],
+    ['Unidades vendidas', kpis.unidades || 0, 'Unidades en órdenes internas'],
+    ['Ticket promedio', kpis.ticketPromedio || 0, 'Ventas / órdenes'],
+    ['Clientes únicos', kpis.clientesUnicos || 0, `${kpis.clientesRecurrentesPeriodo || 0} recurrentes en el período`],
+    ['Variación vs período anterior', kpis.comparativos?.periodoAnterior?.variacionVentas ?? null, `Base: ${kpis.comparativos?.periodoAnterior?.ventas || 0}`],
+    ['Variación vs mismo período año anterior', kpis.comparativos?.mismoPeriodoAnoAnterior?.variacionVentas ?? null, `Base: ${kpis.comparativos?.mismoPeriodoAnoAnterior?.ventas || 0}`],
+  ])
+  if (margin.visible && Number(margin.coberturaVentasPct || 0) > 0) {
+    resumen.addRow(['Margen estimado', margin.monto || 0, `Cobertura de ventas: ${Math.round(Number(margin.coberturaVentasPct || 0) * 100)}%`])
+    resumen.addRow(['Margen estimado %', margin.pct ?? null, 'No es margen neto contable'])
+  }
+  if (inventory.visible && Number(inventory.coberturaValorizacionPct || 0) > 0) {
+    resumen.addRow(['Valorización inventario estimada', inventory.valorizacionEstimada || 0, `Cobertura: ${Math.round(Number(inventory.coberturaValorizacionPct || 0) * 100)}%`])
+  }
+  resumen.getColumn(2).numFmt = '#,##0'
+  ;[8, 9].forEach(row => { if (resumen.getCell(`A${row}`).value?.includes?.('Variación') || resumen.getCell(`A${row}`).value?.includes?.('%')) resumen.getCell(`B${row}`).numFmt = '0.0%;[Red]-0.0%' })
+
+  const addRowsSheet = (name, title, rows, columns) => {
+    const sheet = workbook.addWorksheet(name)
+    styleGerencialWorksheet(sheet, title)
+    sheet.getRow(3).values = columns.map(column => column.label)
+    rows.forEach(row => sheet.addRow(columns.map(column => row[column.key] ?? null)))
+    sheet.columns.forEach(column => { column.width = 22 })
+    return sheet
+  }
+  const canales = addRowsSheet('Canales', 'Ventas por canal / tipo', reporte.rankings?.canales || [], [
+    { key: 'label', label: 'Canal / tipo' }, { key: 'ventas', label: 'Ventas' }, { key: 'ordenes', label: 'Órdenes' }, { key: 'unidades', label: 'Unidades' },
+  ])
+  canales.getColumn(2).numFmt = '#,##0'
+  const vendedores = addRowsSheet('Vendedores', 'Desempeño por vendedor', reporte.rankings?.vendedores || [], [
+    { key: 'label', label: 'Vendedor' }, { key: 'ventas', label: 'Ventas' }, { key: 'ordenes', label: 'Órdenes' }, { key: 'unidades', label: 'Unidades' },
+  ])
+  vendedores.getColumn(2).numFmt = '#,##0'
+  const productos = addRowsSheet('Productos', 'Productos con mayor salida', reporte.rankings?.productos || [], [
+    { key: 'codigo', label: 'Código' }, { key: 'nombre', label: 'Producto' }, { key: 'categoria', label: 'Categoría' }, { key: 'ventas', label: 'Ventas' }, { key: 'unidades', label: 'Unidades' }, { key: 'margen', label: 'Margen estimado' }, { key: 'margenPct', label: 'Margen %' },
+  ])
+  productos.getColumn(4).numFmt = '#,##0'
+  productos.getColumn(6).numFmt = '#,##0'
+  productos.getColumn(7).numFmt = '0.0%;[Red]-0.0%'
+  if (reporte.inventario?.sinVentaPeriodo?.length) {
+    const stock = addRowsSheet('Stock sin venta', 'Inventario sin venta en el período', reporte.inventario.sinVentaPeriodo, [
+      { key: 'codigo', label: 'Código' }, { key: 'nombre', label: 'Producto' }, { key: 'stock', label: 'Stock' }, { key: 'valor', label: 'Valor estimado' },
+    ])
+    stock.getColumn(4).numFmt = '#,##0'
+  }
+  return workbook.xlsx.writeBuffer()
+}
+
 export default async function reportesRoutes(fastify) {
   registerComisionesReportRoutes(fastify)
   registerMovimientosAnormalesReportRoutes(fastify)
@@ -1078,7 +1600,51 @@ export default async function reportesRoutes(fastify) {
     if (reporte.error) return reply.code(400).send({ error: reporte.error })
     return reporte
   })
+
+  fastify.get('/gerencial/v1/resumen', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async (request, reply) => {
+    const reporte = await buildGerencialResumen(fastify, request.query, request.user)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    if (!Object.keys(reporte.secciones).length) return reply.code(403).send({ error: 'Sin permisos para ver indicadores gerenciales' })
+    return reporte
+  })
+
   // Reporte stock crítico (productos + materiales bodega taller) — G6
+  // Solo se entrega el mínimo necesario para filtrar: catálogo canónico y
+  // responsables comerciales activos. No expone el módulo de usuarios ni
+  // correos, credenciales o permisos individuales.
+  fastify.get('/gerencial/v1/filtros', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async request => {
+    const canReadSales = canReadModule(request.user, 'ventas')
+    const [vendedores, sucursales] = canReadSales ? await Promise.all([
+      fastify.prisma.user.findMany({
+        where: { activo: true, role: 'vendedor' },
+        select: { id: true, nombre: true, codigoVendedor: true },
+        orderBy: [{ nombre: 'asc' }, { id: 'asc' }],
+      }),
+      fastify.prisma.sucursal.findMany({
+        where: { activo: true },
+        select: { id: true, nombre: true, comuna: true },
+        orderBy: { nombre: 'asc' },
+      }),
+    ]) : [[], []]
+
+    return { tiposVenta: TIPO_VENTA_VALUES, vendedores, sucursales }
+  })
+
+  // Centro de control comercial: se carga bajo demanda desde la pestaña
+  // Comercial para no imponer consultas de detalle al abrir la portada.
+  fastify.get('/gerencial/v1/comercial', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async (request, reply) => {
+    if (!canReadModule(request.user, 'ventas')) return reply.code(403).send({ error: 'Sin permiso para indicadores comerciales' })
+    const reporte = await buildComercialGerencial(fastify, request.query, request.user)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    return reporte
+  })
+
   fastify.get('/stock-critico', {
     preHandler: [fastify.authenticate, fastify.rbac('bodega', 'read')],
   }, async () => {
@@ -1120,32 +1686,9 @@ export default async function reportesRoutes(fastify) {
   fastify.get('/export/gerencial', {
     preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
   }, async (request, reply) => {
-    const reportes = {}
-    if (canReadModule(request.user, 'ventas') || canReadModule(request.user, 'cobranza')) {
-      const ventas = await buildVentasGerenciales(fastify, request.query, request.user, { includeComparison: false })
-      if (ventas.error) return reply.code(400).send({ error: ventas.error })
-      reportes.ventas = ventas
-    }
-    if (canReadAll(request.user, ['caja', 'cobranza'])) {
-      const cobranzaCaja = await buildCobranzaCajaGerencial(fastify, request.query, request.user)
-      if (cobranzaCaja.error) return reply.code(400).send({ error: cobranzaCaja.error })
-      reportes.cobranzaCaja = cobranzaCaja
-    }
-    if (canReadModule(request.user, 'bodega')) {
-      const stock = await buildStockGerencial(fastify, request.query)
-      if (stock.error) return reply.code(400).send({ error: stock.error })
-      reportes.stock = stock
-    }
-    if (canReadModule(request.user, 'licitaciones')) {
-      const licitaciones = await buildLicitacionesGerencial(fastify, request.query, request.user)
-      if (licitaciones.error) return reply.code(400).send({ error: licitaciones.error })
-      reportes.licitaciones = licitaciones
-    }
-    if (canReadAll(request.user, ['taller', 'despacho'])) {
-      const operaciones = await buildOperacionesGerencial(fastify, request.query)
-      if (operaciones.error) return reply.code(400).send({ error: operaciones.error })
-      reportes.operaciones = operaciones
-    }
+    const resumen = await buildGerencialResumen(fastify, request.query, request.user, { includeComparison: false })
+    if (resumen.error) return reply.code(400).send({ error: resumen.error })
+    const reportes = resumen.secciones
 
     const rows = buildGerencialExportRows(reportes, request.query)
     if (rows.length <= 3) return reply.code(403).send({ error: 'Sin permisos para exportar reportes gerenciales' })
@@ -1165,17 +1708,27 @@ export default async function reportesRoutes(fastify) {
   fastify.get('/export/gerencial.xlsx', {
     preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
   }, async (request, reply) => {
-    const reportes = {}
-    if (canReadModule(request.user, 'ventas') || canReadModule(request.user, 'cobranza')) reportes.ventas = await buildVentasGerenciales(fastify, request.query, request.user)
-    if (canReadAll(request.user, ['caja', 'cobranza'])) reportes.cobranzaCaja = await buildCobranzaCajaGerencial(fastify, request.query, request.user)
-    if (canReadModule(request.user, 'bodega')) reportes.stock = await buildStockGerencial(fastify, request.query)
-    if (canReadModule(request.user, 'licitaciones')) reportes.licitaciones = await buildLicitacionesGerencial(fastify, request.query, request.user)
-    if (canReadAll(request.user, ['taller', 'despacho'])) reportes.operaciones = await buildOperacionesGerencial(fastify, request.query)
+    const resumen = await buildGerencialResumen(fastify, request.query, request.user, { includeComparison: false })
+    if (resumen.error) return reply.code(400).send({ error: resumen.error })
+    const reportes = resumen.secciones
     if (!Object.keys(reportes).length) return reply.code(403).send({ error: 'Sin permisos para exportar reportes gerenciales' })
     const buffer = await buildGerencialXlsx(reportes, request.query)
     return reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="reporte_gerencial_${new Date().toISOString().slice(0, 10)}.xlsx"`)
+      .send(Buffer.from(buffer))
+  })
+
+  fastify.get('/export/comercial.xlsx', {
+    preHandler: [fastify.authenticate, fastify.rbac('reportes', 'read')],
+  }, async (request, reply) => {
+    if (!canReadModule(request.user, 'ventas')) return reply.code(403).send({ error: 'Sin permiso para exportar análisis comercial' })
+    const reporte = await buildComercialGerencial(fastify, request.query, request.user)
+    if (reporte.error) return reply.code(400).send({ error: reporte.error })
+    const buffer = await buildComercialXlsx(reporte, request.query)
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="control_comercial_${new Date().toISOString().slice(0, 10)}.xlsx"`)
       .send(Buffer.from(buffer))
   })
 

@@ -1,32 +1,47 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, Icon, KpiCard, PageHeader, Table, Tabs } from '../../components/shared'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 import { downloadFromBackend } from '../../utils/csv'
 import {
-  useReporteGerencialCobranzaCaja,
-  useReporteGerencialLicitaciones,
-  useReporteGerencialOperaciones,
-  useReporteGerencialStock,
-  useReporteGerencialVentas,
-  useReporteCaja,
-  useReporteCobranza,
+  useReporteGerencialResumen,
+  useReporteGerencialFiltros,
+  useReporteComercialGerencial,
   useReporteDespachos,
   useReporteLicitaciones,
   useReporteOdts,
   useReporteStockCritico,
   useReporteVentas,
 } from '../../api/reportesGerenciales'
+import { useClientes } from '../../api/clientes'
 
 const money = value => '$' + Number(value || 0).toLocaleString('es-CL')
 const num = value => Number(value || 0).toLocaleString('es-CL')
 const date = value => value ? new Date(value).toLocaleDateString('es-CL') : '-'
 const norm = value => String(value || '').toLowerCase().trim()
 
-function currentYearRange() {
-  const year = new Date().getFullYear()
-  return { desde: `${year}-01-01`, hasta: `${year}-12-31` }
+function toInputDate(value) {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function rangeForPreset(preset, now = new Date()) {
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  if (preset === 'mes') return { desde: toInputDate(new Date(end.getFullYear(), end.getMonth(), 1)), hasta: toInputDate(end) }
+  if (preset === 'trimestre') {
+    const firstMonth = Math.floor(end.getMonth() / 3) * 3
+    return { desde: toInputDate(new Date(end.getFullYear(), firstMonth, 1)), hasta: toInputDate(end) }
+  }
+  if (preset === 'l12m') return { desde: toInputDate(new Date(end.getFullYear(), end.getMonth() - 11, 1)), hasta: toInputDate(end) }
+  return { desde: toInputDate(new Date(end.getFullYear(), 0, 1)), hasta: toInputDate(end) }
+}
+
+function formatUpdatedAt(value) {
+  if (!value) return 'pendiente de carga'
+  return new Date(value).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
 }
 
 function inRange(value, desde, hasta) {
@@ -50,6 +65,59 @@ function selectInputStyle(minWidth = 150) {
     fontSize: 13,
     fontFamily: 'inherit',
   }
+}
+
+function ClienteAutocomplete({ value, onTextChange, onSelect, enabled }) {
+  const [debounced, setDebounced] = useState('')
+  const [open, setOpen] = useState(false)
+  const boxRef = useRef(null)
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebounced(value.trim()), 250)
+    return () => clearTimeout(timeout)
+  }, [value])
+
+  useEffect(() => {
+    const onOutside = event => {
+      if (boxRef.current && !boxRef.current.contains(event.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onOutside)
+    return () => document.removeEventListener('mousedown', onOutside)
+  }, [])
+
+  const searchable = enabled && debounced.length >= 2
+  const { data, isFetching } = useClientes({ search: debounced, limit: 8 }, { enabled: searchable })
+  const resultados = searchable ? (data?.items || []) : []
+
+  return (
+    <div ref={boxRef} style={{ position: 'relative' }}>
+      <input
+        value={value}
+        onChange={event => { onTextChange(event.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={event => { if (event.key === 'Escape') setOpen(false) }}
+        placeholder={enabled ? 'Buscar por RUT o razón social' : 'Sin permiso para consultar clientes'}
+        disabled={!enabled}
+        aria-label="Buscar cliente por RUT o razón social"
+        aria-autocomplete="list"
+        aria-expanded={open && searchable}
+        style={{ ...selectInputStyle(), width: '100%', minWidth: 0, boxSizing: 'border-box', opacity: enabled ? 1 : 0.6 }}
+      />
+      {open && searchable && (
+        <div role="listbox" style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 30, overflowY: 'auto', maxHeight: 260, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px oklch(0 0 0 / .12)' }}>
+          {isFetching && <div style={{ padding: 10, fontSize: 12, color: 'var(--text-3)' }}>Buscando clientes...</div>}
+          {!isFetching && !resultados.length && <div style={{ padding: 10, fontSize: 12, color: 'var(--text-3)' }}>Sin coincidencias</div>}
+          {resultados.map(item => {
+            const nombre = item.razonSocial || item.nombre || 'Sin razón social'
+            return <button key={item.id} type="button" role="option" onMouseDown={event => event.preventDefault()} onClick={() => { onSelect(item); setOpen(false) }} style={{ display: 'block', width: '100%', padding: '9px 10px', border: 0, borderBottom: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+              <span style={{ display: 'block', fontSize: 12, fontWeight: 700 }}>{nombre}</span>
+              <span style={{ display: 'block', marginTop: 2, fontSize: 11, color: 'var(--text-3)' }}>{item.rut || 'Sin RUT'}</span>
+            </button>
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function Panel({ title, icon, children, action }) {
@@ -121,13 +189,13 @@ function QueryBlock({ problem, children }) {
   return children
 }
 
-function GroupList({ rows, labelKey = 'label', valueKey = 'value', format = num }) {
+function GroupList({ rows, labelKey = 'label', valueKey = 'value', format = num, onRowClick }) {
   if (!rows.length) return <EmptyBlock />
   const max = Math.max(...rows.map(row => Number(row[valueKey] || 0)), 1)
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      {rows.slice(0, 7).map(row => (
-        <div key={row[labelKey]} style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 1fr) minmax(80px, auto)', gap: 12, alignItems: 'center' }}>
+      {rows.slice(0, 7).map(row => {
+        const content = <>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginBottom: 4 }}>
               <span style={{ color: 'var(--text-2)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row[labelKey] || 'Sin dato'}</span>
@@ -137,14 +205,18 @@ function GroupList({ rows, labelKey = 'label', valueKey = 'value', format = num 
             </div>
           </div>
           <strong style={{ textAlign: 'right', fontFamily: "'DM Mono', monospace", fontSize: 12, color: 'var(--text-1)' }}>{format(row[valueKey])}</strong>
-        </div>
-      ))}
+        </>
+        const style = { display: 'grid', gridTemplateColumns: 'minmax(120px, 1fr) minmax(80px, auto)', gap: 12, alignItems: 'center', width: '100%', padding: onRowClick ? '5px 6px' : 0, border: 0, borderRadius: 7, background: 'transparent', textAlign: 'left', cursor: onRowClick ? 'pointer' : 'default' }
+        return onRowClick
+          ? <button key={row[labelKey]} type="button" onClick={() => onRowClick(row)} style={style}>{content}</button>
+          : <div key={row[labelKey]} style={style}>{content}</div>
+      })}
     </div>
   )
 }
 
-function BarChart({ title, values, format = money, color = 'var(--green-600)' }) {
-  const rows = Object.entries(values || {}).map(([label, value]) => ({ label, value: Number(value?.total ?? value ?? 0) })).slice(-12)
+function BarChart({ title, values, format = money, color = 'var(--green-600)', maxPoints = 12 }) {
+  const rows = Object.entries(values || {}).map(([label, value]) => ({ label, value: Number(value?.total ?? value ?? 0) })).slice(-maxPoints)
   if (!rows.length) return <EmptyBlock />
   const max = Math.max(...rows.map(row => row.value), 1)
   return (
@@ -165,7 +237,6 @@ function filterVentas(items, filters) {
   const cliente = norm(filters.cliente)
   return items.filter(item => {
     if (!inRange(item.createdAt, filters.desde, filters.hasta)) return false
-    if (filters.tipo && item.tipo !== filters.tipo) return false
     if (vendedor && !norm(item.creadorNombre).includes(vendedor)) return false
     const clienteText = [item.cliente?.razonSocial, item.cliente?.nombre, item.rutCliente, item.observaciones].map(norm).join(' ')
     if (cliente && !clienteText.includes(cliente)) return false
@@ -179,66 +250,334 @@ function metricRows(bucket = {}) {
     .sort((a, b) => b.value - a.value)
 }
 
+function percent(value, digits = 1) {
+  if (value == null || !Number.isFinite(Number(value))) return '—'
+  return `${(Number(value) * 100).toFixed(digits)}%`
+}
+
+function Delta({ value }) {
+  if (value == null || !Number.isFinite(Number(value))) return <span style={{ color: 'var(--text-3)', fontSize: 12 }}>Sin base comparable</span>
+  const positive = Number(value) >= 0
+  return <span style={{ color: positive ? 'var(--green-700)' : 'var(--red)', fontSize: 12, fontWeight: 700 }}>{positive ? '+' : ''}{percent(value)}</span>
+}
+
+function CommercialMetric({ label, value, detail, delta, tone = 'green' }) {
+  const accent = tone === 'amber' ? 'var(--amber)' : tone === 'red' ? 'var(--red)' : 'var(--green-600)'
+  return <article style={{ minWidth: 0, padding: '14px 15px', background: '#fff', border: '1px solid var(--border)', borderTop: `3px solid ${accent}`, borderRadius: 10, boxShadow: 'var(--shadow-sm)' }}>
+    <div style={{ color: 'var(--text-3)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.35 }}>{label}</div>
+    <div style={{ marginTop: 6, color: 'var(--text-1)', fontFamily: "'DM Mono', monospace", fontSize: 21, fontWeight: 800, letterSpacing: -0.8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</div>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 7, minHeight: 16, color: 'var(--text-3)', fontSize: 11 }}><span>{detail}</span>{delta !== undefined && <Delta value={delta} />}</div>
+  </article>
+}
+
+function compactDate(value) {
+  if (!value) return '—'
+  return new Date(`${value}T12:00:00`).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function groupCommercialTrend(points = [], desde, hasta) {
+  const start = new Date(`${desde}T12:00:00`)
+  const end = new Date(`${hasta}T12:00:00`)
+  const days = Number.isFinite(start.getTime()) && Number.isFinite(end.getTime())
+    ? Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1)
+    : points.length
+  const group = days <= 31 ? 'day' : days <= 180 ? 'week' : 'month'
+  const buckets = new Map()
+
+  const addBucket = (key, label) => buckets.set(key, { label, value: 0 })
+  if (Number.isFinite(start.getTime()) && Number.isFinite(end.getTime())) {
+    if (group === 'day') {
+      for (let dateValue = new Date(start); dateValue <= end; dateValue.setDate(dateValue.getDate() + 1)) {
+        const key = toInputDate(dateValue)
+        addBucket(key, dateValue.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' }))
+      }
+    } else if (group === 'week') {
+      const totalWeeks = Math.ceil(days / 7)
+      for (let week = 0; week < totalWeeks; week += 1) {
+        const weekStart = new Date(start)
+        weekStart.setDate(start.getDate() + week * 7)
+        addBucket(String(week).padStart(3, '0'), `Sem. ${weekStart.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}`)
+      }
+    } else {
+      const firstMonth = new Date(start.getFullYear(), start.getMonth(), 1)
+      const lastMonth = new Date(end.getFullYear(), end.getMonth(), 1)
+      for (let dateValue = new Date(firstMonth); dateValue <= lastMonth; dateValue.setMonth(dateValue.getMonth() + 1)) {
+        const key = `${dateValue.getFullYear()}-${String(dateValue.getMonth() + 1).padStart(2, '0')}`
+        addBucket(key, dateValue.toLocaleDateString('es-CL', { month: 'short', year: '2-digit' }))
+      }
+    }
+  }
+
+  points.forEach(point => {
+    const value = Number(point.ventas || 0)
+    const dateValue = new Date(`${point.label}T12:00:00`)
+    if (Number.isNaN(dateValue.getTime())) return
+    let key
+    let label
+    if (group === 'day') {
+      key = point.label
+      label = dateValue.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })
+    } else if (group === 'week') {
+      const diff = Math.max(0, Math.floor((dateValue.getTime() - start.getTime()) / 86_400_000))
+      const week = Math.floor(diff / 7)
+      const weekStart = new Date(start)
+      weekStart.setDate(start.getDate() + week * 7)
+      key = String(week).padStart(3, '0')
+      label = `Sem. ${weekStart.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}`
+    } else {
+      key = point.label.slice(0, 7)
+      label = dateValue.toLocaleDateString('es-CL', { month: 'short', year: '2-digit' })
+    }
+    const current = buckets.get(key) || { label, value: 0 }
+    current.value += value
+    buckets.set(key, current)
+  })
+
+  const rows = [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, value]) => value)
+  return {
+    rows,
+    groupLabel: group === 'day' ? 'día' : group === 'week' ? 'semana' : 'mes',
+    maxPoints: group === 'day' ? 31 : group === 'week' ? 27 : 12,
+  }
+}
+
+function CommercialDashboard({ data, navigate }) {
+  const kpis = data?.kpis || {}
+  const margin = kpis.margen || { visible: false }
+  const inventory = kpis.inventario || { visible: false }
+  const hasMarginCoverage = margin.visible && Number(margin.coberturaVentasPct || 0) > 0
+  const hasInventoryCostCoverage = inventory.visible && Number(inventory.coberturaValorizacionPct || 0) > 0
+  const trend = groupCommercialTrend(data?.tendencia, data?.filtros?.desde, data?.filtros?.hasta)
+  const tendencia = Object.fromEntries(trend.rows.map(row => [row.label, row.value]))
+  const canales = (data?.rankings?.canales || []).map(row => ({ label: row.label, value: row.ventas, count: row.ordenes }))
+  const vendedores = data?.rankings?.vendedores || []
+  const clientes = data?.rankings?.clientes || []
+  const productos = data?.rankings?.productos || []
+  const cobertura = data?.rankings?.coberturaInventario || []
+  const sinVenta = data?.inventario?.sinVentaPeriodo || []
+  const previous = kpis.comparativos?.periodoAnterior || {}
+  const year = kpis.comparativos?.mismoPeriodoAnoAnterior || {}
+
+  return <div style={{ display: 'grid', gap: 16, marginTop: 16 }}>
+    <div role="status" style={{ padding: '10px 14px', border: '1px solid #bae6fd', borderRadius: 8, background: '#f0f9ff', color: '#075985', fontSize: 13 }}>
+      <strong>Lectura comercial:</strong> {data.meta?.mensajeEstado}
+    </div>
+
+    <section aria-label="Indicadores comerciales" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
+      <CommercialMetric label="Ventas de órdenes" value={money(kpis.ventas)} detail={`${num(kpis.ordenes)} órdenes`} delta={previous.variacionVentas} tone="green" />
+      <CommercialMetric label="Unidades vendidas" value={num(kpis.unidades)} detail="líneas registradas" tone="green" />
+      <CommercialMetric label="Ticket promedio" value={money(kpis.ticketPromedio)} detail="por orden" tone="green" />
+      <CommercialMetric label="Margen estimado" value={hasMarginCoverage ? money(margin.monto) : margin.visible ? 'Sin costo' : 'Restringido'} detail={hasMarginCoverage ? `${percent(margin.pct)} · cobertura ${percent(margin.coberturaVentasPct, 0)}` : margin.visible ? 'sin costo trazable en las líneas' : 'requiere permiso de costos'} tone={hasMarginCoverage && Number(margin.pct || 0) < 0 ? 'red' : 'amber'} />
+      <CommercialMetric label="Clientes recurrentes" value={num(kpis.clientesRecurrentesPeriodo)} detail={`${percent(kpis.tasaRecompraPeriodo)} de ${num(kpis.clientesUnicos)} clientes`} tone="green" />
+      <CommercialMetric label="Stock sin venta" value={hasInventoryCostCoverage ? num(inventory.sinVentaPeriodo) : inventory.visible ? 'Sin costo' : 'Restringido'} detail={hasInventoryCostCoverage ? 'ítems de mayor valor estimado' : inventory.visible ? 'sin valorización trazable' : 'requiere permiso de bodega'} tone={hasInventoryCostCoverage && inventory.sinVentaPeriodo ? 'amber' : 'green'} />
+    </section>
+
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1.1fr) minmax(280px, .9fr)', gap: 16 }}>
+      <Panel title="Tendencia de ventas" icon="trendingUp" action={<Badge tone="blue">por {trend.groupLabel}</Badge>}>
+        <div style={{ marginBottom: 8, color: 'var(--text-3)', fontSize: 12, lineHeight: 1.4 }}>
+          Ventas netas de órdenes creadas entre <strong>{compactDate(data?.filtros?.desde)}</strong> y <strong>{compactDate(data?.filtros?.hasta)}</strong>, agrupadas por {trend.groupLabel}. Cada barra representa todo ese bloque de tiempo.
+        </div>
+        <BarChart title={`Tendencia de ventas por ${trend.groupLabel}`} values={tendencia} maxPoints={trend.maxPoints} />
+      </Panel>
+      <Panel title="Comparativo de crecimiento" icon="barChart2">
+        <div style={{ display: 'grid', gap: 16 }}>
+          <div style={{ paddingBottom: 13, borderBottom: '1px solid var(--border)' }}>
+            <div style={{ color: 'var(--text-3)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>Período anterior equivalente</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginTop: 5 }}><strong style={{ fontSize: 20 }}>{money(previous.ventas)}</strong><Delta value={previous.variacionVentas} /></div>
+            <div style={{ marginTop: 3, color: 'var(--text-3)', fontSize: 12 }}>{compactDate(previous.rango?.desde)} — {compactDate(previous.rango?.hasta)} · {num(previous.ordenes)} órdenes</div>
+            <div style={{ marginTop: 3, color: 'var(--text-3)', fontSize: 11, lineHeight: 1.35 }}>{previous.criterio}</div>
+          </div>
+          <div>
+            <div style={{ color: 'var(--text-3)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>Mismo período año anterior</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginTop: 5 }}><strong style={{ fontSize: 20 }}>{money(year.ventas)}</strong><Delta value={year.variacionVentas} /></div>
+            <div style={{ marginTop: 3, color: 'var(--text-3)', fontSize: 12 }}>{compactDate(year.rango?.desde)} — {compactDate(year.rango?.hasta)} · {num(year.ordenes)} órdenes</div>
+            <div style={{ marginTop: 3, color: 'var(--text-3)', fontSize: 11, lineHeight: 1.35 }}>{year.criterio}</div>
+          </div>
+        </div>
+      </Panel>
+    </div>
+
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
+      <Panel title="Canales / tipo de venta" icon="shoppingCart">
+        <GroupList rows={canales} format={money} />
+      </Panel>
+      <Panel title="Desempeño por vendedor" icon="user" action={<Badge tone="gray">órdenes internas</Badge>}>
+        <Table
+          columns={[
+            { key: 'label', label: 'Vendedor', wrap: true },
+            { key: 'ordenes', label: 'Órdenes', align: 'right' },
+            { key: 'unidades', label: 'Unid.', align: 'right' },
+            { key: 'ventas', label: 'Ventas', align: 'right', render: value => money(value) },
+          ]}
+          rows={vendedores}
+          emptyMessage="Sin órdenes para los filtros aplicados"
+          ariaLabel="Desempeño por vendedor"
+          getRowKey={row => row.label}
+        />
+      </Panel>
+      <Panel title="Productos con mayor salida" icon="package" action={<Badge tone="gray">monto y unidades</Badge>}>
+        <Table
+          columns={[
+            { key: 'nombre', label: 'Producto', wrap: true },
+            { key: 'categoria', label: 'Categoría', wrap: true },
+            { key: 'unidades', label: 'Unid.', align: 'right' },
+            { key: 'ventas', label: 'Ventas', align: 'right', render: value => money(value) },
+            ...(margin.visible ? [{ key: 'margenPct', label: 'Margen est.', align: 'right', render: value => percent(value) }] : []),
+          ]}
+          rows={productos}
+          onRowClick={row => row.productoId && navigate(`/productos/${row.productoId}`)}
+          emptyMessage="Sin productos vendidos para los filtros aplicados"
+          ariaLabel="Productos más vendidos"
+          getRowKey={row => row.productoId || row.codigo || row.nombre}
+        />
+      </Panel>
+      <Panel title="Clientes con mayor actividad" icon="users" action={<Badge tone="gray">período actual</Badge>}>
+        <Table
+          columns={[
+            { key: 'nombre', label: 'Cliente', wrap: true },
+            { key: 'ordenes', label: 'Órdenes', align: 'right' },
+            { key: 'unidades', label: 'Unid.', align: 'right' },
+            { key: 'ventas', label: 'Ventas', align: 'right', render: value => money(value) },
+          ]}
+          rows={clientes}
+          emptyMessage="Sin permiso o sin clientes identificados para el período"
+          ariaLabel="Clientes con mayor actividad"
+          getRowKey={row => row.nombre}
+        />
+      </Panel>
+    </div>
+
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
+      <Panel title="Cobertura de inventario sobre productos vendidos" icon="warehouse">
+        {hasInventoryCostCoverage ? <Table
+          columns={[
+            { key: 'nombre', label: 'Producto', wrap: true },
+            { key: 'stock', label: 'Stock', align: 'right' },
+            { key: 'unidades', label: 'Unid. vendidas', align: 'right' },
+            { key: 'diasCobertura', label: 'Días cobertura', align: 'right', render: value => value == null ? '—' : `${Math.round(value)} d` },
+          ]}
+          rows={cobertura}
+          emptyMessage="No hay productos con venta y stock disponible en el período"
+          ariaLabel="Cobertura de inventario"
+          getRowKey={row => row.productoId || row.codigo || row.nombre}
+        /> : <EmptyBlock text={inventory.visible ? 'No hay costo trazable suficiente para calcular cobertura de inventario.' : 'La cobertura y costos están restringidos a roles con permiso de Bodega.'} />}
+      </Panel>
+      <Panel title="Inventario sin venta en el período" icon="alertTriangle" action={hasInventoryCostCoverage ? <Badge tone={sinVenta.length ? 'amber' : 'green'}>{sinVenta.length}</Badge> : null}>
+        {hasInventoryCostCoverage ? <Table
+          columns={[
+            { key: 'nombre', label: 'Producto', wrap: true },
+            { key: 'stock', label: 'Stock', align: 'right' },
+            { key: 'valor', label: 'Valor est.', align: 'right', render: value => money(value) },
+          ]}
+          rows={sinVenta}
+          onRowClick={row => navigate(`/productos/${row.productoId}`)}
+          emptyMessage="No hay stock valorizado sin venta para el período"
+          ariaLabel="Inventario sin venta durante el período"
+          getRowKey={row => row.productoId}
+        /> : <EmptyBlock text={inventory.visible ? 'No hay costo trazable suficiente para valorar inventario sin venta.' : 'La valorización de inventario está restringida a roles con permiso de Bodega.'} />}
+      </Panel>
+    </div>
+
+    <Panel title="Datos pendientes de gobierno comercial" icon="alertTriangle">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 12 }}>
+        {(data.brechas || []).map(brecha => <div key={brecha.codigo} style={{ padding: 12, borderRadius: 8, border: '1px solid #f2d08a', background: '#fffaf0' }}><strong style={{ fontSize: 13 }}>{brecha.titulo}</strong><div style={{ marginTop: 5, color: 'var(--text-2)', fontSize: 12, lineHeight: 1.45 }}>{brecha.detalle}</div></div>)}
+      </div>
+    </Panel>
+  </div>
+}
+
 export default function ReportesGerencialesPage() {
   const navigate = useNavigate()
   const user = useAuthStore(state => state.user)
-  const initialRange = useMemo(() => currentYearRange(), [])
+  const initialRange = useMemo(() => rangeForPreset('ytd'), [])
   const [filters, setFilters] = useState({
     desde: initialRange.desde,
     hasta: initialRange.hasta,
     tipo: '',
     vendedor: '',
     cliente: '',
+    sucursalId: '',
   })
+  const [clienteInput, setClienteInput] = useState('')
   const [active, setActive] = useState('resumen')
+  const [preset, setPreset] = useState('ytd')
 
   const perms = {
     ventas: can(user, 'ventas'),
     caja: can(user, 'caja'),
-    cobranza: can(user, 'ventas') || can(user, 'cobranza'),
+    cobranza: can(user, 'cobranza'),
     stock: can(user, 'bodega'),
-    licitaciones: can(user, 'licitaciones') || can(user, 'ventas'),
+    licitaciones: can(user, 'licitaciones'),
     taller: can(user, 'taller'),
     despacho: can(user, 'despacho'),
+    clientes: can(user, 'clientes'),
   }
 
-  const year = filters.desde ? new Date(`${filters.desde}T00:00:00`).getFullYear() : undefined
   const periodParams = {
     desde: filters.desde || undefined,
     hasta: filters.hasta || undefined,
   }
-  const ventasGerencialQuery = useReporteGerencialVentas({
+  const summaryParams = {
     ...periodParams,
     tipo: filters.tipo || undefined,
     vendedor: filters.vendedor || undefined,
     cliente: filters.cliente || undefined,
-  }, perms.ventas)
-  const cobranzaCajaGerencialQuery = useReporteGerencialCobranzaCaja(periodParams, perms.caja && perms.cobranza)
-  const stockGerencialQuery = useReporteGerencialStock(periodParams, perms.stock)
-  const licitacionesGerencialQuery = useReporteGerencialLicitaciones(periodParams, perms.licitaciones)
-  const operacionesGerencialQuery = useReporteGerencialOperaciones(periodParams, perms.taller && perms.despacho)
-  const ventasQuery = useReporteVentas({ tipo: filters.tipo || undefined, scope: 'operacional' }, perms.ventas)
-  const cajaQuery = useReporteCaja({ year }, perms.caja)
-  const cobranzaQuery = useReporteCobranza({ search: filters.cliente || undefined }, perms.cobranza)
-  const stockQuery = useReporteStockCritico(perms.stock)
+    sucursalId: filters.sucursalId || undefined,
+  }
+  const canReadGerencial = perms.ventas || (perms.caja && perms.cobranza) || perms.stock || perms.licitaciones || (perms.taller && perms.despacho)
+  const canReadFinanzas = perms.caja && perms.cobranza
+  const filtrosGerencialesQuery = useReporteGerencialFiltros(canReadGerencial)
+  const tiposVentaSistema = filtrosGerencialesQuery.data?.tiposVenta || []
+  const vendedoresSistema = filtrosGerencialesQuery.data?.vendedores || []
+  const sucursalesSistema = filtrosGerencialesQuery.data?.sucursales || []
+  const tiposVentaDisponibles = useMemo(() => (
+    filters.tipo && !tiposVentaSistema.includes(filters.tipo)
+      ? [...tiposVentaSistema, filters.tipo]
+      : tiposVentaSistema
+  ), [filters.tipo, tiposVentaSistema])
+  const resumenGerencialQuery = useReporteGerencialResumen(summaryParams, canReadGerencial)
+  const comercialGerencialQuery = useReporteComercialGerencial(summaryParams, perms.ventas && active === 'ventas')
+  const seccionesGerenciales = resumenGerencialQuery.data?.secciones || {}
+  // Las secciones comparten una sola respuesta y el mismo corte de datos. Se conserva
+  // la forma de query para que las tarjetas sigan declarando carga/error por dominio.
+  const ventasGerencialQuery = { ...resumenGerencialQuery, data: seccionesGerenciales.ventas }
+  const cobranzaCajaGerencialQuery = { ...resumenGerencialQuery, data: seccionesGerenciales.cobranzaCaja }
+  const stockGerencialQuery = { ...resumenGerencialQuery, data: seccionesGerenciales.stock }
+  const licitacionesGerencialQuery = { ...resumenGerencialQuery, data: seccionesGerenciales.licitaciones }
+  const operacionesGerencialQuery = { ...resumenGerencialQuery, data: seccionesGerenciales.operaciones }
+  // La apertura del panel no debe pedir doce listados a la vez al VPS. Los cinco
+  // agregados anteriores resuelven los KPI; el detalle se carga al abrir su pestaña.
+  const ventasQuery = useReporteVentas({
+    tipo: filters.tipo || undefined,
+    desde: filters.desde || undefined,
+    hasta: filters.hasta || undefined,
+    creador: filters.vendedor || undefined,
+    search: filters.cliente || undefined,
+    scope: 'operacional',
+  }, perms.ventas && active === 'ventas')
+  const stockQuery = useReporteStockCritico(perms.stock && active === 'riesgos')
   const licitacionesQuery = useReporteLicitaciones({
     fechaDesde: filters.desde || undefined,
     fechaHasta: filters.hasta || undefined,
     rutCliente: filters.cliente || undefined,
-  }, perms.licitaciones)
-  const odtsQuery = useReporteOdts({ fechaDesde: filters.desde || undefined, fechaHasta: filters.hasta || undefined }, perms.taller)
-  const despachosQuery = useReporteDespachos({ desde: filters.desde || undefined, hasta: filters.hasta || undefined }, perms.despacho)
+  }, perms.licitaciones && active === 'ventas')
+  const odtsQuery = useReporteOdts({ fechaDesde: filters.desde || undefined, fechaHasta: filters.hasta || undefined }, perms.taller && active === 'operacion')
+  const despachosQuery = useReporteDespachos({ desde: filters.desde || undefined, hasta: filters.hasta || undefined }, perms.despacho && active === 'operacion')
 
-  const ventasProblem = combinedProblem(perms.ventas, [ventasGerencialQuery, ventasQuery])
   const ventasGerencialProblem = combinedProblem(perms.ventas, [ventasGerencialQuery])
-  const cajaProblem = combinedProblem(perms.caja, [cobranzaCajaGerencialQuery, cajaQuery])
-  const cobranzaProblem = combinedProblem(perms.cobranza, [cobranzaCajaGerencialQuery, cobranzaQuery])
-  const stockProblem = combinedProblem(perms.stock, [stockGerencialQuery, stockQuery])
-  const licitacionesProblem = combinedProblem(perms.licitaciones, [licitacionesGerencialQuery, licitacionesQuery])
-  const operacionProblem = combinedProblem(perms.taller || perms.despacho, [operacionesGerencialQuery, odtsQuery, despachosQuery])
+  const cajaProblem = combinedProblem(canReadFinanzas, [cobranzaCajaGerencialQuery])
+  const cobranzaProblem = combinedProblem(canReadFinanzas, [cobranzaCajaGerencialQuery])
+  const stockProblem = combinedProblem(perms.stock, [stockGerencialQuery])
+  const licitacionesProblem = combinedProblem(perms.licitaciones, [licitacionesGerencialQuery])
+  const operacionProblem = combinedProblem(perms.taller && perms.despacho, [operacionesGerencialQuery])
+  const ventasDetailProblem = combinedProblem(perms.ventas, [ventasQuery])
+  const comercialProblem = combinedProblem(perms.ventas, [comercialGerencialQuery])
+  const licitacionesDetailProblem = combinedProblem(perms.licitaciones, [licitacionesQuery])
+  const odtsDetailProblem = combinedProblem(perms.taller, [odtsQuery])
+  const despachosDetailProblem = combinedProblem(perms.despacho, [despachosQuery])
+  const stockDetailProblem = combinedProblem(perms.stock, [stockQuery])
 
   const ventas = useMemo(() => filterVentas(ventasQuery.data?.items || [], filters), [ventasQuery.data, filters])
-  const cajaItems = useMemo(() => (cajaQuery.data?.items || []).filter(item => inRange(item.fecha, filters.desde, filters.hasta)), [cajaQuery.data, filters])
   const odts = odtsQuery.data?.items || []
   const despachos = despachosQuery.data?.items || []
   const licitaciones = licitacionesQuery.data?.items || []
@@ -248,25 +587,22 @@ export default function ReportesGerencialesPage() {
   const ventaTotal = Number(ventasGerencialQuery.data?.total ?? ventas.reduce((sum, item) => sum + Number(item.total || 0), 0))
   const ventaCount = Number(ventasGerencialQuery.data?.count ?? ventas.length)
   const ventaTicket = ventaCount ? ventaTotal / ventaCount : 0
-  const ingresos = Number(cobranzaCajaGerencialQuery.data?.caja?.ingresos ?? cajaItems.filter(item => norm(item.tipo) === 'ingreso').reduce((sum, item) => sum + Number(item.monto || 0), 0))
-  const egresos = Number(cobranzaCajaGerencialQuery.data?.caja?.egresos ?? cajaItems.filter(item => norm(item.tipo) === 'egreso').reduce((sum, item) => sum + Math.abs(Number(item.monto || 0)), 0))
-  const cobranzaPendiente = Number(cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.porCobrar ?? cobranzaQuery.data?.stats?.pendiente ?? 0)
+  const ingresos = Number(cobranzaCajaGerencialQuery.data?.caja?.ingresos || 0)
+  const egresos = Number(cobranzaCajaGerencialQuery.data?.caja?.egresos || 0)
+  const cobranzaPendiente = Number(cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.porCobrar || 0)
   const odtsPendientes = odts.filter(item => item.estado !== 'Terminada')
   const despachosPendientes = despachos.filter(item => !item.fechaEntrega || new Date(item.fechaEntrega) >= new Date())
   const licitacionesPendientes = licitaciones.filter(item => ['Pendiente', 'En proceso'].includes(item.estado))
   const stockCriticoTotal = Number(
-    (stockGerencialQuery.data?.stockCritico?.totales?.productosCriticos ?? stockProductos.length) +
-    (stockGerencialQuery.data?.stockCritico?.totales?.materialesCriticos ?? stockMateriales.length)
+    (stockGerencialQuery.data?.stockCritico?.totales?.productosCriticos || 0) +
+    (stockGerencialQuery.data?.stockCritico?.totales?.materialesCriticos || 0)
   )
   const pendientesOperacionTotal = Number(
-    (operacionesGerencialQuery.data?.taller?.pendientes ?? odtsPendientes.length) +
-    (operacionesGerencialQuery.data?.despachos?.pendientes ?? despachosPendientes.length)
+    (operacionesGerencialQuery.data?.taller?.pendientes || 0) +
+    (operacionesGerencialQuery.data?.despachos?.pendientes || 0)
   )
 
-  const queries = [
-    ventasGerencialQuery, cobranzaCajaGerencialQuery, stockGerencialQuery, licitacionesGerencialQuery, operacionesGerencialQuery,
-    ventasQuery, cajaQuery, cobranzaQuery, stockQuery, licitacionesQuery, odtsQuery, despachosQuery,
-  ]
+  const queries = [resumenGerencialQuery]
   const isLoading = queries.some(query => query.isLoading && query.fetchStatus !== 'idle')
   const hasError = queries.some(query => query.isError)
   const licitacionesPendientesCount = Number(licitacionesGerencialQuery.data?.byResultado?.pendiente?.count ?? licitacionesPendientes.length)
@@ -279,24 +615,43 @@ export default function ReportesGerencialesPage() {
   const ventaPorVendedor = metricRows(ordenesInternas.byVendedor)
   const ventaPorCliente = metricRows(ordenesInternas.byCliente)
   const advertenciasVentas = ventasGerencialQuery.data?.advertencias || []
+  const resumenMeta = resumenGerencialQuery.data?.meta
 
-  const updateFilter = (key, value) => setFilters(current => ({ ...current, [key]: value }))
-  const resetFilters = () => setFilters({ desde: initialRange.desde, hasta: initialRange.hasta, tipo: '', vendedor: '', cliente: '' })
+  const updateFilter = (key, value) => {
+    if (key === 'desde' || key === 'hasta') setPreset('personalizado')
+    setFilters(current => ({ ...current, [key]: value }))
+  }
+  const drillVentas = nextFilters => {
+    if (Object.prototype.hasOwnProperty.call(nextFilters, 'cliente')) setClienteInput(nextFilters.cliente || '')
+    setFilters(current => ({ ...current, ...nextFilters }))
+    setActive('ventas')
+  }
+  const applyPreset = nextPreset => {
+    const range = rangeForPreset(nextPreset)
+    setPreset(nextPreset)
+    setFilters(current => ({ ...current, ...range }))
+  }
+  const resetFilters = () => {
+    setPreset('ytd')
+    setClienteInput('')
+    setFilters({ ...rangeForPreset('ytd'), tipo: '', vendedor: '', cliente: '', sucursalId: '' })
+  }
   const exportGerencial = () => downloadFromBackend(
-    '/reportes/export/gerencial.xlsx',
-    `reporte_gerencial_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    active === 'ventas' ? '/reportes/export/comercial.xlsx' : '/reportes/export/gerencial.xlsx',
+    `${active === 'ventas' ? 'control_comercial' : 'reporte_gerencial'}_${new Date().toISOString().slice(0, 10)}.xlsx`,
     {
       desde: filters.desde || undefined,
       hasta: filters.hasta || undefined,
       tipo: filters.tipo || undefined,
       vendedor: filters.vendedor || undefined,
       cliente: filters.cliente || undefined,
+      sucursalId: filters.sucursalId || undefined,
     },
   )
 
   const tabs = [
     { id: 'resumen', label: 'Resumen' },
-    { id: 'ventas', label: 'Comercial', count: statusCount(ventasProblem, ventaCount || ventas.length) },
+    { id: 'ventas', label: 'Comercial', count: statusCount(ventasGerencialProblem, ventaCount) },
     { id: 'operacion', label: 'Operacion', count: statusCount(operacionProblem, pendientesOperacionTotal) },
     { id: 'finanzas', label: 'Finanzas', count: statusCount(cobranzaProblem, cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.count || 0) },
     { id: 'riesgos', label: 'Riesgos', count: statusCount(riesgoProblem, stockCriticoTotal + licitacionesPendientesCount) },
@@ -317,6 +672,20 @@ export default function ReportesGerencialesPage() {
       />
 
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 18 }}>
+        <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700, marginRight: 2 }}>Período</span>
+          {[
+            ['mes', 'Mes'],
+            ['trimestre', 'Trimestre'],
+            ['ytd', 'Año a la fecha'],
+            ['l12m', 'Últimos 12 meses'],
+          ].map(([value, label]) => (
+            <button key={value} type="button" onClick={() => applyPreset(value)} aria-pressed={preset === value} style={{ minHeight: 30, padding: '5px 9px', borderRadius: 7, border: `1px solid ${preset === value ? 'var(--green-600)' : 'var(--border)'}`, background: preset === value ? 'var(--green-50)' : '#fff', color: preset === value ? 'var(--green-700)' : 'var(--text-2)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+              {label}
+            </button>
+          ))}
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>Agregados actualizados: {formatUpdatedAt(resumenGerencialQuery.dataUpdatedAt)}</span>
+        </div>
         <label style={{ display: 'grid', gap: 5, fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>
           Desde
           <input type="date" value={filters.desde} onChange={e => updateFilter('desde', e.target.value)} style={selectInputStyle()} />
@@ -328,25 +697,52 @@ export default function ReportesGerencialesPage() {
         <label style={{ display: 'grid', gap: 5, fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>
           Tipo venta
           <select value={filters.tipo} onChange={e => updateFilter('tipo', e.target.value)} style={selectInputStyle()}>
-            <option value="">Todos</option>
-            <option value="Venta sala">Venta sala</option>
-            <option value="Venta directa">Venta directa</option>
-            <option value="Convenio Marco">Convenio Marco</option>
-            <option value="Licitación">Licitacion</option>
+            <option value="">Todos los tipos de venta</option>
+            {filtrosGerencialesQuery.isLoading && <option disabled>Cargando tipos...</option>}
+            {tiposVentaDisponibles.map(tipo => <option key={tipo} value={tipo}>{tipo}{tiposVentaSistema.includes(tipo) ? '' : ' (histórico)'}</option>)}
           </select>
         </label>
         <label style={{ display: 'grid', gap: 5, fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>
           Vendedor
-          <input value={filters.vendedor} onChange={e => updateFilter('vendedor', e.target.value)} placeholder="Nombre" style={selectInputStyle()} />
+          <select value={filters.vendedor} onChange={e => updateFilter('vendedor', e.target.value)} disabled={!perms.ventas} style={{ ...selectInputStyle(), opacity: perms.ventas ? 1 : 0.6 }}>
+            <option value="">Todos los vendedores</option>
+            {filtrosGerencialesQuery.isLoading && <option disabled>Cargando vendedores...</option>}
+            {vendedoresSistema.map(vendedor => <option key={vendedor.id} value={vendedor.nombre}>{vendedor.nombre}{vendedor.codigoVendedor ? ` · ${vendedor.codigoVendedor}` : ''}</option>)}
+          </select>
+        </label>
+        <label style={{ display: 'grid', gap: 5, fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>
+          Sucursal
+          <select value={filters.sucursalId} onChange={e => updateFilter('sucursalId', e.target.value)} disabled={!perms.ventas} style={{ ...selectInputStyle(), opacity: perms.ventas ? 1 : 0.6 }}>
+            <option value="">Todas las sucursales</option>
+            {filtrosGerencialesQuery.isLoading && <option disabled>Cargando sucursales...</option>}
+            {sucursalesSistema.map(sucursal => <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}{sucursal.comuna ? ` · ${sucursal.comuna}` : ''}</option>)}
+          </select>
         </label>
         <label style={{ display: 'grid', gap: 5, fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>
           Cliente / RUT
-          <input value={filters.cliente} onChange={e => updateFilter('cliente', e.target.value)} placeholder="Cliente o RUT" style={selectInputStyle()} />
+          <ClienteAutocomplete
+            value={clienteInput}
+            enabled={perms.clientes}
+            onTextChange={value => {
+              setClienteInput(value)
+              updateFilter('cliente', value)
+            }}
+            onSelect={cliente => {
+              const nombre = cliente.razonSocial || cliente.nombre || ''
+              setClienteInput([cliente.rut, nombre].filter(Boolean).join(' · '))
+              updateFilter('cliente', cliente.rut || nombre)
+            }}
+          />
         </label>
       </section>
 
       {hasError && <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, fontSize: 13 }}>Algunas fuentes no respondieron. Las secciones disponibles se muestran con los datos cargados.</div>}
       {isLoading && <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--blue-bg)', color: 'var(--blue)', borderRadius: 8, fontSize: 13 }}>Actualizando reportes...</div>}
+      {resumenMeta?.estado === 'operacional_no_certificado' && (
+        <div role="status" style={{ marginBottom: 12, padding: '10px 14px', background: '#f0f9ff', color: '#075985', border: '1px solid #bae6fd', borderRadius: 8, fontSize: 13 }}>
+          <strong>Lectura operacional:</strong> {resumenMeta.mensajeEstado} Corte generado {formatUpdatedAt(resumenMeta.generadoEn)}.
+        </div>
+      )}
       {advertenciasVentas.map(aviso => (
         <div key={aviso.tipo} role="status" style={{ marginBottom: 12, padding: '10px 14px', background: '#fff8e1', color: '#8a5200', border: '1px solid #f2d08a', borderRadius: 8, fontSize: 13 }}>
           <strong>Lectura no certificada:</strong> {aviso.detalle}. Finanzas y Comercial deben definir si estas cotizaciones forman parte del indicador comercial.
@@ -354,12 +750,21 @@ export default function ReportesGerencialesPage() {
       ))}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 22 }}>
-        <KpiCard label="Actividad comercial" value={statusValue(ventasGerencialProblem, ventaTotal, money)} sublabel={statusSublabel(ventasGerencialProblem, `${num(ventaCount)} operaciones`)} icon="shoppingCart" tone={statusTone(ventasGerencialProblem, 'blue')} />
-        <KpiCard label="Ticket operativo" value={statusValue(ventasGerencialProblem, ventaTicket, money)} sublabel={statusSublabel(ventasGerencialProblem, 'sobre operaciones cargadas')} icon="barChart2" tone={statusTone(ventasGerencialProblem)} />
-        <KpiCard label="CxC pendiente" value={statusValue(cobranzaProblem, cobranzaPendiente, money)} sublabel={statusSublabel(cobranzaProblem, `${num(cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.count || cobranzaQuery.data?.stats?.n_pendientes || 0)} docs`)} icon="creditCard" tone={statusTone(cobranzaProblem, 'amber')} />
-        <KpiCard label="Caja neta" value={statusValue(cajaProblem, ingresos - egresos, money)} sublabel={statusSublabel(cajaProblem, `${money(ingresos)} ing. / ${money(egresos)} egr.`)} icon="dollarSign" tone={statusTone(cajaProblem)} />
-        <KpiCard label="Stock critico" value={statusValue(stockProblem, stockCriticoTotal)} sublabel={statusSublabel(stockProblem, 'productos y materiales')} icon="alertTriangle" tone={statusTone(stockProblem, stockCriticoTotal ? 'red' : 'neutral')} />
-        <KpiCard label="Pendientes operacion" value={statusValue(operacionProblem, pendientesOperacionTotal)} sublabel={statusSublabel(operacionProblem, 'taller y despachos')} icon="clock" tone={statusTone(operacionProblem, 'amber')} />
+        {active === 'ventas' ? <>
+          <KpiCard label="Ventas de órdenes" value={statusValue(comercialProblem, comercialGerencialQuery.data?.kpis?.ventas, money)} sublabel={statusSublabel(comercialProblem, `${num(comercialGerencialQuery.data?.kpis?.ordenes || 0)} órdenes`)} icon="shoppingCart" tone={statusTone(comercialProblem, 'blue')} />
+          <KpiCard label="Unidades vendidas" value={statusValue(comercialProblem, comercialGerencialQuery.data?.kpis?.unidades)} sublabel={statusSublabel(comercialProblem, 'en el período filtrado')} icon="package" tone={statusTone(comercialProblem)} />
+          <KpiCard label="Ticket promedio" value={statusValue(comercialProblem, comercialGerencialQuery.data?.kpis?.ticketPromedio, money)} sublabel={statusSublabel(comercialProblem, 'por orden')} icon="barChart2" tone={statusTone(comercialProblem)} />
+          <KpiCard label="Margen estimado" value={comercialProblem ? statusValue(comercialProblem) : comercialGerencialQuery.data?.kpis?.margen?.visible ? Number(comercialGerencialQuery.data.kpis.margen.coberturaVentasPct || 0) > 0 ? money(comercialGerencialQuery.data.kpis.margen.monto) : 'Sin costo' : 'Restringido'} sublabel={comercialProblem ? statusSublabel(comercialProblem, '') : comercialGerencialQuery.data?.kpis?.margen?.visible ? Number(comercialGerencialQuery.data.kpis.margen.coberturaVentasPct || 0) > 0 ? `${percent(comercialGerencialQuery.data.kpis.margen.pct)} con costo trazable` : 'sin costo trazable' : 'requiere permiso de costos'} icon="trendingUp" tone={statusTone(comercialProblem, 'amber')} />
+          <KpiCard label="Clientes recurrentes" value={statusValue(comercialProblem, comercialGerencialQuery.data?.kpis?.clientesRecurrentesPeriodo)} sublabel={statusSublabel(comercialProblem, `${percent(comercialGerencialQuery.data?.kpis?.tasaRecompraPeriodo)} en el período`)} icon="users" tone={statusTone(comercialProblem)} />
+          <KpiCard label="Sin venta / stock" value={comercialProblem ? statusValue(comercialProblem) : comercialGerencialQuery.data?.kpis?.inventario?.visible ? Number(comercialGerencialQuery.data.kpis.inventario.coberturaValorizacionPct || 0) > 0 ? num(comercialGerencialQuery.data.kpis.inventario.sinVentaPeriodo) : 'Sin costo' : 'Restringido'} sublabel={comercialProblem ? statusSublabel(comercialProblem, '') : comercialGerencialQuery.data?.kpis?.inventario?.visible ? Number(comercialGerencialQuery.data.kpis.inventario.coberturaValorizacionPct || 0) > 0 ? 'ítems de mayor valor estimado' : 'sin valorización trazable' : 'requiere permiso de bodega'} icon="alertTriangle" tone={statusTone(comercialProblem, 'amber')} />
+        </> : <>
+        <KpiCard label="Actividad comercial" value={statusValue(ventasGerencialProblem, ventaTotal, money)} sublabel={statusSublabel(ventasGerencialProblem, `${num(ventaCount)} operaciones`)} icon="shoppingCart" tone={statusTone(ventasGerencialProblem, 'blue')} onClick={perms.ventas ? () => setActive('ventas') : undefined} />
+        <KpiCard label="Ticket operativo" value={statusValue(ventasGerencialProblem, ventaTicket, money)} sublabel={statusSublabel(ventasGerencialProblem, 'sobre operaciones cargadas')} icon="barChart2" tone={statusTone(ventasGerencialProblem)} onClick={perms.ventas ? () => setActive('ventas') : undefined} />
+        <KpiCard label="CxC pendiente" value={statusValue(cobranzaProblem, cobranzaPendiente, money)} sublabel={statusSublabel(cobranzaProblem, `${num(cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.count || 0)} docs`)} icon="creditCard" tone={statusTone(cobranzaProblem, 'amber')} onClick={canReadFinanzas ? () => navigate('/cobranza') : undefined} />
+        <KpiCard label="Caja neta" value={statusValue(cajaProblem, ingresos - egresos, money)} sublabel={statusSublabel(cajaProblem, `${money(ingresos)} ing. / ${money(egresos)} egr.`)} icon="dollarSign" tone={statusTone(cajaProblem)} onClick={canReadFinanzas ? () => navigate('/caja') : undefined} />
+        <KpiCard label="Stock critico" value={statusValue(stockProblem, stockCriticoTotal)} sublabel={statusSublabel(stockProblem, 'productos y materiales')} icon="alertTriangle" tone={statusTone(stockProblem, stockCriticoTotal ? 'red' : 'neutral')} onClick={perms.stock ? () => setActive('riesgos') : undefined} />
+        <KpiCard label="Pendientes operacion" value={statusValue(operacionProblem, pendientesOperacionTotal)} sublabel={statusSublabel(operacionProblem, 'taller y despachos')} icon="clock" tone={statusTone(operacionProblem, 'amber')} onClick={perms.taller && perms.despacho ? () => setActive('operacion') : undefined} />
+        </>}
       </div>
 
       <Tabs tabs={tabs} active={active} onChange={setActive} />
@@ -368,14 +773,14 @@ export default function ReportesGerencialesPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
           <Panel title="Ordenes internas por tipo" icon="barChart2" action={<Badge tone="gray">sin web ni licitaciones</Badge>}>
             <QueryBlock problem={ventasGerencialProblem}>
-              <GroupList rows={ventaPorTipo} format={money} />
+              <GroupList rows={ventaPorTipo} format={money} onRowClick={row => drillVentas({ tipo: row.label })} />
             </QueryBlock>
           </Panel>
           <Panel title="Caja y cobranza" icon="dollarSign">
             <div style={{ display: 'grid', gap: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Ingresos caja</span><strong>{statusValue(cajaProblem, ingresos, money)}</strong></div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Egresos caja</span><strong>{statusValue(cajaProblem, egresos, money)}</strong></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Cobrado historico</span><strong>{statusValue(cobranzaProblem, cobranzaQuery.data?.stats?.cobrado ?? cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.cobrado ?? 0, money)}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Cobrado historico</span><strong>{statusValue(cobranzaProblem, cobranzaCajaGerencialQuery.data?.cuentasPorCobrar?.cobrado || 0, money)}</strong></div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>Pendiente CxC</span><strong style={{ color: cobranzaProblem ? 'var(--text-3)' : 'var(--amber)' }}>{statusValue(cobranzaProblem, cobranzaPendiente, money)}</strong></div>
             </div>
           </Panel>
@@ -396,6 +801,12 @@ export default function ReportesGerencialesPage() {
       )}
 
       {active === 'ventas' && (
+        <QueryBlock problem={comercialProblem}>
+          <CommercialDashboard data={comercialGerencialQuery.data} navigate={navigate} />
+        </QueryBlock>
+      )}
+
+      {false && active === 'ventas' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
           <Panel title="Tendencia y comparativo de actividad" icon="trendingUp">
             <QueryBlock problem={ventasGerencialProblem}>
@@ -408,16 +819,16 @@ export default function ReportesGerencialesPage() {
           </Panel>
           <Panel title="Ordenes internas por vendedor" icon="user" action={<Badge tone="gray">sin web ni licitaciones</Badge>}>
             <QueryBlock problem={ventasGerencialProblem}>
-              <GroupList rows={ventaPorVendedor} format={money} />
+              <GroupList rows={ventaPorVendedor} format={money} onRowClick={row => drillVentas({ vendedor: row.label })} />
             </QueryBlock>
           </Panel>
           <Panel title="Ordenes internas por cliente" icon="users" action={<Badge tone="gray">sin web ni licitaciones</Badge>}>
             <QueryBlock problem={ventasGerencialProblem}>
-              <GroupList rows={ventaPorCliente} format={money} />
+              <GroupList rows={ventaPorCliente} format={money} onRowClick={row => drillVentas({ cliente: row.label })} />
             </QueryBlock>
           </Panel>
-          <Panel title="Ultimas ventas filtradas" icon="shoppingCart" action={<Badge tone="blue">{statusCount(combinedProblem(perms.ventas, [ventasQuery]), ventas.length)}</Badge>}>
-            <QueryBlock problem={combinedProblem(perms.ventas, [ventasQuery])}>
+          <Panel title="Ultimas ventas filtradas" icon="shoppingCart" action={<Badge tone="blue">{statusCount(ventasDetailProblem, ventas.length)}</Badge>}>
+            <QueryBlock problem={ventasDetailProblem}>
               <Table
                 columns={[
                   { key: 'nInterno', label: 'N interno' },
@@ -435,8 +846,8 @@ export default function ReportesGerencialesPage() {
               />
             </QueryBlock>
           </Panel>
-          <Panel title="Licitaciones" icon="clipboard" action={<Badge tone="amber">{statusCount(licitacionesProblem, licitacionesPendingCount(licitaciones))}</Badge>}>
-            <QueryBlock problem={licitacionesProblem}>
+          <Panel title="Licitaciones" icon="clipboard" action={<Badge tone="amber">{statusCount(licitacionesDetailProblem, licitacionesPendingCount(licitaciones))}</Badge>}>
+            <QueryBlock problem={licitacionesDetailProblem}>
               <Table
                 columns={[
                   { key: 'idLicitacion', label: 'ID licit.' },
@@ -467,8 +878,8 @@ export default function ReportesGerencialesPage() {
               </div>
             </QueryBlock>
           </Panel>
-          <Panel title="OT pendientes" icon="wrench" action={<Badge tone="amber">{statusCount(combinedProblem(perms.taller, [odtsQuery]), odtsPendientes.length)}</Badge>}>
-            <QueryBlock problem={combinedProblem(perms.taller, [odtsQuery])}>
+          <Panel title="OT pendientes" icon="wrench" action={<Badge tone="amber">{statusCount(odtsDetailProblem, odtsPendientes.length)}</Badge>}>
+            <QueryBlock problem={odtsDetailProblem}>
               <Table
                 columns={[
                   { key: 'id', label: 'OT' },
@@ -485,8 +896,8 @@ export default function ReportesGerencialesPage() {
               />
             </QueryBlock>
           </Panel>
-          <Panel title="Despachos pendientes" icon="truck" action={<Badge tone="amber">{statusCount(combinedProblem(perms.despacho, [despachosQuery]), despachosPendientes.length)}</Badge>}>
-            <QueryBlock problem={combinedProblem(perms.despacho, [despachosQuery])}>
+          <Panel title="Despachos pendientes" icon="truck" action={<Badge tone="amber">{statusCount(despachosDetailProblem, despachosPendientes.length)}</Badge>}>
+            <QueryBlock problem={despachosDetailProblem}>
               <Table
                 columns={[
                   { key: 'interno', label: 'N interno' },
@@ -530,8 +941,8 @@ export default function ReportesGerencialesPage() {
 
       {active === 'riesgos' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
-          <Panel title="Productos con stock critico" icon="package" action={<Badge tone={stockProblem ? 'gray' : stockProductos.length ? 'red' : 'green'}>{statusCount(stockProblem, stockProductos.length)}</Badge>}>
-            <QueryBlock problem={stockProblem}>
+          <Panel title="Productos con stock critico" icon="package" action={<Badge tone={stockDetailProblem ? 'gray' : stockProductos.length ? 'red' : 'green'}>{statusCount(stockDetailProblem, stockProductos.length)}</Badge>}>
+            <QueryBlock problem={stockDetailProblem}>
               <Table
                 columns={[
                   { key: 'codigoInterno', label: 'Codigo' },
@@ -548,8 +959,8 @@ export default function ReportesGerencialesPage() {
               />
             </QueryBlock>
           </Panel>
-          <Panel title="Materiales de taller criticos" icon="warehouse" action={<Badge tone={stockProblem ? 'gray' : stockMateriales.length ? 'red' : 'green'}>{statusCount(stockProblem, stockMateriales.length)}</Badge>}>
-            <QueryBlock problem={stockProblem}>
+          <Panel title="Materiales de taller criticos" icon="warehouse" action={<Badge tone={stockDetailProblem ? 'gray' : stockMateriales.length ? 'red' : 'green'}>{statusCount(stockDetailProblem, stockMateriales.length)}</Badge>}>
+            <QueryBlock problem={stockDetailProblem}>
               <Table
                 columns={[
                   { key: 'codigoInterno', label: 'Codigo' },
