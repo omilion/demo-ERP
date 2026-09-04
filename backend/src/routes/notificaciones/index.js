@@ -466,23 +466,69 @@ export default async function notificacionesRoutes(fastify) {
       }
     }
 
-    const sevRank = { alta: 0, media: 1, baja: 2 }
-    const esAvisoProduccion = item => ['odt_lista_despacho', 'odt_parcial_picking'].includes(item.tipo)
-    items.sort((a, b) => {
-      const prioridad = sevRank[a.severidad] - sevRank[b.severidad]
-      if (prioridad) return prioridad
-      // La campana tiene tope: un aviso nuevo de preparación no puede quedar
-      // oculto detrás de cientos de OTs históricas. Entre avisos de producción,
-      // el más reciente es el que Bodega debe tomar primero.
-      if (esAvisoProduccion(a) && esAvisoProduccion(b)) return new Date(b.fecha) - new Date(a.fecha)
-      return new Date(a.fecha) - new Date(b.fecha)
-    })
+    const finalItems = seleccionarNotificacionesConCupo(items, limite)
 
     return {
       total: items.length,
-      visibles: Math.min(items.length, limite),
+      visibles: finalItems.length,
       truncadas: items.length > limite,
-      items: items.slice(0, limite),
+      items: finalItems,
     }
   })
+}
+
+export function seleccionarNotificacionesConCupo(items, limite = 100) {
+  const sevRank = { alta: 0, media: 1, baja: 2 }
+  const esAvisoProduccion = item => ['odt_lista_despacho', 'odt_parcial_picking'].includes(item.tipo)
+
+  const altas = []
+  const produccion = []
+  const resto = []
+
+  for (const item of items) {
+    if (item.severidad === 'alta') {
+      altas.push(item)
+    } else if (esAvisoProduccion(item)) {
+      produccion.push(item)
+    } else {
+      resto.push(item)
+    }
+  }
+
+  // Orden de cada grupo:
+  // Altas: orden cronológico (las más urgentes/antiguas primero)
+  altas.sort((a, b) => new Date(a.fecha) - new Date(b.fecha))
+  // Producción: las más recientes primero (lo recién terminado por taller para bodega)
+  produccion.sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+  // Resto: severidad y fecha
+  resto.sort((a, b) => {
+    const prioridad = (sevRank[a.severidad] ?? 2) - (sevRank[b.severidad] ?? 2)
+    if (prioridad) return prioridad
+    return new Date(a.fecha) - new Date(b.fecha)
+  })
+
+  if (items.length <= limite) {
+    return [...altas, ...produccion, ...resto]
+  }
+
+  // Reserva de cupo para producción reciente: hasta el 25% del límite (mínimo 1 si hay avisos)
+  // Garantiza que bodega no quede a ciegas si hay más de 100 alertas altas de inventario/facturas.
+  const cupoProduccion = produccion.length > 0
+    ? Math.min(produccion.length, Math.max(1, Math.floor(limite * 0.25)))
+    : 0
+
+  const cupoAltas = Math.min(altas.length, limite - cupoProduccion)
+  const altasSeleccionadas = altas.slice(0, cupoAltas)
+  const produccionSeleccionada = produccion.slice(0, cupoProduccion)
+
+  const espacioRestante = limite - altasSeleccionadas.length - produccionSeleccionada.length
+  const sobrante = [
+    ...altas.slice(cupoAltas),
+    ...produccion.slice(cupoProduccion),
+    ...resto,
+  ]
+  const adicionales = sobrante.slice(0, espacioRestante)
+
+  // Conserva orden lógico: críticas primero, producción operativa reciente, luego el resto
+  return [...altasSeleccionadas, ...produccionSeleccionada, ...adicionales]
 }
