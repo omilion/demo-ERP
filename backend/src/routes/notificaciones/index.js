@@ -3,12 +3,19 @@
 // lista unificada. Solo lectura, ordenada por severidad/fecha.
 
 import { semaforoForCrm } from '../../domain/crm/service.js'
+import { canApproveDescuento } from '../ventas/descuentos-permissions.js'
+import { discountRulesEnabled } from '../descuentos/rules-status.js'
 
 const DIA_MS = 24 * 60 * 60 * 1000
 
 function diasHasta(fecha) {
   if (!fecha) return null
   return Math.round((new Date(fecha).getTime() - Date.now()) / DIA_MS)
+}
+
+function diasDesde(fecha) {
+  if (!fecha) return null
+  return Math.max(0, Math.round((Date.now() - new Date(fecha).getTime()) / DIA_MS))
 }
 
 export default async function notificacionesRoutes(fastify) {
@@ -408,6 +415,53 @@ export default async function notificacionesRoutes(fastify) {
           detalle: `${diasSinGestion} día(s) hábiles sin gestión · ${lead.etapaComercial || 'Etapa legacy'}`,
           fecha: lead.ultimaGestionAt || lead.fechaCotizacion || lead.fecha || lead.createdAt,
           link: '/crm',
+        })
+      }
+    }
+
+    // Descuentos esperando aprobacion.
+    //
+    // El modulo de Descuentos tiene su propia bandeja, pero quien aprueba no
+    // vive en esa pantalla: las solicitudes quedaban ahi sin que nadie se
+    // enterara, y con ellas la venta detenida. Le llega solo a quien puede
+    // resolverlas -mismo guard que protege el boton de aprobar-, para no
+    // avisarle a alguien de algo que no puede destrabar.
+    if (discountRulesEnabled() && canApproveDescuento(request.user)) {
+      const solicitudes = await prisma.descuentoSolicitud.findMany({
+        // El motor de reglas escribe 'PENDIENTE' en mayusculas mientras el
+        // schema declara 'pendiente' como default: se comparan sin distinguir
+        // caja para que ninguna solicitud quede invisible por eso.
+        where: { estado: { equals: 'PENDIENTE', mode: 'insensitive' } },
+        select: {
+          id: true,
+          createdAt: true,
+          solicitanteNombre: true,
+          origenTipo: true,
+          descuentoPctSolicitado: true,
+          descuentoMontoSolicitado: true,
+          regla: { select: { codigo: true, nombre: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+        take: 50,
+      })
+      for (const solicitud of solicitudes) {
+        const dias = diasDesde(solicitud.createdAt)
+        const pct = solicitud.descuentoPctSolicitado
+        const monto = solicitud.descuentoMontoSolicitado
+        items.push({
+          tipo: 'descuento_aprobacion',
+          // Es plata detenida esperando una firma: pasado el primer dia sube.
+          severidad: dias >= 1 ? 'alta' : 'media',
+          titulo: `Descuento por aprobar: ${solicitud.regla?.nombre || solicitud.regla?.codigo || '#' + solicitud.id}`,
+          detalle: [
+            pct != null ? `${Number(pct).toLocaleString('es-CL')}%` : null,
+            monto != null ? `$${Math.round(monto).toLocaleString('es-CL')}` : null,
+            solicitud.origenTipo,
+            solicitud.solicitanteNombre ? `solicita ${solicitud.solicitanteNombre}` : null,
+            dias === 0 ? 'ingresada hoy' : `${dias} día(s) esperando`,
+          ].filter(Boolean).join(' · '),
+          fecha: solicitud.createdAt,
+          link: '/descuentos',
         })
       }
     }

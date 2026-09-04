@@ -4,7 +4,7 @@ import { Icon } from './shared'
 import { useNotificaciones } from '../api/notificaciones'
 
 const SEV_COLOR = { alta: 'var(--red)', media: 'var(--amber)', baja: 'var(--text-3)' }
-const TIPO_ICON = { licitacion: 'clipboard', factura_proveedor: 'dollarSign', odt_atrasada: 'tool', entrega_pendiente: 'truck' }
+const TIPO_ICON = { licitacion: 'clipboard', factura_proveedor: 'dollarSign', odt_atrasada: 'tool', entrega_pendiente: 'truck', descuento_aprobacion: 'tag' }
 
 // Campanita de notificaciones. `dark` ajusta solo el boton disparador para
 // convivir con el header verde oscuro (TopBar) o con fondos claros (ej.

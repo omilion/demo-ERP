@@ -730,7 +730,6 @@ export function DashboardOperativoPage() {
           <SectionCard title="Administración" icon="settings">
             <ActionRow icon="tag" label="Reglas de Descuento" onClick={() => navigate('/descuentos')} />
             <ActionRow icon="users" label="Usuarios" onClick={() => navigate('/usuarios')} />
-            <ActionRow icon="lock" label="Accesos" onClick={() => navigate('/accesos')} />
             <ActionRow icon="settings" label="Configuración" onClick={() => navigate('/config')} />
             <ActionRow icon="user" label="RRHH Trabajadores" onClick={() => navigate('/rrhh')} />
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />

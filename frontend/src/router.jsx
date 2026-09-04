@@ -32,7 +32,6 @@ import PagoProveedorDetallePage from './pages/pagos-proveedores/PagoProveedorDet
 import TelasPage from './pages/telas/TelasPage'
 import TelaDetallePage from './pages/telas/TelaDetallePage'
 import BodegaTallerPage from './pages/bodega-taller/BodegaTallerPage'
-import AccesosPage from './pages/accesos/AccesosPage'
 import DescuentosPage from './pages/descuentos/DescuentosPage'
 import ProveedoresPage from './pages/proveedores/ProveedoresPage'
 import ProveedorDetallePage from './pages/proveedores/ProveedorDetallePage'
@@ -57,6 +56,7 @@ import ReportesMovimientosAnormalesPage from './pages/reportes-movimientos-anorm
 import UsuariosPage from './pages/usuarios/UsuariosPage'
 import UsuarioFormPage from './pages/usuarios/UsuarioFormPage'
 import RrhhPage, { TrabajadorDetallePage } from './pages/rrhh/RrhhPage'
+import TrabajadorFormPage from './pages/rrhh/TrabajadorFormPage'
 import IntegridadPage from './pages/admin/IntegridadPage'
 import AuditoriaPage from './pages/admin/AuditoriaPage'
 import HistoricoPage from './pages/admin/HistoricoPage'
@@ -138,7 +138,7 @@ export const router = createBrowserRouter([
       { path: 'materias-primas/nueva', element: protect(<MateriaPrimaFormPage />, { requirements: [['taller', 'write'], ['costeo', 'write']] }) },
       { path: 'materias-primas/:id', element: protect(<MateriaPrimaFormPage />, { requirements: [['taller', 'read'], ['costeo', 'read']] }) },
       { path: 'materias-primas/:id/editar', element: protect(<MateriaPrimaFormPage />, { requirements: [['taller', 'write'], ['costeo', 'write']] }) },
-      { path: 'accesos',    element: <ProtectedRoute allowedRoles={['admin']}><AccesosPage /></ProtectedRoute> },
+      { path: 'accesos',    element: <Navigate to="/usuarios" replace /> },
       { path: 'usuarios',   element: <ProtectedRoute allowedRoles={['admin']}><UsuariosPage /></ProtectedRoute> },
       { path: 'usuarios/nuevo', element: <ProtectedRoute allowedRoles={['admin']}><UsuarioFormPage /></ProtectedRoute> },
       { path: 'usuarios/:id', element: <ProtectedRoute allowedRoles={['admin']}><UsuarioFormPage /></ProtectedRoute> },
@@ -181,7 +181,9 @@ export const router = createBrowserRouter([
       { path: 'reportes/movimientos-anormales', element: protect(<ReportesMovimientosAnormalesPage />, { module: 'bodega' }) },
       { path: 'reportes/licitaciones', element: protect(<LicitacionesLegacyRedirect destination="reportes" />, { module: 'reportes' }) },
       { path: 'rrhh', element: protect(<RrhhPage />, { module: 'rrhh' }) },
+      { path: 'rrhh/nuevo', element: protect(<TrabajadorFormPage />, { module: 'rrhh', permission: 'write' }) },
       { path: 'rrhh/:id', element: protect(<TrabajadorDetallePage />, { module: 'rrhh' }) },
+      { path: 'rrhh/:id/editar', element: protect(<TrabajadorFormPage />, { module: 'rrhh', permission: 'write' }) },
       { path: 'admin/integridad', element: <ProtectedRoute allowedRoles={['admin']}><IntegridadPage /></ProtectedRoute> },
       { path: 'admin/comisiones', element: <ProtectedRoute allowedRoles={['admin']}><ComisionesPage /></ProtectedRoute> },
       { path: 'admin/auditoria',  element: <ProtectedRoute allowedRoles={['admin']}><AuditoriaPage /></ProtectedRoute> },
