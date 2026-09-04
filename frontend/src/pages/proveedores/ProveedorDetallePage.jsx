@@ -170,14 +170,17 @@ function TabProductos({ proveedorId }) {
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 600 }}>{total.toLocaleString('es-CL')} productos asociados</span>
-        <SearchBar placeholder="Nombre o código..." value={search} onChange={setSearch} style={{ width: 260 }} />
-      </div>
-      {isLoading
-        ? <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>Cargando…</div>
-        : <Table columns={cols} rows={items} emptyMessage={debounced ? 'Sin resultados para la búsqueda' : 'Este proveedor no tiene productos asociados'} ariaLabel="Productos del proveedor" getRowKey={row => row.id} />
-      }
+      <Table
+        columns={cols}
+        rows={isLoading ? [] : items}
+        emptyMessage={debounced ? 'Sin resultados para la búsqueda' : 'Este proveedor no tiene productos asociados'}
+        ariaLabel="Productos del proveedor"
+        getRowKey={row => row.id}
+        toolbarExtra={<>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{total.toLocaleString('es-CL')} productos asociados</span>
+          <SearchBar placeholder="Nombre o código..." value={search} onChange={setSearch} style={{ width: 260, height: 28 }} />
+        </>}
+      />
       {pages > 1 && (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10, padding: '12px 0 2px' }}>
           <Btn variant="secondary" size="sm" disabled={page <= 1 || isFetching} onClick={() => setPage(p => p - 1)}>Anterior</Btn>

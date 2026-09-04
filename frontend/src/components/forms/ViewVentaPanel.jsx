@@ -21,7 +21,6 @@ const resolvedDiscountAmount = (subtotal, pct, frozenAmount) => {
   if (frozen > 0) return Math.min(Math.round(frozen), Math.round(Number(subtotal || 0)))
   return discountAmount(subtotal, pct)
 }
-
 function discountLabel(venta, pct) {
   const snapshot = venta.descuentoSnapshot || {}
   const name = snapshot.reglaNombre || snapshot.nombre || null
@@ -101,6 +100,21 @@ function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespac
   const cargosTotal = (v.cargos || []).reduce((s, c) => s + Number(c.valor || 0), 0)
   const totalBase = subtotal + cargosTotal
   const descuentoMonto = resolvedDiscountAmount(totalBase, descuento, v.descuentoMonto)
+  const tipoNormalizado = normalizeText(v.tipo)
+  const detalleComercial = [
+    ...(tipoNormalizado === 'marketplace' ? [
+      ['Canal Marketplace', v.marketplaceCanal],
+      ['Referencia externa', v.marketplaceReferencia],
+      ['Comisión', v.marketplaceComisionMonto != null
+        ? `${v.marketplaceComisionPct != null ? `${v.marketplaceComisionPct}% · ` : ''}${fmt(v.marketplaceComisionMonto)}`
+        : null],
+    ] : []),
+    ...(['licitacion', 'convenio marco', 'compra agil', 'trato directo'].includes(tipoNormalizado) && v.licitacion
+      ? [[tipoNormalizado === 'convenio marco' ? 'Orden de compra' : 'Identificador comercial', v.licitacion]]
+      : []),
+    ...(v.plazoEntregaDias != null ? [['Plazo comprometido', `${v.plazoEntregaDias} días ${v.plazoEntregaTipo || 'corridos'}`]] : []),
+    ...(v.enviosParciales ? [['Despachos', 'Envíos parciales permitidos']] : []),
+  ].filter(([, value]) => value !== null && value !== undefined && value !== '')
 
   return (
     <>
@@ -126,29 +140,45 @@ function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespac
         </div>
       </div>
 
+      {detalleComercial.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <FormDivider label="Condiciones comerciales" />
+          <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, margin: 0 }}>
+            {detalleComercial.map(([label, value]) => (
+              <div key={label} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', minWidth: 0 }}>
+                <dt style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>{label}</dt>
+                <dd style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-1)', overflowWrap: 'anywhere' }}>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
       {/* Estados */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 14 }}>
-        {[['Pago', v.estadoPago], ['Entrega', v.estadoEntrega], ['Estado', v.estado], ['Flujo', v.estadoFlujo]].map(([label, val], i) => (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8, marginBottom: 14 }}>
+        {[['Pago', v.estadoPago], ['Entrega', v.estadoEntrega], ['Logística', v.estadoLogistico?.label || '—', v.estadoLogistico?.tone], ['Estado', v.estado], ['Flujo', v.estadoFlujo]].map(([label, val, customTone], i) => (
           <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', textAlign: 'center', border: '1px solid var(--border)' }}>
             <div style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 5 }}>{label}</div>
-            {label === 'Entrega' && canWrite && !v.eliminada ? (
-              <select
-                value={v.estadoEntrega || 'Pendiente entrega'}
-                onChange={e => handleCambiarEstadoEntrega?.(e.target.value)}
-                style={{ fontSize: 11, fontWeight: 700, padding: '3px 6px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', maxWidth: '100%' }}
-              >
-                {['Pendiente entrega', 'En despacho', 'Entregada', 'Parcial'].map(e => (
-                  <option key={e} value={e}>{e}</option>
-                ))}
-              </select>
-            ) : label === 'Flujo' ? (
-              <EstadoFlujoBadge estado={val} />
-            ) : (
-              <EstadoBadge v={val} />
-            )}
+            {label === 'Flujo' ? <EstadoFlujoBadge estado={val} /> : (label === 'Logística' ? <Badge tone={customTone || 'gray'}>{val}</Badge> : <EstadoBadge v={val} />)}
           </div>
         ))}
       </div>
+
+      {/* Resumen de Preparación Logística */}
+      {v.preparacion && (
+        <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, border: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase' }}>Preparación Bodega:</span>
+          {Number(v.preparacion.disponibleInventario || 0) > 0 && (
+            <Badge tone="blue">Stock: {v.preparacion.disponibleInventario} u.</Badge>
+          )}
+          {Number(v.preparacion.disponibleTaller || 0) > 0 && (
+            <Badge tone="green">Taller Listo: {v.preparacion.disponibleTaller} u.</Badge>
+          )}
+          {Number(v.preparacion.pendienteTaller || 0) > 0 && (
+            <Badge tone="amber">Taller Pendiente: {v.preparacion.pendienteTaller} u.</Badge>
+          )}
+        </div>
+      )}
 
       {/* Líneas */}
       {items.length > 0 && (
@@ -750,7 +780,7 @@ function opBtnStyle(color) {
   }
 }
 
-function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmitirDte, canDelete, canManageInternalCreditNotes, internalCreditNoteBlocked, onCreateInternalCreditNote, canRegistrarPago, saldo, onCobrar }) {
+function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, canEmitirDte, onEmitirDte, canDelete, canManageInternalCreditNotes, internalCreditNoteBlocked, onCreateInternalCreditNote, canRegistrarPago, saldo, onCobrar }) {
   const navigate = useNavigate()
   const anularVenta = useAnularVenta()
   const activarVenta = useActivarVenta()
@@ -801,6 +831,21 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmit
       <button onClick={() => navigate(`/despachos?tab=guias&ordenId=${v.id}`)} style={opBtnStyle('var(--green-600)')}>
         <Icon name="truck" size={14} /> Guías Despachos ({guiasCount})
       </button>
+      {canWriteDespacho && v.estado === 'Activa' && ['EN_TALLER', 'PICKING_PARCIAL', 'LISTA_PICKING', 'PICKING'].includes(v.estadoLogistico?.codigo) && (
+        <button onClick={() => navigate(`/despachos/ordenes/${v.id}/picking`)} style={opBtnStyle('#7c3aed')}>
+          <Icon name="tool" size={14} /> Confirmar Picking
+        </button>
+      )}
+      {canWriteDespacho && v.estado === 'Activa' && v.estadoLogistico?.codigo === 'PACKING' && (
+        <button onClick={() => navigate(`/despachos/ordenes/${v.id}/packing`)} style={opBtnStyle('#7c3aed')}>
+          <Icon name="tool" size={14} /> Armar Packing
+        </button>
+      )}
+      {canWriteDespacho && v.estado === 'Activa' && v.estadoLogistico?.codigo === 'LISTA_DESPACHO' && (
+        <button onClick={() => navigate(`/despachos/guias/nueva?ordenId=${v.id}`)} style={opBtnStyle('#d97706')}>
+          <Icon name="fileText" size={14} /> Preparar Guía DTE 52
+        </button>
+      )}
       <button onClick={handleCreateDespacho} style={opBtnStyle('var(--blue)')}>
         <Icon name="truck" size={14} /> Crear Despacho ({despachosCount})
       </button>
@@ -817,7 +862,7 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canEmitirDte, onEmit
           <Icon name="refreshCw" size={14} /> Nota de Crédito Interna
         </button>
       )}
-      <button onClick={() => navigate(`/pasar-taller?ordenId=${v.id}`)} style={opBtnStyle('var(--amber)')}>
+      <button onClick={() => navigate(`/excepciones-taller?ordenId=${v.id}`)} style={opBtnStyle('var(--amber)')}>
         <Icon name="tool" size={14} /> Notificar a Taller
       </button>
       {canEmitirDte && (
@@ -903,22 +948,10 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const [notaInterna, setNotaInterna] = useState(false)
 
   const { data: full, isLoading } = useVenta(venta.id)
-  const updateVenta = useUpdateVenta()
   const deleteVenta = useDeleteVenta()
   const forzarTallerMut = useForzarTaller()
   const updateEntregados = useUpdateItemEntregados()
   const documentosDteQuery = useDocumentos({ ordenId: venta.id })
-
-  const handleCambiarEstadoEntrega = (nuevoEstado) => {
-    if (!nuevoEstado || nuevoEstado === (full?.estadoEntrega || venta.estadoEntrega)) return
-    updateVenta.mutate(
-      { id: venta.id, estadoEntrega: nuevoEstado },
-      {
-        onSuccess: () => toast.success(`Estado de entrega cambiado a "${nuevoEstado}"`),
-        onError: (err) => toast.error(err?.response?.data?.error || 'No se pudo cambiar el estado de entrega'),
-      }
-    )
-  }
 
   const v = full || venta
   const odts  = full?.odts  ?? []
@@ -927,6 +960,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const documentosCount = pagos.filter(isReferencialPago).length
   const dtes = documentosDteQuery.data?.documentos || []
   const canWriteFacturacion = can(user, 'facturacion', 'write')
+  const canWriteDespacho = can(user, 'despacho', 'write')
   const canRegistrarPago = can(user, 'cobranza', 'write') && can(user, 'caja', 'read') && can(user, 'caja', 'write')
   const ventaYaEmitida = hasActiveSalesDte(dtes)
   const canManageInternalCreditNotes = canWrite || canWriteFacturacion
@@ -987,6 +1021,21 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
     const dtesValidos = doc => ['emitido', 'enviado', 'aceptado'].includes(doc.estado)
     const totalNC = dtes.filter(d => d.tipoDte === 61 && dtesValidos(d)).reduce((s, d) => s + Number(d.totales?.total || 0), 0)
     const totalND = dtes.filter(d => d.tipoDte === 56 && dtesValidos(d)).reduce((s, d) => s + Number(d.totales?.total || 0), 0)
+    const tipoNormalizado = normalizeText(v.tipo)
+    const detalleComercial = [
+      ...(tipoNormalizado === 'marketplace' ? [
+        ['Canal Marketplace', v.marketplaceCanal],
+        ['Referencia externa', v.marketplaceReferencia],
+        ['Comisión', v.marketplaceComisionMonto != null
+          ? `${v.marketplaceComisionPct != null ? `${v.marketplaceComisionPct}% · ` : ''}${fmt(v.marketplaceComisionMonto)}`
+          : null],
+      ] : []),
+      ...(['licitacion', 'convenio marco', 'compra agil', 'trato directo'].includes(tipoNormalizado) && v.licitacion
+        ? [[tipoNormalizado === 'convenio marco' ? 'Orden de compra' : 'Identificador comercial', v.licitacion]]
+        : []),
+      ...(v.plazoEntregaDias != null ? [['Plazo comprometido', `${v.plazoEntregaDias} días ${v.plazoEntregaTipo || 'corridos'}`]] : []),
+      ...(v.enviosParciales ? [['Despachos', 'Envíos parciales permitidos']] : []),
+    ].filter(([, value]) => value !== null && value !== undefined && value !== '')
 
     return (
       <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
@@ -1019,6 +1068,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                 v={v}
                 odtsCount={odts.length}
                 guiasCount={guias.length}
+                canWriteDespacho={canWriteDespacho}
                 canEmitirDte={canWriteFacturacion && !ventaYaEmitida}
                 onEmitirDte={() => setEmitirDte(true)}
                 canDelete={canDelete}
@@ -1064,6 +1114,20 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                   )
                 })()}
               </div>
+
+              {detalleComercial.length > 0 && (
+                <>
+                  <FormDivider label="Condiciones comerciales" />
+                  <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, margin: '0 0 14px' }}>
+                    {detalleComercial.map(([label, value]) => (
+                      <div key={label} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', minWidth: 0 }}>
+                        <dt style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>{label}</dt>
+                        <dd style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-1)', overflowWrap: 'anywhere' }}>{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </>
+              )}
 
               {items.length > 0 && (
                 <>

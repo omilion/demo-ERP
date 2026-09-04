@@ -4,6 +4,8 @@ import {
   buildOdtCosteo,
   buildPriceLookup,
   buildProductividadOperarios,
+  ocultarRemuneracionDeCosteo,
+  opcionesCosteoOdt,
   parseMoneyLike,
 } from '../src/routes/odts/costeo.js'
 
@@ -14,6 +16,36 @@ describe('ODT costeo helpers', () => {
     expect(parseMoneyLike('900.000,50')).toBe(900000.5)
     expect(parseMoneyLike('')).toBeNull()
     expect(parseMoneyLike('sin dato')).toBeNull()
+  })
+
+  it('does not expose ODT costs to a workshop role and redacts salary details separately', () => {
+    expect(opcionesCosteoOdt({ role: 'taller_operario', permisosExtra: null })).toEqual({
+      incluirCosteo: false,
+      incluirRemuneracion: false,
+    })
+    expect(opcionesCosteoOdt({ role: 'admin', permisosExtra: null })).toEqual({
+      incluirCosteo: true,
+      incluirRemuneracion: true,
+    })
+    expect(ocultarRemuneracionDeCosteo({
+      sueldoLiquido: 900000,
+      costoHora: 5000,
+      costoManoObra: 20000,
+      costoTotal: 45000,
+    })).toEqual({ costoManoObra: 20000, costoTotal: 45000 })
+  })
+
+  it('keeps operational productivity without returning cost fields', () => {
+    const [row] = buildProductividadOperarios([{
+      operarioId: 7,
+      operario: { id: 7, nombres: 'Ana', apellidoPaterno: 'Rojas' },
+      items: [{ cantidad: 6 }],
+      tiempos: { produccionHoras: 3 },
+    }], { incluirCosteo: false })
+
+    expect(row).toMatchObject({ operarioId: 7, unidades: 6, produccionHoras: 3, unidadesPorHora: 2 })
+    expect(row).not.toHaveProperty('costoTotal')
+    expect(row).not.toHaveProperty('margenEstimado')
   })
 
   it('builds material cost rows from net historical consumption and current catalog prices', () => {

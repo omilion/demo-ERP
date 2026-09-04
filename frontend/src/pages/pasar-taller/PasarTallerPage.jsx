@@ -1,9 +1,9 @@
 import { toast, confirmDialog } from '../../store/notif'
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Badge, Btn, PageHeader, Table } from '../../components/shared'
+import { Badge, Btn, KpiCard, PageHeader, Table } from '../../components/shared'
 import { FormField, Input, Select, Textarea } from '../../components/forms'
-import { useEliminarItemTaller, useEnviarTaller, usePasarTallerOrden } from '../../api/pasarTaller'
+import { useEliminarItemTaller, useEnviarTaller, usePasarTallerOrden, usePasarTallerPendientes } from '../../api/pasarTaller'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 
@@ -64,6 +64,30 @@ function tallerColor(kind) {
   return 'var(--amber)'
 }
 
+// La auto-notificacion desde la venta cubre el caso normal. Estos son los
+// bordes donde no llega y, hasta ahora, nadie se enteraba: la bandeja existe
+// para que un producto vendido no quede sin fabricar en silencio.
+const MOTIVO_TONE = {
+  sin_odt: 'red',
+  odt_cerrada: 'red',
+  items_faltantes: 'amber',
+  cantidad_desfasada: 'amber',
+  taller_por_defecto: 'blue',
+}
+
+const MOTIVO_TEXTO = {
+  sin_odt: 'Sin OT',
+  odt_cerrada: 'OT cerrada',
+  items_faltantes: 'Faltan items',
+  cantidad_desfasada: 'Cantidad distinta',
+  taller_por_defecto: 'Taller por defecto',
+}
+
+function fmtFecha(value) {
+  if (!value) return '-'
+  return new Date(value).toLocaleDateString('es-CL')
+}
+
 export default function PasarTallerPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -86,9 +110,16 @@ export default function PasarTallerPage() {
   const enviarMut = useEnviarTaller()
   const eliminarMut = useEliminarItemTaller()
 
+  const ordenSeleccionada = Boolean(ordenIdParam || nInternoParam)
+  const pendientesQuery = usePasarTallerPendientes()
+  const pendientes = pendientesQuery.data?.items || []
+
   const items = useMemo(() => data.items || [], [data.items])
   const talleres = useMemo(() => data.talleres || [], [data.talleres])
   const odt = data.odt
+  // El backend ya entrega como OT vigente la abierta; si la que llega esta
+  // cerrada es porque no queda ninguna abierta en la venta.
+  const odtCerrada = Boolean(odt && ['terminada', 'entregada', 'anulada'].includes(normalizeText(odt.estado)))
   const currentPrioridad = prioridad || normalizeText(odt?.prioridad) || 'alta'
   const currentObsGeneral = obsGeneralTouched
     ? obsGeneral
@@ -116,6 +147,26 @@ export default function PasarTallerPage() {
     setSearchParams(params)
   }
 
+  function abrirVenta(row) {
+    setLineOverrides({})
+    setPrioridad('')
+    setObsGeneral('')
+    setObsGeneralTouched(false)
+    setOrdenIdInput(String(row.ordenId))
+    setNInternoInput('')
+    setSearchParams({ ordenId: String(row.ordenId) })
+  }
+
+  function volverABandeja() {
+    setLineOverrides({})
+    setPrioridad('')
+    setObsGeneral('')
+    setObsGeneralTouched(false)
+    setOrdenIdInput('')
+    setNInternoInput('')
+    setSearchParams({})
+  }
+
   function setLine(id, patch) {
     setLineOverrides(prev => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }))
   }
@@ -131,7 +182,7 @@ export default function PasarTallerPage() {
     })
   }
 
-  function enviarItems(payloadItems) {
+  function enviarItems(payloadItems, { nuevaOdt = false } = {}) {
     if (!data.orden?.id) return toast.warning('Primero carga una venta')
     if (!payloadItems.length && currentPrioridad === (normalizeText(odt?.prioridad) || 'alta') && currentObsGeneral === (odt?.obsGeneral || '')) {
       return toast.warning('No hay cambios para notificar')
@@ -141,24 +192,42 @@ export default function PasarTallerPage() {
       prioridad: currentPrioridad,
       obsGeneral: currentObsGeneral,
       items: payloadItems,
+      ...(nuevaOdt ? { nuevaOdt: true } : {}),
     }, {
       onSuccess: (res) => {
         toast.warning('Taller notificado')
         setSearchParams({ ordenId: String(data.orden.id) })
-        if (res?.odtId) navigate(`/pasar-taller?ordenId=${data.orden.id}`, { replace: true })
+        if (res?.odtId) navigate(`/excepciones-taller?ordenId=${data.orden.id}`, { replace: true })
       },
       onError: e => toast.error(e.response?.data?.error || 'Error al notificar taller'),
     })
   }
 
-  function enviarPendientes() {
-    const payloadItems = rowsToSend.map(({ item, line }) => ({
+  function payloadDePendientes() {
+    return rowsToSend.map(({ item, line }) => ({
       ordenItemId: item.ordenItemId,
       cantidad: Number(line.cantidad || item.cantidad),
       obs: line.obs || '',
       tallerIds: line.tallerIds || [],
     }))
-    enviarItems(payloadItems)
+  }
+
+  function enviarPendientes() {
+    enviarItems(payloadDePendientes())
+  }
+
+  // Cuando la OT de la venta ya se cerro, agregarle trabajo no es posible ni
+  // deseable: se abre otra para lo que quedo fuera, con confirmacion explicita
+  // porque el taller vera una OT nueva sobre una venta que creia terminada.
+  async function abrirNuevaOdt() {
+    const payloadItems = payloadDePendientes()
+    if (!payloadItems.length) return toast.warning('Marca los talleres de al menos un producto')
+    const confirmado = await confirmDialog({
+      title: 'Abrir nueva OT',
+      detail: `La OT ${odt ? `#${odt.id} ` : ''}de esta venta está ${(odt?.estado || 'cerrada').toLowerCase()}. Se abrirá una OT nueva con ${payloadItems.length} producto(s) que quedaron fuera.`,
+    })
+    if (!confirmado) return
+    enviarItems(payloadItems, { nuevaOdt: true })
   }
 
   function enviarUno(item) {
@@ -244,23 +313,94 @@ export default function PasarTallerPage() {
     ) },
   ]
 
+  const bandejaCols = [
+    { key: 'nInterno', label: 'Venta', required: true, render: (v, row) => (
+      <span style={{ ...mono, fontWeight: 700 }}>{v || row.ordenId}</span>
+    ) },
+    { key: 'cliente', label: 'Cliente', render: (_, row) => row.cliente?.razonSocial || row.cliente?.nombre || 'Sin cliente' },
+    { key: 'createdAt', label: 'Venta del', render: v => <span style={mono}>{fmtFecha(v)}</span> },
+    { key: 'fechaPlazo', label: 'Compromiso', render: v => <span style={mono}>{fmtFecha(v)}</span> },
+    { key: 'motivos', label: 'Problema', required: true, render: (v = []) => (
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {v.map(motivo => (
+          <Badge key={motivo} tone={MOTIVO_TONE[motivo] || 'gray'}>{MOTIVO_TEXTO[motivo] || motivo}</Badge>
+        ))}
+      </div>
+    ) },
+    { key: 'itemsFaltantes', label: 'Sin llegar', align: 'right', render: (v, row) => (
+      <span style={mono}>{v} / {row.itemsTransitorios}</span>
+    ) },
+    { key: 'odtId', label: 'OT', render: (v, row) => v
+      ? <span style={mono}>#{v} <span style={{ color: 'var(--text-3)' }}>{row.odtEstado || ''}</span></span>
+      : <span style={{ color: 'var(--red)', fontWeight: 700, fontSize: 12 }}>ninguna</span> },
+    { key: '_acc', label: '', required: true, render: (_, row) => (
+      <Btn variant="secondary" size="sm" icon="arrowRight" onClick={() => abrirVenta(row)}>Revisar</Btn>
+    ) },
+  ]
+
   return (
     <main className="page page-wide">
       <PageHeader
-        title="Pasar a Taller"
-        subtitle={data.orden ? `Venta ${data.orden.nInterno || data.orden.id} - ${data.orden.cliente?.razonSocial || data.orden.cliente?.nombre || 'Sin cliente'}` : 'Notificar productos transitorios de una venta'}
-        breadcrumb={['Inicio', 'Ventas', 'Pasar a Taller']}
+        title="Excepciones de Taller"
+        subtitle={data.orden
+          ? `Venta ${data.orden.nInterno || data.orden.id} - ${data.orden.cliente?.razonSocial || data.orden.cliente?.nombre || 'Sin cliente'}`
+          : 'Ventas con productos de fabricación que no llegaron a taller'}
+        breadcrumb={['Inicio', 'Taller', 'Excepciones de Taller']}
         actions={(
           <>
+            {ordenSeleccionada && <Btn variant="ghost" size="sm" icon="chevronLeft" onClick={volverABandeja}>Volver a pendientes</Btn>}
             {odt?.id && <Btn variant="secondary" size="sm" icon="tool" onClick={() => navigate(`/taller/${odt.id}/editar`)}>Ver OT</Btn>}
-            <Btn variant="primary" size="sm" icon="send" onClick={enviarPendientes} disabled={enviarMut.isPending || (!rowsToSend.length && !data.orden)}>
-              {enviarMut.isPending ? 'Notificando...' : `Notificar ${rowsToSend.length || ''}`.trim()}
-            </Btn>
+            {ordenSeleccionada && (odtCerrada ? (
+              <Btn variant="primary" size="sm" icon="plusCircle" onClick={abrirNuevaOdt} disabled={enviarMut.isPending || !rowsToSend.length}>
+                {enviarMut.isPending ? 'Abriendo...' : `Abrir nueva OT ${rowsToSend.length || ''}`.trim()}
+              </Btn>
+            ) : (
+              <Btn variant="primary" size="sm" icon="send" onClick={enviarPendientes} disabled={enviarMut.isPending || (!rowsToSend.length && !data.orden)}>
+                {enviarMut.isPending ? 'Notificando...' : `Notificar ${rowsToSend.length || ''}`.trim()}
+              </Btn>
+            ))}
           </>
         )}
       />
 
+      {!ordenSeleccionada && (
+        <>
+          <div className="kpi-strip">
+            <KpiCard label="Ventas pendientes" value={pendientesQuery.data?.total ?? 0} icon="alertTriangle" tone={pendientes.length ? 'red' : undefined} sublabel="Con productos sin llegar a taller" />
+            <KpiCard label="Sin OT" value={pendientes.filter(row => row.motivos.includes('sin_odt')).length} icon="fileText" sublabel="Nunca se generó orden" />
+            <KpiCard label="OT cerrada" value={pendientes.filter(row => row.motivos.includes('odt_cerrada')).length} icon="lock" tone="amber" sublabel="Se agregó después del cierre" />
+            <KpiCard label="Taller por defecto" value={pendientes.filter(row => row.motivos.includes('taller_por_defecto')).length} icon="info" tone="blue" sublabel="Asignado sin regla" />
+          </div>
+
+          <section style={{ ...sectionStyle, padding: 0, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ fontWeight: 700 }}>Pendientes de notificar a taller</div>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
+                La venta notifica al taller sola. Aquí quedan los casos donde no pudo: sin OT, con la OT ya cerrada, con items que no entraron o con el taller elegido por defecto.
+              </div>
+            </div>
+            {pendientesQuery.isError ? (
+              <div style={{ padding: 24, color: 'var(--red)', fontSize: 13 }}>No se pudo cargar la bandeja de pendientes</div>
+            ) : (
+              <Table
+                columns={bandejaCols}
+                rows={pendientes}
+                emptyMessage={pendientesQuery.isFetching ? 'Buscando ventas pendientes...' : 'Todo al día: no hay ventas con productos sin llegar a taller'}
+                keyboard
+                stickyHeader
+                ariaLabel="Ventas pendientes de pasar a taller"
+                getRowKey={row => row.ordenId}
+                onRowDoubleClick={abrirVenta}
+              />
+            )}
+          </section>
+        </>
+      )}
+
       <section style={sectionStyle}>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>
+          Buscar una venta puntual que no aparezca en la lista (por ejemplo, una migrada del sistema anterior).
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 12, alignItems: 'end' }}>
           <FormField label="ID de venta">
             <Input type="number" value={ordenIdInput} onChange={v => setOrdenIdInput(v)} placeholder="ID interno de orden" />
@@ -293,6 +433,13 @@ export default function PasarTallerPage() {
               <Textarea value={currentObsGeneral} onChange={v => { setObsGeneral(v); setObsGeneralTouched(true) }} rows={2} />
             </FormField>
           </div>
+          {odtCerrada && (
+            <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#991b1b', fontSize: 12, lineHeight: 1.45 }}>
+              <strong>La OT #{odt.id} está {String(odt.estado || '').toLowerCase()}.</strong> No se le puede agregar trabajo.
+              Marca los talleres de los productos que quedaron fuera y usa <strong>Abrir nueva OT</strong>: se crea una OT nueva
+              para esta misma venta, sin tocar la que ya se cerró.
+            </div>
+          )}
           {odt && (
             <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: 'var(--text-3)' }}>
               <Badge tone={priorityTone(odt.prioridad)}>Prioridad {odt.prioridad || 'normal'}</Badge>
@@ -303,13 +450,15 @@ export default function PasarTallerPage() {
         </section>
       )}
 
-      <section style={{ ...sectionStyle, padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <div style={{ fontWeight: 700 }}>Productos para enviar a taller</div>
-          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{items.length} producto(s) transitorio(s) pendiente(s)</div>
-        </div>
-        <Table columns={cols} rows={items} emptyMessage={data.orden ? 'No hay productos transitorios pendientes en esta venta' : 'Busca una venta para ver sus productos'} keyboard ariaLabel="Productos para enviar a taller" getRowKey={(row, index) => row.ordenItemId || index} />
-      </section>
+      {ordenSeleccionada && (
+        <section style={{ ...sectionStyle, padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <div style={{ fontWeight: 700 }}>Productos para enviar a taller</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{items.length} producto(s) transitorio(s) pendiente(s)</div>
+          </div>
+          <Table columns={cols} rows={items} emptyMessage={data.orden ? 'No hay productos transitorios pendientes en esta venta' : 'Busca una venta para ver sus productos'} keyboard ariaLabel="Productos para enviar a taller" getRowKey={(row, index) => row.ordenItemId || index} />
+        </section>
+      )}
     </main>
   )
 }

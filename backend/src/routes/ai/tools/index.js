@@ -721,7 +721,9 @@ const PERMISO_POR_HERRAMIENTA = {
   demora_produccion: 'taller',
   consultar_caja: 'caja',
   consultar_rrhh: 'rrhh',
-  consultar_planillas: 'rrhh',
+  // Planillas y liquidaciones son remuneraciones: `rrhh:read` permite ver la
+  // nomina, no consultar cuanto gana cada persona mediante el asistente.
+  consultar_planillas: 'rrhh.remuneracion',
 }
 
 export function permisoDeHerramienta(name) {

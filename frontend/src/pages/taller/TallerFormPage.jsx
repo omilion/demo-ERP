@@ -31,8 +31,10 @@ import { Icon, Badge, Btn } from '../../components/shared'
 
 const ESTADOS_ODT = [
   { value: 'Pendiente', label: 'Pendiente' },
+  { value: 'Asignada', label: 'Asignada' },
   { value: 'En proceso', label: 'En proceso' },
-  { value: 'Terminada', label: 'Listo' },
+  { value: 'Control calidad', label: 'Control de calidad' },
+  { value: 'Terminada', label: 'Terminada (solo tras control)' },
 ]
 
 function normalizeOdtFormEstado(estado) {
@@ -313,15 +315,18 @@ export default function TallerFormPage() {
     }
   }
 
-  async function handleCloseOdt(estado) {
+async function handleCloseOdt(estado) {
     const isReopen = estado === 'Pendiente'
-    const action = isReopen ? 'reabrir' : 'cerrar'
+    const isTerminal = ['Terminada', 'Entregada'].includes(estado)
+    const action = isReopen ? 'reabrir' : isTerminal ? 'cerrar' : 'actualizar el estado de'
     const odtNumero = odtNumeroOperativo(found)
     const detail = isReopen
       ? 'La OT volvera a Pendiente y quedara disponible para trabajo operativo.'
-      : 'La OT pasara a Terminada y se registrara fecha de termino si aun no existe.'
+      : isTerminal
+        ? 'La OT quedara terminada y se registrara la aprobacion de Control de Calidad.'
+        : `La OT pasara a ${estado}.`
     if (!await confirmDialog({ title: 'Confirmar', detail: `¿Confirmas ${action} la OT #${odtNumero}?\n\n${detail}` })) return
-    if (isReopen) {
+    if (!isTerminal) {
       cambiarEstado.mutate(
         { id: Number(id), estado },
         {
@@ -330,8 +335,21 @@ export default function TallerFormPage() {
       )
       return
     }
+    if (found?.estado !== 'Control calidad') {
+      toast.warning('Primero envía la OT a Control de Calidad.')
+      return
+    }
+    const observacion = await promptDialog({
+      title: `Control de Calidad — OT #${odtNumero}`,
+      detail: 'Resume la revisión final, criterios verificados o desviaciones aceptadas.',
+    })
+    if (observacion == null) return
+    if (observacion.trim().length < 3) {
+      toast.warning('Describe la validación de calidad antes de cerrar la OT.')
+      return
+    }
     cerrarOdt.mutate(
-      { id: Number(id), estado },
+      { id: Number(id), estado, controlCalidad: { aprobada: true, observacion: observacion.trim() } },
       {
         onError: err => toast.error(getErrorMessage(err)),
       }
@@ -357,8 +375,8 @@ export default function TallerFormPage() {
   const estadoActions = [
     { from: ['Pendiente', 'Asignada'], to: 'En proceso', label: 'Iniciar trabajo', tone: 'blue' },
     { from: ['Prioritaria'], to: 'En proceso', label: 'Volver a En proceso', tone: 'blue' },
-    { from: ['En proceso', 'Prioritaria'], to: 'Control calidad', label: 'Dejar pendiente', tone: 'amber' },
-    { from: ['Pendiente', 'Asignada', 'En proceso', 'Prioritaria', 'Control calidad'], to: 'Terminada', label: 'Marcar lista', tone: 'green' },
+    { from: ['En proceso', 'Prioritaria'], to: 'Control calidad', label: 'Enviar a control de calidad', tone: 'amber' },
+    { from: ['Control calidad'], to: 'Terminada', label: 'Aprobar control y terminar', tone: 'green' },
     { from: ['Terminada'], to: 'Pendiente', label: 'Reabrir OT', tone: 'amber' },
     { from: ['Entregada'], to: 'Terminada', label: 'Reabrir entrega', tone: 'amber' },
   ]

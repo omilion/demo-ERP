@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DOC-01: Dossier Ejecutivo para Gerencia | Plastimar SisGestión 3.0</title>
+  <link rel="stylesheet" href="../assets/manual-style.css">
+  <style>
+    /* Ajustes específicos del dossier ejecutivo */
+    .dossier-page {
+      background: #ffffff;
+      border: 1px solid var(--brand-border);
+      border-radius: var(--radius);
+      padding: 2.5rem;
+      margin-bottom: 2rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .kpi-grid-5 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin: 1.25rem 0;
+    }
+    .kpi-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 1rem;
+      border-left: 4px solid var(--brand-primary);
+    }
+    .kpi-box h4 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #64748b;
+      margin-bottom: 0.35rem;
+    }
+    .kpi-box .val {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #0f172a;
+      font-family: 'Outfit', sans-serif;
+    }
+    .kpi-box p {
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-top: 0.25rem;
+    }
+    .flowchart-svg {
+      width: 100%;
+      height: auto;
+      margin: 1.25rem 0;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #fafafa;
+    }
+    @media print {
+      .dossier-page {
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      .page-break-exact {
+        page-break-before: always !important;
+        break-before: page !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Encabezado -->
+  <header class="doc-header">
+    <div class="doc-header-inner">
+      <div class="doc-brand">
+        <img src="../assets/plastimar-logo.webp" alt="Plastimar Logo" class="doc-logo">
+        <div class="doc-title-group">
+          <h1>Dossier Ejecutivo para Gerencia</h1>
+          <div class="doc-subtitle">SisGestión 3.0 &middot; Flujo Transversal de Venta y Arquitectura Modular</div>
+        </div>
+      </div>
+      <div class="doc-actions">
+        <a href="../00_MAPA_DOCUMENTACION_Y_GUIA_INICIO/index.html" class="btn-action btn-nav">&larr; Volver al Mapa</a>
+        <button class="btn-action btn-print">🖨️ Imprimir / Guardar PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="doc-container">
+
+    <!-- HOJA 1: FLUJO TRANSVERSAL END-TO-END -->
+    <div class="dossier-page">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">El Flujo Comercial y Operativo End-to-End</h2>
+        <span class="badge-role" style="background:#fef3c7; color:#92400e; border-color:#fde68a;">Resumen Directivo</span>
+      </div>
+
+      <p style="font-size: 0.95rem; margin-bottom: 1rem;">
+        El ERP integra las etapas de la cadena de valor en un flujo compartido. Cada área registra y verifica su propia salida; la trazabilidad disponible permite seguir venta, producción, inventario, despacho, documentos y pagos sin asumir que todo se completa automáticamente.
+      </p>
+
+      <!-- Diagrama SVG de Flujo End-to-End -->
+      <div class="screenshot-wrapper">
+        <div class="screenshot-container" style="background: white; padding: 1rem; width: 100%;">
+          <svg class="flowchart-svg" viewBox="0 0 1000 370" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="g-com" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#0284c7"/><stop offset="100%" stop-color="#0369a1"/>
+              </linearGradient>
+              <linearGradient id="g-taller" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#d97706"/><stop offset="100%" stop-color="#b45309"/>
+              </linearGradient>
+              <linearGradient id="g-bodega" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#047857"/><stop offset="100%" stop-color="#065f46"/>
+              </linearGradient>
+              <linearGradient id="g-fin" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#475569"/><stop offset="100%" stop-color="#1e293b"/>
+              </linearGradient>
+              <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%">
+                <feDropShadow dx="0" dy="3" stdDeviation="3" flood-opacity="0.12"/>
+              </filter>
+            </defs>
+
+            <!-- Bloque 1: Comercial -->
+            <g filter="url(#shadow)">
+              <rect x="20" y="25" width="220" height="320" rx="10" fill="#f0f9ff" stroke="#bae6fd" stroke-width="2"/>
+              <rect x="20" y="25" width="220" height="42" rx="10" fill="url(#g-com)"/>
+              <text x="130" y="52" fill="#ffffff" font-family="'Outfit', sans-serif" font-weight="700" font-size="16" text-anchor="middle">1. COMERCIAL / VENTAS</text>
+              
+              <!-- Tarjeta Canal -->
+              <rect x="35" y="85" width="190" height="60" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
+              <text x="45" y="108" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="12" fill="#0369a1">Ingreso de Venta / Cotización</text>
+              <text x="45" y="128" font-family="'Plus Jakarta Sans', sans-serif" font-size="10.5" fill="#64748b">Sala · Web · Convenio · Licitación</text>
+
+              <!-- Tarjeta Descuento -->
+              <rect x="35" y="160" width="190" height="55" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
+              <text x="45" y="182" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="12" fill="#0f172a">Aprobación de Descuento</text>
+              <text x="45" y="200" font-family="'Plus Jakarta Sans', sans-serif" font-size="10.5" fill="#64748b">Valida márgenes y límites</text>
+
+              <!-- Tarjeta Matriz -->
+              <rect x="35" y="230" width="190" height="60" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
+              <text x="45" y="252" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="12" fill="#065f46">Orden Confirmada</text>
+              <text x="45" y="272" font-family="'Plus Jakarta Sans', sans-serif" font-size="10.5" fill="#64748b">Entra a Matriz de Ventas</text>
+            </g>
+
+            <!-- Flecha 1 -> 2 -->
+            <path d="M 240 185 L 268 185" stroke="#0284c7" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+            <polygon points="268,180 278,185 268,190" fill="#0284c7"/>
+
+            <!-- Bloque 2: Operaciones / Taller -->
+            <g filter="url(#shadow)">
+              <rect x="280" y="25" width="220" height="320" rx="10" fill="#fffbeb" stroke="#fde68a" stroke-width="2"/>
+              <rect x="280" y="25" width="220" height="42" rx="10" fill="url(#g-taller)"/>
+              <text x="390" y="52" fill="#ffffff" font-family="'Outfit', sans-serif" font-weight="700" font-size="16" text-anchor="middle">2. PRODUCCIÓN / TALLER</text>
+
+              <!-- Tarjeta Pasar Taller -->
+              <rect x="295" y="85" width="190" height="60" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
+              <text x="305" y="108" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="12" fill="#b45309">Generación de ODT</text>
+              <text x="305" y="128" font-family="'Plus Jakarta Sans', sans-serif" font-size="10.5" fill="#64748b">Productos a fabricar a medida</text>
+
+              <!-- Tarjeta Estaciones -->
+              <rect x="295" y="160" width="190" height="55" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
+              <text x="305" y="182" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="12" fill="#0f172a">Corte &middot; Espumas &middot; Confección</text>
+              <text x="305" y="200" font-family="'Plus Jakarta Sans', sans-serif" font-size="10.5" fill="#64748b">Operarios registran avance</text>
+
+              <!-- Tarjeta Calidad -->
+              <rect x="295" y="230" width="190" height="60" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
+              <text x="305" y="252" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="12" fill="#166534">Control de Calidad</text>
+              <text x="305" y="272" font-family="'Plus Jakarta Sans', sans-serif" font-size="10.5" fill="#64748b">Aprobación jefe de taller</text>
+            </g>
+
+            <!-- Flecha 2 -> 3 -->
+            <polygon points="528,180 538,185 528,190" fill="#d97706"/>
+            <path d="M 500 185 L 528 185" stroke="#d97706" stroke-width="3" fill="none"/>
+
+            <!-- Bloque 3: Bodega y Despacho -->
+            <g filter="url(#shadow)">
+              <rect x="540" y="25" width="220" height="320" rx="10" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="2"/>
+              <rect x="540" y="25" width="220" height="42" rx="10" fill="url(#g-bodega)"/>
+              <text x="650" y="52" fill="#ffffff" font-family="'Outfit', sans-serif" font-weight="700" font-size="16" text-anchor="middle">3. BODEGA Y DESPACHO</text>
+
+              <!-- Tarjeta Picking -->
+              <rect x="555" y="85" width="190" height="60" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
+              <text x="565" y="108" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="12" fill="#065f46">Picking &middot; Reserva Stock</text>
+              <text x="565" y="128" font-family="'Plus Jakarta Sans', sans-serif" font-size="10.5" fill="#64748b">Físico disponible asignado</text>
+
+              <!-- Tarjeta Packing -->
+              <rect x="555" y="160" width="190" height="55" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
+              <text x="565" y="182" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="12" fill="#0f172a">Packing y Embalaje</text>
+              <text x="565" y="200" font-family="'Plus Jakarta Sans', sans-serif" font-size="10.5" fill="#64748b">Etiquetado por bultos</text>
+
+              <!-- Tarjeta Despacho -->
+              <rect x="555" y="230" width="190" height="60" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
+              <text x="565" y="252" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="12" fill="#0284c7">Cadena de Reparto</text>
+              <text x="565" y="272" font-family="'Plus Jakarta Sans', sans-serif" font-size="10.5" fill="#64748b">Patio &rarr; Reparto &rarr; Entrega</text>
+            </g>
+
+            <!-- Flecha 3 -> 4 -->
+            <polygon points="788,180 798,185 788,190" fill="#047857"/>
+            <path d="M 760 185 L 788 185" stroke="#047857" stroke-width="3" fill="none"/>
+
+            <!-- Bloque 4: Finanzas y Facturación -->
+            <g filter="url(#shadow)">
+              <rect x="800" y="25" width="180" height="320" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2"/>
+              <rect x="800" y="25" width="180" height="42" rx="10" fill="url(#g-fin)"/>
+              <text x="890" y="52" fill="#ffffff" font-family="'Outfit', sans-serif" font-weight="700" font-size="15" text-anchor="middle">4. FINANZAS / DTE</text>
+
+              <!-- Tarjeta DTE -->
+              <rect x="815" y="85" width="150" height="60" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
+              <text x="825" y="108" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="11.5" fill="#1e293b">Guía de Despacho DTE</text>
+              <text x="825" y="128" font-family="'Plus Jakarta Sans', sans-serif" font-size="10" fill="#64748b">Emitir, enviar y consultar</text>
+
+              <!-- Tarjeta Factura -->
+              <rect x="815" y="160" width="150" height="55" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
+              <text x="825" y="182" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="11.5" fill="#1e293b">Factura / Boleta SII</text>
+              <text x="825" y="200" font-family="'Plus Jakarta Sans', sans-serif" font-size="10" fill="#64748b">Límite interno: 20 líneas</text>
+
+              <!-- Tarjeta Caja -->
+              <rect x="815" y="230" width="150" height="60" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
+              <text x="825" y="252" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="11.5" fill="#065f46">Caja &middot; Cobranza</text>
+              <text x="825" y="272" font-family="'Plus Jakarta Sans', sans-serif" font-size="10" fill="#64748b">Arqueo y conciliación</text>
+            </g>
+          </svg>
+          <div class="screenshot-caption">Figura 1: Mapa visual del flujo operativo continuo Plastimar SisGestión 3.0.</div>
+        </div>
+      </div>
+
+      <div style="background: #f1f5f9; padding: 1rem 1.25rem; border-radius: 8px; font-size: 0.88rem; line-height: 1.5; color: #334155;">
+        <strong>Responsabilidad compartida:</strong> la venta queda visible en la Matriz, pero cada área debe verificar y ejecutar su etapa. El tratamiento automático de Taller aplica a productos transitorios; Despacho programa y prepara la guía, y Facturación emite, envía y consulta el estado SII.
+      </div>
+    </div>
+
+    <!-- HOJA 2: MÓDULOS AISLADOS Y TABLERO DE CONTROL -->
+    <div class="dossier-page page-break-exact">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">Supervisión Modular y Tablero de Control Gerencial</h2>
+        <span class="badge-role" style="background:#ecfdf5; color:#065f46; border-color:#a7f3d0;">Gobernanza y KPIs</span>
+      </div>
+
+      <h3 style="font-size: 1.15rem; color: var(--brand-primary); margin-bottom: 0.5rem;">¿Por qué Módulos Aislados con Fronteras Claras?</h3>
+      <p style="font-size: 0.9rem; margin-bottom: 1rem;">
+        El ERP anterior (SISGES) sufría de errores humanos porque cualquiera podía editar precios, descontar stock sin respaldo o borrar registros. En <strong>SisGestión 3.0</strong>, los módulos están <em>aislados en sus permisos pero integrados en sus datos</em>:
+      </p>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.9rem;">
+          <h4 style="color: #0369a1; font-size: 0.95rem; margin-bottom: 0.25rem;">🛡️ Protección del Inventario y Costos</h4>
+          <p style="font-size: 0.85rem; color: #475569;">Ventas no puede inventar stock físico ni alterar el precio de lista. Bodega no puede modificar los precios de venta ni crear clientes. Cada área responde estrictamente por su inventario.</p>
+        </div>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.9rem;">
+          <h4 style="color: #065f46; font-size: 0.95rem; margin-bottom: 0.25rem;">📝 Trazabilidad Total e Inalterable</h4>
+          <p style="font-size: 0.85rem; color: #475569;">Todo evento queda firmado con usuario, fecha, hora y sucursal: quién autorizó el descuento, qué operario cortó la espuma, qué chofer cargó el bulto y quién recibió el pago en caja.</p>
+        </div>
+      </div>
+
+      <h3 style="font-size: 1.15rem; color: var(--brand-primary); margin-bottom: 0.5rem;">Indicadores prioritarios para la supervisión gerencial</h3>
+      <p style="font-size: 0.9rem; margin-bottom: 0.75rem;">
+        Gerencia dispone de un panel ejecutivo diario en la pantalla principal (Matriz de Ventas) para monitorear la salud operacional de Plastimar en 30 segundos:
+      </p>
+
+      <!-- Grid de KPIs Gerenciales -->
+      <div class="kpi-grid-5">
+        <div class="kpi-box" style="border-left-color: #dc2626;">
+          <h4>Entregadas no Pagadas</h4>
+          <div class="val" style="color: #dc2626;">Ver tablero</div>
+          <p>Mercadería entregada al cliente con cobro pendiente de cobranza.</p>
+        </div>
+        <div class="kpi-box" style="border-left-color: #d97706;">
+          <h4>Total por Cobrar</h4>
+          <div class="val" style="color: #d97706;">Ver tablero</div>
+          <p>Cartera total activa en gestión de crédito y cobranza.</p>
+        </div>
+        <div class="kpi-box" style="border-left-color: #0284c7;">
+          <h4>Pendientes de Entrega</h4>
+          <div class="val" style="color: #0284c7;">Ver tablero</div>
+          <p>Ventas cerradas en proceso de fabricación, picking o reparto.</p>
+        </div>
+        <div class="kpi-box" style="border-left-color: #16a34a;">
+          <h4>Ventas del Día</h4>
+          <div class="val" style="color: #16a34a;">En vivo</div>
+          <p>Desglose instantáneo por Sala, Web, Marco y Licitaciones.</p>
+        </div>
+        <div class="kpi-box" style="border-left-color: #065f46;">
+          <h4>Venta Acumulada (YTD)</h4>
+          <div class="val" style="color: #065f46;">Ver tablero</div>
+          <p>Comparativo interanual con respecto al ejercicio anterior.</p>
+        </div>
+      </div>
+
+      <!-- Protocolo de Seguimiento de Marcha Blanca -->
+      <div class="callout callout-info" style="margin-top: 1rem; margin-bottom: 0.5rem; padding: 1rem 1.25rem;">
+        <div class="callout-icon">📊</div>
+        <div class="callout-content">
+          <h4>Protocolo de Supervisión de Marcha Blanca</h4>
+          <p style="font-size: 0.85rem;">
+            Gerencia debe revisar el buzón de <strong>Feedback de Marcha Blanca</strong> con la periodicidad acordada, clasificar severidad y asignar responsable. La revisión permite distinguir fallas del sistema, faltas funcionales y necesidades de capacitación.
+          </p>
+        </div>
+      </div>
+
+      <!-- Firma institucional -->
+      <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: #64748b;">
+        <span>Plastimar SisGestión 3.0 &middot; Dossier para Gerencia</span>
+        <span>Versión MB-1.1 &middot; Listo para validación operativa &middot; 2026-09-04</span>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="../assets/manual-scripts.js"></script>
+</body>
+</html>

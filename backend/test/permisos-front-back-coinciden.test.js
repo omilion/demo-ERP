@@ -12,7 +12,7 @@ const MODULOS = ['ventas', 'licitaciones', 'clientes', 'bodega', 'catalogo', 'de
   'caja', 'cobranza', 'rrhh', 'reportes', 'proveedores', 'descuentos', 'facturacion', 'costeo', 'usuarios', 'config', 'admin', 'ai']
 const FUNCIONES = ['ventas.entregas', 'ventas.taller', 'ventas.crear', 'ventas.anular',
   'taller.avance', 'taller.gestion', 'taller.cerrar', 'taller.materiales',
-  'facturacion.emitir', 'despacho.guias', 'bodega.movimientos']
+  'facturacion.emitir', 'despacho.guias', 'bodega.movimientos', 'caja.pagos_proveedores']
 const NIVELES = ['read', 'write', 'delete']
 
 describe('el catalogo de roles es el mismo en front y back', () => {

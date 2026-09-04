@@ -3,6 +3,8 @@
 // lista unificada. Solo lectura, ordenada por severidad/fecha.
 
 import { semaforoForCrm } from '../../domain/crm/service.js'
+import { canApproveDescuento } from '../ventas/descuentos-permissions.js'
+import { discountRulesEnabled } from '../descuentos/rules-status.js'
 
 const DIA_MS = 24 * 60 * 60 * 1000
 
@@ -11,11 +13,23 @@ function diasHasta(fecha) {
   return Math.round((new Date(fecha).getTime() - Date.now()) / DIA_MS)
 }
 
+function diasDesde(fecha) {
+  if (!fecha) return null
+  return Math.max(0, Math.round((Date.now() - new Date(fecha).getTime()) / DIA_MS))
+}
+
 export default async function notificacionesRoutes(fastify) {
   fastify.get('/', {
     preHandler: [fastify.authenticate],
   }, async (request) => {
     const prisma = fastify.prisma
+    // La campana no debe intentar renderizar miles de avisos históricos. El
+    // límite queda explícito para que los paneles especializados y las pruebas
+    // puedan consultar un conjunto mayor sin depender de un corte oculto.
+    const requestedLimit = Number.parseInt(request.query?.limite, 10)
+    const limite = Number.isInteger(requestedLimit)
+      ? Math.max(1, Math.min(requestedLimit, 5000))
+      : 100
     const ahora = new Date()
     const en7dias = new Date(Date.now() + 7 * DIA_MS)
     const items = []
@@ -171,7 +185,7 @@ export default async function notificacionesRoutes(fastify) {
            AND stock_critico > 0
            AND (stock - stock_reservado - stock_danado) <= stock_critico
          ORDER BY (stock - stock_reservado - stock_danado) ASC
-         LIMIT 50
+         LIMIT ${limite}
       `
       for (const p of criticos) {
         const disponible = Number(p.disponible)
@@ -405,9 +419,116 @@ export default async function notificacionesRoutes(fastify) {
       }
     }
 
-    const sevRank = { alta: 0, media: 1, baja: 2 }
-    items.sort((a, b) => (sevRank[a.severidad] - sevRank[b.severidad]) || (new Date(a.fecha) - new Date(b.fecha)))
+    // Descuentos esperando aprobacion.
+    //
+    // El modulo de Descuentos tiene su propia bandeja, pero quien aprueba no
+    // vive en esa pantalla: las solicitudes quedaban ahi sin que nadie se
+    // enterara, y con ellas la venta detenida. Le llega solo a quien puede
+    // resolverlas -mismo guard que protege el boton de aprobar-, para no
+    // avisarle a alguien de algo que no puede destrabar.
+    if (discountRulesEnabled() && canApproveDescuento(request.user)) {
+      const solicitudes = await prisma.descuentoSolicitud.findMany({
+        // El motor de reglas escribe 'PENDIENTE' en mayusculas mientras el
+        // schema declara 'pendiente' como default: se comparan sin distinguir
+        // caja para que ninguna solicitud quede invisible por eso.
+        where: { estado: { equals: 'PENDIENTE', mode: 'insensitive' } },
+        select: {
+          id: true,
+          createdAt: true,
+          solicitanteNombre: true,
+          origenTipo: true,
+          descuentoPctSolicitado: true,
+          descuentoMontoSolicitado: true,
+          regla: { select: { codigo: true, nombre: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+        take: 50,
+      })
+      for (const solicitud of solicitudes) {
+        const dias = diasDesde(solicitud.createdAt)
+        const pct = solicitud.descuentoPctSolicitado
+        const monto = solicitud.descuentoMontoSolicitado
+        items.push({
+          tipo: 'descuento_aprobacion',
+          // Es plata detenida esperando una firma: pasado el primer dia sube.
+          severidad: dias >= 1 ? 'alta' : 'media',
+          titulo: `Descuento por aprobar: ${solicitud.regla?.nombre || solicitud.regla?.codigo || '#' + solicitud.id}`,
+          detalle: [
+            pct != null ? `${Number(pct).toLocaleString('es-CL')}%` : null,
+            monto != null ? `$${Math.round(monto).toLocaleString('es-CL')}` : null,
+            solicitud.origenTipo,
+            solicitud.solicitanteNombre ? `solicita ${solicitud.solicitanteNombre}` : null,
+            dias === 0 ? 'ingresada hoy' : `${dias} día(s) esperando`,
+          ].filter(Boolean).join(' · '),
+          fecha: solicitud.createdAt,
+          link: '/descuentos',
+        })
+      }
+    }
 
-    return { total: items.length, items: items.slice(0, 100) }
+    const finalItems = seleccionarNotificacionesConCupo(items, limite)
+
+    return {
+      total: items.length,
+      visibles: finalItems.length,
+      truncadas: items.length > limite,
+      items: finalItems,
+    }
   })
+}
+
+export function seleccionarNotificacionesConCupo(items, limite = 100) {
+  const sevRank = { alta: 0, media: 1, baja: 2 }
+  const esAvisoProduccion = item => ['odt_lista_despacho', 'odt_parcial_picking'].includes(item.tipo)
+
+  const altas = []
+  const produccion = []
+  const resto = []
+
+  for (const item of items) {
+    if (item.severidad === 'alta') {
+      altas.push(item)
+    } else if (esAvisoProduccion(item)) {
+      produccion.push(item)
+    } else {
+      resto.push(item)
+    }
+  }
+
+  // Orden de cada grupo:
+  // Altas: orden cronológico (las más urgentes/antiguas primero)
+  altas.sort((a, b) => new Date(a.fecha) - new Date(b.fecha))
+  // Producción: las más recientes primero (lo recién terminado por taller para bodega)
+  produccion.sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+  // Resto: severidad y fecha
+  resto.sort((a, b) => {
+    const prioridad = (sevRank[a.severidad] ?? 2) - (sevRank[b.severidad] ?? 2)
+    if (prioridad) return prioridad
+    return new Date(a.fecha) - new Date(b.fecha)
+  })
+
+  if (items.length <= limite) {
+    return [...altas, ...produccion, ...resto]
+  }
+
+  // Reserva de cupo para producción reciente: hasta el 25% del límite (mínimo 1 si hay avisos)
+  // Garantiza que bodega no quede a ciegas si hay más de 100 alertas altas de inventario/facturas.
+  const cupoProduccion = produccion.length > 0
+    ? Math.min(produccion.length, Math.max(1, Math.floor(limite * 0.25)))
+    : 0
+
+  const cupoAltas = Math.min(altas.length, limite - cupoProduccion)
+  const altasSeleccionadas = altas.slice(0, cupoAltas)
+  const produccionSeleccionada = produccion.slice(0, cupoProduccion)
+
+  const espacioRestante = limite - altasSeleccionadas.length - produccionSeleccionada.length
+  const sobrante = [
+    ...altas.slice(cupoAltas),
+    ...produccion.slice(cupoProduccion),
+    ...resto,
+  ]
+  const adicionales = sobrante.slice(0, espacioRestante)
+
+  // Conserva orden lógico: críticas primero, producción operativa reciente, luego el resto
+  return [...altasSeleccionadas, ...produccionSeleccionada, ...adicionales]
 }

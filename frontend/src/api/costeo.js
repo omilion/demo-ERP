@@ -111,3 +111,26 @@ export const useCoberturaRecetas = () =>
     queryKey: ['costeo', 'cobertura'],
     queryFn: () => api.get('/costeo/cobertura').then((r) => r.data),
   });
+
+// Catalogo de procesos servido por el backend. El nombre del proceso cruza la
+// tarifa con la receta: si cada pantalla ofrece su propia lista, un nombre que
+// no coincide deja la mano de obra en cero sin avisar.
+export const useProcesosCosteo = () =>
+  useQuery({
+    queryKey: ['costeo-procesos'],
+    queryFn: () => api.get('/costeo/procesos').then((r) => r.data),
+    staleTime: 5 * 60_000,
+    placeholderData: [],
+  });
+
+// Desglose en vivo calculado por el servidor, con el mismo motor y los mismos
+// precios que se aplican al guardar. El editor ya no calcula por su cuenta: eso
+// hacia que el preview y el valor aplicado pudieran diferir.
+export const useCosteoBorrador = (borrador, enabled = true) =>
+  useQuery({
+    queryKey: ['costeo-borrador', borrador],
+    queryFn: () => api.post('/costeo/calcular', borrador).then((r) => r.data),
+    enabled: Boolean(enabled && borrador),
+    placeholderData: (previo) => previo,
+    staleTime: 0,
+  });

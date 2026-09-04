@@ -13,8 +13,10 @@ import {
   buildPackingUpdatePlan,
   resolveDespachoOrderBy,
   resolveDispatchTraceability,
+  validateTrackingTransition,
   validateDispatchFilterCoherence,
 } from '../src/routes/despachos/index.js'
+import { deriveEstadoLogistico, resumenPreparacion } from '../src/routes/despachos/estado-logistico.js'
 
 function prismaMock({
   orden = { id: 10, nInterno: 9001, clienteId: 1 },
@@ -393,8 +395,8 @@ describe('dispatch list filters', () => {
 describe('packing and dispatch timing helpers', () => {
   it('builds a validated packing update plan for order items', () => {
     const orderItems = [
-      { id: 1, cantidad: 3, nEntregados: 0 },
-      { id: 2, cantidad: 2, nEntregados: 1 },
+      { id: 1, cantidad: 3, nEntregados: 0, pickingConfirmado: true },
+      { id: 2, cantidad: 2, nEntregados: 1, pickingConfirmado: true },
     ]
 
     expect(buildPackingUpdatePlan(orderItems, [
@@ -418,6 +420,16 @@ describe('packing and dispatch timing helpers', () => {
       { itemId: 1, nEntregados: 2 },
     ])).toEqual({
       error: 'itemId duplicado: 1',
+    })
+
+    const sinConfirmar = [{ id: 1, cantidad: 3, nEntregados: 0, pickingConfirmado: false }]
+    expect(buildPackingUpdatePlan(sinConfirmar, [{ itemId: 1, nEntregados: 1 }])).toEqual({
+      error: 'Item 1 no tiene picking confirmado',
+    })
+    // Corregir hacia abajo (o dejar igual) no requiere picking confirmado.
+    const parcialSinConfirmar = [{ id: 1, cantidad: 3, nEntregados: 2, pickingConfirmado: false }]
+    expect(buildPackingUpdatePlan(parcialSinConfirmar, [{ itemId: 1, nEntregados: 1 }])).toEqual({
+      updates: [{ id: 1, nEntregados: 1, cantidadAnterior: 2, delta: -1 }],
     })
   })
 
@@ -492,6 +504,46 @@ describe('packing and dispatch timing helpers', () => {
   })
 })
 
+describe('estado logístico derivado', () => {
+  it('prioriza evidencia de tracking, SII, packing y despacho en ese orden', () => {
+    expect(deriveEstadoLogistico({ items: [{ cantidad: 2, nEntregados: 0 }] })).toMatchObject({ codigo: 'LISTA_PICKING' })
+    expect(deriveEstadoLogistico({ items: [{ cantidad: 2, nEntregados: 0 }], despachos: [{ id: 1 }] })).toMatchObject({ codigo: 'PICKING' })
+    expect(deriveEstadoLogistico({ items: [{ cantidad: 2, nEntregados: 1 }], despachos: [{ id: 1 }] })).toMatchObject({ codigo: 'PACKING' })
+    expect(deriveEstadoLogistico({ items: [{ cantidad: 2, nEntregados: 2 }], despachos: [{ id: 1 }] })).toMatchObject({ codigo: 'LISTA_DESPACHO' })
+    expect(deriveEstadoLogistico({ items: [{ cantidad: 2, nEntregados: 2 }], guias: [{ id: 2, dteEstado: 'emitido' }] })).toMatchObject({ codigo: 'GUIA_SII_EMITIDA' })
+    expect(deriveEstadoLogistico({ tracking: { estado: 'Reparto' } })).toMatchObject({ codigo: 'REPARTO' })
+  })
+
+  it('separa inventario listo de fabricación pendiente en una venta mixta', () => {
+    const items = [
+      { id: 1, productoId: 10, cantidad: 3, nEntregados: 0, estadoInventario: 'inventariado' },
+      { id: 2, productoId: 20, cantidad: 2, nEntregados: 0, estadoInventario: 'transitorio' },
+    ]
+    const preparacion = resumenPreparacion(items, [{
+      id: 9,
+      items: [{ productoId: 20, cantidad: 2, talleres: [{ estado: 'en_proceso' }] }],
+    }])
+    expect(preparacion).toMatchObject({
+      disponiblePicking: 3,
+      disponibleInventario: 3,
+      disponibleTaller: 0,
+      pendienteTaller: 2,
+      esMixta: true,
+    })
+    expect(deriveEstadoLogistico({ items, preparacion })).toMatchObject({ codigo: 'PICKING_PARCIAL' })
+  })
+
+  it('habilita para picking una línea transitoria sólo al quedar lista en todos sus talleres', () => {
+    const items = [{ id: 2, productoId: 20, cantidad: 2, nEntregados: 0, estadoInventario: 'transitorio' }]
+    const preparacion = resumenPreparacion(items, [{
+      id: 9,
+      items: [{ productoId: 20, cantidad: 2, talleres: [{ estado: 'listo' }, { estado: 'listo' }] }],
+    }])
+    expect(preparacion).toMatchObject({ disponiblePicking: 2, disponibleTaller: 2, pendienteTaller: 0 })
+    expect(deriveEstadoLogistico({ items, preparacion })).toMatchObject({ codigo: 'LISTA_PICKING' })
+  })
+})
+
 describe('dispatch tracking helpers', () => {
   it('normalizes known logistics tracking states', () => {
     expect(normalizeTrackingEstado(' en ruta ')).toBe('En ruta')
@@ -531,18 +583,22 @@ describe('dispatch tracking helpers', () => {
     expect(buildTrackingEventData({ estado: 'Preparado', fechaEvento: 'bad-date' })).toEqual({
       error: 'fechaEvento invalida',
     })
-    expect(buildTrackingEventData({ estado: 'Incidencia', observacion: 'Sin responsable' })).toMatchObject({
-      data: {
-        estado: 'Incidencia',
-        observacion: 'Sin responsable',
-        tipoIncidente: null,
-        accionTomada: null,
-        responsable: null,
-        fechaCompromiso: null,
-      },
+    expect(buildTrackingEventData({ estado: 'Incidencia', observacion: 'Sin responsable' })).toEqual({
+      error: 'Una incidencia requiere tipo, accion tomada, responsable y fecha compromiso',
     })
     expect(buildTrackingEventData({ estado: 'Preparado', tipoIncidente: 'Retraso' })).toEqual({
       error: 'campos de incidencia solo aplican a estado Incidencia',
     })
+  })
+
+  it('requires Preparado as the first event and respects the operational chain', () => {
+    expect(validateTrackingTransition(undefined, 'Entregado')).toEqual({
+      error: 'El primer estado del despacho debe ser Preparado',
+    })
+    expect(validateTrackingTransition(undefined, 'Preparado')).toBeNull()
+    expect(validateTrackingTransition('Preparado', 'Entregado')).toEqual({
+      error: 'Transición inválida: Preparado → Entregado',
+    })
+    expect(validateTrackingTransition('Preparado', 'Patio')).toBeNull()
   })
 })

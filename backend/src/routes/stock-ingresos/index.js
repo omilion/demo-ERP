@@ -109,6 +109,16 @@ async function buildStockIngresoWhere(prisma, query, user) {
         { documento: { contains: text, mode: 'insensitive' } },
         { bodega: { contains: text, mode: 'insensitive' } },
         { obs: { contains: text, mode: 'insensitive' } },
+        {
+          detallesFactura: {
+            some: {
+              OR: [
+                { codigoInterno: { contains: text, mode: 'insensitive' } },
+                { nombre: { contains: text, mode: 'insensitive' } },
+              ],
+            },
+          },
+        },
         ...(isNum ? [{ codigoProveedor: Number.parseInt(text, 10) }] : []),
         ...providerClauses,
       ],
@@ -195,7 +205,7 @@ export default async function stockIngresosRoutes(fastify) {
     const LIMIT = 100
     const skip = (Math.max(1, parseInt(page, 10)) - 1) * LIMIT
     const where = await buildStockIngresoWhere(fastify.prisma, request.query, request.user)
-    const [items, total] = await Promise.all([
+    const [items, total, monto, pendientesStock] = await Promise.all([
       fastify.prisma.pagoProveedor.findMany({
         where,
         orderBy: [{ fechaDoc: 'desc' }, { id: 'desc' }],
@@ -204,7 +214,17 @@ export default async function stockIngresosRoutes(fastify) {
         include: { detallesFactura: true },
       }),
       fastify.prisma.pagoProveedor.count({ where }),
+      fastify.prisma.pagoProveedor.aggregate({ where, _sum: { total: true } }),
+      fastify.prisma.pagoProveedor.count({ where: { AND: [where, { stockAplicadoAt: null }] } }),
     ])
-    return { items: await enrichProviders(fastify.prisma, items), total, limit: LIMIT }
+    return {
+      items: await enrichProviders(fastify.prisma, items),
+      total,
+      limit: LIMIT,
+      stats: {
+        montoTotal: monto._sum.total || 0,
+        pendientesStock,
+      },
+    }
   })
 }

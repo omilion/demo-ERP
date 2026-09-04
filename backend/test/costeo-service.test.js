@@ -12,6 +12,7 @@ import {
   aplicarCosteoProducto,
   getSnapshots,
   recalcularMasivo,
+  getCosteoBlockers,
 } from '../src/routes/costeo/service.js';
 
 describe('Costeo Service Unit & Logic Tests', () => {
@@ -120,14 +121,87 @@ describe('Costeo Service Unit & Logic Tests', () => {
     expect(res.costoAjustado).toBe(18540);
     expect(res.costoTransferenciaCalculado).toBe(25029);
     expect(res.diferenciaMonto).toBe(5029);
+    expect(res.alertas).toEqual({ materialesSinPrecio: [], procesosSinTarifa: [] });
   });
 
-  it('6. recalcularMasivo lanza error si se exceden 500 productos', async () => {
+  it('6. identifica líneas valorizadas en cero antes de aplicar un precio', () => {
+    expect(getCosteoBlockers({
+      materiales: [
+        { nombre: 'Espuma sin precio', cantidad: 2, precioUnitario: 0 },
+        { nombre: 'Muestra sin consumo', cantidad: 0, precioUnitario: 0 },
+      ],
+      procesos: [
+        { proceso: 'corte', horas: 1, valorHora: 0 },
+        { proceso: 'enfundado', horas: 0, valorHora: 0 },
+      ],
+    })).toEqual({
+      materialesSinPrecio: ['Espuma sin precio'],
+      procesosSinTarifa: ['corte'],
+    });
+  });
+
+  it('7. recalcularMasivo lanza error si se exceden 500 productos', async () => {
     const mockPrisma = {};
     const manyIds = Array.from({ length: 501 }, (_, i) => i + 1);
 
     await expect(
       recalcularMasivo(mockPrisma, { productoIds: manyIds })
     ).rejects.toThrow('Maximo 500 productos por llamada de recálculo masivo');
+  });
+
+  it('7. recalcularMasivo con aplicar escribe todo el lote en UNA transaccion', async () => {
+    // Antes era una transaccion por producto: una caida a la mitad dejaba medio
+    // catalogo con el precio nuevo y medio con el viejo.
+    const receta = {
+      activo: true,
+      accesoriosMonto: 0,
+      ajusteGlobalPct: 0,
+      margenTransferencia: 0,
+      materialesMonto: 1000,
+      materiales: [],
+      procesos: [],
+    };
+    let transacciones = 0;
+    const snapshots = [];
+    const updates = [];
+
+    const mockPrisma = {
+      producto: {
+        findMany: vi.fn().mockResolvedValue([{ id: 1 }, { id: 2 }]),
+        findUnique: vi.fn().mockImplementation(({ where }) => Promise.resolve({
+          id: where.id, codigoInterno: `MK-${where.id}`, nombre: 'x', precioLista: 500, receta,
+        })),
+      },
+      tarifaProceso: { findMany: vi.fn().mockResolvedValue([]) },
+      $transaction: vi.fn().mockImplementation(async (fn) => {
+        transacciones += 1;
+        return fn({
+          costeoSnapshot: { create: vi.fn().mockImplementation(({ data }) => { snapshots.push(data); return Promise.resolve({ id: snapshots.length, ...data }); }) },
+          producto: { update: vi.fn().mockImplementation(({ where, data }) => { updates.push({ ...where, ...data }); return Promise.resolve({ id: where.id, ...data }); }) },
+        });
+      }),
+    };
+
+    const res = await recalcularMasivo(mockPrisma, { aplicar: true }, { id: 7, nombre: 'Tester' });
+
+    expect(transacciones).toBe(1);
+    expect(res.aplicado).toBe(true);
+    expect(res.totalProcesados).toBe(2);
+    expect(snapshots).toHaveLength(2);
+    expect(updates).toHaveLength(2);
+    // Las tarifas se leen una sola vez para todo el lote, no por producto.
+    expect(mockPrisma.tarifaProceso.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('8. createTarifa rechaza un proceso fuera del catalogo', async () => {
+    const mockPrisma = {
+      taller: { findUnique: vi.fn().mockResolvedValue({ id: 1, nombre: 'Espumas' }) },
+      tarifaProceso: { create: vi.fn() },
+    };
+
+    await expect(
+      createTarifa(mockPrisma, { tallerId: 1, proceso: 'pegado', valorHora: 4200 })
+    ).rejects.toThrow('Proceso invalido');
+    expect(mockPrisma.tarifaProceso.create).not.toHaveBeenCalled();
   });
 });

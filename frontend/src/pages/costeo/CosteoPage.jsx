@@ -162,45 +162,48 @@ function RecetasTab() {
     },
   ];
 
+  const toolbarExtra = (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <SearchBar
+        value={search}
+        onChange={(value) => {
+          setSearch(value);
+          setPage(1);
+        }}
+        placeholder="Buscar producto MK..."
+        style={{ height: 28, fontSize: 12 }}
+      />
+
+      <select
+        value={tallerIdFilter}
+        onChange={(e) => {
+          setTallerIdFilter(e.target.value);
+          setPage(1);
+        }}
+        style={{ height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff' }}
+      >
+        <option value="">Todos los talleres</option>
+        {talleres.map((t) => <option key={t.id} value={String(t.id)}>{t.label || t.nombre}</option>)}
+      </select>
+
+      <select
+        value={conRecetaFilter}
+        onChange={(e) => {
+          setConRecetaFilter(e.target.value);
+          setPage(1);
+        }}
+        style={{ height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff' }}
+      >
+        <option value="">Todos los estados</option>
+        <option value="true">Con receta</option>
+        <option value="false">Sin receta</option>
+      </select>
+    </div>
+  );
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <SearchBar
-            value={search}
-            onChange={(value) => {
-              setSearch(value);
-              setPage(1);
-            }}
-            placeholder="Buscar producto MK..."
-          />
-
-          <select
-            value={tallerIdFilter}
-            onChange={(e) => {
-              setTallerIdFilter(e.target.value);
-              setPage(1);
-            }}
-            style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}
-          >
-            <option value="">Todos los talleres</option>
-            {talleres.map((t) => <option key={t.id} value={String(t.id)}>{t.label || t.nombre}</option>)}
-          </select>
-
-          <select
-            value={conRecetaFilter}
-            onChange={(e) => {
-              setConRecetaFilter(e.target.value);
-              setPage(1);
-            }}
-            style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}
-          >
-            <option value="">Todos los estados</option>
-            <option value="true">Con receta</option>
-            <option value="false">Sin receta</option>
-          </select>
-        </div>
-
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         <Btn variant="secondary" onClick={handleRecalcularMasivo}>
           Simular Recálculo Masivo
         </Btn>
@@ -257,7 +260,7 @@ function RecetasTab() {
         </div>
       )}
 
-      <Table columns={columns} rows={isLoading ? [] : productos} emptyMessage={isLoading ? 'Cargando recetas…' : 'Sin productos'} />
+      <Table columns={columns} rows={isLoading ? [] : productos} emptyMessage={isLoading ? 'Cargando recetas…' : 'Sin productos'} toolbarExtra={toolbarExtra} />
       <Pager
         page={page}
         pages={pages}
@@ -386,24 +389,30 @@ function MateriasPrimasTab() {
           <div><div style={{ fontSize: 20, fontWeight: 700, color: espumasSinFichaTecnica ? '#b45309' : '#15803d' }}>{espumasSinFichaTecnica}</div><div style={{ fontSize: 11, color: '#075985' }}>fichas por completar</div></div>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        <SearchBar placeholder="Buscar por código, nombre o detalle" value={busqueda} onChange={setBusqueda} style={{ width: 300 }} />
-        <select
-          value={tallerFiltro}
-          onChange={(e) => setTallerFiltro(e.target.value)}
-          style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', background: '#fff' }}
-        >
-          <option value="">Todos los talleres</option>
-          {talleres.map((t) => <option key={t.id} value={String(t.id)}>{t.label || t.nombre}</option>)}
-          <option value="sin">Sin taller asignado</option>
-        </select>
-        <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{items.length} de {todos.length}</span>
-        <div style={{ marginLeft: 'auto' }}>
-          <Btn icon="plusCircle" onClick={() => setCreando(true)}>Nueva materia prima</Btn>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <Btn icon="plusCircle" onClick={() => setCreando(true)}>Nueva materia prima</Btn>
       </div>
 
-      <Table columns={columns} rows={isLoading ? [] : items} emptyMessage={isLoading ? 'Cargando materias primas…' : 'Sin materias primas'} />
+      <Table
+        columns={columns}
+        rows={isLoading ? [] : items}
+        emptyMessage={isLoading ? 'Cargando materias primas…' : 'Sin materias primas'}
+        toolbarExtra={
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <SearchBar placeholder="Buscar por código, nombre o detalle" value={busqueda} onChange={setBusqueda} style={{ width: 260, height: 28, fontSize: 12 }} />
+            <select
+              value={tallerFiltro}
+              onChange={(e) => setTallerFiltro(e.target.value)}
+              style={{ height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff' }}
+            >
+              <option value="">Todos los talleres</option>
+              {talleres.map((t) => <option key={t.id} value={String(t.id)}>{t.label || t.nombre}</option>)}
+              <option value="sin">Sin taller asignado</option>
+            </select>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{items.length} de {todos.length}</span>
+          </div>
+        }
+      />
 
       {creando && <NuevaMateriaPrimaModal talleres={talleres} onClose={() => setCreando(false)} />}
       {editingMaterial && <EditarMateriaPrimaModal material={editingMaterial} talleres={talleres} onClose={() => setEditingMaterial(null)} />}

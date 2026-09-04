@@ -16,6 +16,12 @@ function addDelta(map, productId, delta) {
   map.set(productId, (map.get(productId) || 0) + delta)
 }
 
+async function lockProductoStock(tx, productoId) {
+  if (typeof tx.$executeRaw === 'function') {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`stock-producto:${productoId}`})::bigint)`
+  }
+}
+
 export function buildStockDeltasFromItems(items = [], multiplier = 1) {
   const deltas = new Map()
   for (const item of items) {
@@ -41,7 +47,10 @@ export async function applyVentaStockDeltas(tx, { deltas, ordenId, nInterno, tip
   const entries = [...(deltas || new Map()).entries()].filter(([, delta]) => Number(delta) !== 0)
   if (!entries.length) return { ok: true }
 
-  const productIds = entries.map(([productId]) => productId)
+  const productIds = entries.map(([productId]) => productId).sort((a, b) => a - b)
+  // Misma llave que el movimiento manual de Bodega: evita que una venta lea
+  // stock anterior y lo pise mientras se registra un ajuste físico.
+  for (const productId of productIds) await lockProductoStock(tx, productId)
   const productos = await tx.producto.findMany({
     where: { id: { in: productIds } },
     select: { id: true, stock: true, stockReservado: true, stockDanado: true, estadoInventario: true },
@@ -94,7 +103,9 @@ export async function applyVentaStockDeltas(tx, { deltas, ordenId, nInterno, tip
       data: {
         productoId: productId,
         tipo: delta > 0 ? 'egreso' : 'ingreso',
-        cantidad: Math.abs(delta),
+        // El kardex conserva la cantidad con signo: egreso negativo e ingreso
+        // positivo. Las ventas eran el único flujo que invertía esa convención.
+        cantidad: -delta,
         stockAnterior: Number(producto.stock || 0),
         stockPosterior: Number(producto.stock || 0) - delta,
         reservadoFinal: Number(producto.stockReservado || 0),

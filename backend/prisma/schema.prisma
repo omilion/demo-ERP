@@ -24,14 +24,17 @@ model User {
   tiposVentaPermitidos       Json?            @map("tipos_venta_permitidos")
   sucursalId                 Int?             @map("sucursal_id")
   activo                     Boolean          @default(true)
+  authVersion                Int              @default(0) @map("auth_version")
   createdAt                  DateTime         @default(now()) @map("created_at")
   sessions                   Session[]
   accesos                    AccesoLog[]
   comisionReglas             ComisionRegla[]
   odtResponsabilidades       OdtItemTaller[]  @relation("OdtResponsable")
+  talleresQueJefatura        Taller[]         @relation("TallerJefe")
   trabajador                 Trabajador?      @relation("TrabajadorUsuario")
   reglasDescuentoCreadas     DescuentoRegla[] @relation("DescuentoReglaCreadaPor")
   reglasDescuentoModificadas DescuentoRegla[] @relation("DescuentoReglaModificadaPor")
+  feedbackMarchaBlanca       PilotFeedback[]
 
   @@index([codigoVendedor])
   @@map("users")
@@ -117,25 +120,105 @@ model AuditLog {
   @@schema("auth")
 }
 
+enum PilotFeedbackCategory {
+  falla
+  falta
+  mejora
+
+  @@schema("auth")
+}
+
+enum PilotFeedbackSeverity {
+  bloqueante
+  alta
+  media
+  baja
+
+  @@schema("auth")
+}
+
+enum PilotFeedbackReproducibility {
+  siempre
+  a_veces
+  una_vez
+
+  @@schema("auth")
+}
+
+// Evidencia de marcha blanca. Se mantiene en auth porque pertenece al usuario,
+// pero no se mezcla con la auditoría inmutable de transacciones del ERP.
+model PilotFeedback {
+  id                  String    @id @default(uuid()) @db.Uuid
+  userId              Int?      @map("user_id")
+  reporterName        String?   @map("reporter_name")
+  reporterEmail       String?   @map("reporter_email")
+  reporterRole        String?   @map("reporter_role")
+  module              String
+  submodule           String?
+  route               String
+  entityType          String?   @map("entity_type")
+  entityId            String?   @map("entity_id")
+  relatedEntities     Json?     @map("related_entities")
+  workflowState       String?   @map("workflow_state")
+  flowOrigin          String?   @map("flow_origin")
+  externalApi         Boolean   @default(false) @map("external_api")
+  category            PilotFeedbackCategory
+  severity            PilotFeedbackSeverity?
+  esReproducible      PilotFeedbackReproducibility? @map("es_reproducible")
+  queFalta            String?   @map("que_falta")
+  paraQueSeNecesita   String?   @map("para_que_se_necesita")
+  bloqueaFlujo        Boolean?  @map("bloquea_flujo")
+  queExisteHoy        String?   @map("que_existe_hoy")
+  queSePropone        String?   @map("que_se_propone")
+  impactoEsperado     String?   @map("impacto_esperado")
+  priority            String?   @default("normal")
+  status              String    @default("nuevo")
+  note                String
+  comportamientoEsperado String? @map("comportamiento_esperado")
+  browser             String?
+  viewport            String?
+  appVersion          String?   @map("app_version")
+  annotation          Json?
+  screenshotPath      String?   @map("screenshot_path")
+  screenshotMime      String?   @map("screenshot_mime")
+  screenshotSha256    String?   @map("screenshot_sha256")
+  redactionVersion    String?   @map("redaction_version")
+  sanitizedError      Json?     @map("sanitized_error")
+  assigneeId          Int?      @map("assignee_id")
+  resolutionReference String?   @map("resolution_reference")
+  resolutionNote      String?   @map("resolution_note")
+  retentionUntil      DateTime? @map("retention_until")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  reporter User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([module, createdAt])
+  @@index([userId, createdAt])
+  @@map("pilot_feedback")
+  @@schema("auth")
+}
+
 // ── CONFIG ────────────────────────────────────────────────────────────
 
 model EmpresaConfig {
-  id                Int      @id @default(autoincrement())
-  nombre            String
-  rut               String
-  razonSocial       String?  @map("razon_social")
-  giro              String?
-  email             String?
-  telefono          String?
-  direccion         String?
-  region            String?
-  comuna            String?
-  codigoEmpresa     Int?     @map("codigo_empresa")
-  logoUrl           String?  @map("logo_url")
-  textoPie          String?  @map("texto_pie")
-  metaMensualVentas Float    @default(0) @map("meta_mensual_ventas")
-  escaneoCodigoBarrasObligatorio Boolean @default(false) @map("escaneo_codigo_barras_obligatorio")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id                             Int      @id @default(autoincrement())
+  nombre                         String
+  rut                            String
+  razonSocial                    String?  @map("razon_social")
+  giro                           String?
+  email                          String?
+  telefono                       String?
+  direccion                      String?
+  region                         String?
+  comuna                         String?
+  codigoEmpresa                  Int?     @map("codigo_empresa")
+  logoUrl                        String?  @map("logo_url")
+  textoPie                       String?  @map("texto_pie")
+  metaMensualVentas              Float    @default(0) @map("meta_mensual_ventas")
+  escaneoCodigoBarrasObligatorio Boolean  @default(false) @map("escaneo_codigo_barras_obligatorio")
+  updatedAt                      DateTime @updatedAt @map("updated_at")
 
   @@map("empresa")
   @@schema("config")
@@ -389,6 +472,11 @@ model PagoProveedor {
   fechaVencimiento        DateTime?                 @map("fecha_vencimiento")
   estado                  String                    @default("Pendiente")
   total                   Float                     @default(0)
+  neto                    Decimal?                  @default(0) @db.Decimal(12, 2)
+  iva                     Decimal?                  @default(0) @db.Decimal(12, 2)
+  exento                  Decimal?                  @default(0) @db.Decimal(12, 2)
+  montoPagado             Decimal                   @default(0) @map("monto_pagado") @db.Decimal(12, 2)
+  saldo                   Decimal                   @default(0) @db.Decimal(12, 2)
   usuario                 String?
   bodega                  String?
   nc                      Boolean                   @default(false)
@@ -406,14 +494,49 @@ model PagoProveedor {
   detallesFactura         DetalleFacturaProveedor[]
   telaMovimientos         TelaMovimiento[]
   bodegaTallerMovimientos BodegaTallerMovimiento[]
+  abonos                  AbonoPagoProveedor[]
+  documentoRecibido       FactDocumentoRecibido?
 
   @@index([proveedorId])
   @@index([codigoProveedor])
   @@index([nDoc])
   @@index([eliminado])
+  @@index([fechaVencimiento])
+  @@index([estado])
+  @@index([sucursalId, eliminado, estado])
+  @@index([fechaDoc])
   @@map("pagos_proveedores")
   @@schema("catalogo")
 }
+
+model AbonoPagoProveedor {
+  id               Int             @id @default(autoincrement())
+  pagoId           Int             @map("pago_id")
+  monto            Decimal         @db.Decimal(12, 2)
+  fechaPago        DateTime        @default(now()) @map("fecha_pago")
+  medioPago        String          @map("medio_pago")
+  origenFondos     String          @map("origen_fondos")
+  bancoOrigen      String?         @map("banco_origen")
+  numeroOperacion  String?         @map("numero_operacion")
+  movimientoCajaId Int?            @unique @map("movimiento_caja_id")
+  usuario          String?
+  comprobanteUrl   String?         @map("comprobante_url")
+  obs              String?
+  anulado          Boolean         @default(false)
+  motivoAnulacion  String?         @map("motivo_anulacion")
+  anuladoAt        DateTime?       @map("anulado_at")
+  anuladoPor       String?         @map("anulado_por")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  pago             PagoProveedor   @relation(fields: [pagoId], references: [id], onDelete: Cascade)
+  movimientoCaja   MovimientoCaja? @relation(fields: [movimientoCajaId], references: [id], onDelete: SetNull)
+
+  @@index([pagoId])
+  @@index([anulado])
+  @@index([fechaPago])
+  @@map("abonos_pagos_proveedores")
+  @@schema("catalogo")
+}
+
 
 model PrecioHistorial {
   id             Int      @id @default(autoincrement())
@@ -497,54 +620,54 @@ model RelacionProducto {
 // ── VENTAS ───────────────────────────────────────────────────────────
 
 model Orden {
-  id                       Int                       @id @default(autoincrement())
-  nInterno                 Int?                      @unique @map("n_interno")
+  id                       Int                         @id @default(autoincrement())
+  nInterno                 Int?                        @unique @map("n_interno")
   tipo                     String
-  estado                   String                    @default("Activa")
-  estadoPago               String                    @default("No pagada") @map("estado_pago")
-  estadoEntrega            String                    @default("Pendiente entrega") @map("estado_entrega")
-  fechaEstadoEntrega       DateTime?                 @map("fecha_estado_entrega")
-  estadoFlujoFormal        String                    @default("CREADA") @map("estado_flujo_formal")
-  fechaEstadoFlujo         DateTime?                 @map("fecha_estado_flujo")
-  clienteId                Int?                      @map("cliente_id")
-  clienteSucursalId        Int?                      @map("cliente_sucursal_id")
-  rutCliente               String?                   @map("rut_cliente")
-  emailCliente             String?                   @map("email_cliente")
-  userId                   Int                       @map("user_id")
-  sucursalId               Int?                      @map("sucursal_id")
-  descuentoPct             Float                     @default(0) @map("descuento_pct")
-  descuentoSolicitudId     Int?                      @unique @map("descuento_solicitud_id")
-  descuentoMonto           Float?                    @map("descuento_monto")
-  descuentoSnapshot        Json?                     @map("descuento_snapshot")
-  abono                    Float                     @default(0)
+  estado                   String                      @default("Activa")
+  estadoPago               String                      @default("No pagada") @map("estado_pago")
+  estadoEntrega            String                      @default("Pendiente entrega") @map("estado_entrega")
+  fechaEstadoEntrega       DateTime?                   @map("fecha_estado_entrega")
+  estadoFlujoFormal        String                      @default("CREADA") @map("estado_flujo_formal")
+  fechaEstadoFlujo         DateTime?                   @map("fecha_estado_flujo")
+  clienteId                Int?                        @map("cliente_id")
+  clienteSucursalId        Int?                        @map("cliente_sucursal_id")
+  rutCliente               String?                     @map("rut_cliente")
+  emailCliente             String?                     @map("email_cliente")
+  userId                   Int                         @map("user_id")
+  sucursalId               Int?                        @map("sucursal_id")
+  descuentoPct             Float                       @default(0) @map("descuento_pct")
+  descuentoSolicitudId     Int?                        @unique @map("descuento_solicitud_id")
+  descuentoMonto           Float?                      @map("descuento_monto")
+  descuentoSnapshot        Json?                       @map("descuento_snapshot")
+  abono                    Float                       @default(0)
   facturado                Float?
   guias                    Int?
   licitacion               String?
   observaciones            String?
-  creadorNombre            String?                   @map("creador_nombre")
-  requiereAprobacion       Boolean                   @default(false) @map("requiere_aprobacion")
-  nImpresiones             Int                       @default(0) @map("n_impresiones")
-  eliminada                Boolean                   @default(false)
-  userMod                  String?                   @map("user_mod")
+  creadorNombre            String?                     @map("creador_nombre")
+  requiereAprobacion       Boolean                     @default(false) @map("requiere_aprobacion")
+  nImpresiones             Int                         @default(0) @map("n_impresiones")
+  eliminada                Boolean                     @default(false)
+  userMod                  String?                     @map("user_mod")
   fecham                   DateTime?
-  createdAt                DateTime                  @default(now()) @map("created_at")
-  enviosParciales          Boolean                   @default(false) @map("envios_parciales")
-  montoDespacho            Float                     @default(0) @map("monto_despacho")
-  fechaPlazo               DateTime?                 @map("fecha_plazo")
-  direccionDespacho        String?                   @map("direccion_despacho")
-  direccionDespachoExtra   String?                   @map("direccion_despacho_extra")
-  contactoDespacho         String?                   @map("contacto_despacho")
-  telefonoContactoDespacho String?                   @map("telefono_contacto_despacho")
-  emailContactoDespacho    String?                   @map("email_contacto_despacho")
-  plazoEntregaDias         Int?                      @map("plazo_entrega_dias")
-  plazoEntregaTipo         String?                   @map("plazo_entrega_tipo")
-  marketplaceCanal         String?                   @map("marketplace_canal")
-  marketplaceComisionPct   Float?                    @map("marketplace_comision_pct")
-  marketplaceComisionMonto Float?                    @map("marketplace_comision_monto")
-  marketplaceReferencia    String?                   @map("marketplace_referencia")
-  regionDespacho           String?                   @map("region_despacho")
-  comunaDespacho           String?                   @map("comuna_despacho")
-  ciudadDespacho           String?                   @map("ciudad_despacho")
+  createdAt                DateTime                    @default(now()) @map("created_at")
+  enviosParciales          Boolean                     @default(false) @map("envios_parciales")
+  montoDespacho            Float                       @default(0) @map("monto_despacho")
+  fechaPlazo               DateTime?                   @map("fecha_plazo")
+  direccionDespacho        String?                     @map("direccion_despacho")
+  direccionDespachoExtra   String?                     @map("direccion_despacho_extra")
+  contactoDespacho         String?                     @map("contacto_despacho")
+  telefonoContactoDespacho String?                     @map("telefono_contacto_despacho")
+  emailContactoDespacho    String?                     @map("email_contacto_despacho")
+  plazoEntregaDias         Int?                        @map("plazo_entrega_dias")
+  plazoEntregaTipo         String?                     @map("plazo_entrega_tipo")
+  marketplaceCanal         String?                     @map("marketplace_canal")
+  marketplaceComisionPct   Float?                      @map("marketplace_comision_pct")
+  marketplaceComisionMonto Float?                      @map("marketplace_comision_monto")
+  marketplaceReferencia    String?                     @map("marketplace_referencia")
+  regionDespacho           String?                     @map("region_despacho")
+  comunaDespacho           String?                     @map("comuna_despacho")
+  ciudadDespacho           String?                     @map("ciudad_despacho")
   items                    OrdenItem[]
   cargos                   OrdenCargo[]
   despachos                Despacho[]
@@ -560,15 +683,17 @@ model Orden {
   // La base ya tenia el foreign key con RESTRICT: un cliente con ventas no se
   // puede borrar. Se declara igual para no alterar ese comportamiento; las bajas
   // de cliente se hacen con el flag `activo`, no borrando la fila.
-  cliente                  Cliente?                  @relation(fields: [clienteId], references: [id], onDelete: Restrict)
-  clienteSucursal          ClienteSucursal?          @relation(fields: [clienteSucursalId], references: [id], onDelete: SetNull)
-  descuentoSolicitud       DescuentoSolicitud?       @relation("OrdenDescuentoSolicitud", fields: [descuentoSolicitudId], references: [id], onDelete: SetNull)
+  cliente                  Cliente?                    @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  clienteSucursal          ClienteSucursal?            @relation(fields: [clienteSucursalId], references: [id], onDelete: SetNull)
+  descuentoSolicitud       DescuentoSolicitud?         @relation("OrdenDescuentoSolicitud", fields: [descuentoSolicitudId], references: [id], onDelete: SetNull)
   excepcionAlertas         ExcepcionAlerta[]
 
   @@index([nInterno])
   @@index([clienteId])
   @@index([clienteSucursalId])
   @@index([rutCliente])
+  // Filtro por rango de fechas de la reporteria gerencial.
+  @@index([createdAt])
   @@map("ordenes")
   @@schema("ventas")
 }
@@ -602,6 +727,10 @@ model OrdenItem {
   descripcion     String?
   cantidad        Int
   nEntregados     Int             @default(0) @map("n_entregados")
+  pickingConfirmado    Boolean    @default(false) @map("picking_confirmado")
+  pickingObservacion   String?    @map("picking_observacion")
+  pickingConfirmadoPor String?    @map("picking_confirmado_por")
+  pickingConfirmadoAt  DateTime?  @map("picking_confirmado_at")
   precioUnitario  Float           @map("precio_unitario")
   precioConIva    Float?          @map("precio_con_iva")
   cargoTransporte Float           @default(0) @map("cargo_transporte")
@@ -656,6 +785,7 @@ model CobranzaHistorico {
 
   @@index([ordenId])
   @@index([interno])
+  @@index([fechaFactura])
   @@map("cobranza_historico")
   @@schema("ventas")
 }
@@ -758,6 +888,7 @@ model CotizacionLicitacion {
   @@index([idLicitacion])
   @@index([rutCliente])
   @@index([ordenId])
+  @@index([fecha])
   @@map("cotizacion_licitacion")
   @@schema("ventas")
 }
@@ -821,6 +952,7 @@ model OrdenCompraOnline {
   @@index([emailComprador])
   @@index([codigoVendedor])
   @@index([estadoCompra])
+  @@index([fechaHora])
   @@map("orden_compra_online")
   @@schema("ventas")
 }
@@ -1266,12 +1398,14 @@ model MovimientoCaja {
   turno           Turno?    @relation(fields: [turnoId], references: [id])
   orden           Orden?    @relation(fields: [ordenId], references: [id], onDelete: SetNull)
   gastoTipo       Gasto?    @relation(fields: [gastoTipoId], references: [id])
+  abonoPagoProveedor AbonoPagoProveedor?
 
   @@index([turnoId])
   @@index([ordenId])
   @@index([sucursalId])
   @@index([gastoTipoId])
   @@index([origenTipo, origenId])
+  @@index([fecha])
   @@map("movimientos_caja")
   @@schema("caja")
 }
@@ -1354,18 +1488,19 @@ model Odt {
   centroCosto            CentroCosto?       @relation(fields: [centroCostoId], references: [id], onDelete: Restrict)
 
   @@index([centroCostoId])
+  @@index([createdAt])
   @@map("odts")
   @@schema("taller")
 }
 
 model CentroCosto {
-  id          Int       @id @default(autoincrement())
-  codigo      String    @unique
+  id          Int      @id @default(autoincrement())
+  codigo      String   @unique
   nombre      String
   descripcion String?
-  activo      Boolean   @default(true)
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
   odts        Odt[]
 
   @@index([activo])
@@ -1478,19 +1613,19 @@ model BodegaTaller {
 // Reglas configurables que convierten una transición excepcional en una tarea
 // auditable. No bloquean por defecto: Gerencia decide esa política por regla.
 model ExcepcionRegla {
-  id                 Int      @id @default(autoincrement())
-  codigo             String   @unique
-  nombre             String
-  descripcion        String?
-  estadoDestino      String?  @map("estado_destino")
-  severidad          String   @default("alta")
-  horasEscalamiento  Int      @default(24) @map("horas_escalamiento")
-  rolResponsable     String   @default("coordinador_comercial") @map("rol_responsable")
-  rolEscalamiento    String   @default("admin") @map("rol_escalamiento")
-  activo             Boolean  @default(true)
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
-  alertas            ExcepcionAlerta[]
+  id                Int               @id @default(autoincrement())
+  codigo            String            @unique
+  nombre            String
+  descripcion       String?
+  estadoDestino     String?           @map("estado_destino")
+  severidad         String            @default("alta")
+  horasEscalamiento Int               @default(24) @map("horas_escalamiento")
+  rolResponsable    String            @default("coordinador_comercial") @map("rol_responsable")
+  rolEscalamiento   String            @default("admin") @map("rol_escalamiento")
+  activo            Boolean           @default(true)
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  alertas           ExcepcionAlerta[]
 
   @@index([activo, estadoDestino])
   @@map("excepcion_reglas")
@@ -1498,27 +1633,28 @@ model ExcepcionRegla {
 }
 
 model ExcepcionAlerta {
-  id                 Int              @id @default(autoincrement())
-  reglaId            Int              @map("regla_id")
-  ordenId            Int?             @map("orden_id")
-  estado             String           @default("ABIERTA")
-  severidad          String
-  rolResponsable     String           @map("rol_responsable")
-  rolEscalamiento    String           @map("rol_escalamiento")
-  venceAt            DateTime         @map("vence_at")
-  escaladaAt         DateTime?        @map("escalada_at")
-  resueltaAt         DateTime?        @map("resuelta_at")
-  resueltaPorId      Int?             @map("resuelta_por_id")
-  evidencia          String?
-  createdAt          DateTime         @default(now()) @map("created_at")
-  regla              ExcepcionRegla   @relation(fields: [reglaId], references: [id], onDelete: Restrict)
-  orden              Orden?           @relation(fields: [ordenId], references: [id], onDelete: SetNull)
+  id              Int            @id @default(autoincrement())
+  reglaId         Int            @map("regla_id")
+  ordenId         Int?           @map("orden_id")
+  estado          String         @default("ABIERTA")
+  severidad       String
+  rolResponsable  String         @map("rol_responsable")
+  rolEscalamiento String         @map("rol_escalamiento")
+  venceAt         DateTime       @map("vence_at")
+  escaladaAt      DateTime?      @map("escalada_at")
+  resueltaAt      DateTime?      @map("resuelta_at")
+  resueltaPorId   Int?           @map("resuelta_por_id")
+  evidencia       String?
+  createdAt       DateTime       @default(now()) @map("created_at")
+  regla           ExcepcionRegla @relation(fields: [reglaId], references: [id], onDelete: Restrict)
+  orden           Orden?         @relation(fields: [ordenId], references: [id], onDelete: SetNull)
 
   @@index([estado, venceAt])
   @@index([ordenId, estado])
   @@map("excepcion_alertas")
   @@schema("ventas")
 }
+
 model BodegaTallerLote {
   id                 Int          @id @default(autoincrement())
   bodegaTallerId     Int          @map("bodega_taller_id")
@@ -1595,9 +1731,16 @@ model TallerHistorialMaterial {
 }
 
 model Taller {
-  id             Int              @id @default(autoincrement())
-  nombre         String           @unique
-  activo         Boolean          @default(true)
+  id     Int     @id @default(autoincrement())
+  nombre String  @unique
+  activo Boolean @default(true)
+
+  // Quien aprueba la calidad de lo que sale de este taller. El control lo hace el
+  // jefe del taller correspondiente, y hasta ahora no habia forma de saber quien es:
+  // el rol `taller` gobierna todos los talleres por igual.
+  jefeId Int? @map("jefe_id")
+  jefe   User? @relation("TallerJefe", fields: [jefeId], references: [id], onDelete: SetNull)
+
   estados        OdtItemTaller[]
   productos      Producto[]       @relation("ProductoTaller")
   materiales     BodegaTaller[]
@@ -1630,21 +1773,22 @@ model OdtItem {
 }
 
 model OdtItemTaller {
-  id                    Int               @id @default(autoincrement())
-  odtItemId             Int               @map("odt_item_id")
-  tallerId              Int               @map("taller_id")
-  estado                String            @default("pendiente")
+  id                    Int                 @id @default(autoincrement())
+  odtItemId             Int                 @map("odt_item_id")
+  tallerId              Int                 @map("taller_id")
+  estado                String              @default("pendiente")
   obs                   String?
-  fechaInicio           DateTime?         @map("fecha_inicio")
-  fechaListo            DateTime?         @map("fecha_listo")
+  fechaInicio           DateTime?           @map("fecha_inicio")
+  fechaListo            DateTime?           @map("fecha_listo")
   usuario               String?
-  usuarioListo          String?           @map("usuario_listo")
-  operarioResponsableId Int?              @map("operario_responsable_id")
-  odtItem               OdtItem           @relation(fields: [odtItemId], references: [id], onDelete: Cascade)
-  taller                Taller            @relation(fields: [tallerId], references: [id])
-  operarioResponsable   User?             @relation("OdtResponsable", fields: [operarioResponsableId], references: [id])
+  usuarioListo          String?             @map("usuario_listo")
+  operarioResponsableId Int?                @map("operario_responsable_id")
+  odtItem               OdtItem             @relation(fields: [odtItemId], references: [id], onDelete: Cascade)
+  taller                Taller              @relation(fields: [tallerId], references: [id])
+  operarioResponsable   User?               @relation("OdtResponsable", fields: [operarioResponsableId], references: [id])
   avances               OdtAvance[]
   evidencias            TallerEvidencia[]
+  recepciones           OdtEtapaRecepcion[]
 
   @@unique([odtItemId, tallerId])
   @@index([tallerId])
@@ -1704,6 +1848,34 @@ model NotaCreditoInternaItem {
   @@index([productoId])
   @@map("notas_credito_interna_items")
   @@schema("ventas")
+}
+
+// Lo que la etapa siguiente declara al recibir el trabajo de la anterior. Es la
+// inspeccion de calidad: quien recibe es el primer interesado en que venga bien, y
+// ya esta ahi. Se registra por cantidad y no por si/no, porque el defecto real es
+// parcial -de 100 cortes, 8 con el color cambiado- y el resto sigue su camino.
+//
+// Append-only: cada recepcion queda con su autor y su hora. La evidencia va en
+// TallerEvidencia, que ya cuelga de la misma etapa.
+model OdtEtapaRecepcion {
+  id                Int           @id @default(autoincrement())
+  odtItemTallerId   Int           @map("odt_item_taller_id")
+  cantidadRevisada  Float         @map("cantidad_revisada")
+  cantidadAceptada  Float         @map("cantidad_aceptada")
+  cantidadRechazada Float         @map("cantidad_rechazada")
+  defecto           String?
+  causa             String?
+  // aceptada | reproceso | descarte
+  decision          String
+  usuario           String
+  usuarioId         Int?          @map("usuario_id")
+  ipEquipo          String?       @map("ip_equipo")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  odtItemTaller     OdtItemTaller @relation(fields: [odtItemTallerId], references: [id], onDelete: Cascade)
+
+  @@index([odtItemTallerId, createdAt])
+  @@map("odt_etapa_recepciones")
+  @@schema("taller")
 }
 
 model OdtAvance {
@@ -1935,6 +2107,7 @@ model GuiaDespacho {
   id                Int             @id @default(autoincrement())
   ordenId           Int?            @map("orden_id")
   odtId             Int?            @map("odt_id")
+  sucursalId        Int?            @map("sucursal_id")
   nInterno          Int?            @map("n_interno")
   nGuia             String          @map("n_guia")
   fechaGuia         DateTime        @map("fecha_guia")
@@ -1942,6 +2115,7 @@ model GuiaDespacho {
   origenTipo        String?         @map("origen_tipo")
   origenId          Int?            @map("origen_id")
   despachoId        Int?            @map("despacho_id")
+  items             Json?           @default("[]")
   eliminado         Boolean         @default(false)
   userMod           String?         @map("user_mod")
   fecham            DateTime?
@@ -1951,10 +2125,12 @@ model GuiaDespacho {
   odt               Odt?            @relation(fields: [odtId], references: [id], onDelete: SetNull)
   despacho          Despacho?       @relation(fields: [despachoId], references: [id], onDelete: SetNull)
   packingEventos    PackingEvento[]
+  documentos        FactDocumento[]
 
   @@index([nInterno])
   @@index([ordenId])
   @@index([odtId])
+  @@index([sucursalId])
   @@index([despachoId])
   @@index([origenTipo, origenId])
   @@map("guias_despachos")
@@ -1965,6 +2141,7 @@ model Despacho {
   id                Int                      @id @default(autoincrement())
   ordenId           Int?                     @map("orden_id")
   odtId             Int?                     @map("odt_id")
+  sucursalId        Int?                     @map("sucursal_id")
   interno           String?
   plazoEntrega      String?                  @map("plazo_entrega")
   fechaInterno      DateTime?                @map("fecha_interno")
@@ -1978,10 +2155,16 @@ model Despacho {
   emailContacto     String?                  @map("email_contacto")
   region            String?
   comuna            String?
+  ciudad            String?
+  receptorRut       String?                  @map("receptor_rut")
+  receptorRazonSocial String?                @map("receptor_razon_social")
+  receptorGiro      String?                  @map("receptor_giro")
+  items             Json?                    @default("[]")
   parcial           Boolean                  @default(false)
   tieneMulta        Boolean                  @default(false) @map("tiene_multa")
   origenTipo        String?                  @map("origen_tipo")
   origenId          Int?                     @map("origen_id")
+  motivoOperacion   String?                  @map("motivo_operacion")
   usuario           String?
   eliminado         Boolean                  @default(false)
   userMod           String?                  @map("user_mod")
@@ -1997,6 +2180,7 @@ model Despacho {
 
   @@index([ordenId])
   @@index([odtId])
+  @@index([sucursalId])
   @@index([origenTipo, origenId])
   @@map("despachos")
   @@schema("bodega")
@@ -2049,6 +2233,8 @@ model PackingBulto {
   numero      String
   estado      String          @default("Preparado")
   observacion String?
+  dimensiones String?
+  peso        Float?
   usuario     String?
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
@@ -2735,12 +2921,14 @@ model FactDocumento {
   trackId        String?  @map("track_id")
   ambiente       String?
   xml            String?
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  guiaDespacho   GuiaDespacho? @relation(fields: [guiaDespachoId], references: [id], onDelete: SetNull)
 
   @@index([tipoDte, folio])
   @@index([clienteId])
   @@index([ordenId])
+  @@index([guiaDespachoId])
   @@map("documentos")
   @@schema("facturacion")
 }
@@ -2766,6 +2954,7 @@ model FactDocumentoRecibido {
   referencias       Json      @default("[]")
   totales           Json      @default("{}")
   pagoProveedorId   Int?      @unique @map("pago_proveedor_id")
+  pagoProveedor     PagoProveedor? @relation(fields: [pagoProveedorId], references: [id])
   estado            String    @default("pendiente")
   vistoEn           DateTime? @map("visto_en")
   createdAt         DateTime  @default(now()) @map("created_at")

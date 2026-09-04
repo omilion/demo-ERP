@@ -15,6 +15,7 @@ import { can } from '../../utils/permissions'
 import BotonExportar from '../../components/BotonExportar'
 
 const getErrorMessage = err => err?.response?.data?.error || err?.message || 'No se pudo completar la accion'
+const filterInputStyle = { height: 28, padding: '0 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }
 
 function todayInputDate() {
   const date = new Date()
@@ -169,16 +170,27 @@ export default function BitacoraTallerPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
-          <FormField label="Desde"><Input type="date" value={desde} onChange={setFilter(setDesde)} /></FormField>
-          <FormField label="Hasta"><Input type="date" value={hasta} onChange={setFilter(setHasta)} /></FormField>
-          <FormField label="Operario"><Select value={operario} onChange={setFilter(setOperario)} options={operarioOptions} /></FormField>
-          <FormField label="Buscar"><Input value={search} onChange={setFilter(setSearch)} placeholder="Texto, operario o reporta" /></FormField>
-        </div>
         {isError && <div style={{ padding: 12, color: 'var(--red)', fontSize: 12 }}>{getErrorMessage(error)}</div>}
         {isLoading
           ? <div style={{ padding: 48, textAlign: 'center' }}>Cargando...</div>
-          : <Table columns={cols} rows={data.items} emptyMessage="Sin bitacora" keyboard ariaLabel="Bitacora de taller" getRowKey={row => row.id} />
+          : <Table
+              columns={cols}
+              rows={data.items}
+              emptyMessage="Sin bitacora"
+              keyboard
+              ariaLabel="Bitacora de taller"
+              getRowKey={row => row.id}
+              toolbarExtra={<>
+                <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>Desde</span>
+                <input type="date" value={desde} onChange={e => setFilter(setDesde)(e.target.value)} style={filterInputStyle} />
+                <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>Hasta</span>
+                <input type="date" value={hasta} onChange={e => setFilter(setHasta)(e.target.value)} style={filterInputStyle} />
+                <select value={operario} onChange={e => setFilter(setOperario)(e.target.value)} style={filterInputStyle}>
+                  {operarioOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+                <input placeholder="Texto, operario o reporta" value={search} onChange={e => setFilter(setSearch)(e.target.value)} style={{ ...filterInputStyle, width: 220 }} />
+              </>}
+            />
         }
         <Pager
           page={data.page || page}

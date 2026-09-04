@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DOC-03: Rol Bodega y Logística | Plastimar SisGestión 3.0</title>
+  <link rel="stylesheet" href="../../assets/manual-style.css">
+</head>
+<body>
+
+  <header class="doc-header">
+    <div class="doc-header-inner">
+      <div class="doc-brand">
+        <img src="../../assets/plastimar-logo.webp" alt="Plastimar Logo" class="doc-logo">
+        <div class="doc-title-group">
+          <h1>Manual Operativo: Bodega y Logística</h1>
+          <div class="doc-subtitle">SisGestión 3.0 &middot; Control de Inventario, Kardex y Materias Primas</div>
+        </div>
+      </div>
+      <div class="doc-actions">
+        <a href="../../00_MAPA_DOCUMENTACION_Y_GUIA_INICIO/index.html" class="btn-action btn-nav">&larr; Volver al Mapa</a>
+        <button class="btn-action btn-print">🖨️ Imprimir / Guardar PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="doc-container">
+
+    <!-- Misión del Rol -->
+    <section class="doc-card">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">1. Tu Rol en el ERP Plastimar</h2>
+        <span class="badge-role">Custodia de Inventario</span>
+      </div>
+      <p style="font-size: 1.05rem; margin-bottom: 1rem;">
+        El equipo de bodega custodia productos y materias primas de Plastimar. Su responsabilidad es mantener coherencia entre conteo físico, movimientos y disponibilidad; los totales y valorizaciones deben consultarse en el tablero vigente, no en cifras impresas del manual.
+      </p>
+      <div class="callout callout-info">
+        <div class="callout-icon">📦</div>
+        <div class="callout-content">
+          <h4>Tu Misión Principal</h4>
+          <p>Garantizar que lo que dice el sistema coincida al 100% con lo que hay en estanterías. Registrar inmediatamente recepciones de proveedores, rebajas por mermas justificadas, entregas de telas a taller y el armado de pedidos para despacho.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Los 4 Estados del Stock -->
+    <section class="doc-card">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">2. Los 4 Estados del Stock en Plastimar</h2>
+        <span class="badge-role">Conceptos Clave</span>
+      </div>
+      <p style="margin-bottom: 1.25rem;">
+        Para evitar vender mercadería inexistente o comprometer productos ya vendidos a otro cliente, el ERP distingue cuatro estados de stock en todo momento:
+      </p>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+        
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem; border-top: 4px solid #0f172a;">
+          <h4 style="color: #0f172a; font-size: 1rem; margin-bottom: 0.25rem;">1. Stock Físico</h4>
+          <p style="font-size: 0.85rem; color: #475569;">Es el total real contado en pasillos, repisas y patio. Es la cantidad física presente en las bodegas de Plastimar.</p>
+        </div>
+
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 1rem; border-top: 4px solid #16a34a;">
+          <h4 style="color: #15803d; font-size: 1rem; margin-bottom: 0.25rem;">2. Stock Disponible</h4>
+          <p style="font-size: 0.85rem; color: #166534;">Es lo que <strong>realmente se puede vender hoy</strong>. Equivale al Stock Físico menos las unidades que ya están comprometidas.</p>
+        </div>
+
+        <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 1rem; border-top: 4px solid #d97706;">
+          <h4 style="color: #b45309; font-size: 1rem; margin-bottom: 0.25rem;">3. Stock Reservado</h4>
+          <p style="font-size: 0.85rem; color: #92400e;">Unidades registradas como comprometidas. El disponible se calcula descontándolas junto con el stock dañado.</p>
+        </div>
+
+        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 1rem; border-top: 4px solid #dc2626;">
+          <h4 style="color: #b91c1c; font-size: 1rem; margin-bottom: 0.25rem;">4. Stock Dañado / Merma</h4>
+          <p style="font-size: 0.85rem; color: #991b1b;">Productos con fallas de fábrica o roturas en manipulación. Se aíslan para que no salgan a la venta ni a reparto.</p>
+        </div>
+
+      </div>
+
+      <div class="callout callout-regla-oro">
+        <div class="callout-icon">⚠️</div>
+        <div class="callout-content">
+          <h4>Regla de Oro de Bodega: Prohibido "digitar" stock a ciegas</h4>
+          <p>En el ERP anterior se editaba la cantidad en la ficha del producto. En SisGestión 3.0 eso está <strong>bloqueado</strong>. Cada unidad que entra o sale debe quedar respaldada en el <strong>Kardex</strong> indicando: motivo, número de documento y usuario responsable.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- La Pantalla de Bodega e Inventario -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">3. Pantalla de Bodega e Inventario en el ERP</h2>
+        <span class="badge-role">Tu Mesa de Trabajo</span>
+      </div>
+      <p style="margin-bottom: 1.5rem;">
+        Al ingresar a <strong>Bodega &rarr; Inventario</strong> verás el consolidado general de productos:
+      </p>
+
+      <div class="screenshot-wrapper">
+        <div class="screenshot-container">
+          <img src="../../capturas/03_bodega/01_modulo_bodega_inventario.png" alt="Módulo de Bodega e Inventario Plastimar" class="screenshot-img">
+          <div class="screenshot-badge">🔍 Clic para ampliar en pantalla completa</div>
+        </div>
+        <div class="screenshot-caption">Figura 1: Módulo central de Bodega e Inventario. Destacan los contadores de stock disponible, stock crítico y pestañas de Bodega Taller y Sugerencias de OC.</div>
+      </div>
+
+      <h3 style="font-size: 1.15rem; color: var(--brand-primary); margin-top: 1.5rem; margin-bottom: 0.75rem;">Explicación de las Pestañas de Bodega</h3>
+      <div class="step-list">
+        
+        <div class="step-item">
+          <div class="step-number">A</div>
+          <div class="step-body">
+            <h4>Bodega Inventario (Catálogo General)</h4>
+            <p>Muestra los productos terminados, didácticos e insumos generales. Puedes filtrar por categoría (Psicomotricidad, Espumas, Telas, Bases), ubicación física en estantería o proveedor.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">B</div>
+          <div class="step-body">
+            <h4>Bodega Taller (Materias Primas en Tránsito)</h4>
+            <p>Monitorea las materias primas entregadas al taller de confección, corte o carpintería. Permite asegurar que los materiales entregados correspondan a las ODTs activas.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">C</div>
+          <div class="step-body">
+            <h4>Sugerencia de OC / Compras</h4>
+            <p>El sistema muestra los productos que cumplen el criterio de stock crítico y genera una sugerencia para Compras. Antes de emitir una OC revisa demanda, reservas, daño, compras abiertas y plazo del proveedor.</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Procedimientos Operativos Clave -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">4. Procedimientos Operativos Diarios</h2>
+        <span class="badge-role">Paso a Paso</span>
+      </div>
+
+      <h3 style="font-size: 1.1rem; color: #0f172a; margin-bottom: 0.5rem;">A. Recepción de Mercadería de Proveedores</h3>
+      <ol style="margin-left: 1.5rem; margin-bottom: 1.5rem; line-height: 1.7;">
+        <li>Dirígete a <strong>Bodega &rarr; Stock Ingresos</strong>.</li>
+        <li>En <strong>Ingreso Manual</strong>, selecciona proveedor, tipo y número del documento de respaldo. Si proviene de una OC, utiliza su flujo de recepción.</li>
+        <li>Digita únicamente las cantidades recibidas físicamente y verifica producto, unidad y bodega.</li>
+        <li>Si hay daño o diferencia, sepáralo y utiliza el movimiento/flujo autorizado; no contamines el disponible.</li>
+        <li>Al confirmar, verifica el movimiento en historial/Kardex antes de reintentar.</li>
+      </ol>
+
+      <h3 style="font-size: 1.1rem; color: #0f172a; margin-bottom: 0.5rem;">B. Manejo de Telas y Rollos</h3>
+      <p style="font-size: 0.9rem; margin-bottom: 0.75rem;">
+        En <strong>Bodega &rarr; Telas</strong> se administra el catálogo y sus movimientos de ingreso/egreso. Registra los datos disponibles en la pantalla:
+      </p>
+      <ul style="margin-left: 1.5rem; margin-bottom: 1.5rem; line-height: 1.7;">
+        <li>Indica cantidad, documento o referencia, ubicación y responsable cuando corresponda.</li>
+        <li>No asumas control por rollo, partida, retazo u ODT si esos campos no están visibles.</li>
+        <li>Reporta esa necesidad como <em>Falta</em> y conserva el control físico definido por la jefatura.</li>
+      </ul>
+
+      <h3 style="font-size: 1.1rem; color: #0f172a; margin-bottom: 0.5rem;">C. Preparación para Despacho (Picking y Packing)</h3>
+      <p style="font-size: 0.9rem; margin-bottom: 0.5rem;">
+        En el <strong>Panel Picking</strong> verás las ventas que ya están listas para entrega:
+      </p>
+      <ul style="margin-left: 1.5rem; margin-bottom: 0.5rem; line-height: 1.7;">
+        <li>Retira los productos de las estanterías verificando el código interno.</li>
+        <li>Pasa al <strong>Panel Packing</strong> para embalar los productos en cajas o bultos protegidos.</li>
+        <li>El sistema genera la etiqueta del bulto y transfiere el pedido al área de <strong>Despacho</strong> para la emisión de la Guía de Despacho DTE.</li>
+      </ul>
+    </section>
+
+    <!-- Dudas y Feedback -->
+    <section class="doc-card" style="background: #fef2f2; border-color: #fecaca;">
+      <h3 style="color: #991b1b; margin-bottom: 0.5rem;">¿Diferencia de conteo físico o código no reconocido?</h3>
+      <p style="color: #7f1d1d; font-size: 0.95rem; margin-bottom: 1rem;">
+        Si al escanear un código de barras el producto no aparece o la cantidad física no coincide con el stock del sistema:
+      </p>
+      <p style="color: #7f1d1d; font-size: 0.9rem;">
+        Usa de inmediato el botón flotante rojo <strong>[Reportar observación]</strong> abajo a la izquierda. Selecciona <em>Falla</em> o <em>Falta</em>, anota el código del producto y el equipo técnico revisará el historial del Kardex en el acto.
+      </p>
+    </section>
+
+    <section class="doc-card">
+      <div class="doc-card-header"><h2 class="doc-card-title">5. Checklist de control</h2><span class="badge-role">Marcha Blanca</span></div>
+      <ul class="check-list"><li>No editar stock de una ficha existente: usar Movimientos.</li><li>Conteo físico, documento, proveedor, SKU y cantidad deben coincidir.</li><li>Una recepción parcial registra sólo lo recibido.</li><li>Antes de repetir un ingreso, buscarlo en historial.</li><li>Picking y packing no pueden superar lo vendido.</li></ul>
+    </section>
+
+    <footer class="doc-footer">
+      <p><strong>Plastimar SisGestión 3.0</strong> &middot; Bodega y Logística &middot; MB-1.1 &middot; 2026-09-04</p>
+    </footer>
+
+  </main>
+
+  <script src="../../assets/manual-scripts.js"></script>
+</body>
+</html>

@@ -202,7 +202,7 @@ export default async function configRoutes(fastify) {
   })
 
   // ── Firmas Email ───────────────────────────────────────────────────
-  fastify.get('/firmas', { preHandler: [fastify.authenticate] }, async () => {
+  fastify.get('/firmas', { preHandler: [fastify.authenticate, fastify.rbac('config', 'read', { allowExtra: false })] }, async () => {
     return fastify.prisma.firmaEmail.findMany({ where: { activo: true }, orderBy: { alias: 'asc' } })
   })
 
@@ -240,7 +240,7 @@ export default async function configRoutes(fastify) {
   })
 
   // ── Bloqueo Página ─────────────────────────────────────────────────
-  fastify.get('/bloqueos', { preHandler: [fastify.authenticate] }, async () => {
+  fastify.get('/bloqueos', { preHandler: [fastify.authenticate, fastify.rbac('config', 'read', { allowExtra: false })] }, async () => {
     return fastify.prisma.bloqueoPagina.findMany({ orderBy: { modulo: 'asc' } })
   })
 

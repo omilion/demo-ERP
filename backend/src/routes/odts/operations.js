@@ -42,6 +42,37 @@ export function tipoTallerFilter(tipo) {
   }
 }
 
+// Transiciones permitidas de una OT. Antes cualquier estado saltaba a cualquier otro:
+// una OT recien creada podia marcarse Entregada sin haber pasado por el taller, y una
+// Anulada podia revivir. El historial ya lo registra la bitacora, asi que aca solo se
+// define que movimiento es legitimo.
+export const TRANSICIONES_ODT = Object.freeze({
+  Pendiente: ['Asignada', 'En proceso', 'Prioritaria', 'Anulada'],
+  Asignada: ['En proceso', 'Pendiente', 'Prioritaria', 'Anulada'],
+  Prioritaria: ['Asignada', 'En proceso', 'Pendiente', 'Anulada'],
+  'En proceso': ['Control calidad', 'Terminada', 'Pendiente', 'Anulada'],
+  'Control calidad': ['Terminada', 'En proceso', 'Anulada'],
+  // Terminada vuelve a En proceso a proposito: es el reproceso, que ocurre.
+  Terminada: ['Entregada', 'En proceso', 'Anulada'],
+  Entregada: ['Anulada'],
+  Anulada: [],
+})
+
+// Devuelve null si el movimiento es legitimo, o el motivo del rechazo.
+//
+// Un estado actual que no esta en el catalogo -"Listo", que quedo en 647 OT del
+// legado- se deja pasar: si se rechazara, esas OT quedarian congeladas sin ninguna
+// accion disponible, que es justo lo que se quiere evitar.
+export function validateOdtEstadoTransition(actual, siguiente) {
+  if (!siguiente || actual === siguiente) return null
+  if (!ODT_ESTADOS.includes(siguiente)) return `Estado no valido: ${siguiente}`
+  if (!actual || !ODT_ESTADOS.includes(actual)) return null
+  const permitidas = TRANSICIONES_ODT[actual]
+  if (!permitidas) return null
+  if (permitidas.includes(siguiente)) return null
+  return `No se puede pasar de ${actual} a ${siguiente}`
+}
+
 export function isTerminalOdtEstado(estado) {
   return ['Terminada', 'Entregada', 'Anulada'].includes(estado)
 }

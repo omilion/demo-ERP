@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DOC-08: Rol Administración | Plastimar SisGestión 3.0</title>
+  <link rel="stylesheet" href="../../assets/manual-style.css">
+</head>
+<body>
+
+  <header class="doc-header">
+    <div class="doc-header-inner">
+      <div class="doc-brand">
+        <img src="../../assets/plastimar-logo.webp" alt="Plastimar Logo" class="doc-logo">
+        <div class="doc-title-group">
+          <h1>Manual Operativo: Administración del Sistema</h1>
+          <div class="doc-subtitle">SisGestión 3.0 &middot; Gestión de Usuarios, Permisos por Función y Auditoría</div>
+        </div>
+      </div>
+      <div class="doc-actions">
+        <a href="../../00_MAPA_DOCUMENTACION_Y_GUIA_INICIO/index.html" class="btn-action btn-nav">&larr; Volver al Mapa</a>
+        <button class="btn-action btn-print">🖨️ Imprimir / Guardar PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="doc-container">
+
+    <!-- Misión del Rol -->
+    <section class="doc-card">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">1. Tu Rol en el ERP Plastimar</h2>
+        <span class="badge-role">Gobernanza y Seguridad</span>
+      </div>
+      <p style="font-size: 1.05rem; margin-bottom: 1rem;">
+        El Administrador del Sistema es el guardián de la seguridad, los accesos y la continuidad operativa de Plastimar. En tus manos está asegurar que cada colaborador tenga acceso exacto a las herramientas que necesita para su trabajo, sin exponer información confidencial ni comprometer la integridad contable de la empresa.
+      </p>
+      <div class="callout callout-info">
+        <div class="callout-icon">🛡️</div>
+        <div class="callout-content">
+          <h4>Tu Misión Principal</h4>
+          <p>Crear y mantener las cuentas de usuario, asignar roles base y permisos por función (`permisosExtra`), desactivar accesos cuando un colaborador se retira y auditar la trazabilidad de operaciones durante la marcha blanca.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pantalla de Usuarios y Permisos -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">2. Panel de Usuarios y Permisos</h2>
+        <span class="badge-role">Gestión de Cuentas</span>
+      </div>
+      <p style="margin-bottom: 1.5rem;">
+        Al ingresar a <strong>Admin &rarr; Usuarios</strong> (o menú superior <em>Usuarios</em>) encontrarás el directorio central de colaboradores:
+      </p>
+
+      <div class="screenshot-wrapper">
+        <div class="screenshot-container">
+          <img src="../../capturas/08_admin/01_modulo_usuarios_admin.png" alt="Módulo de Usuarios y Permisos Plastimar" class="screenshot-img">
+          <div class="screenshot-badge">🔍 Clic para ampliar en pantalla completa</div>
+        </div>
+        <div class="screenshot-caption">Figura 1: Módulo de Usuarios y Permisos. Se aprecian las cuentas activas (19), administradores (4) y usuarios con permisos extra (7).</div>
+      </div>
+
+      <h3 style="font-size: 1.15rem; color: var(--brand-primary); margin-top: 1.5rem; margin-bottom: 0.75rem;">Procedimiento: Cómo Crear o Editar un Usuario</h3>
+      <div class="step-list">
+        
+        <div class="step-item">
+          <div class="step-number">1</div>
+          <div class="step-body">
+            <h4>Datos Personales y Correo Institucional</h4>
+            <p>Presiona <strong>[+ Nuevo usuario]</strong>. Ingresa usuario/email válido, nombre, rol y sucursal; completa RUT y cargo cuando correspondan. <code>@plastimar.cl</code> es la política recomendada, pero la validación vigente acepta un email válido.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">2</div>
+          <div class="step-body">
+            <h4>Asignar Rol Base y Sucursal</h4>
+            <p>Selecciona el perfil principal del usuario:</p>
+            <ul style="margin-left: 1.25rem; margin-top: 0.35rem; font-size: 0.88rem; color: #475569;">
+              <li><code>vendedor</code> o <code>coordinador_comercial</code>: Fuerza de ventas y CRM.</li>
+              <li><code>bodeguero</code>: Inventario, recepción de OC, picking y despacho.</li>
+              <li><code>taller</code> (Jefe) o <code>taller_operario</code> (Operario en mesa).</li>
+              <li><code>cajero</code>: Turnos de caja y cobranza.</li>
+              <li><code>rrhh</code>: Funciones de personas y remuneraciones según permisos efectivos.</li>
+              <li><code>solo_lectura</code>: Auditoría sin permisos de edición ni visualización de remuneraciones de RRHH.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">3</div>
+          <div class="step-body">
+            <h4>Permisos por Función (Excepciones Quirúrgicas)</h4>
+            <p>Si un colaborador necesita una atribución puntual, usa <strong>Permisos Extra</strong>. Estos permisos sólo agregan capacidades: no quitan las heredadas del rol. Si el rol concede demasiado acceso, cambia el rol y revisa la Matriz de acceso efectivo.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">4</div>
+          <div class="step-body">
+            <h4>Desvinculación Segura (Inactivación)</h4>
+            <p>Cuando un trabajador deja Plastimar, <strong>NUNCA se elimina su registro</strong>, ya que eso rompería la historia de quién vendió o quién fabricó. En su lugar, simplemente se marca su estado como <strong>Inactivo</strong>, lo que revoca sus credenciales de inmediato en todos los terminales.</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Auditoría y Feedback de Marcha Blanca -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">3. Supervisión de Marcha Blanca y Soporte</h2>
+        <span class="badge-role">Monitoreo Activo</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.5rem;">
+        
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1.25rem;">
+          <h4 style="color: #065f46; margin-bottom: 0.35rem;">📋 Bandeja de Observaciones y Bugs</h4>
+          <p style="font-size: 0.88rem; color: #475569;">En el panel de administración puedes revisar todos los reportes enviados por los usuarios a través del botón flotante. Verás la captura de pantalla, el módulo y si es una duda operativa o un error bloqueante para coordinar su resolución con el equipo de desarrollo.</p>
+        </div>
+
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1.25rem;">
+          <h4 style="color: #0369a1; margin-bottom: 0.35rem;">🔍 Logs de Integridad</h4>
+          <p style="font-size: 0.88rem; color: #475569;">Ejecuta sólo las revisiones de integridad que estén visibles y autorizadas para tu versión. No presupongas una pantalla específica; ante una inconsistencia entre venta, guía y DTE, registra evidencia y escala a soporte.</p>
+        </div>
+
+      </div>
+    </section>
+
+    <section class="doc-card"><div class="doc-card-header"><h2 class="doc-card-title">4. Checklist de seguridad</h2><span class="badge-role">Mínimo acceso</span></div><ul class="check-list"><li>Asignar rol, sucursal y atribuciones comerciales correctas.</li><li>Justificar y revisar periódicamente permisos extra.</li><li>La contraseña inicial no implica cambio forzado automático; exigirlo por procedimiento si aplica.</li><li>En desvinculación, dar de baja y verificar el acceso sin borrar historial.</li><li>No distribuir capturas, CAF, certificados, claves o datos sensibles.</li></ul></section>
+
+    <footer class="doc-footer">
+      <p><strong>Plastimar SisGestión 3.0</strong> &middot; Administración &middot; MB-1.1 &middot; 2026-09-04</p>
+    </footer>
+
+  </main>
+
+  <script src="../../assets/manual-scripts.js"></script>
+</body>
+</html>

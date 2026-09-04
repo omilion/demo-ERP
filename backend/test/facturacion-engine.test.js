@@ -123,7 +123,7 @@ describe('facturacion/engine', () => {
     })
 
     it('emitir() resolves receptor from an existing Cliente when clientId is given', async () => {
-      const testRutBody = `88${Date.now()}`.slice(0, 9)
+      const testRutBody = `88${Date.now()}`.slice(0, 8)
       const cliente = await prisma.cliente.create({
         data: { rut: `${testRutBody}-${testRutDv(testRutBody)}`, nombre: 'QA Cliente Engine', razonSocial: 'QA Cliente Engine SpA', giro: 'Textiles', direccion: 'Ruta 68 km 10', comuna: 'Vina del Mar', ciudad: 'Vina del Mar' }
       })

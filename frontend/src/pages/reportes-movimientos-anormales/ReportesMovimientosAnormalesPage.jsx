@@ -85,17 +85,6 @@ export default function ReportesMovimientosAnormalesPage() {
         El vínculo real de cada línea de venta es el <strong>ID de producto</strong>, no el código o nombre que haya quedado escrito en la venta. Esta vista compara ambos y muestra los casos donde no coinciden — el stock del "producto real" es el que efectivamente bajó.
       </div>
 
-      <section style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 18, alignItems: 'flex-end' }}>
-        <FilterLabel label="Desde"><input type="date" value={filters.desde} onChange={event => updateFilter('desde', event.target.value)} style={controlStyle} /></FilterLabel>
-        <FilterLabel label="Hasta"><input type="date" value={filters.hasta} onChange={event => updateFilter('hasta', event.target.value)} style={controlStyle} /></FilterLabel>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, height: 38 }}>
-          <input type="checkbox" checked={filters.soloLicitacion} onChange={event => updateFilter('soloLicitacion', event.target.checked)} />
-          Solo licitaciones
-        </label>
-        {query.isFetching && <Badge tone="blue">Actualizando</Badge>}
-        {query.isError && <Badge tone="red">Reporte no disponible</Badge>}
-      </section>
-
       <div className="kpi-strip">
         <KpiCard label="Casos" value={num(data.resumen?.totalCasos)} icon="alertTriangle" tone="red" sublabel="Líneas con código/nombre distinto al producto real" />
         <KpiCard label="Ventas afectadas" value={num(data.resumen?.totalOrdenes)} icon="fileText" tone="amber" />
@@ -109,7 +98,27 @@ export default function ReportesMovimientosAnormalesPage() {
           <div style={emptyState}>No fue posible cargar el reporte</div>
         ) : (
           <>
-            <Table columns={columns} rows={rows} emptyMessage="Sin descuadres en el rango seleccionado" stickyHeader keyboard ariaLabel="Movimientos de stock anormales" getRowKey={row => row.ordenItemId} />
+            <Table
+              columns={columns}
+              rows={rows}
+              emptyMessage="Sin descuadres en el rango seleccionado"
+              stickyHeader
+              keyboard
+              ariaLabel="Movimientos de stock anormales"
+              getRowKey={row => row.ordenItemId}
+              toolbarExtra={<>
+                <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>Desde</span>
+                <input type="date" value={filters.desde} onChange={event => updateFilter('desde', event.target.value)} style={controlStyle} />
+                <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>Hasta</span>
+                <input type="date" value={filters.hasta} onChange={event => updateFilter('hasta', event.target.value)} style={controlStyle} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-2)' }}>
+                  <input type="checkbox" checked={filters.soloLicitacion} onChange={event => updateFilter('soloLicitacion', event.target.checked)} />
+                  Solo licitaciones
+                </label>
+                {query.isFetching && <Badge tone="blue">Actualizando</Badge>}
+                {query.isError && <Badge tone="red">Reporte no disponible</Badge>}
+              </>}
+            />
             <Pager page={page} pages={pages} total={total} limit={limit} shown={rows.length} onChange={setPage} disabled={query.isFetching} />
           </>
         )}
@@ -118,15 +127,6 @@ export default function ReportesMovimientosAnormalesPage() {
   )
 }
 
-function FilterLabel({ label, children }) {
-  return (
-    <label style={{ display: 'grid', gap: 5, fontSize: 11, color: 'var(--text-3)', fontWeight: 700 }}>
-      {label}
-      {children}
-    </label>
-  )
-}
-
 const mono = { fontFamily: "'DM Mono', monospace", fontSize: 12 }
-const controlStyle = { minHeight: 38, border: '1px solid var(--border)', borderRadius: 8, background: '#fff', color: 'var(--text-1)', fontFamily: 'inherit', fontSize: 13, padding: '0 10px' }
+const controlStyle = { height: 28, border: '1px solid var(--border)', borderRadius: 6, background: '#fff', color: 'var(--text-1)', fontFamily: 'inherit', fontSize: 12, padding: '0 8px' }
 const emptyState = { padding: 48, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }

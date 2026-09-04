@@ -393,61 +393,6 @@ export default function OrdenesCompraProveedoresPage({ embedded = false }) {
             border: '1px solid var(--border)',
             overflow: 'hidden',
           }}>
-            <div style={{
-              padding: '12px 16px',
-              borderBottom: '1px solid var(--border)',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 10,
-              alignItems: 'center',
-              background: '#fafafa',
-            }}>
-              <div style={{ flex: '1 1 240px', minWidth: 200 }}>
-                <SearchBar
-                  value={search}
-                  onChange={setSearch}
-                  placeholder="Buscar por N° OC, proveedor, RUT, producto..."
-                />
-              </div>
-
-              <select
-                value={estado}
-                onChange={(e) => setEstado(e.target.value)}
-                style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, background: '#fff', cursor: 'pointer' }}
-              >
-                <option value="all">Todos los estados</option>
-                <option value="Borrador">Borrador</option>
-                <option value="Pendiente Aprobación">Pendiente Aprobación</option>
-                <option value="Aprobada por Gerencia">Aprobada por Gerencia</option>
-                <option value="Enviada a Proveedor">Enviada a Proveedor</option>
-                <option value="Recepcionada Parcial">Recepcionada Parcial</option>
-                <option value="Completada">Completada</option>
-                <option value="Rechazada">Rechazada</option>
-              </select>
-
-              <select
-                value={proveedorId}
-                onChange={(e) => setProveedorId(e.target.value)}
-                style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, background: '#fff', cursor: 'pointer', maxWidth: 200 }}
-              >
-                <option value="">Todos los proveedores</option>
-                {proveedoresList.map((p) => (
-                  <option key={p.id} value={p.id}>{p.nombre}</option>
-                ))}
-              </select>
-
-              {embedded && canWriteBodega && (
-                <Btn
-                  variant="primary"
-                  icon="plusCircle"
-                  size="sm"
-                  onClick={() => setManualModalOpen(true)}
-                >
-                  Nueva OC Manual
-                </Btn>
-              )}
-            </div>
-
             <Table
               columns={columns}
               rows={data.items || []}
@@ -455,6 +400,53 @@ export default function OrdenesCompraProveedoresPage({ embedded = false }) {
               onRowDoubleClick={(row) => setSelectedOC(row)}
               getRowKey={(row) => row.id}
               stickyHeader
+              toolbarExtra={
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                  <SearchBar
+                    value={search}
+                    onChange={setSearch}
+                    placeholder="Buscar por N° OC, proveedor, RUT, producto..."
+                    style={{ width: 260, height: 28 }}
+                  />
+
+                  <select
+                    value={estado}
+                    onChange={(e) => setEstado(e.target.value)}
+                    style={{ height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, background: '#fff', cursor: 'pointer' }}
+                  >
+                    <option value="all">Todos los estados</option>
+                    <option value="Borrador">Borrador</option>
+                    <option value="Pendiente Aprobación">Pendiente Aprobación</option>
+                    <option value="Aprobada por Gerencia">Aprobada por Gerencia</option>
+                    <option value="Enviada a Proveedor">Enviada a Proveedor</option>
+                    <option value="Recepcionada Parcial">Recepcionada Parcial</option>
+                    <option value="Completada">Completada</option>
+                    <option value="Rechazada">Rechazada</option>
+                  </select>
+
+                  <select
+                    value={proveedorId}
+                    onChange={(e) => setProveedorId(e.target.value)}
+                    style={{ height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, background: '#fff', cursor: 'pointer', maxWidth: 200 }}
+                  >
+                    <option value="">Todos los proveedores</option>
+                    {proveedoresList.map((p) => (
+                      <option key={p.id} value={p.id}>{p.nombre}</option>
+                    ))}
+                  </select>
+
+                  {embedded && canWriteBodega && (
+                    <Btn
+                      variant="primary"
+                      icon="plusCircle"
+                      size="xs"
+                      onClick={() => setManualModalOpen(true)}
+                    >
+                      Nueva OC Manual
+                    </Btn>
+                  )}
+                </div>
+              }
             />
           </div>
         </>

@@ -309,7 +309,8 @@ describe('ODT item/taller workflow route', () => {
             odt: { select: { id: true, sucursalId: true, estado: true, eliminado: true } },
           },
         },
-        taller: { select: { nombre: true } },
+        // jefeId: la calidad de lo que sale de un taller la aprueba su jefe.
+        taller: { select: { nombre: true, jefeId: true } },
       },
     })
     expect(prisma.odtItemTaller.update).not.toHaveBeenCalled()

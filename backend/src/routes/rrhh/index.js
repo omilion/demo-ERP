@@ -2,9 +2,33 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { can } from '../../middleware/rbac.js'
+
+// Campos de remuneracion. Ver la nomina y ver cuanto gana cada persona son dos cosas
+// distintas, y estaban bajo el mismo permiso: una cuenta de solo lectura podia listar
+// a todo el personal con su sueldo liquido.
+const CAMPOS_REMUNERACION = ['sueldoLiquido', 'sueldoBase', 'totalImponible', 'liquidaciones']
+
+// Se limpia el objeto completo y no cada consulta: el trabajador viene anidado en
+// contratos, licencias y vacaciones, y bastaba con olvidar uno para filtrar el dato.
+function quitarRemuneracion(valor) {
+  if (Array.isArray(valor)) return valor.map(quitarRemuneracion)
+  if (!valor || typeof valor !== 'object' || valor instanceof Date) return valor
+  const limpio = {}
+  for (const [clave, contenido] of Object.entries(valor)) {
+    if (CAMPOS_REMUNERACION.includes(clave)) continue
+    limpio[clave] = quitarRemuneracion(contenido)
+  }
+  return limpio
+}
 
 export default async function rrhhRoutes(fastify) {
   fastify.register(async function (f) {
+    f.addHook('preSerialization', async (request, reply, payload) => {
+      if (can(request.user?.role, 'rrhh.remuneracion', 'read', request.user?.permisosExtra)) return payload
+      return quitarRemuneracion(payload)
+    })
+
     // ── Trabajadores ──────────────────────────────────────────────────
     f.get('/trabajadores', {
       preHandler: [f.authenticate, f.rbac('rrhh', 'read')],
@@ -136,7 +160,11 @@ export default async function rrhhRoutes(fastify) {
           vacaciones: { orderBy: { fechaInicio: 'desc' } },
           epps: { orderBy: { fechaEntrega: 'desc' } },
           hojasVida: { orderBy: { fecha: 'desc' } },
+          horasExtras: { orderBy: { inicio: 'desc' } },
           reglamentos: true,
+          // La cuenta vinculada se mostraba como "#12" en la ficha porque solo
+          // venia el id.
+          usuario: { select: { id: true, nombre: true, email: true, role: true } },
           subcontratos: { orderBy: { inicio: 'desc' } },
           certificadosAntecedentes: { orderBy: { fechaEmision: 'desc' } },
           vacunas: { orderBy: { fecha: 'desc' } },

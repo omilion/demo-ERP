@@ -260,20 +260,29 @@ export default function SaneamientoLegacyPage() {
 
         {!isError && tab === 'muestras' && (
           <div>
-            <div style={{ padding: '0 16px 14px', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-              <div>
-                <strong style={{ fontSize: 14 }}>{activeCategory.label}</strong>
-                <div style={{ color: 'var(--text-3)', fontSize: 12, marginTop: 2 }}>
-                  Muestra limitada de lectura. Total dry-run: {(resumen?.[activeCategory.key] ?? 0).toLocaleString('es-CL')}
-                </div>
+            <div style={{ padding: '0 16px 14px' }}>
+              <strong style={{ fontSize: 14 }}>{activeCategory.label}</strong>
+              <div style={{ color: 'var(--text-3)', fontSize: 12, marginTop: 2 }}>
+                Muestra limitada de lectura. Total dry-run: {(resumen?.[activeCategory.key] ?? 0).toLocaleString('es-CL')}
               </div>
-              <select value={categoryId} onChange={e => setCategoryId(e.target.value)} style={selectStyle}>
-                {DETAIL_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-              </select>
             </div>
             {sampleError && <StateBox tone="red" title="No se pudo cargar la muestra" detail="La categoria seleccionada no respondio correctamente." />}
             {!sampleError && sampleLoading && <StateBox title="Cargando muestra" detail="Consultando registros representativos..." />}
-            {!sampleError && !sampleLoading && <Table columns={sampleCols} rows={sampleRows} emptyMessage="Sin hallazgos para esta categoria" keyboard ariaLabel="Muestra de hallazgos legacy" getRowKey={(row, index) => row.id || index} />}
+            {!sampleError && !sampleLoading && (
+              <Table
+                columns={sampleCols}
+                rows={sampleRows}
+                emptyMessage="Sin hallazgos para esta categoria"
+                keyboard
+                ariaLabel="Muestra de hallazgos legacy"
+                getRowKey={(row, index) => row.id || index}
+                toolbarExtra={
+                  <select value={categoryId} onChange={e => setCategoryId(e.target.value)} style={selectStyle}>
+                    {DETAIL_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                  </select>
+                }
+              />
+            )}
           </div>
         )}
 

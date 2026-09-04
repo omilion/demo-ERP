@@ -93,52 +93,47 @@ export default function ReportesComisionesPage() {
     { key: 'estadoPago', label: 'Pago', render: v => <Badge tone={v === 'Pagada' ? 'green' : v === 'Parcial' ? 'amber' : 'gray'}>{v || '-'}</Badge> },
   ]
 
+  const toolbarExtra = (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <FilterLabel label="Venta desde"><input type="date" value={filters.desde} onChange={event => updateFilter('desde', event.target.value)} style={compactControlStyle} /></FilterLabel>
+      <FilterLabel label="Venta hasta"><input type="date" value={filters.hasta} onChange={event => updateFilter('hasta', event.target.value)} style={compactControlStyle} /></FilterLabel>
+      <FilterLabel label="Cobro desde"><input type="date" value={filters.cobroDesde} onChange={event => updateFilter('cobroDesde', event.target.value)} style={compactControlStyle} /></FilterLabel>
+      <FilterLabel label="Cobro hasta"><input type="date" value={filters.cobroHasta} onChange={event => updateFilter('cobroHasta', event.target.value)} style={compactControlStyle} /></FilterLabel>
+      <FilterLabel label="Tipo venta">
+        <select value={filters.tipoVenta} onChange={event => updateFilter('tipoVenta', event.target.value)} style={compactControlStyle}>
+          <option value="">Todos</option>
+          {tiposVenta.filter(item => item !== 'Todos').map(item => <option key={item} value={item}>{item}</option>)}
+        </select>
+      </FilterLabel>
+      <FilterLabel label="Vendedor">
+        <select value={filters.vendedorId} onChange={event => updateFilter('vendedorId', event.target.value)} style={compactControlStyle}>
+          <option value="">Todos</option>
+          {vendedores.map(vendedor => <option key={vendedor.id} value={vendedor.id}>{vendedor.nombre || vendedor.email}</option>)}
+        </select>
+      </FilterLabel>
+      <FilterLabel label="Estado pago">
+        <select value={filters.estadoPago} onChange={event => updateFilter('estadoPago', event.target.value)} style={compactControlStyle}>
+          <option value="">Todos</option>
+          <option value="No pagada">No pagada</option>
+          <option value="Parcial">Parcial</option>
+          <option value="Pagada">Pagada</option>
+        </select>
+      </FilterLabel>
+      <SearchBar placeholder="Buscar vendedor por nombre" value={filters.vendedor} onChange={value => updateFilter('vendedor', value)} style={{ width: 220, height: 28 }} />
+      <Btn variant="secondary" icon="refreshCw" size="xs" onClick={resetFilters}>Limpiar filtros</Btn>
+      {reportQuery.isFetching && <Badge tone="blue">Actualizando</Badge>}
+      {reportQuery.isError && <Badge tone="red">Reporte no disponible</Badge>}
+    </div>
+  )
+
   return (
     <main className="page page-wide">
       <PageHeader
         title="Comisiones"
         subtitle="Ventas y comision estimada por vendedor"
         breadcrumb={['Inicio', 'Reportes', 'Comisiones']}
-        actions={
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <BotonExportar onExportar={exportCsv} />
-            <Btn variant="secondary" icon="refreshCw" size="sm" onClick={resetFilters}>Limpiar filtros</Btn>
-          </div>
-        }
+        actions={<BotonExportar onExportar={exportCsv} />}
       />
-
-      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 10, marginBottom: 18 }}>
-        <FilterLabel label="Venta desde"><input type="date" value={filters.desde} onChange={event => updateFilter('desde', event.target.value)} style={controlStyle} /></FilterLabel>
-        <FilterLabel label="Venta hasta"><input type="date" value={filters.hasta} onChange={event => updateFilter('hasta', event.target.value)} style={controlStyle} /></FilterLabel>
-        <FilterLabel label="Cobro desde"><input type="date" value={filters.cobroDesde} onChange={event => updateFilter('cobroDesde', event.target.value)} style={controlStyle} /></FilterLabel>
-        <FilterLabel label="Cobro hasta"><input type="date" value={filters.cobroHasta} onChange={event => updateFilter('cobroHasta', event.target.value)} style={controlStyle} /></FilterLabel>
-        <FilterLabel label="Tipo venta">
-          <select value={filters.tipoVenta} onChange={event => updateFilter('tipoVenta', event.target.value)} style={controlStyle}>
-            <option value="">Todos</option>
-            {tiposVenta.filter(item => item !== 'Todos').map(item => <option key={item} value={item}>{item}</option>)}
-          </select>
-        </FilterLabel>
-        <FilterLabel label="Vendedor">
-          <select value={filters.vendedorId} onChange={event => updateFilter('vendedorId', event.target.value)} style={controlStyle}>
-            <option value="">Todos</option>
-            {vendedores.map(vendedor => <option key={vendedor.id} value={vendedor.id}>{vendedor.nombre || vendedor.email}</option>)}
-          </select>
-        </FilterLabel>
-        <FilterLabel label="Estado pago">
-          <select value={filters.estadoPago} onChange={event => updateFilter('estadoPago', event.target.value)} style={controlStyle}>
-            <option value="">Todos</option>
-            <option value="No pagada">No pagada</option>
-            <option value="Parcial">Parcial</option>
-            <option value="Pagada">Pagada</option>
-          </select>
-        </FilterLabel>
-      </section>
-
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
-        <SearchBar placeholder="Buscar vendedor por nombre" value={filters.vendedor} onChange={value => updateFilter('vendedor', value)} style={{ width: 320 }} />
-        {reportQuery.isFetching && <Badge tone="blue">Actualizando</Badge>}
-        {reportQuery.isError && <Badge tone="red">Reporte no disponible</Badge>}
-      </div>
 
       <div className="kpi-strip">
         <KpiCard label="Ventas" value={num(data.totales?.count || 0)} icon="shoppingCart" sublabel={`${num(total)} registros filtrados`} />
@@ -149,16 +144,17 @@ export default function ReportesComisionesPage() {
 
       <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(260px, 0.6fr)', gap: 16, alignItems: 'start' }}>
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-          {reportQuery.isLoading ? (
-            <div style={emptyState}>Cargando comisiones...</div>
-          ) : reportQuery.isError ? (
-            <div style={emptyState}>No fue posible cargar el reporte</div>
-          ) : (
-            <>
-              <Table columns={columns} rows={rows} emptyMessage="Sin ventas con los filtros aplicados" stickyHeader keyboard ariaLabel="Reporte de comisiones" getRowKey={row => row.ordenId} />
-              <Pager page={page} pages={pages} total={total} limit={limit} shown={rows.length} onChange={setPage} disabled={reportQuery.isFetching} />
-            </>
-          )}
+          <Table
+            columns={columns}
+            rows={reportQuery.isLoading || reportQuery.isError ? [] : rows}
+            emptyMessage={reportQuery.isLoading ? 'Cargando comisiones...' : reportQuery.isError ? 'No fue posible cargar el reporte' : 'Sin ventas con los filtros aplicados'}
+            stickyHeader
+            keyboard
+            ariaLabel="Reporte de comisiones"
+            getRowKey={row => row.ordenId}
+            toolbarExtra={toolbarExtra}
+          />
+          <Pager page={page} pages={pages} total={total} limit={limit} shown={rows.length} onChange={setPage} disabled={reportQuery.isFetching} />
         </div>
 
         <aside style={{ display: 'grid', gap: 14 }}>
@@ -214,19 +210,13 @@ function scopeBadge(scope) {
 
 const mono = { fontFamily: "'DM Mono', monospace", fontSize: 12 }
 const muted = { color: 'var(--text-3)', fontSize: 12 }
-const controlStyle = {
-  minHeight: 38,
+const compactControlStyle = {
+  height: 28,
   border: '1px solid var(--border)',
-  borderRadius: 8,
+  borderRadius: 6,
   background: '#fff',
   color: 'var(--text-1)',
   fontFamily: 'inherit',
-  fontSize: 13,
-  padding: '0 10px',
-}
-const emptyState = {
-  padding: 48,
-  textAlign: 'center',
-  color: 'var(--text-3)',
-  fontSize: 13,
+  fontSize: 12,
+  padding: '0 8px',
 }

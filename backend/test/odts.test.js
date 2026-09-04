@@ -229,7 +229,7 @@ describe('ODT lifecycle', () => {
     await app.close()
   })
 
-  it('closes an ODT with terminal state, fechaTermino and bitacora', async () => {
+  it('closes an ODT through Control de Calidad with terminal state, fechaTermino and bitacora', async () => {
     const orden = await createTestOrden(app)
     created.ordenIds.push(orden.id)
     const odt = await app.prisma.odt.create({
@@ -237,11 +237,43 @@ describe('ODT lifecycle', () => {
     })
     created.odtIds.push(odt.id)
 
-    const res = await app.inject({
+    // 1. Intentar cerrar directamente desde "En proceso" debe fallar (409)
+    const directClose = await app.inject({
       method: 'POST',
       url: `/api/odts/${odt.id}/cerrar`,
       headers: { authorization: `Bearer ${tallerToken}` },
       payload: { estado: 'Terminada', razon: 'Trabajo terminado', usuario: 'QA Taller' },
+    })
+    expect(directClose.statusCode).toBe(409)
+    expect(JSON.parse(directClose.body).error).toMatch(/Control calidad/i)
+
+    // Avanzar ODT a Control calidad
+    await app.prisma.odt.update({
+      where: { id: odt.id },
+      data: { estado: 'Control calidad' },
+    })
+
+    // 2. Intentar cerrar sin aprobacion formal de control de calidad debe fallar (409)
+    const sinAprobacion = await app.inject({
+      method: 'POST',
+      url: `/api/odts/${odt.id}/cerrar`,
+      headers: { authorization: `Bearer ${tallerToken}` },
+      payload: { estado: 'Terminada', razon: 'Trabajo terminado', usuario: 'QA Taller' },
+    })
+    expect(sinAprobacion.statusCode).toBe(409)
+    expect(JSON.parse(sinAprobacion.body).error).toMatch(/Control de calidad|aprobacion/i)
+
+    // 3. Cerrar con Control de Calidad aprobado debe tener exito (200)
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/odts/${odt.id}/cerrar`,
+      headers: { authorization: `Bearer ${tallerToken}` },
+      payload: {
+        estado: 'Terminada',
+        razon: 'Trabajo terminado',
+        usuario: 'QA Taller',
+        controlCalidad: { aprobada: true, observacion: 'Revision conforme QA' },
+      },
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
@@ -296,7 +328,7 @@ describe('ODT lifecycle', () => {
     expect(JSON.parse(visible.body).items).toMatchObject([{ id: odt.id, estado: 'Anulada', eliminado: true }])
   })
 
-  it('requires delete permission to annul through generic ODT update', async () => {
+  it('requires delete permission to annul through specific endpoint and blocks generic update', async () => {
     const orden = await createTestOrden(app)
     created.ordenIds.push(orden.id)
     const odt = await app.prisma.odt.create({
@@ -304,21 +336,34 @@ describe('ODT lifecycle', () => {
     })
     created.odtIds.push(odt.id)
 
-    const forbidden = await app.inject({
-      method: 'PUT',
-      url: `/api/odts/${odt.id}`,
-      headers: { authorization: `Bearer ${tallerToken}` },
-      payload: { estado: 'Anulada' },
-    })
-    expect(forbidden.statusCode).toBe(403)
-
-    const allowed = await app.inject({
+    // El endpoint generico PUT no permite salto directo a estados terminales
+    const genericPut = await app.inject({
       method: 'PUT',
       url: `/api/odts/${odt.id}`,
       headers: { authorization: `Bearer ${adminToken}` },
       payload: { estado: 'Anulada' },
     })
+    expect(genericPut.statusCode).toBe(400)
+    expect(JSON.parse(genericPut.body).error).toMatch(/estado terminal no esta permitido/i)
+
+    // El endpoint especifico POST /:id/anular exige permiso delete (taller no lo tiene -> 403)
+    const forbidden = await app.inject({
+      method: 'POST',
+      url: `/api/odts/${odt.id}/anular`,
+      headers: { authorization: `Bearer ${tallerToken}` },
+      payload: { razon: 'Intento sin permiso delete' },
+    })
+    expect(forbidden.statusCode).toBe(403)
+
+    // Con permiso delete (admin), anular tiene exito (200)
+    const allowed = await app.inject({
+      method: 'POST',
+      url: `/api/odts/${odt.id}/anular`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { razon: 'Anulacion autorizada por QA' },
+    })
     expect(allowed.statusCode).toBe(200)
     expect(JSON.parse(allowed.body)).toMatchObject({ id: odt.id, estado: 'Anulada', eliminado: true })
   })
+
 })

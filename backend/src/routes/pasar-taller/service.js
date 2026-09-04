@@ -120,7 +120,7 @@ export async function ensureOdt(tx, { existingOdt, orden, cliente, talleres, pri
         usuarioReporta: usuario,
         sucursalId: odt.sucursalId,
         fecha: new Date(),
-        texto: `OT creada desde Pasar a Taller para venta ${orden.nInterno || orden.id}`,
+        texto: `OT creada desde Excepciones de Taller para venta ${orden.nInterno || orden.id}`,
       },
     });
   }

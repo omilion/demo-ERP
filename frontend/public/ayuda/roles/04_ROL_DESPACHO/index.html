@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DOC-04: Rol Despacho y Reparto | Plastimar SisGestión 3.0</title>
+  <link rel="stylesheet" href="../../assets/manual-style.css">
+</head>
+<body>
+
+  <header class="doc-header">
+    <div class="doc-header-inner">
+      <div class="doc-brand">
+        <img src="../../assets/plastimar-logo.webp" alt="Plastimar Logo" class="doc-logo">
+        <div class="doc-title-group">
+          <h1>Manual Operativo: Despacho y Reparto</h1>
+          <div class="doc-subtitle">SisGestión 3.0 &middot; Control de Salidas, Cadena Logística y Guías DTE 52</div>
+        </div>
+      </div>
+      <div class="doc-actions">
+        <a href="../../00_MAPA_DOCUMENTACION_Y_GUIA_INICIO/index.html" class="btn-action btn-nav">&larr; Volver al Mapa</a>
+        <button class="btn-action btn-print">🖨️ Imprimir / Guardar PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="doc-container">
+
+    <!-- Misión del Rol -->
+    <section class="doc-card">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">1. Tu Rol en el ERP Plastimar</h2>
+        <span class="badge-role">Logística y Entrega</span>
+      </div>
+      <p style="font-size: 1.05rem; margin-bottom: 1rem;">
+        El equipo de despacho es el eslabón final que conecta todo el esfuerzo de Ventas, Taller y Bodega con la satisfacción del cliente. En tus manos está asegurar que los pedidos salgan embalados correctamente, en la fecha prometida y con el <strong>respaldo legal tributario obligatorio ante el SII</strong>.
+      </p>
+      <div class="callout callout-info">
+        <div class="callout-icon">🚚</div>
+        <div class="callout-content">
+          <h4>Tu Misión Principal</h4>
+          <p>Organizar la carga por rutas, emitir las Guías de Despacho electrónicas (DTE 52), registrar las entregas en terreno y alertar de inmediato cualquier incidencia o intento de entrega fallido.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- La Cadena de Despacho -->
+    <section class="doc-card">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">2. La Cadena de Despacho y sus Excepciones</h2>
+        <span class="badge-role">Flujo Físico</span>
+      </div>
+      <p style="margin-bottom: 1.25rem;">
+        La secuencia normal parte en <strong>Preparado</strong> y continúa por Patio, Didáctico, Reparto y Entregado. También existen estados de excepción: Incidencia, Reprogramado, Retenido y Devuelto. Registra sólo el hito que ocurrió realmente:
+      </p>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+        
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem; border-top: 4px solid #0f172a;">
+          <h4 style="color: #0f172a; font-size: 1rem; margin-bottom: 0.25rem;">1. Patio</h4>
+          <p style="font-size: 0.85rem; color: #475569;">Zona de acopio para mobiliario escolar, juegos modulares y estructuras de gran volumen que salen de taller.</p>
+        </div>
+
+        <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 1rem; border-top: 4px solid #0284c7;">
+          <h4 style="color: #0369a1; font-size: 1rem; margin-bottom: 0.25rem;">2. Didáctico</h4>
+          <p style="font-size: 0.85rem; color: #0284c7;">Consolidación de cajas de psicomotricidad, colchonetas y material didáctico menor para el mismo cliente.</p>
+        </div>
+
+        <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 1rem; border-top: 4px solid #d97706;">
+          <h4 style="color: #b45309; font-size: 1rem; margin-bottom: 0.25rem;">3. Reparto (En Ruta)</h4>
+          <p style="font-size: 0.85rem; color: #92400e;">Bultos cargados en el vehículo asignado, asociados a la ruta del chofer con su Guía DTE 52 timbrada.</p>
+        </div>
+
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 1rem; border-top: 4px solid #16a34a;">
+          <h4 style="color: #15803d; font-size: 1rem; margin-bottom: 0.25rem;">4. Entregado</h4>
+          <p style="font-size: 0.85rem; color: #166534;">Recepción conforme por parte del cliente con firma de guía física o digital. Cierre de la orden en el ERP.</p>
+        </div>
+
+      </div>
+
+      <div class="callout callout-regla-oro">
+        <div class="callout-icon">🛑</div>
+        <div class="callout-content">
+          <h4>Regla de Oro Nº 5: NINGÚN bulto sale a reparto sin Guía DTE 52</h4>
+          <p>Antes de cargar, el responsable debe verificar packing, cantidades, destinatario y el estado autorizado de la <strong>Guía DTE 52</strong>. Durante la Marcha Blanca este control es humano: no se debe asumir que el sistema bloqueará toda salida incorrecta.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pantalla de Despachos y Salidas -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">3. Pantalla de Despachos y Salidas</h2>
+        <span class="badge-role">Tu Mesa de Trabajo</span>
+      </div>
+      <p style="margin-bottom: 1.5rem;">
+        Al ingresar a <strong>Bodega &rarr; Despachos</strong> encontrarás el panel principal de control logístico:
+      </p>
+
+      <div class="screenshot-wrapper">
+        <div class="screenshot-container">
+          <img src="../../capturas/04_despacho/01_modulo_despachos.png" alt="Módulo de Despachos y Salidas Plastimar" class="screenshot-img">
+          <div class="screenshot-badge">🔍 Clic para ampliar en pantalla completa</div>
+        </div>
+        <div class="screenshot-caption">Figura 1: Módulo de Despachos y Salidas. Se aprecian las órdenes listas, el avance de packing y los botones para programar salida o emitir guía DTE 52.</div>
+      </div>
+
+      <h3 style="font-size: 1.15rem; color: var(--brand-primary); margin-top: 1.5rem; margin-bottom: 0.75rem;">Procedimiento Paso a Paso para Despachar una Orden</h3>
+      <div class="step-list">
+        
+        <div class="step-item">
+          <div class="step-number">1</div>
+          <div class="step-body">
+            <h4>Identificar la Venta y Revisar el Packing</h4>
+            <p>En la pestaña <strong>Salidas Listas (Despacho)</strong>, busca el número de venta o cliente. Verifica que la barra naranja de <strong>Packing</strong> indique que los productos están completamente preparados (o en el porcentaje parcial pactado).</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">2</div>
+          <div class="step-body">
+            <h4>Programar la Salida</h4>
+            <p>Haz clic en el botón <strong>[Programar Salida]</strong> en la fila correspondiente:</p>
+            <ul style="margin-left: 1.25rem; margin-top: 0.35rem; font-size: 0.88rem; color: #475569;">
+              <li>Si es <strong>Retiro en Sucursal</strong>: Se confirma que el cliente se presentó a retirar en mesón.</li>
+              <li>Si es <strong>Reparto a Domicilio / Colegio</strong>: Se asigna la fecha programada, vehículo y conductor responsable.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">3</div>
+          <div class="step-body">
+            <h4>Emitir la Guía de Despacho DTE 52</h4>
+            <p>Presiona <strong>[Preparar Guía DTE 52]</strong> para crear/revisar el borrador. Confirma receptor, destino, tipo de despacho, indicador de traslado, productos y cantidades; luego emite, envía y consulta el estado SII. Un Track ID no equivale a aceptación definitiva.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">4</div>
+          <div class="step-body">
+            <h4>Confirmar la Entrega Conforme</h4>
+            <p>Cuando existe recepción conforme, marca la orden como <strong>Entregada</strong> y verifica que la venta refleje el cambio. Finanzas debe consultar su bandeja; no dependas de una notificación automática no visible.</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Situaciones Especiales -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">4. Situaciones Especiales y Excepciones</h2>
+        <span class="badge-role">Resolución Operativa</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.5rem;">
+        
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.2rem;">
+          <h4 style="color: #0369a1; margin-bottom: 0.35rem;">📦 ¿Qué pasa con los Envíos Parciales?</h4>
+          <p style="font-size: 0.88rem; color: #475569;">Si una venta autoriza entregas parciales (ejemplo: 50 colchonetas listas de 100), el sistema te permite generar una Guía DTE 52 <em>únicamente por las 50 unidades listas</em>. El saldo restante seguirá visible en la tabla esperando que Taller termine el lote.</p>
+        </div>
+
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.2rem;">
+          <h4 style="color: #b45309; margin-bottom: 0.35rem;">⚠️ Rechazo o Dirección No Encontrada</h4>
+          <p style="font-size: 0.88rem; color: #475569;">Si el camión llega al colegio y se encuentra cerrado o el cliente rechaza un ítem, el chofer debe reportar la incidencia. La mercadería reingresa a bodega bajo <em>Retorno de Reparto</em> y la venta queda en estado de alerta para que el vendedor gestione la reentrega.</p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Dudas y Feedback -->
+    <section class="doc-card" style="background: #fef2f2; border-color: #fecaca;">
+      <h3 style="color: #991b1b; margin-bottom: 0.5rem;">¿Falla de timbraje DTE 52 o error al programar ruta?</h3>
+      <p style="color: #7f1d1d; font-size: 0.95rem; margin-bottom: 1rem;">
+        Si al generar la Guía de Despacho el SII no responde o el sistema bloquea una salida indebidamente:
+      </p>
+      <p style="color: #7f1d1d; font-size: 0.9rem;">
+        Haz clic en el botón flotante rojo <strong>[Reportar observación]</strong> en la esquina inferior izquierda. Selecciona <em>Falla</em>, anota el número de venta y el equipo de soporte lo destrabará de inmediato.
+      </p>
+    </section>
+
+    <section class="doc-card"><div class="doc-card-header"><h2 class="doc-card-title">5. Checklist antes de salir</h2><span class="badge-role">Control obligatorio</span></div><ul class="check-list"><li>Picking/packing y cantidad física coinciden.</li><li>Destinatario, dirección, contacto y programación verificados.</li><li>Guía vinculada sin duplicidad y estado autorizado por Facturación.</li><li>Tracking inicia en Preparado y respeta la secuencia.</li><li>Incidencia, reprogramación, retención o devolución quedan registradas.</li></ul></section>
+
+    <footer class="doc-footer">
+      <p><strong>Plastimar SisGestión 3.0</strong> &middot; Despacho y Reparto &middot; MB-1.1 &middot; 2026-09-04</p>
+    </footer>
+
+  </main>
+
+  <script src="../../assets/manual-scripts.js"></script>
+</body>
+</html>

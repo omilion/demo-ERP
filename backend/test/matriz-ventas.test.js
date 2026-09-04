@@ -53,7 +53,7 @@ async function createOrder(app, marker, overrides = {}) {
       estadoPago: overrides.estadoPago || 'No pagada',
       estadoEntrega: overrides.estadoEntrega || 'Pendiente entrega',
       clienteId: cliente.id,
-      rutCliente: cliente.rut,
+      rutCliente: Object.prototype.hasOwnProperty.call(overrides, 'rutCliente') ? overrides.rutCliente : cliente.rut,
       userId: user.id,
       sucursalId: overrides.sucursalId,
       createdAt: overrides.createdAt || new Date(),
@@ -80,6 +80,8 @@ async function cleanup(app, fixture) {
   await app.prisma.movimientoCaja.deleteMany({ where: { ordenId: fixture.orden.id } }).catch(() => {})
   await app.prisma.multa.deleteMany({ where: { ordenId: fixture.orden.id } }).catch(() => {})
   await app.prisma.cotizacionLicitacion.deleteMany({ where: { ordenId: fixture.orden.id } }).catch(() => {})
+  await app.prisma.guiaDespacho.deleteMany({ where: { ordenId: fixture.orden.id } }).catch(() => {})
+  await app.prisma.despacho.deleteMany({ where: { ordenId: fixture.orden.id } }).catch(() => {})
   await app.prisma.orden.delete({ where: { id: fixture.orden.id } }).catch(() => {})
   await app.prisma.producto.delete({ where: { id: fixture.product.id } }).catch(() => {})
   await app.prisma.cliente.delete({ where: { id: fixture.cliente.id } }).catch(() => {})
@@ -135,6 +137,35 @@ describe('matriz ventas legacy parity', () => {
       await cleanup(app, todayOrder)
       await cleanup(app, otherSucursal)
       await cleanup(app, oldOrder)
+    }
+  })
+
+  it('muestra cliente y salida programada aunque la orden moderna no copie rutCliente', async () => {
+    const marker = `relacion-cliente-${Date.now()}`
+    const fixture = await createOrder(app, marker, { sucursalId: 9110, rutCliente: null })
+    try {
+      const despacho = await app.prisma.despacho.create({
+        data: { ordenId: fixture.orden.id, sucursalId: 9110, tipoDespacho: 'Despacho cliente', transporte: 'Camión prueba' },
+      })
+      const guia = await app.prisma.guiaDespacho.create({
+        data: { ordenId: fixture.orden.id, despachoId: despacho.id, nGuia: `G-${marker}`, fechaGuia: new Date() },
+      })
+      const res = await app.inject({
+        method: 'GET', url: `/api/matriz-ventas?nInterno=${fixture.orden.nInterno}`,
+        headers: { authorization: `Bearer ${tokenFor(app, 'admin', 9110)}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const row = JSON.parse(res.body).items.find(item => item.id === fixture.orden.id)
+      expect(row).toMatchObject({
+        nombreCliente: fixture.cliente.razonSocial,
+        cliente: fixture.cliente.rut,
+        despachosCount: 1,
+        guiasCount: 1,
+      })
+      expect(row.despachos.map(item => item.id)).toContain(despacho.id)
+      expect(row.guias.map(item => item.id)).toContain(guia.id)
+    } finally {
+      await cleanup(app, fixture)
     }
   })
 
@@ -448,15 +479,17 @@ describe('matriz ventas - fecha autonoma, estado inicial y paginacion', () => {
     }
   })
 
-  it('sin filtros muestra ordenes pasadas (no solo hoy)', async () => {
+  it('sin filtros no fuerza ventasHoy y muestra una venta activa recién creada', async () => {
     const marker = `all-${Date.now()}`
-    const viejo = await createOrder(app, marker, {
-      createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-    })
+    const viejo = await createOrder(app, marker)
     try {
+      // pageSize amplio a proposito: lo que se verifica es que el rango por defecto
+      // no sea "solo hoy", no el tamano de la pagina. Con el default de 100 la orden
+      // de hace 30 dias quedaba fuera en cuanto la base acumulaba ese tanto de
+      // registros recientes, y el test fallaba por un motivo que no es el suyo.
       const res = await app.inject({
         method: 'GET',
-        url: '/api/matriz-ventas',
+        url: '/api/matriz-ventas?pageSize=500',
         headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` },
       })
       expect(res.statusCode).toBe(200)
@@ -500,14 +533,13 @@ describe('matriz ventas - fecha autonoma, estado inicial y paginacion', () => {
   it('filtro search unificado busca en multiples campos (cliente, ODT, guia, documento, licitacion/OC, nInterno)', async () => {
     const marker = `search-${Date.now()}`
     const fixture = await createOrder(app, marker, { sucursalId: 9107, licitacion: `LIC-${marker}` })
-    const odtNum = 12345000 + seq++
     const guiaNum = `G-${marker}`
     const ncNum = `NC-${marker}`
     let odt, guia, mov, cotizacion
     try {
       // 1. Create ODT
       odt = await app.prisma.odt.create({
-        data: { id: odtNum, ordenId: fixture.orden.id, sucursalId: 9107, estado: 'Pendiente' }
+        data: { ordenId: fixture.orden.id, sucursalId: 9107, estado: 'Pendiente' }
       })
       // 2. Create Guia
       guia = await app.prisma.guiaDespacho.create({
@@ -548,7 +580,7 @@ describe('matriz ventas - fecha autonoma, estado inicial y paginacion', () => {
       // Test searching by ODT (must be numeric)
       const resOdt = await app.inject({
         method: 'GET',
-        url: `/api/matriz-ventas?search=${odtNum}`,
+        url: `/api/matriz-ventas?search=${odt.id}`,
         headers: { authorization: `Bearer ${tokenFor(app, 'admin')}` }
       })
       expect(JSON.parse(resOdt.body).items.map(i => i.id)).toContain(fixture.orden.id)

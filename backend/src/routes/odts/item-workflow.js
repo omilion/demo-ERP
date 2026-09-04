@@ -17,6 +17,12 @@ const REOPEN_STATES = new Set(['en_proceso', 'pendiente'])
 const ESTADOS_SET = new Set(ODT_ITEM_TALLER_ESTADOS)
 const DESTRUCTIVE_WORKFLOW_STATES = new Set(['cancelado'])
 
+async function lockOdtWorkflow(tx, odtId) {
+  if (typeof tx?.$executeRaw === 'function') {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`odt-workflow:${Number(odtId)}`})::bigint)`
+  }
+}
+
 function normalizeText(value) {
   return String(value || '')
     .trim()
@@ -159,7 +165,23 @@ const relationSelect = {
       odt: { select: { id: true, sucursalId: true, estado: true, eliminado: true } },
     },
   },
-  taller: { select: { nombre: true } },
+  taller: { select: { nombre: true, jefeId: true } },
+}
+
+// La calidad de lo que sale de un taller la aprueba SU jefe.
+//
+// Mientras el taller no tenga jefe asignado alcanza con el permiso de taller: un
+// control que nadie puede ejercer detiene el trabajo en vez de ordenarlo, y la regla
+// va entrando en vigor a medida que Plastimar nombre a cada jefe.
+//
+// Cuando si lo tiene, no basta con el permiso de gestion: todos los jefes de taller
+// lo tienen, asi que el de Corte podria aprobar lo que sale de Espumas y la regla
+// quedaria en nada. El desbloqueo queda en `taller:delete`, que es la llave de
+// administracion que este archivo ya usa para los estados destructivos.
+export function puedeRecibirEtapa(user, taller) {
+  if (!taller?.jefeId) return can(user?.role, 'taller.avance', 'write', user?.permisosExtra)
+  if (user?.id === taller.jefeId) return true
+  return can(user?.role, 'taller', 'delete', user?.permisosExtra)
 }
 
 export default async function itemWorkflowRoutes(fastify) {
@@ -174,6 +196,14 @@ export default async function itemWorkflowRoutes(fastify) {
     const operarioResponsableId = request.body?.operarioResponsableId !== undefined
       ? (request.body.operarioResponsableId === null ? null : parseInt(request.body.operarioResponsableId, 10))
       : undefined
+    // Declarar el propio avance y decidir quien hace el trabajo son cosas distintas.
+    // Este endpoint pide taller.avance:write -el permiso del operario- y aceptaba
+    // ademas el responsable, asi que una cortadora podia reasignarle la tarea a otra.
+    // Asignar es de coordinacion.
+    if (operarioResponsableId !== undefined
+      && !can(request.user?.role, 'taller.gestion', 'write', request.user?.permisosExtra)) {
+      return reply.code(403).send({ error: 'Asignar responsable es de coordinación de taller' })
+    }
     if (operarioResponsableId !== undefined && operarioResponsableId !== null && isNaN(operarioResponsableId)) {
       return reply.code(400).send({ error: 'operarioResponsableId invalido' })
     }
@@ -204,6 +234,7 @@ export default async function itemWorkflowRoutes(fastify) {
 
     try {
       return await fastify.prisma.$transaction(async (tx) => {
+        await lockOdtWorkflow(tx, parsedParams.odtId)
         const txCurrent = await tx.odtItemTaller.findFirst({
           where: relationWhere,
           select: relationSelect,
@@ -279,6 +310,7 @@ export default async function itemWorkflowRoutes(fastify) {
 
     try {
       return await fastify.prisma.$transaction(async (tx) => {
+        await lockOdtWorkflow(tx, parsedParams.odtId)
         const txItems = await tx.odtItemTaller.findMany({
           where: relationWhere,
           select: relationSelect,
@@ -322,9 +354,118 @@ export default async function itemWorkflowRoutes(fastify) {
     }
   }
 
+  // Recibir el trabajo de la etapa anterior: la inspeccion de calidad la hace quien
+  // recibe, que es el primer interesado en que venga bien y ya esta ahi. Se declara
+  // por cantidad y no por si/no, porque el defecto real es parcial -de 100 cortes, 8
+  // con el color cambiado- y el resto sigue su camino.
+  //
+  // No se agrega un estado "pendiente de calidad": un estado que nadie vacia bloquea
+  // la operacion entera. Lo que si tiene efecto es el rechazo, que saca la etapa de
+  // "listo" y con eso la puerta de cierre de la OT la detiene.
+  async function recibirEtapa(request, reply) {
+    const parsedParams = parseWorkflowParams(request.params)
+    if (parsedParams.error) return reply.code(400).send({ error: parsedParams.error })
+
+    const body = request.body || {}
+    const aceptada = Number(body.cantidadAceptada)
+    const rechazada = Number(body.cantidadRechazada ?? 0)
+    if (!Number.isFinite(aceptada) || aceptada < 0) return reply.code(400).send({ error: 'cantidadAceptada invalida' })
+    if (!Number.isFinite(rechazada) || rechazada < 0) return reply.code(400).send({ error: 'cantidadRechazada invalida' })
+    if (aceptada + rechazada <= 0) return reply.code(400).send({ error: 'Indica que cantidad se revisa' })
+
+    const defecto = String(body.defecto || '').trim() || null
+    const causa = String(body.causa || '').trim() || null
+    // Un rechazo sin motivo no sirve para corregir nada: quien lo reciba de vuelta
+    // necesita saber que estuvo mal.
+    if (rechazada > 0 && !defecto) {
+      return reply.code(400).send({ error: 'Indica el defecto por el que se rechaza' })
+    }
+
+    const decisionPedida = String(body.decision || '').trim().toLowerCase()
+    const decision = rechazada === 0
+      ? 'aceptada'
+      : (['reproceso', 'descarte'].includes(decisionPedida) ? decisionPedida : 'reproceso')
+
+    const sucursalId = getUserSucursalId(request.user)
+    const relationWhere = buildTallerItemRelationWhere(parsedParams, { sucursalId })
+    const current = await fastify.prisma.odtItemTaller.findFirst({
+      where: relationWhere,
+      select: relationSelect,
+    })
+    if (!current) return reply.code(404).send({ error: 'Relacion ODT/item/taller no encontrada' })
+    if (!isOdtWorkflowWritable(current.odtItem?.odt)) {
+      return reply.code(409).send({ error: 'ODT cerrada o anulada' })
+    }
+    // Se recibe trabajo terminado: una etapa que el taller todavia no declara lista no
+    // se puede aceptar ni rechazar.
+    if (normalizeText(current.estado) !== 'listo') {
+      return reply.code(409).send({ error: 'La etapa todavia no esta lista para recibir' })
+    }
+    if (!puedeRecibirEtapa(request.user, current.taller)) {
+      return reply.code(403).send({
+        error: `La calidad de ${current.taller?.nombre || 'este taller'} la aprueba su jefe`,
+      })
+    }
+
+    const usuario = getRequestUsuario(request.user) || 'Sistema'
+    try {
+      const creada = await fastify.prisma.$transaction(async (tx) => {
+        const recepcion = await tx.odtEtapaRecepcion.create({
+          data: {
+            odtItemTallerId: current.id,
+            cantidadRevisada: aceptada + rechazada,
+            cantidadAceptada: aceptada,
+            cantidadRechazada: rechazada,
+            defecto,
+            causa,
+            decision,
+            usuario,
+            usuarioId: Number.isInteger(request.user?.id) ? request.user.id : null,
+            ipEquipo: request.ip,
+          },
+        })
+
+        // Si algo se rechaza, la etapa deja de estar lista: hay trabajo que rehacer y
+        // la OT no puede cerrarse hasta resolverlo. Si se acepta todo, no se toca el
+        // estado, que ya es el correcto.
+        if (rechazada > 0 && decision === 'reproceso') {
+          await tx.odtItemTaller.update({
+            where: { id: current.id },
+            data: { estado: 'en_proceso', fechaListo: null, usuarioListo: null },
+          })
+        }
+
+        const itemLabel = [current.odtItem?.codigoInterno, current.odtItem?.nombre].filter(Boolean).join(' - ')
+        await tx.bitacoraTaller.create({
+          data: {
+            odtId: current.odtItem.odtId,
+            usuario,
+            usuarioReporta: usuario,
+            ipEquipo: request.ip,
+            sucursalId: current.odtItem?.odt?.sucursalId ?? sucursalId,
+            fecha: new Date(),
+            texto: rechazada > 0
+              ? `Recepción ${current.taller?.nombre || 'taller'} / ${itemLabel}: acepta ${aceptada}, rechaza ${rechazada} (${decision}) · Defecto: ${defecto}${causa ? ` · Causa: ${causa}` : ''}`
+              : `Recepción ${current.taller?.nombre || 'taller'} / ${itemLabel}: acepta ${aceptada} conforme`,
+          },
+        })
+
+        return recepcion
+      })
+      // La respuesta se envia DESPUES de que la transaccion confirma. Hacerlo desde
+      // dentro devuelve 201 sobre una escritura que todavia no es durable: quien lee
+      // enseguida ve el estado anterior.
+      return reply.code(201).send(creada)
+    } catch (error) {
+      if (error.statusCode) return reply.code(error.statusCode).send({ error: error.message })
+      throw error
+    }
+  }
+
   // Mover el estado del item es como el operario declara su avance.
   const opts = { preHandler: [fastify.authenticate, fastify.rbac('taller.avance', 'write')] }
   fastify.put(ROUTE, opts, updateEstado)
   fastify.patch(ROUTE, opts, updateEstado)
   fastify.post(BULK_ROUTE, opts, updateTallerEstadoMasivo)
+  fastify.post(`${ROUTE.replace('/estado', '')}/recepcion`, opts, recibirEtapa)
 }

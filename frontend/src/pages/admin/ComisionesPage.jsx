@@ -370,35 +370,30 @@ export default function ComisionesPage() {
           </form>
 
           <div style={{ padding: 16, minWidth: 0 }}>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-              <SearchBar placeholder="Buscar regla, vendedor o tipo" value={search} onChange={setSearch} style={{ width: 300 }} />
-              <select value={tipo} onChange={event => setTipo(event.target.value)} style={selectMini}>
-                <option value="">Todos los tipos</option>
-                {(meta.tiposVenta || DEFAULT_META.tiposVenta).map(item => <option key={item} value={item}>{item}</option>)}
-              </select>
-              <select value={estado} onChange={event => setEstado(event.target.value)} style={selectMini}>
-                <option value="activos">Activas</option>
-                <option value="inactivos">Inactivas</option>
-                <option value="todos">Todos los estados</option>
-              </select>
-            </div>
-
-            {reglasQuery.isLoading ? (
-              <div style={emptyState}>Cargando reglas...</div>
-            ) : reglasQuery.isError ? (
-              <div style={emptyState}>No fue posible cargar reglas</div>
-            ) : (
-              <Table
-                columns={columns}
-                rows={filtered}
-                emptyMessage="Sin reglas de comision"
-                keyboard
-                stickyHeader
-                ariaLabel="Reglas de comision"
-                getRowKey={row => row.id}
-                onRowDoubleClick={startEdit}
-              />
-            )}
+            <Table
+              columns={columns}
+              rows={reglasQuery.isLoading || reglasQuery.isError ? [] : filtered}
+              emptyMessage={reglasQuery.isLoading ? 'Cargando reglas...' : reglasQuery.isError ? 'No fue posible cargar reglas' : 'Sin reglas de comision'}
+              keyboard
+              stickyHeader
+              ariaLabel="Reglas de comision"
+              getRowKey={row => row.id}
+              onRowDoubleClick={startEdit}
+              toolbarExtra={
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <SearchBar placeholder="Buscar regla, vendedor o tipo" value={search} onChange={setSearch} style={{ width: 260, height: 28 }} />
+                  <select value={tipo} onChange={event => setTipo(event.target.value)} style={selectMini}>
+                    <option value="">Todos los tipos</option>
+                    {(meta.tiposVenta || DEFAULT_META.tiposVenta).map(item => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                  <select value={estado} onChange={event => setEstado(event.target.value)} style={selectMini}>
+                    <option value="activos">Activas</option>
+                    <option value="inactivos">Inactivas</option>
+                    <option value="todos">Todos los estados</option>
+                  </select>
+                </div>
+              }
+            />
           </div>
         </div>
       </section>
@@ -410,23 +405,14 @@ const mono = { fontFamily: "'DM Mono', monospace", fontSize: 12 }
 const muted = { color: 'var(--text-3)', fontSize: 12 }
 const fieldGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }
 const selectMini = {
-  height: 38,
+  height: 28,
   border: '1px solid var(--border)',
-  borderRadius: 8,
+  borderRadius: 6,
   background: '#fff',
   color: 'var(--text-1)',
   fontFamily: 'inherit',
-  fontSize: 13,
-  padding: '0 12px',
-}
-const emptyState = {
-  padding: '44px 18px',
-  textAlign: 'center',
-  color: 'var(--text-3)',
-  fontSize: 13,
-  border: '1px dashed var(--border)',
-  borderRadius: 10,
-  background: 'var(--bg)',
+  fontSize: 12,
+  padding: '0 8px',
 }
 const checkStyle = {
   display: 'flex',

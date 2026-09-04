@@ -79,6 +79,13 @@ function buildProgressSummary(item, avances = []) {
   }
 }
 
+export function getCorteAdvanceBlocker({ objetivo, totalPrevio, cantidad }) {
+  if (Number(objetivo) > 0 && Number(totalPrevio) + Number(cantidad) > Number(objetivo) + 0.0001) {
+    return `El avance supera la cantidad objetivo (${objetivo})`
+  }
+  return null
+}
+
 function serializeItem(item, context) {
   const avances = context.avancesByItem.get(item.id) || []
   const evidencias = context.evidenciasByItem.get(item.id) || []
@@ -234,8 +241,12 @@ export default async function tallerCorteRoutes(fastify) {
     })
   })
 
+  // Registrar el avance propio es el trabajo del operario, no gestion del taller.
+  // Con taller:write, el rol taller_operario -que tiene taller:read y
+  // taller.avance:write- quedaba bloqueado justo de la pantalla para la que existe:
+  // una cortadora no podia anotar lo que acababa de cortar.
   fastify.post('/items/:id/avances', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('taller.avance', 'write')],
   }, async (request, reply) => {
     const resolved = await findCorteItem(fastify.prisma, Number.parseInt(request.params.id, 10), request.user)
     if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
@@ -247,20 +258,42 @@ export default async function tallerCorteRoutes(fastify) {
 
     const usuario = usuarioActual(request.user)
     const observacion = request.body?.observacion ? String(request.body.observacion).trim() : null
-    const objetivo = Number(resolved.item.odtItem.cantidad || 0)
-    const previo = await fastify.prisma.odtAvance.aggregate({
-      where: { odtItemTallerId: resolved.item.id },
-      _sum: { cantidadTerminada: true },
-    })
-    const totalPrevio = Number(previo._sum.cantidadTerminada || 0)
-    if (objetivo > 0 && totalPrevio + cantidad > objetivo + 0.0001) {
-      return reply.code(409).send({ error: `El avance supera la cantidad objetivo (${objetivo})` })
-    }
-
-    const avance = await fastify.prisma.$transaction(async tx => {
+    try {
+      const avance = await fastify.prisma.$transaction(async tx => {
+        // Serializa avance, cambios de estación y cierre de la misma ODT; se
+        // vuelve a leer la tarea dentro de la transacción antes de sumar.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`odt-workflow:${resolved.item.odtItem.odtId}`})::bigint)`
+        const item = await tx.odtItemTaller.findFirst({
+          where: relationWhere(resolved.corte.id, request.user, resolved.item.id),
+          include: { odtItem: { include: { odt: true } } },
+        })
+        if (!item) {
+          const error = new Error('Tarea de Taller de Corte no encontrada')
+          error.statusCode = 404
+          throw error
+        }
+        if (['listo', 'cancelado'].includes(item.estado)) {
+          const error = new Error('La tarea ya esta cerrada')
+          error.statusCode = 409
+          throw error
+        }
+        const previo = await tx.odtAvance.aggregate({
+          where: { odtItemTallerId: item.id },
+          _sum: { cantidadTerminada: true },
+        })
+        const blocker = getCorteAdvanceBlocker({
+          objetivo: Number(item.odtItem.cantidad || 0),
+          totalPrevio: Number(previo._sum.cantidadTerminada || 0),
+          cantidad,
+        })
+        if (blocker) {
+          const error = new Error(blocker)
+          error.statusCode = 409
+          throw error
+        }
       const created = await tx.odtAvance.create({
         data: {
-          odtItemTallerId: resolved.item.id,
+          odtItemTallerId: item.id,
           cantidadTerminada: cantidad,
           fechaTrabajo,
           observacion,
@@ -268,28 +301,33 @@ export default async function tallerCorteRoutes(fastify) {
           ipEquipo: request.ip,
         },
       })
-      const transition = resolved.item.estado === 'pendiente'
-        ? { estado: 'en_proceso', fechaInicio: resolved.item.fechaInicio || new Date(), usuario }
+      const transition = item.estado === 'pendiente'
+        ? { estado: 'en_proceso', fechaInicio: item.fechaInicio || new Date(), usuario }
         : null
-      if (transition) await tx.odtItemTaller.update({ where: { id: resolved.item.id }, data: transition })
+      if (transition) await tx.odtItemTaller.update({ where: { id: item.id }, data: transition })
       await tx.bitacoraTaller.create({
         data: {
-          odtId: resolved.item.odtItem.odtId,
+          odtId: item.odtItem.odtId,
           usuario,
           usuarioReporta: usuario,
           ipEquipo: request.ip,
-          sucursalId: resolved.item.odtItem.odt.sucursalId ?? getUserSucursalId(request.user),
+          sucursalId: item.odtItem.odt.sucursalId ?? getUserSucursalId(request.user),
           fecha: new Date(),
-          texto: `Avance Taller de Corte: ${resolved.item.odtItem.codigoInterno || resolved.item.odtItem.nombre || `item #${resolved.item.id}`} +${cantidad}. ${observacion || 'Sin observaciones.'}`,
+          texto: `Avance Taller de Corte: ${item.odtItem.codigoInterno || item.odtItem.nombre || `item #${item.id}`} +${cantidad}. ${observacion || 'Sin observaciones.'}`,
         },
       })
       return created
-    })
-    return reply.code(201).send(avance)
+      })
+      return reply.code(201).send(avance)
+    } catch (error) {
+      if (error.statusCode) return reply.code(error.statusCode).send({ error: error.message })
+      throw error
+    }
   })
 
+  // La foto es parte del mismo avance: quien puede declararlo puede documentarlo.
   fastify.post('/items/:id/evidencias', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac('taller.avance', 'write')],
     bodyLimit: 7 * 1024 * 1024,
   }, async (request, reply) => {
     const resolved = await findCorteItem(fastify.prisma, Number.parseInt(request.params.id, 10), request.user)

@@ -2,7 +2,7 @@ import { confirmDialog } from '../../store/notif'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader, KpiCard, Badge, Btn } from '../../components/shared'
-import { useIntegridadResumen, useIntegridadDetalle, useReasignarOrdenItem, useEliminarOrdenItem, useReasignarOdtItem, useEliminarOdtItem, useBackfillOdtsCliente } from '../../api/admin'
+import { useIntegridadResumen, useIntegridadDetalle, useReasignarOrdenItem, useExcluirOrdenItem, useReasignarOdtItem, useExcluirOdtItem, useBackfillOdtsCliente } from '../../api/admin'
 import { useProductos } from '../../api/productos'
 
 const TIPOS = [
@@ -61,9 +61,9 @@ export default function IntegridadPage() {
   const { data: rows = [], isLoading: ld } = useIntegridadDetalle(tipo)
   const def = TIPOS.find(t => t.id === tipo)
   const reasignarOrden = useReasignarOrdenItem()
-  const eliminarOrden = useEliminarOrdenItem()
+  const excluirOrden = useExcluirOrdenItem()
   const reasignarOdt = useReasignarOdtItem()
-  const eliminarOdt = useEliminarOdtItem()
+  const excluirOdt = useExcluirOdtItem()
   const backfillOdtsCliente = useBackfillOdtsCliente()
 
   const isOrdenHuerfano = tipo === 'orden-items-huerfanos'
@@ -73,17 +73,17 @@ export default function IntegridadPage() {
     if (isOrdenHuerfano) reasignarOrden.mutate({ id: rowId, producto_id: productoId })
     else if (isOdtHuerfano) reasignarOdt.mutate({ id: rowId, producto_id: productoId })
   }
-  async function handleEliminar(rowId) {
-    if (!await confirmDialog({ title: 'Confirmar', detail: '¿Eliminar este item huérfano? Acción registrada en auditoría.', tone: 'danger' })) return
-    if (isOrdenHuerfano) eliminarOrden.mutate(rowId)
-    else if (isOdtHuerfano) eliminarOdt.mutate(rowId)
+  async function handleExcluir(rowId) {
+    if (!await confirmDialog({ title: 'Excluir de operación', detail: 'El ítem quedará marcado como eliminado y conservará su historial. No se borrará de la base de datos.', tone: 'danger' })) return
+    if (isOrdenHuerfano) excluirOrden.mutate(rowId)
+    else if (isOdtHuerfano) excluirOdt.mutate(rowId)
   }
 
   return (
     <main className="page page-wide">
       <PageHeader
         title="Integridad de Datos"
-        subtitle="Revisar y corregir registros con problemas. Solo administradores."
+        subtitle="Reasigne antes de excluir: las exclusiones conservan el historial y no borran datos físicos. Solo administradores."
         breadcrumb={['Inicio', 'Admin', 'Integridad']}
       />
 
@@ -156,7 +156,7 @@ export default function IntegridadPage() {
                         {isOdtHuerfano && r.odt_id && (
                           <Btn size="xs" variant="secondary" onClick={() => navigate(`/taller/${r.odt_id}`)}>OT</Btn>
                         )}
-                        <Btn size="xs" variant="danger" onClick={() => handleEliminar(r.id)}>Eliminar</Btn>
+                        <Btn size="xs" variant="danger" onClick={() => handleExcluir(r.id)}>Excluir</Btn>
                       </div>
                     )}
                     {tipo === 'odt-mojibake' && r.id && (

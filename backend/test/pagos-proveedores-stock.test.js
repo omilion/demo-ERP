@@ -253,6 +253,28 @@ describe('POST /api/pagos-proveedores stock mixto', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled()
   })
 
+  it('rejects a stock-marked document whose malformed details have no internal code', async () => {
+    const prisma = { $transaction: vi.fn() }
+    const handler = await buildPostHandler(prisma)
+    const reply = replyStub()
+
+    await handler({
+      user: { id: 7, role: 'admin', nombre: 'QA' },
+      body: {
+        proveedorId: 55,
+        documento: 'Factura',
+        nDoc: 'SIN-CODIGO-1',
+        bodega: 'Inventario',
+        ingresaStock: true,
+        detalles: [{ cantidad: 1, precio: 100 }],
+      },
+    }, reply)
+
+    expect(reply.statusCode).toBe(400)
+    expect(reply.body).toMatchObject({ error: expect.stringMatching(/código interno/) })
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+  })
+
   it('registra un gasto (Centro de Costo) sin detalles ni stock — solo la cabecera contable', async () => {
     const tx = {
       $executeRaw: vi.fn(),

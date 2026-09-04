@@ -19,6 +19,12 @@ export function getConsumoUserId(user) {
   return Number.isInteger(userId) && userId > 0 ? userId : 1
 }
 
+async function lockInventario(tx, tipo, id) {
+  if (typeof tx.$executeRaw === 'function') {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`stock-${tipo}:${id}`})::bigint)`
+  }
+}
+
 export function parseConsumoRequest(body = {}) {
   const tipo = typeof body.tipo === 'string' ? body.tipo.trim().toLowerCase() : ''
   if (!ODT_CONSUMO_TIPOS.includes(tipo)) {
@@ -112,6 +118,7 @@ async function upsertTallerMaterial({ tx, odt, item, cantidad, taller = null }) 
 }
 
 export async function consumirProducto({ tx, odt, itemId, cantidad, motivo, userId, usuario, taller, now = new Date() }) {
+  await lockInventario(tx, 'producto', itemId)
   const producto = await tx.producto.findUnique({
     where: { id: itemId },
     select: { id: true, codigoInterno: true, nombre: true, unidadMedida: true, stock: true },
@@ -161,6 +168,7 @@ function scopedResourceWhere(id, sucursalId) {
 }
 
 export async function consumirMaterialTaller({ tx, odt, itemId, cantidad, motivo, userId, usuario, taller, sucursalId, loteId, calidad, mermaCantidad = 0, mermaMotivo, now = new Date() }) {
+  await lockInventario(tx, 'material-taller', itemId)
   const scopeSucursalId = sucursalId ?? odt.sucursalId ?? null
   const material = await tx.bodegaTaller.findFirst({
     where: scopedResourceWhere(itemId, scopeSucursalId),
@@ -215,6 +223,7 @@ export async function consumirMaterialTaller({ tx, odt, itemId, cantidad, motivo
 }
 
 export async function consumirTela({ tx, odt, itemId, cantidad, usuario, taller, now = new Date() }) {
+  await lockInventario(tx, 'tela', itemId)
   const tela = await tx.tela.findUnique({
     where: { id: itemId },
     select: { id: true, codigo: true, nombre: true, stock: true, ubicacion: true },

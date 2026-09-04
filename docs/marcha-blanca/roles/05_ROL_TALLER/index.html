@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DOC-05: Rol Taller y Producción | Plastimar SisGestión 3.0</title>
+  <link rel="stylesheet" href="../../assets/manual-style.css">
+</head>
+<body>
+
+  <header class="doc-header">
+    <div class="doc-header-inner">
+      <div class="doc-brand">
+        <img src="../../assets/plastimar-logo.webp" alt="Plastimar Logo" class="doc-logo">
+        <div class="doc-title-group">
+          <h1>Manual Operativo: Taller y Producción</h1>
+          <div class="doc-subtitle">SisGestión 3.0 &middot; Órdenes de Trabajo (ODT), Estaciones y Calidad</div>
+        </div>
+      </div>
+      <div class="doc-actions">
+        <a href="../../00_MAPA_DOCUMENTACION_Y_GUIA_INICIO/index.html" class="btn-action btn-nav">&larr; Volver al Mapa</a>
+        <button class="btn-action btn-print">🖨️ Imprimir / Guardar PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="doc-container">
+
+    <!-- Misión del Rol -->
+    <section class="doc-card">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">1. Tu Rol en el ERP Plastimar</h2>
+        <span class="badge-role">Fabricación y Calidad</span>
+      </div>
+      <p style="font-size: 1.05rem; margin-bottom: 1rem;">
+        El equipo de taller transforma las materias primas en los productos didácticos, colchonetas y mobiliario escolar que caracterizan a Plastimar. En el nuevo sistema, cada trabajo está respaldado por una <strong>Orden de Trabajo (ODT)</strong> digital que asegura que fabriquemos exactamente lo que el cliente compró, con la fecha de entrega acordada.
+      </p>
+      <div class="callout callout-info">
+        <div class="callout-icon">🔨</div>
+        <div class="callout-content">
+          <h4>Doble Nivel de Acceso en Taller</h4>
+          <p>
+            <strong>Jefe de Taller:</strong> Planifica las ODTs, asigna operarios responsables, supervisa tiempos y aprueba el Control de Calidad.<br>
+            <strong>Operarios de Taller:</strong> Utilizan una pantalla simple y táctil para registrar el inicio, avance y término de su estación.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Las Estaciones de Trabajo -->
+    <section class="doc-card">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">2. Las Estaciones de Producción</h2>
+        <span class="badge-role">Especialidades</span>
+      </div>
+      <p style="margin-bottom: 1.25rem;">
+        En la cabecera del módulo de Taller encontrarás pestañas dedicadas para cada taller físico:
+      </p>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+        
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem; border-top: 4px solid #0284c7;">
+          <h4 style="color: #0369a1; font-size: 1rem; margin-bottom: 0.25rem;">✂️ Taller de Corte</h4>
+          <p style="font-size: 0.85rem; color: #475569;">Corte de piezas textiles, trazado de patrones y control del rendimiento de metros lineales de rollos.</p>
+        </div>
+
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem; border-top: 4px solid #d97706;">
+          <h4 style="color: #b45309; font-size: 1rem; margin-bottom: 0.25rem;">🧽 Espumas</h4>
+          <p style="font-size: 0.85rem; color: #475569;">Dimensionado de bloques de espuma, ensamble de densidades (D21, D25, D30, aglomerados) y pegado.</p>
+        </div>
+
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem; border-top: 4px solid #16a34a;">
+          <h4 style="color: #15803d; font-size: 1rem; margin-bottom: 0.25rem;">🧵 Confecciones</h4>
+          <p style="font-size: 0.85rem; color: #475569;">Costura industrial, colocación de cierres de nylon, velcros, vivos reforzados y enfundado final.</p>
+        </div>
+
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem; border-top: 4px solid #854d0e;">
+          <h4 style="color: #854d0e; font-size: 1rem; margin-bottom: 0.25rem;">🪵 Madera</h4>
+          <p style="font-size: 0.85rem; color: #475569;">Corte y armado de estructuras de madera MDF y pino, plataformas y mobiliario didáctico.</p>
+        </div>
+
+      </div>
+
+      <div class="callout callout-regla-oro">
+        <div class="callout-icon">📋</div>
+        <div class="callout-content">
+          <h4>Regla de Oro Nº 4: Prohibido producir sin ODT oficial</h4>
+          <p>Ningún operario corta telas, espuma o madera por solicitudes verbales. Todo consumo debe estar asociado a una ODT activa en el sistema. Así garantizamos que las materias primas se descuenten de bodega y el cliente reciba su pedido a tiempo.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- La Pantalla de Órdenes de Trabajo -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">3. Panel de Órdenes de Trabajo (Jefatura de Taller)</h2>
+        <span class="badge-role">Mesa de Control</span>
+      </div>
+      <p style="margin-bottom: 1.5rem;">
+        Al ingresar a <strong>Taller &rarr; Órdenes de Taller</strong> verás el tablero central de producción:
+      </p>
+
+      <div class="screenshot-wrapper">
+        <div class="screenshot-container">
+          <img src="../../capturas/05_taller/01_modulo_taller_odts.png" alt="Módulo de Taller y ODTs Plastimar" class="screenshot-img">
+          <div class="screenshot-badge">🔍 Clic para ampliar en pantalla completa</div>
+        </div>
+        <div class="screenshot-caption">Figura 1: Tablero de ODTs de Taller. Observa los contadores de pendientes críticas, en proceso, asignadas y los filtros por especialidad.</div>
+      </div>
+
+      <h3 style="font-size: 1.15rem; color: var(--brand-primary); margin-top: 1.5rem; margin-bottom: 0.75rem;">Procedimiento Diario del Jefe de Taller</h3>
+      <div class="step-list">
+        
+        <div class="step-item">
+          <div class="step-number">1</div>
+          <div class="step-body">
+            <h4>Revisar ODTs Pendientes y Priorizar por Fecha</h4>
+            <p>Filtra por <strong>Pendientes</strong> y ordena por <strong>Fecha Comprometida (Plazo)</strong>. Las ODTs marcadas como <em>Prioridad Alta</em> corresponden a ventas con compromiso de entrega próximo que deben ingresar inmediatamente a corte y armado.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">2</div>
+          <div class="step-body">
+            <h4>Asignar Operario Responsable</h4>
+            <p>Abre el detalle de la ODT y asigna a los operarios responsables de cada estación (por ejemplo: Jenifer en Confección, Mercedes en Corte). La orden cambiará a estado <strong>Asignada</strong> y aparecerá en el terminal del trabajador.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">3</div>
+          <div class="step-body">
+            <h4>Monitorear el Avance de Taller</h4>
+            <p>A medida que los operarios marcan inicio y término en sus pantallas, el indicador de tiempo de producción se actualiza en tiempo real, permitiendo alertar posibles retrasos antes del vencimiento del plazo.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">4</div>
+          <div class="step-body">
+            <h4>Control de Calidad y Cierre</h4>
+            <p>Una vez terminada la fabricación física, el jefe de taller inspecciona las terminaciones, costuras y dimensiones:</p>
+            <ul style="margin-left: 1.25rem; margin-top: 0.35rem; font-size: 0.88rem;">
+              <li><strong>Si es conforme:</strong> Presiona <em>Aprobar Calidad</em> sólo por la cantidad revisada. Verifica el estado final; Bodega/Despacho deben consultar la disponibilidad.</li>
+              <li><strong>Si hay Defectos:</strong> Presiona <em>Rechazar para Reproceso</em>. Es <strong>obligatorio indicar la causa</strong> (ejemplo: medida de funda desfasada en 2 cm) para que la estación corrija el error.</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Instrucciones para el Operario -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">4. Modo Operario (Terminal de Avance)</h2>
+        <span class="badge-role">Uso en Planta</span>
+      </div>
+      <p style="font-size: 0.95rem; margin-bottom: 1rem;">
+        Los operarios en las mesas de corte y confección tienen una vista simplificada sin botones administrativos:
+      </p>
+      <ol style="margin-left: 1.5rem; line-height: 1.7; font-size: 0.92rem;">
+        <li>Ingresan al terminal con su cuenta personal (ejemplo: <code>jenifer.breidenbach@plastimar.cl</code>).</li>
+        <li>Ven únicamente la lista de trabajos asignados a su mesa para el día.</li>
+        <li>Presionan <strong>[Iniciar Tarea]</strong> al comenzar el corte o costura y esperan confirmación.</li>
+        <li>Si deben pausar por colación o cambio de turno, presionan <strong>[Pausar]</strong>.</li>
+        <li>Al finalizar, presionan <strong>[Finalizar]</strong> e informan sólo la cantidad realmente terminada; un avance parcial no debe cerrarse como total.</li>
+      </ol>
+    </section>
+
+    <!-- Dudas y Soporte -->
+    <section class="doc-card" style="background: #fef2f2; border-color: #fecaca;">
+      <h3 style="color: #991b1b; margin-bottom: 0.5rem;">¿Falta una materia prima en la receta o plano confuso?</h3>
+      <p style="color: #7f1d1d; font-size: 0.95rem; margin-bottom: 1rem;">
+        Si una ODT solicita una tela que no coincide con el didáctico o faltan especificaciones de medidas en la ficha:
+      </p>
+      <p style="color: #7f1d1d; font-size: 0.9rem;">
+        Usa el botón flotante rojo <strong>[Reportar observación]</strong> abajo a la izquierda. Indica el número de ODT y la discrepancia para que el área técnica o comercial ajuste la ficha de fabricación.
+      </p>
+    </section>
+
+    <section class="doc-card"><div class="doc-card-header"><h2 class="doc-card-title">5. Avances, excepciones y ficha del operario</h2><span class="badge-role">Control de producción</span></div><ul class="check-list"><li>La automatización hacia Taller aplica a productos configurados como transitorios; sin stock no significa siempre ODT automática.</li><li>Registra cantidades parciales reales sin exceder el pendiente.</li><li>Documenta defecto, reproceso, descarte, material y merma cuando el flujo lo habilite.</li><li>No crees una segunda ODT para compensar una inconsistencia.</li></ul><p><a href="FICHA_RAPIDA_OPERARIO.html"><strong>Abrir DOC-05B: Ficha rápida del Operario →</strong></a></p></section>
+
+    <footer class="doc-footer">
+      <p><strong>Plastimar SisGestión 3.0</strong> &middot; Taller y Producción &middot; MB-1.1 &middot; 2026-09-04</p>
+    </footer>
+
+  </main>
+
+  <script src="../../assets/manual-scripts.js"></script>
+</body>
+</html>

@@ -5,6 +5,7 @@ import { parseDate, parsePage, parsePositiveInt } from '../operational-utils.js'
 import { computeVentaFinancialState } from '../ventas/financial.js'
 import { deriveEstadoFlujo, GRAFIAS_CONVENIO_MARCO, TIPOS_VENTA_MOSTRADOR, grafiasDeTipoVenta } from '../ventas/estados-normalize.js'
 import { transitionEstadoFlujoFormal } from '../ventas/estado-flujo-formal.js'
+import { deriveEstadoLogistico, resumenPreparacion } from '../despachos/estado-logistico.js'
 
 const LIMIT = 100
 const MAX_PAGE_SIZE = 500
@@ -397,31 +398,31 @@ async function buildOrdenWhere(fastify, ctx, user) {
 async function getOrdenRowsByWhere(fastify, where) {
   const ordenes = await fastify.prisma.orden.findMany({
     where,
-    include: { items: { where: { eliminado: false } }, cargos: true },
+    include: { items: { where: { eliminado: false } }, cargos: true, packingBultos: true },
     orderBy: { createdAt: 'desc' },
   })
+  // Las ventas nuevas vinculan al cliente por clienteId. rutCliente sólo existe
+  // en datos legacy, por lo que usarlo como única llave hacía que la Matriz
+  // mostrara "-" aunque la relación estuviera correcta.
   const ruts = [...new Set(ordenes.map(o => o.rutCliente).filter(Boolean))]
+  const clienteIds = [...new Set(ordenes.map(o => o.clienteId).filter(Boolean))]
   const ordenIds = ordenes.map(o => o.id)
-  // El orden importa: cada nombre corresponde a la consulta en la misma posicion.
-  const [clientesArr, odtsArr, cotizArr, despachosArr, guiasArr, movsArr, multasArr] = await Promise.all([
-    ruts.length ? fastify.prisma.cliente.findMany({
-      where: { rut: { in: ruts } },
-      select: { rut: true, razonSocial: true, nombre: true, email: true, conflictivo: true, conflictivoDetalle: true },
+  const allProductIds = [...new Set(ordenes.flatMap(o => (o.items || []).map(i => i.productoId)).filter(Boolean))]
+  const [clientesArr, odtsArr, cotizArr, guiasArr, movsArr, multasArr, despachosArr, productosArr] = await Promise.all([
+    (ruts.length || clienteIds.length) ? fastify.prisma.cliente.findMany({
+      where: { OR: [
+        ...(ruts.length ? [{ rut: { in: ruts } }] : []),
+        ...(clienteIds.length ? [{ id: { in: clienteIds } }] : []),
+      ] },
+      select: { id: true, rut: true, razonSocial: true, nombre: true, email: true, conflictivo: true, conflictivoDetalle: true },
     }) : [],
     ordenIds.length ? fastify.prisma.odt.findMany({
       where: { ordenId: { in: ordenIds }, eliminado: false },
-      select: { id: true, ordenId: true, estado: true },
+      include: { items: { where: { eliminado: false }, include: { talleres: true } } },
     }) : [],
     ordenIds.length ? fastify.prisma.cotizacionLicitacion.findMany({
       where: { ordenId: { in: ordenIds } },
       select: { id: true, idLicitacion: true, ordenId: true },
-    }) : [],
-    // El despacho y la guia son tablas distintas: bodega crea el despacho y la guia
-    // puede venir despues o no venir. Mirando solo las guias, la Matriz mostraba la
-    // venta sin movimiento aunque bodega ya la hubiera tomado.
-    ordenIds.length ? fastify.prisma.despacho.findMany({
-      where: { ordenId: { in: ordenIds }, eliminado: false },
-      select: { id: true, ordenId: true, tipoDespacho: true, parcial: true, fechaInterno: true, fechaEntrega: true },
     }) : [],
     ordenIds.length ? fastify.prisma.guiaDespacho.findMany({
       where: { ordenId: { in: ordenIds }, eliminado: false },
@@ -450,11 +451,44 @@ async function getOrdenRowsByWhere(fastify, where) {
       where: { ordenId: { in: ordenIds } },
       select: { id: true, ordenId: true, monto: true },
     }) : [],
+    ordenIds.length ? fastify.prisma.despacho.findMany({
+      where: { ordenId: { in: ordenIds }, eliminado: false },
+      select: { id: true, ordenId: true, createdAt: true, fechaEntrega: true, tipoDespacho: true, transporte: true, parcial: true, tieneMulta: true },
+      orderBy: { createdAt: 'desc' },
+    }) : [],
+    allProductIds.length ? fastify.prisma.producto.findMany({
+      where: { id: { in: allProductIds } },
+      select: { id: true, estadoInventario: true },
+    }) : [],
   ])
-  const clienteMap = Object.fromEntries(clientesArr.map(c => [c.rut, c]))
-  const odtMap = {}; for (const o of odtsArr) (odtMap[o.ordenId] ||= []).push({ id: o.id, estado: o.estado })
-  const despachosMap = {}; for (const d of despachosArr) (despachosMap[d.ordenId] ||= []).push({ id: d.id, tipo: d.tipoDespacho, parcial: d.parcial, fechaInterno: d.fechaInterno, fechaEntrega: d.fechaEntrega })
-  const guiasMap = {}; for (const g of guiasArr) (guiasMap[g.ordenId] ||= []).push({ id: g.id, nGuia: g.nGuia, fechaGuia: g.fechaGuia, origen: g.origen })
+  const clienteByRut = Object.fromEntries(clientesArr.filter(c => c.rut).map(c => [c.rut, c]))
+  const clienteById = Object.fromEntries(clientesArr.map(c => [c.id, c]))
+  const productoInvMap = new Map(productosArr.map(p => [p.id, p.estadoInventario]))
+  const odtMap = {}; for (const o of odtsArr) (odtMap[o.ordenId] ||= []).push(o)
+  const guiaIds = guiasArr.map(guia => guia.id)
+  const despachoIds = despachosArr.map(despacho => despacho.id)
+  const [dtesGuias, trackingArr] = await Promise.all([
+    guiaIds.length ? fastify.prisma.factDocumento.findMany({
+      where: { guiaDespachoId: { in: guiaIds }, tipoDte: 52 },
+      select: { guiaDespachoId: true, estado: true, folio: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    }) : [],
+    despachoIds.length ? fastify.prisma.despachoTrackingEvento.findMany({
+      where: { despachoId: { in: despachoIds } },
+      select: { despachoId: true, estado: true, fechaEvento: true, id: true },
+      orderBy: [{ fechaEvento: 'desc' }, { id: 'desc' }],
+    }) : [],
+  ])
+  const dteByGuia = new Map()
+  for (const dte of dtesGuias) if (!dteByGuia.has(dte.guiaDespachoId)) dteByGuia.set(dte.guiaDespachoId, dte)
+  const guiasMap = {}; for (const g of guiasArr) (guiasMap[g.ordenId] ||= []).push({ id: g.id, nGuia: g.nGuia, fechaGuia: g.fechaGuia, origen: g.origen, dteEstado: dteByGuia.get(g.id)?.estado || null, dteFolio: dteByGuia.get(g.id)?.folio || null })
+  const despachosMap = {}; for (const despacho of despachosArr) (despachosMap[despacho.ordenId] ||= []).push(despacho)
+  const despachoToOrden = new Map(despachosArr.map(despacho => [despacho.id, despacho.ordenId]))
+  const trackingByOrden = new Map()
+  for (const evento of trackingArr) {
+    const ordenId = despachoToOrden.get(evento.despachoId)
+    if (ordenId && !trackingByOrden.has(ordenId)) trackingByOrden.set(ordenId, evento)
+  }
   const docsMap = {}; for (const m of movsArr) (docsMap[m.ordenId] ||= []).push(m)
   const multasMap = {}; for (const multa of multasArr) (multasMap[multa.ordenId] ||= []).push(multa)
   const cotizMap = Object.fromEntries(cotizArr.map(c => [c.ordenId, { id: c.id, idLicitacion: c.idLicitacion }]))
@@ -467,12 +501,15 @@ async function getOrdenRowsByWhere(fastify, where) {
     const facturadoTotal = documentos.filter(isFacturaMovimiento).reduce((s, d) => s + signedAmount(d), 0)
     const ncTotal = documentos.filter(isNcMovimiento).reduce((s, d) => s + signedAmount(d), 0)
     const ndTotal = documentos.filter(isNdMovimiento).reduce((s, d) => s + signedAmount(d), 0)
-    const cliente = clienteMap[o.rutCliente] || null
+    const cliente = clienteById[o.clienteId] || clienteByRut[o.rutCliente] || null
+    const odts = odtMap[o.id] || []
+    const guias = guiasMap[o.id] || []
+    const despachos = despachosMap[o.id] || []
+    const itemsWithInv = (o.items || []).map(i => ({ ...i, estadoInventario: productoInvMap.get(i.productoId) }))
+    const preparacion = resumenPreparacion(itemsWithInv, odts)
+    const estadoLogistico = deriveEstadoLogistico({ items: itemsWithInv, preparacion, despachos, guias, tracking: trackingByOrden.get(o.id) || null })
     const abono = financialState.abono
     const saldo = financialState.saldo
-    const odts = odtMap[o.id] || []
-    const despachos = despachosMap[o.id] || []
-    const guias = guiasMap[o.id] || []
     const documentosLegacy = documentos.map(documentoResumen).join(' | ')
     return {
       fuente: 'orden',
@@ -480,7 +517,7 @@ async function getOrdenRowsByWhere(fastify, where) {
       nInterno: o.nInterno,
       fecha: o.createdAt,
       tipo: o.tipo,
-      cliente: o.rutCliente,
+      cliente: cliente?.rut || o.rutCliente || null,
       nombreCliente: cliente?.razonSocial || cliente?.nombre || null,
       emailCliente: cliente?.email || null,
       clienteConflictivo: cliente?.conflictivo || false,
@@ -499,9 +536,9 @@ async function getOrdenRowsByWhere(fastify, where) {
       fechaEstadoEntrega: o.fechaEstadoEntrega,
       pago: financialState.estadoPago,
       estadoFlujo: deriveEstadoFlujo({ ...o, estadoPago: financialState.estadoPago }),
-      // El estado derivado se calcula de pago y entrega; el formal es la etapa que la
-      // venta recorrio de verdad, con su historial y su autor. Conviven a proposito:
-      // el primero resume la situacion, el segundo dice por donde paso.
+      estadoLogistico,
+      // El estado logístico describe la preparación; el formal conserva la etapa
+      // efectivamente recorrida por la venta y su marca de tiempo.
       estadoFlujoFormal: o.estadoFlujoFormal || 'CREADA',
       fechaEstadoFlujo: o.fechaEstadoFlujo || null,
       creadorNombre: o.creadorNombre || null,
@@ -509,9 +546,11 @@ async function getOrdenRowsByWhere(fastify, where) {
       odts,
       odtCount: odts.length,
       guias,
+      guiasCount: guias.length,
+      // Sin esta propiedad la UI recibía guía y estado logístico, pero perdía
+      // el despacho que ya había sido programado en la columna correspondiente.
       despachos,
       despachosCount: despachos.length,
-      guiasCount: guias.length,
       documentos,
       documentosCount: documentos.length,
       documentosLegacy,
@@ -525,6 +564,8 @@ async function getOrdenRowsByWhere(fastify, where) {
       regionDespacho: o.regionDespacho,
       comunaDespacho: o.comunaDespacho,
       ciudadDespacho: o.ciudadDespacho,
+      bultos: o.packingBultos || [],
+      pickingAjustes: (o.items || []).filter(i => i.pickingObservacion).map(i => ({ itemId: i.id, nombre: i.nombre, observacion: i.pickingObservacion })),
     }
   })
 }
@@ -564,6 +605,11 @@ async function getOcOnlineRowsByWhere(fastify, where) {
     saldo: o.total || 0,
     estado: o.estadoCompra,
     pago: null,
+    // La Matriz consume una forma homogénea para sus tres fuentes. Una OC online
+    // aún no puede tener despacho propio, pero debe declarar la lista vacía para
+    // que la UI no pierda la columna ni tenga que adivinar por la fuente.
+    despachos: [],
+    despachosCount: 0,
     detalleProductos: [],
   }))
 }
@@ -629,6 +675,8 @@ async function getLicitacionRowsByWhere(fastify, where) {
       saldo: total,
       estado: l.estado,
       pago: null,
+      despachos: [],
+      despachosCount: 0,
       creadorNombre: l.usuario || null,
       ordenVinculadaId: l.ordenId || null,
       detalleProductos: [],
@@ -705,6 +753,49 @@ async function aggOrdenMonto(fastify, where) {
   let total = 0
   for (const o of ordenes) total += computeVentaFinancialState(o, {}).total
   return { count: ordenes.length, total }
+}
+
+// Ventas del periodo abiertas por vendedor, para que quien coordina vea el
+// avance de cada uno y no solo el total.
+//
+// Reusa computeVentaFinancialState y el mismo `where` que getTotalsForPeriod:
+// si el ranking sumara distinto que el KPI del mes que tiene al lado, el
+// coordinador tendria dos numeros en pantalla que no cuadran entre si.
+export async function getVentasPorVendedor(fastify, start, end, user, { hoyDesde = null } = {}) {
+  const ordenes = await fastify.prisma.orden.findMany({
+    where: {
+      eliminada: false,
+      createdAt: { gte: start, lte: end },
+      tipo: { in: [...TIPOS_VENTA_MOSTRADOR, ...GRAFIAS_CONVENIO_MARCO, 'Normal'] },
+      ...userSucursalWhere(user),
+    },
+    select: {
+      creadorNombre: true,
+      createdAt: true,
+      abono: true,
+      descuentoPct: true,
+      descuentoMonto: true,
+      items: { where: { eliminado: false }, select: { cantidad: true, precioUnitario: true, cargoTransporte: true } },
+      cargos: { select: { valor: true } },
+    },
+  })
+
+  const porVendedor = new Map()
+  for (const orden of ordenes) {
+    const nombre = orden.creadorNombre?.trim() || 'Sin vendedor asignado'
+    const actual = porVendedor.get(nombre) || { vendedor: nombre, total: 0, ordenes: 0, hoy: 0, ordenesHoy: 0 }
+    const total = computeVentaFinancialState(orden, {}).total
+    actual.total += total
+    actual.ordenes += 1
+    // El acumulado del mes no dice si alguien esta parado hoy. Se calcula sobre
+    // las mismas ordenes ya cargadas, sin una segunda consulta.
+    if (hoyDesde && orden.createdAt >= hoyDesde) {
+      actual.hoy += total
+      actual.ordenesHoy += 1
+    }
+    porVendedor.set(nombre, actual)
+  }
+  return [...porVendedor.values()].sort((a, b) => b.total - a.total)
 }
 
 async function aggOcMonto(fastify, where) {

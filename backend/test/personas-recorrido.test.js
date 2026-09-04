@@ -84,6 +84,43 @@ describeDb('la guardia de cada endpoint del proceso de cada persona', () => {
     it('no entra a ventas', async () => {
       expect(await puede('cortadora', 'GET', '/api/ventas?limit=1')).toBe(false)
     })
+
+    // La pantalla de Corte exigia taller:write, el permiso de gestion. El rol
+    // taller_operario tiene taller:read y taller.avance:write, asi que quedaba
+    // bloqueado justo de la pantalla para la que existe: no podia anotar lo que
+    // acababa de cortar ni subir la foto.
+    it('registra su avance y su evidencia en la pantalla de Corte', async () => {
+      // Se comprueba que la guardia la deje pasar, no que la tarea exista: sin item
+      // real el handler responde 404, que es despues del permiso. Lo que este caso
+      // afirma es que ya no responde 403.
+      const token = app.jwt.sign({
+        id: userId, role: 'taller_operario', nombre: 'cortadora', permisosExtra: null,
+        scope: 'erp', aud: 'plastimar:erp', tokenType: 'access',
+      })
+      for (const url of ['/api/taller-corte/items/1/avances', '/api/taller-corte/items/1/evidencias']) {
+        const res = await app.inject({
+          method: 'POST', url, headers: { authorization: `Bearer ${token}` }, payload: {},
+        })
+        expect(res.statusCode, `${url} deberia dejar pasar al operario`).not.toBe(403)
+      }
+    })
+
+    // Declarar el propio avance y decidir quien hace el trabajo son cosas distintas:
+    // el mismo endpoint del avance aceptaba el responsable, asi que una cortadora
+    // podia reasignarle la tarea a otra.
+    it('no reasigna la tarea a otra persona', async () => {
+      const res = await app.inject({
+        method: 'PUT',
+        url: `/api/odts/${odtId}/items/1/talleres/1/estado`,
+        headers: { authorization: `Bearer ${app.jwt.sign({
+          id: userId, role: 'taller_operario', nombre: 'cortadora', permisosExtra: null,
+          scope: 'erp', aud: 'plastimar:erp', tokenType: 'access',
+        })}` },
+        payload: { operarioResponsableId: userId },
+      })
+      expect(res.statusCode).toBe(403)
+      expect(JSON.parse(res.body).error).toMatch(/coordinaci/i)
+    })
   })
 
   describe('la supervisora si cierra', () => {

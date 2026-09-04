@@ -1,4 +1,5 @@
 // Gestion de despachos y guias.
+import path from 'node:path'
 import { z } from 'zod'
 import { can } from '../../middleware/rbac.js'
 import { buildExport, sendExport } from '../../utils/export.js'
@@ -9,10 +10,25 @@ import { attachCliente } from '../ventas/helpers.js'
 import { isValidContactEmail } from '../ventas/operational-rules.js'
 import { avanzarEstadoFlujo, cerrarSiCorresponde, transitionEstadoFlujoDesdeTracking } from '../ventas/estado-flujo-formal.js'
 import { codigoBarrasObligatorio, validateBarcodeScans } from '../ordenes-compra-proveedores/barcode-policy.js'
+import { deriveEstadoLogistico, resumenPacking, resumenPreparacion } from './estado-logistico.js'
+import { IND_TRASLADO, TIPO_DESPACHO, computeTotales } from '../../facturacion/documento.js'
+import { isValidRut, normalizeRut } from '../../facturacion/xmlUtil.js'
+import { createFacturacionEngine } from '../../facturacion/engine.js'
+import { createFacturacionDb } from '../../facturacion/db.js'
 
 const LIST_LIMIT = 100
 
 const optionalId = z.union([z.number().int(), z.string()]).optional().nullable()
+
+const ItemDespachoSchema = z.object({
+  nombre: z.string().min(1, 'Nombre de item requerido'),
+  descripcion: z.string().optional().nullable(),
+  cantidad: z.union([z.number(), z.string()]).transform(v => Math.max(0, Number(v) || 0)),
+  unidad: z.string().optional().nullable(),
+  precio: z.union([z.number(), z.string()]).optional().nullable().transform(v => v != null ? Number(v) || 0 : 0),
+  descuentoMonto: z.union([z.number(), z.string()]).optional().nullable().transform(v => v != null ? Number(v) || 0 : 0),
+  exento: z.boolean().optional().nullable(),
+})
 
 const DespachoCreate = z.object({
   ordenId: optionalId,
@@ -30,26 +46,79 @@ const DespachoCreate = z.object({
   emailContacto: z.string().trim().email('Correo de contacto invalido').optional().nullable(),
   region: z.string().optional().nullable(),
   comuna: z.string().optional().nullable(),
+  ciudad: z.string().optional().nullable(),
+  receptorRut: z.string().optional().nullable(),
+  receptorRazonSocial: z.string().optional().nullable(),
+  receptorGiro: z.string().optional().nullable(),
+  items: z.array(ItemDespachoSchema).optional().nullable(),
   parcial: z.boolean().optional(),
   tieneMulta: z.boolean().optional(),
   origenTipo: z.string().optional().nullable(),
   origenId: optionalId,
+  motivoOperacion: z.string().trim().max(500).optional().nullable(),
 })
 
 const GuiaCreate = z.object({
   ordenId: optionalId,
   odtId: optionalId,
   nInterno: optionalId,
-  // N guia es independiente del n_interno de la venta (numeros distintos:
-  // el interno cruza todo, el n guia solo identifica ese documento). Si no
-  // se indica, se autogenera (ver POST /guias) - no lo confundir con nInterno.
   nGuia: z.string().optional().nullable(),
   fechaGuia: z.string().optional().nullable(),
   origen: z.string().optional().nullable(),
   origenTipo: z.string().optional().nullable(),
   origenId: optionalId,
   despachoId: optionalId,
+  indTraslado: z.union([z.number(), z.string()]).optional().nullable(),
+  tipoDespacho: z.union([z.number(), z.string()]).optional().nullable(),
+  receptor: z.record(z.any()).optional().nullable(),
+  items: z.array(ItemDespachoSchema).optional().nullable(),
+  borrador: z.boolean().optional(),
+  emitirSii: z.boolean().optional(),
 })
+
+export async function deriveTieneMulta(prisma, orden) {
+  if (!orden) return false
+  const tipo = String(orden.tipo || '').toLowerCase()
+  const esLicitacion = tipo.includes('licit')
+  if (!esLicitacion) return false
+  const [multas, cotizaciones] = await Promise.all([
+    prisma.multa.findMany({ where: { ordenId: orden.id }, select: { id: true } }),
+    prisma.cotizacionLicitacion.findMany({ where: { ordenId: orden.id }, select: { id: true, fechaPlazo: true } }),
+  ])
+  if (multas.length > 0) return true
+  const fechaPlazo = orden.fechaPlazo || cotizaciones.find(c => c.fechaPlazo)?.fechaPlazo
+  if (fechaPlazo && new Date(fechaPlazo) < new Date()) return true
+  return false
+}
+
+export function validarCamposDte52({ receptor = {}, extra = {}, items = [] } = {}) {
+  const faltantes = []
+  const indTrasladoNum = Number(extra.indTraslado || 1)
+  const rutRecep = normalizeRut(receptor.rut)
+  if (indTrasladoNum !== 5) {
+    if (!rutRecep || !isValidRut(rutRecep)) faltantes.push('RUT del receptor válido')
+    if (!cleanText(receptor.razonSocial)) faltantes.push('Razón social del receptor')
+    if (!cleanText(receptor.giro)) faltantes.push('Giro del receptor')
+    if (!cleanText(receptor.direccion)) faltantes.push('Dirección del receptor')
+    if (!cleanText(receptor.comuna)) faltantes.push('Comuna del receptor')
+    if (!cleanText(receptor.ciudad)) faltantes.push('Ciudad del receptor')
+  }
+  if (!IND_TRASLADO[indTrasladoNum]) faltantes.push('Motivo de traslado válido (IndTraslado)')
+  const tipoDespachoNum = Number(extra.tipoDespacho || 2)
+  if (!TIPO_DESPACHO[tipoDespachoNum]) faltantes.push('Tipo de despacho válido (TipoDespacho)')
+  if (!Array.isArray(items) || items.length === 0) {
+    faltantes.push('Al menos un producto o ítem a trasladar')
+  } else {
+    items.forEach((it, idx) => {
+      if (!cleanText(it.nombre)) faltantes.push(`Nombre en línea ${idx + 1}`)
+      if (Number(it.cantidad || 0) <= 0) faltantes.push(`Cantidad mayor a 0 en línea ${idx + 1}`)
+    })
+  }
+  return {
+    valido: faltantes.length === 0,
+    faltantes,
+  }
+}
 
 const GuiaUpdate = GuiaCreate.partial()
 
@@ -60,12 +129,22 @@ const PackingUpdate = z.object({
   bultoNumero: z.string().optional().nullable(),
   bultoEstado: z.string().optional().nullable(),
   bultoObservacion: z.string().optional().nullable(),
+  bultoDimensiones: z.string().optional().nullable(),
+  bultoPeso: z.union([z.number(), z.string()]).optional().nullable(),
   observacion: z.string().optional().nullable(),
   codigosBarrasLeidos: z.object({}).catchall(z.string()).optional(),
   items: z.array(z.object({
     id: optionalId,
     itemId: optionalId,
     nEntregados: z.union([z.number().int(), z.string()]),
+  })).min(1),
+})
+
+const PickingConfirmUpdate = z.object({
+  items: z.array(z.object({
+    itemId: optionalId,
+    confirmado: z.boolean(),
+    observacion: z.string().optional().nullable(),
   })).min(1),
 })
 
@@ -128,7 +207,12 @@ function withOrdenSucursalScope(user, where = {}) {
   return {
     AND: [
       where,
-      { orden: { is: { sucursalId } } },
+      {
+        OR: [
+          { orden: { is: { sucursalId } } },
+          { sucursalId },
+        ],
+      },
     ],
   }
 }
@@ -146,8 +230,8 @@ function parseOptionalPositiveId(value, field) {
 }
 
 function rejectInvalidOrigenTipo(origenTipo) {
-  if (origenTipo && !['orden', 'odt'].includes(origenTipo)) {
-    return { status: 400, error: 'origenTipo debe ser orden u odt' }
+  if (origenTipo && !['orden', 'odt', 'manual'].includes(origenTipo)) {
+    return { status: 400, error: 'origenTipo debe ser orden, odt o manual' }
   }
   return null
 }
@@ -243,6 +327,13 @@ export async function resolveDispatchTraceability(prisma, input = {}) {
   const explicitOrigenTipo = cleanText(input.origenTipo)
   const origenTipoError = rejectInvalidOrigenTipo(explicitOrigenTipo)
   if (origenTipoError) return origenTipoError
+
+  if (explicitOrigenTipo === 'manual') {
+    if (odtInput.value || hasValue(input.ordenId) || hasValue(input.nInterno) || origenInput.value) {
+      return { status: 409, error: 'Un despacho manual no puede referenciar una orden u ODT' }
+    }
+    return { orden: null, odt: null, nInterno: null, origenTipo: 'manual', origenId: null, manual: true }
+  }
 
   let odt = null
   if (odtInput.value) {
@@ -584,6 +675,9 @@ export function buildTrackingEventData(input = {}, user = null, now = new Date()
     incidentData.responsable = cleanText(input.responsable)
     incidentData.fechaCompromiso = hasValue(input.fechaCompromiso) ? parseDate(input.fechaCompromiso) : null
     if (hasValue(input.fechaCompromiso) && !incidentData.fechaCompromiso) return { error: 'fechaCompromiso invalida' }
+    if (!incidentData.tipoIncidente || !incidentData.accionTomada || !incidentData.responsable || !incidentData.fechaCompromiso) {
+      return { error: 'Una incidencia requiere tipo, accion tomada, responsable y fecha compromiso' }
+    }
   }
   return {
     data: {
@@ -599,7 +693,12 @@ export function buildTrackingEventData(input = {}, user = null, now = new Date()
 }
 
 export function validateTrackingTransition(previousEstado, nextEstado) {
-  if (!TRACKING_CHAIN[previousEstado]) return null
+  // Sin evento previo no se permite cerrar una venta con un único click. La
+  // cadena siempre arranca explícitamente en Preparado.
+  if (!previousEstado) {
+    if (nextEstado === 'Preparado') return null
+    return { error: 'El primer estado del despacho debe ser Preparado' }
+  }
   // Una incidencia puede complementarse con responsable/acción después del
   // primer aviso; se conserva cada actualización como evento separado.
   if (previousEstado === 'Incidencia' && nextEstado === 'Incidencia') return null
@@ -684,6 +783,9 @@ export function buildPackingUpdatePlan(orderItems = [], requestedItems = []) {
     }
 
     const cantidadAnterior = Number(current.nEntregados || 0)
+    if (nEntregados > cantidadAnterior && !current.pickingConfirmado) {
+      return { error: `Item ${itemId} no tiene picking confirmado` }
+    }
     updates.push({
       id: itemId,
       nEntregados,
@@ -742,7 +844,10 @@ async function buildPackingTrace(prisma, ordenId, despachoId = null, guiaDespach
   const [items, bultos, eventos, packedDespacho, packedGuia] = await Promise.all([
     prisma.ordenItem.findMany({
       where: { ordenId, eliminado: false },
-      select: { id: true, productoId: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true },
+      select: {
+        id: true, productoId: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true,
+        pickingConfirmado: true, pickingObservacion: true, pickingConfirmadoPor: true, pickingConfirmadoAt: true,
+      },
       orderBy: { id: 'asc' },
     }),
     prisma.packingBulto.findMany({
@@ -934,6 +1039,222 @@ export default async function despachosRoutes(fastify) {
     return sendExport(reply, { archivo: request.query?.archivo, nombre: `despachos_${new Date().toISOString().slice(0, 10)}`, ...datosExport })
   })
 
+  // Fuente única para la operación diaria: sólo ventas activas aún no
+  // entregadas. El estado se deriva de packing, guía/SII y tracking para que
+  // Matriz, Bodega y Despachos vean exactamente el mismo hilo.
+  fastify.get('/cola-operativa', {
+    preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
+  }, async (request) => {
+    const sucursalId = parsePositiveInt(request.user?.sucursalId)
+    const search = cleanText(request.query?.search)
+    const etapa = cleanText(request.query?.etapa)?.toLowerCase() || ''
+    const candidatasDespacho = wantsTrue(request.query?.candidatasDespacho)
+
+    const pendientes = sucursalId
+      ? await fastify.prisma.$queryRaw`
+          SELECT o.id
+          FROM ventas.ordenes o
+          WHERE NOT o.eliminada
+            AND o.estado = 'Activa'
+            AND (o.estado_entrega IS NULL OR o.estado_entrega NOT IN ('Entregada', 'Entregado'))
+            AND EXISTS (SELECT 1 FROM ventas.orden_items oi WHERE oi.orden_id = o.id AND NOT oi.eliminado)
+            AND (o.sucursal_id = ${sucursalId} OR o.sucursal_id IS NULL)
+          ORDER BY o.created_at ASC
+          LIMIT 500
+        `
+      : await fastify.prisma.$queryRaw`
+          SELECT o.id
+          FROM ventas.ordenes o
+          WHERE NOT o.eliminada
+            AND o.estado = 'Activa'
+            AND (o.estado_entrega IS NULL OR o.estado_entrega NOT IN ('Entregada', 'Entregado'))
+            AND EXISTS (SELECT 1 FROM ventas.orden_items oi WHERE oi.orden_id = o.id AND NOT oi.eliminado)
+          ORDER BY o.created_at ASC
+          LIMIT 500
+        `
+    const ordenIdsPendientes = pendientes.map(row => Number(row.id)).filter(Number.isInteger)
+    if (!ordenIdsPendientes.length) return { items: [], stats: {} }
+    const where = {
+      id: { in: ordenIdsPendientes },
+      eliminada: false,
+      estado: 'Activa',
+      items: { some: { eliminado: false } },
+      AND: [],
+    }
+    if (sucursalId) where.OR = [{ sucursalId }, { sucursalId: null }]
+    if (search) {
+      const numeric = parsePositiveInt(search)
+      where.AND.push({
+        OR: [
+          { rutCliente: { contains: search, mode: 'insensitive' } },
+          { cliente: { is: { nombre: { contains: search, mode: 'insensitive' } } } },
+          { cliente: { is: { razonSocial: { contains: search, mode: 'insensitive' } } } },
+          ...(numeric ? [{ id: numeric }, { nInterno: numeric }] : []),
+        ],
+      })
+    }
+    const ordenes = await fastify.prisma.orden.findMany({
+      where,
+      take: 500, // debe igualar el LIMIT de la query raw de arriba, si no trunca antes del filtro por etapa
+      orderBy: { createdAt: 'asc' },
+      include: {
+        items: {
+          where: { eliminado: false },
+          select: {
+            id: true, productoId: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true,
+            pickingConfirmado: true, pickingObservacion: true,
+          },
+          orderBy: { id: 'asc' },
+        },
+        cliente: { select: { id: true, nombre: true, razonSocial: true, rut: true, email: true, telefono: true } },
+        clienteSucursal: { select: { nombre: true, direccion: true, region: true, comuna: true, ciudad: true, contacto: true, email: true, telefono: true } },
+        despachos: { where: { eliminado: false }, select: { id: true, eliminado: true, tipoDespacho: true, transporte: true, numeroSeguimiento: true, fechaEntrega: true, parcial: true, tieneMulta: true, createdAt: true }, orderBy: { createdAt: 'desc' } },
+        guiasDespacho: { where: { eliminado: false }, select: { id: true, nGuia: true, fechaGuia: true, despachoId: true }, orderBy: { createdAt: 'desc' } },
+        packingBultos: { select: { id: true, numero: true, estado: true, dimensiones: true, peso: true }, orderBy: { createdAt: 'asc' } },
+      },
+    })
+    const guiaIds = ordenes.flatMap(orden => orden.guiasDespacho.map(guia => guia.id))
+    const despachoIds = ordenes.flatMap(orden => orden.despachos.map(despacho => despacho.id))
+    const productoIds = [...new Set(ordenes.flatMap(orden => orden.items.map(item => item.productoId).filter(Boolean)))]
+    const ordenIds = ordenes.map(orden => orden.id)
+    const [documentos, eventos, productos, odts, multas, cotizaciones] = await Promise.all([
+      guiaIds.length ? fastify.prisma.factDocumento.findMany({
+        where: { guiaDespachoId: { in: guiaIds }, tipoDte: 52 },
+        select: { guiaDespachoId: true, estado: true, folio: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+      }) : [],
+      despachoIds.length ? fastify.prisma.despachoTrackingEvento.findMany({
+        where: { despachoId: { in: despachoIds } },
+        select: { despachoId: true, estado: true, fechaEvento: true, id: true },
+        orderBy: [{ fechaEvento: 'desc' }, { id: 'desc' }],
+      }) : [],
+      productoIds.length ? fastify.prisma.producto.findMany({
+        where: { id: { in: productoIds } },
+        select: { id: true, estadoInventario: true },
+      }) : [],
+      ordenIds.length ? fastify.prisma.odt.findMany({
+        where: { ordenId: { in: ordenIds }, eliminado: false },
+        select: {
+          id: true,
+          ordenId: true,
+          eliminado: true,
+          items: {
+            where: { eliminado: false },
+            select: { productoId: true, cantidad: true, talleres: { select: { estado: true } } },
+          },
+        },
+      }) : [],
+      ordenIds.length ? fastify.prisma.multa.findMany({
+        where: { ordenId: { in: ordenIds } },
+        select: { id: true, ordenId: true, monto: true },
+      }) : [],
+      ordenIds.length ? fastify.prisma.cotizacionLicitacion.findMany({
+        where: { ordenId: { in: ordenIds } },
+        select: { id: true, ordenId: true, fechaPlazo: true },
+      }) : [],
+    ])
+    const dteByGuia = new Map()
+    for (const documento of documentos) if (!dteByGuia.has(documento.guiaDespachoId)) dteByGuia.set(documento.guiaDespachoId, documento)
+    const estadoInventarioByProducto = new Map(productos.map(producto => [producto.id, producto.estadoInventario]))
+    const multasByOrden = new Map()
+    for (const m of multas) {
+      if (!multasByOrden.has(m.ordenId)) multasByOrden.set(m.ordenId, [])
+      multasByOrden.get(m.ordenId).push(m)
+    }
+    const cotizByOrden = new Map(cotizaciones.map(c => [c.ordenId, c]))
+    const odtsByOrden = new Map()
+    for (const odt of odts) {
+      if (!odtsByOrden.has(odt.ordenId)) odtsByOrden.set(odt.ordenId, [])
+      odtsByOrden.get(odt.ordenId).push(odt)
+    }
+    const despachoToOrden = new Map(ordenes.flatMap(orden => orden.despachos.map(despacho => [despacho.id, orden.id])))
+    const trackingByOrden = new Map()
+    for (const evento of eventos) {
+      const ordenId = despachoToOrden.get(evento.despachoId)
+      if (ordenId && !trackingByOrden.has(ordenId)) trackingByOrden.set(ordenId, evento)
+    }
+
+    const now = new Date()
+    const allMapped = ordenes.map(orden => {
+      const sucursal = orden.clienteSucursal || {}
+      const cliente = orden.cliente || {}
+      const guias = orden.guiasDespacho.map(guia => ({ ...guia, dteEstado: dteByGuia.get(guia.id)?.estado || null, dteFolio: dteByGuia.get(guia.id)?.folio || null }))
+      const items = orden.items.map(item => ({ ...item, estadoInventario: estadoInventarioByProducto.get(item.productoId) || 'inventariado' }))
+      const packing = resumenPacking(items)
+      const preparacion = resumenPreparacion(items, odtsByOrden.get(orden.id) || [])
+      const estadoLogistico = deriveEstadoLogistico({ items, despachos: orden.despachos, guias, tracking: trackingByOrden.get(orden.id), preparacion })
+      
+      const tipo = String(orden.tipo || '').toLowerCase()
+      const esLicitacion = tipo.includes('licit')
+      const ordenMultas = multasByOrden.get(orden.id) || []
+      const fechaPlazo = cotizByOrden.get(orden.id)?.fechaPlazo || orden.fechaPlazo || null
+      const tieneMulta = esLicitacion && (ordenMultas.length > 0 || (fechaPlazo && new Date(fechaPlazo) < now))
+      const plazoDate = fechaPlazo ? new Date(fechaPlazo) : null
+      const atrasada = Boolean(plazoDate && plazoDate < now && (!orden.estadoEntrega || !['Entregada', 'Entregado'].includes(orden.estadoEntrega)))
+
+      return {
+        ordenId: orden.id,
+        nInterno: orden.nInterno,
+        tipoVenta: orden.tipo,
+        clienteNombre: cliente.razonSocial || cliente.nombre || sucursal.nombre || null,
+        rutCliente: orden.rutCliente || cliente.rut || null,
+        estadoEntrega: orden.estadoEntrega,
+        estadoLogistico,
+        packing,
+        preparacion,
+        direccion: orden.direccionDespacho || sucursal.direccion || null,
+        region: orden.regionDespacho || sucursal.region || null,
+        comuna: orden.comunaDespacho || sucursal.comuna || null,
+        ciudad: orden.ciudadDespacho || sucursal.ciudad || null,
+        contacto: orden.contactoDespacho || sucursal.contacto || null,
+        emailContacto: orden.emailContactoDespacho || sucursal.email || cliente.email || null,
+        telefonoContacto: orden.telefonoContactoDespacho || sucursal.telefono || cliente.telefono || null,
+        plazoEntrega: orden.fechaPlazo || null,
+        montoEnvio: orden.montoDespacho || 0,
+        enviosParciales: orden.enviosParciales,
+        tieneMulta,
+        atrasada,
+        despachos: orden.despachos,
+        guias,
+        tracking: trackingByOrden.get(orden.id) || null,
+        items,
+        bultos: orden.packingBultos,
+        pickingAjustes: items.filter(item => item.pickingObservacion).map(item => ({ itemId: item.id, nombre: item.nombre, observacion: item.pickingObservacion })),
+      }
+    })
+
+    const stats = {
+      total: allMapped.length,
+      enTaller: allMapped.filter(i => i.estadoLogistico.codigo === 'EN_TALLER').length,
+      pickingParcial: allMapped.filter(i => i.estadoLogistico.codigo === 'PICKING_PARCIAL').length,
+      listaPicking: allMapped.filter(i => i.estadoLogistico.codigo === 'LISTA_PICKING').length,
+      enPicking: allMapped.filter(i => ['PICKING', 'LISTA_PICKING', 'PICKING_PARCIAL'].includes(i.estadoLogistico.codigo)).length,
+      enPacking: allMapped.filter(i => i.estadoLogistico.codigo === 'PACKING').length,
+      listaDespacho: allMapped.filter(i => i.estadoLogistico.codigo === 'LISTA_DESPACHO').length,
+      guiaPreparada: allMapped.filter(i => i.estadoLogistico.codigo === 'GUIA_PREPARADA').length,
+      guiaSiiEmitida: allMapped.filter(i => i.estadoLogistico.codigo === 'GUIA_SII_EMITIDA').length,
+      enPatio: allMapped.filter(i => i.estadoLogistico.codigo === 'PATIO').length,
+      enReparto: allMapped.filter(i => i.estadoLogistico.codigo === 'REPARTO').length,
+      entregado: allMapped.filter(i => i.estadoLogistico.codigo === 'ENTREGADO').length,
+      atrasadas: allMapped.filter(i => i.atrasada).length,
+      conMulta: allMapped.filter(i => i.tieneMulta).length,
+    }
+
+    let filtered = allMapped
+    if (candidatasDespacho || etapa === 'despacho') {
+      filtered = allMapped.filter(i => i.estadoLogistico.codigo === 'LISTA_DESPACHO' || (i.packing.preparados > 0 && (i.enviosParciales || i.despachos.some(d => d.parcial))))
+    } else if (etapa === 'picking') {
+      filtered = allMapped.filter(i => i.preparacion.disponiblePicking > 0 && !i.packing.completo)
+    } else if (etapa === 'packing') {
+      filtered = allMapped.filter(i => !i.packing.completo && (i.preparacion.disponiblePicking > 0 || i.packing.preparados > 0))
+    }
+
+    return {
+      items: filtered,
+      stats,
+    }
+  })
+
   fastify.get('/:id', {
     preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
   }, async (request, reply) => {
@@ -982,7 +1303,7 @@ export default async function despachosRoutes(fastify) {
         sucursalId: true,
         items: {
           where: { eliminado: false },
-          select: { id: true, productoId: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true },
+          select: { id: true, productoId: true, cantidad: true, nEntregados: true, codigoInterno: true, nombre: true, pickingConfirmado: true },
           orderBy: { id: 'asc' },
         },
       },
@@ -1024,6 +1345,8 @@ export default async function despachosRoutes(fastify) {
     const bultoNumero = cleanText(parsed.data.bultoNumero)
     const bultoEstado = cleanText(parsed.data.bultoEstado) || 'Preparado'
     const bultoObservacion = cleanText(parsed.data.bultoObservacion)
+    const bultoDimensiones = cleanText(parsed.data.bultoDimensiones)
+    const bultoPeso = hasValue(parsed.data.bultoPeso) ? Number(parsed.data.bultoPeso) : null
     const observacion = cleanText(parsed.data.observacion)
     const usuario = userLabel(request.user)
 
@@ -1056,6 +1379,8 @@ export default async function despachosRoutes(fastify) {
         if (despachoId !== null) bultoUpdate.despachoId = despachoId
         if (parsed.data.bultoEstado !== undefined) bultoUpdate.estado = bultoEstado
         if (parsed.data.bultoObservacion !== undefined) bultoUpdate.observacion = bultoObservacion
+        if (parsed.data.bultoDimensiones !== undefined) bultoUpdate.dimensiones = bultoDimensiones
+        if (parsed.data.bultoPeso !== undefined) bultoUpdate.peso = bultoPeso
         if (Object.keys(bultoUpdate).length) {
           bulto = await tx.packingBulto.update({
             where: { id: bultoId },
@@ -1073,21 +1398,33 @@ export default async function despachosRoutes(fastify) {
             numero: bultoNumero,
             estado: bultoEstado,
             observacion: bultoObservacion,
+            dimensiones: bultoDimensiones,
+            peso: bultoPeso,
             usuario,
           },
           update: {
             despachoId: despachoId || undefined,
             estado: bultoEstado,
             observacion: parsed.data.bultoObservacion !== undefined ? bultoObservacion : undefined,
+            dimensiones: parsed.data.bultoDimensiones !== undefined ? bultoDimensiones : undefined,
+            peso: parsed.data.bultoPeso !== undefined ? bultoPeso : undefined,
           },
         })
       }
 
       for (const update of plan.updates) {
-        await tx.ordenItem.update({
-          where: { id: update.id },
+        // El plan se calculó antes de abrir la transacción. Condicionar por el
+        // valor anterior evita que dos usuarios sobrescriban el packing y
+        // registren eventos que no cuadran con el saldo real del ítem.
+        const changed = await tx.ordenItem.updateMany({
+          where: { id: update.id, nEntregados: update.cantidadAnterior },
           data: { nEntregados: update.nEntregados },
         })
+        if (changed.count !== 1) {
+          const error = new Error('El packing fue actualizado por otra persona; recargue la orden antes de continuar')
+          error.statusCode = 409
+          throw error
+        }
       }
       const eventos = buildPackingEventRows({
         ordenId,
@@ -1106,6 +1443,68 @@ export default async function despachosRoutes(fastify) {
         estadoEntrega: updatedOrden.estadoEntrega,
         ...trace,
       }
+    })
+  })
+
+  // Confirmacion de picking por linea: gate para poder empacar (ver
+  // buildPackingUpdatePlan). No mueve nEntregados ni toca la guia/factura,
+  // solo deja trazabilidad de que se reviso la linea (o que se ajusto, ej.
+  // sustitucion de color) antes de pasarla a Packing.
+  fastify.put('/ordenes/:ordenId/picking', {
+    preHandler: [fastify.authenticate, fastify.rbac('despacho.packing', 'write')],
+  }, async (request, reply) => {
+    const ordenId = parsePositiveInt(request.params.ordenId)
+    if (!ordenId) return reply.code(400).send({ error: 'ordenId invalido' })
+    const parsed = PickingConfirmUpdate.safeParse(request.body || {})
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
+
+    const orden = await fastify.prisma.orden.findFirst({
+      where: { id: ordenId, eliminada: false },
+      select: {
+        id: true,
+        sucursalId: true,
+        items: { where: { eliminado: false }, select: { id: true, nEntregados: true }, orderBy: { id: 'asc' } },
+      },
+    })
+    if (!orden) return reply.code(404).send({ error: 'Orden no encontrada' })
+    if (!userCanAccessOrden(request.user, orden)) return reply.code(403).send({ error: 'Forbidden' })
+
+    const byId = new Map(orden.items.map(item => [item.id, item]))
+    const rows = []
+    for (const requested of parsed.data.items) {
+      const itemId = parsePositiveInt(requested.itemId)
+      if (!itemId || !byId.has(itemId)) return reply.code(400).send({ error: `Item ${requested.itemId} no pertenece a la orden` })
+      rows.push({ itemId, confirmado: !!requested.confirmado, observacion: cleanText(requested.observacion) })
+    }
+
+    const usuario = userLabel(request.user)
+    const now = new Date()
+
+    return fastify.prisma.$transaction(async (tx) => {
+      for (const row of rows) {
+        await tx.ordenItem.update({
+          where: { id: row.itemId },
+          data: {
+            pickingConfirmado: row.confirmado,
+            pickingObservacion: row.observacion,
+            pickingConfirmadoPor: row.confirmado ? usuario : null,
+            pickingConfirmadoAt: row.confirmado ? now : null,
+          },
+        })
+      }
+      const eventRows = rows.map(row => ({
+        ordenId,
+        ordenItemId: row.itemId,
+        cantidadAnterior: byId.get(row.itemId).nEntregados,
+        cantidadNueva: byId.get(row.itemId).nEntregados,
+        delta: 0,
+        accion: !row.confirmado ? 'picking_pendiente' : (row.observacion ? 'picking_ajuste' : 'picking_confirmado'),
+        observacion: row.observacion,
+        usuario,
+      }))
+      await tx.packingEvento.createMany({ data: eventRows })
+      const trace = await buildPackingTrace(tx, ordenId)
+      return { ordenId, ...trace }
     })
   })
 
@@ -1144,6 +1543,9 @@ export default async function despachosRoutes(fastify) {
     const built = buildTrackingEventData(parsed.data, request.user)
     if (built.error) return reply.code(400).send({ error: built.error })
     const traceBefore = await buildDespachoTrackingTrace(fastify.prisma, id)
+    if (traceBefore.latest && built.data.fechaEvento < traceBefore.latest.fechaEvento) {
+      return reply.code(409).send({ error: 'La fecha del evento no puede ser anterior al último estado registrado' })
+    }
     const transition = validateTrackingTransition(traceBefore.latest?.estado, built.data.estado)
     if (transition?.error) return reply.code(409).send({ error: transition.error })
 
@@ -1205,34 +1607,71 @@ export default async function despachosRoutes(fastify) {
     const fechaEntrega = b.fechaEntrega ? parseDate(b.fechaEntrega) : null
     const montoEnvio = b.montoEnvio ? parseOptionalInt(b.montoEnvio) : null
     if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
-    if (!userCanAccessOrden(request.user, resolved.orden)) return reply.code(403).send({ error: 'Forbidden' })
+    const esManual = resolved.manual === true
+    if (!esManual && !userCanAccessOrden(request.user, resolved.orden)) return reply.code(403).send({ error: 'Forbidden' })
     if (b.fechaInterno && !fechaInterno) return reply.code(400).send({ error: 'fechaInterno invalida' })
     if (b.fechaEntrega && !fechaEntrega) return reply.code(400).send({ error: 'fechaEntrega invalida' })
     if (b.montoEnvio && (montoEnvio == null || montoEnvio < 0)) return reply.code(400).send({ error: 'montoEnvio invalido' })
-    const ordenContacto = await fastify.prisma.orden.findUnique({
+    const motivoOperacion = cleanText(b.motivoOperacion)
+    if (esManual && !motivoOperacion) return reply.code(400).send({ error: 'motivoOperacion requerido para despacho aislado' })
+
+    let tieneMulta = false
+    let interno = null
+
+    if (!esManual) {
+      const items = await fastify.prisma.ordenItem.findMany({
+        where: { ordenId: resolved.orden.id, eliminado: false },
+        select: { id: true, productoId: true, cantidad: true, nEntregados: true },
+      })
+      const odts = await fastify.prisma.odt.findMany({
+        where: { ordenId: resolved.orden.id, eliminado: false },
+        include: { items: { where: { eliminado: false }, include: { talleres: true } } },
+      })
+      const productos = await fastify.prisma.producto.findMany({
+        where: { id: { in: items.map(i => i.productoId).filter(Boolean) } },
+        select: { id: true, estadoInventario: true },
+      })
+      const estadoInvMap = new Map(productos.map(p => [p.id, p.estadoInventario]))
+      const itemsWithInv = items.map(i => ({ ...i, estadoInventario: estadoInvMap.get(i.productoId) }))
+      const packing = resumenPacking(itemsWithInv)
+      const preparacion = resumenPreparacion(itemsWithInv, odts)
+      const estadoLogistico = deriveEstadoLogistico({ items: itemsWithInv, preparacion })
+
+      if (preparacion.pendienteTaller > 0 && !b.parcial) {
+        return reply.code(400).send({ error: 'Esta venta tiene unidades pendientes en taller. No se puede programar despacho completo mientras existan unidades en fabricación.' })
+      }
+
+      tieneMulta = await deriveTieneMulta(fastify.prisma, resolved.orden)
+      interno = resolved.orden.nInterno ? String(resolved.orden.nInterno) : String(resolved.orden.id)
+    }
+
+    const ordenContacto = esManual ? null : await fastify.prisma.orden.findUnique({
       where: { id: resolved.orden.id },
       select: {
         emailContactoDespacho: true,
         clienteId: true,
-        clienteSucursal: { select: { direccion: true, region: true, comuna: true } },
+        clienteSucursal: { select: { direccion: true, region: true, comuna: true, ciudad: true } },
       },
     })
-    const clienteContacto = !b.emailContacto && !ordenContacto?.emailContactoDespacho && ordenContacto?.clienteId
+    const clienteContacto = !esManual && !b.emailContacto && !ordenContacto?.emailContactoDespacho && ordenContacto?.clienteId
       ? await fastify.prisma.cliente.findUnique({ where: { id: ordenContacto.clienteId }, select: { email: true } })
       : null
     const emailContacto = String(b.emailContacto || ordenContacto?.emailContactoDespacho || clienteContacto?.email || '').trim().toLowerCase()
-    if (!isValidContactEmail(emailContacto)) {
+    if (!esManual && !isValidContactEmail(emailContacto)) {
       return reply.code(400).send({ error: 'Correo de contacto de despacho requerido y valido' })
     }
     const direccion = cleanText(b.direccion) || ordenContacto?.clienteSucursal?.direccion || null
     const region = cleanText(b.region) || ordenContacto?.clienteSucursal?.region || null
     const comuna = cleanText(b.comuna) || ordenContacto?.clienteSucursal?.comuna || null
-    const addressError = validateDispatchAddress({ ...b, direccion, region, comuna })
+    const ciudad = cleanText(b.ciudad) || ordenContacto?.clienteSucursal?.ciudad || null
+    const addressError = esManual ? null : validateDispatchAddress({ ...b, direccion, region, comuna })
     if (addressError) return reply.code(400).send(addressError)
+    const items = Array.isArray(b.items) && b.items.length ? b.items : undefined
     const data = {
-      ordenId: resolved.orden.id,
+      ordenId: resolved.orden?.id ?? null,
       odtId: resolved.odt?.id ?? null,
-      interno: resolved.nInterno ? String(resolved.nInterno) : null,
+      interno,
+      sucursalId: resolved.orden?.sucursalId ?? parsePositiveInt(request.user?.sucursalId) ?? null,
       plazoEntrega: b.plazoEntrega || null,
       fechaInterno,
       fechaEntrega,
@@ -1242,13 +1681,19 @@ export default async function despachosRoutes(fastify) {
       montoEnvio,
       direccion,
       contacto: b.contacto || null,
-      emailContacto,
+      emailContacto: emailContacto || null,
       region,
       comuna,
+      ciudad,
+      receptorRut: cleanText(b.receptorRut) || null,
+      receptorRazonSocial: cleanText(b.receptorRazonSocial) || null,
+      receptorGiro: cleanText(b.receptorGiro) || null,
+      items,
       parcial: !!b.parcial,
-      tieneMulta: !!b.tieneMulta,
+      tieneMulta,
       origenTipo: resolved.origenTipo,
       origenId: resolved.origenId,
+      motivoOperacion,
       usuario: userLabel(request.user),
     }
     const entregaSync = buildOrdenEntregaSyncFromDespacho({
@@ -1258,6 +1703,16 @@ export default async function despachosRoutes(fastify) {
     })
     return fastify.prisma.$transaction(async (tx) => {
       const despacho = await tx.despacho.create({ data })
+      // Tomar la venta deja la primera evidencia logística. Ningún evento
+      // posterior puede saltar directamente a Entregado.
+      await tx.despachoTrackingEvento.create({
+        data: {
+          despachoId: despacho.id,
+          estado: 'Preparado',
+          usuario: userLabel(request.user),
+          observacion: 'Despacho creado en Bodega',
+        },
+      })
       await applyOrdenEntregaSync(tx, entregaSync)
       // Tomar la venta en bodega ES la preparacion. Sin esto la orden seguia en
       // CREADA mientras bodega ya la estaba armando, y el estado formal solo se movia
@@ -1297,18 +1752,21 @@ export default async function despachosRoutes(fastify) {
         origenId: origenTouched || !relationTouched ? (b.origenId !== undefined ? b.origenId : existing.origenId) : undefined,
       })
       if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
-      if (!userCanAccessOrden(request.user, resolved.orden)) return reply.code(403).send({ error: 'Forbidden' })
-      data.ordenId = resolved.orden.id
+      if (!resolved.manual && !userCanAccessOrden(request.user, resolved.orden)) return reply.code(403).send({ error: 'Forbidden' })
+      data.ordenId = resolved.orden?.id ?? null
       data.odtId = resolved.odt?.id ?? null
       data.interno = resolved.nInterno ? String(resolved.nInterno) : null
       data.origenTipo = resolved.origenTipo
       data.origenId = resolved.origenId
+      data.sucursalId = resolved.orden?.sucursalId ?? parsePositiveInt(request.user?.sucursalId) ?? existing.sucursalId ?? null
     }
 
-    for (const f of ['plazoEntrega', 'tipoDespacho', 'transporte', 'numeroSeguimiento', 'direccion', 'contacto', 'emailContacto', 'region', 'comuna', 'usuario']) {
+    for (const f of ['plazoEntrega', 'tipoDespacho', 'transporte', 'numeroSeguimiento', 'direccion', 'contacto', 'emailContacto', 'region', 'comuna', 'ciudad', 'receptorRut', 'receptorRazonSocial', 'receptorGiro', 'usuario', 'motivoOperacion']) {
       if (b[f] !== undefined) data[f] = b[f]
     }
-    if (b.emailContacto !== undefined && !isValidContactEmail(b.emailContacto)) {
+    if (b.items !== undefined) data.items = b.items
+    const esManual = (data.origenTipo ?? existing.origenTipo) === 'manual'
+    if (!esManual && b.emailContacto !== undefined && !isValidContactEmail(b.emailContacto)) {
       return reply.code(400).send({ error: 'Correo de contacto de despacho requerido y valido' })
     }
     if (b.fechaInterno !== undefined) {
@@ -1327,14 +1785,17 @@ export default async function despachosRoutes(fastify) {
       data.montoEnvio = montoEnvio
     }
     if (b.parcial !== undefined) data.parcial = !!b.parcial
-    if (b.tieneMulta !== undefined) data.tieneMulta = !!b.tieneMulta
-    const updateAddressError = validateDispatchAddress({
+    const updateAddressError = esManual ? null : validateDispatchAddress({
       tipoDespacho: data.tipoDespacho ?? existing.tipoDespacho,
       direccion: data.direccion ?? existing.direccion,
       region: data.region ?? existing.region,
       comuna: data.comuna ?? existing.comuna,
     })
     if (updateAddressError) return reply.code(400).send(updateAddressError)
+    if (esManual && !cleanText(data.motivoOperacion ?? existing.motivoOperacion)) {
+      return reply.code(400).send({ error: 'motivoOperacion requerido para despacho aislado' })
+    }
+
     return fastify.prisma.$transaction(async (tx) => {
       const despacho = await tx.despacho.update({ where: { id }, data })
       const affectedOrdenIds = new Set([existing.ordenId, data.ordenId !== undefined ? data.ordenId : existing.ordenId].filter(Boolean))
@@ -1364,9 +1825,9 @@ export default async function despachosRoutes(fastify) {
         where: { id },
         data: {
           eliminado: true,
+          motivoEliminacion,
           userMod: usuario,
           fecham: new Date(),
-          motivoEliminacion,
         },
       })
       await recalculateOrdenEntrega(tx, existing.ordenId)
@@ -1385,16 +1846,33 @@ export default async function despachosRoutes(fastify) {
     const { where } = listWhere
     const [items, total] = await Promise.all([
       fastify.prisma.guiaDespacho.findMany({
-        where, orderBy: { fechaGuia: 'desc' }, take: LIST_LIMIT, skip,
+        where,
+        orderBy: { fechaGuia: 'desc' },
+        take: LIST_LIMIT,
+        skip,
+        include: {
+          despacho: { select: { id: true, transporte: true, direccion: true, comuna: true, ciudad: true, receptorRazonSocial: true, motivoOperacion: true } },
+          documentos: { where: { tipoDte: 52 }, select: { id: true, folio: true, estado: true, trackId: true, xml: true, receptor: true, extra: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1 },
+        },
       }),
       fastify.prisma.guiaDespacho.count({ where }),
     ])
-    return { items, total, limit: LIST_LIMIT }
+    const mapped = items.map(g => {
+      const doc = g.documentos?.[0] || null
+      return {
+        ...g,
+        documentoDte: doc ? {
+          id: doc.id,
+          folio: doc.folio,
+          estado: doc.estado,
+          trackId: doc.trackId,
+          xmlDisponible: !!doc.xml,
+        } : null,
+      }
+    })
+    return { items: mapped, total, limit: LIST_LIMIT }
   })
 
-  // Detalle enriquecido de una guia (para impresion): guia + despacho +
-  // orden/cliente + items realmente enviados en ESTA guia (packing por
-  // guiaDespachoId), no el pedido completo.
   fastify.get('/guias/:id', {
     preHandler: [fastify.authenticate, fastify.rbac('despacho', 'read')],
   }, async (request, reply) => {
@@ -1402,6 +1880,9 @@ export default async function despachosRoutes(fastify) {
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
     const guia = await fastify.prisma.guiaDespacho.findFirst({
       where: withOrdenSucursalScope(request.user, { id, eliminado: false }),
+      include: {
+        documentos: { where: { tipoDte: 52 }, orderBy: { createdAt: 'desc' }, take: 1 },
+      },
     })
     if (!guia) return reply.code(404).send({ error: 'no encontrada' })
     const [despacho, ordenBase, packed] = await Promise.all([
@@ -1425,14 +1906,38 @@ export default async function despachosRoutes(fastify) {
     ])
     const orden = ordenBase ? await attachCliente(fastify, ordenBase) : null
     const packedMap = new Map(packed.map(row => [row.ordenItemId, Math.max(0, Number(row._sum.delta || 0))]))
-    const items = (orden?.items || [])
-      .map(item => ({ ...item, enviado: packedMap.get(item.id) || 0 }))
-      .filter(item => item.enviado > 0)
+    let items = []
+    if (orden?.items?.length) {
+      items = orden.items
+        .map(item => ({ ...item, enviado: packedMap.get(item.id) || 0 }))
+        .filter(item => item.enviado > 0)
+    }
+    if (!items.length && guia.items && Array.isArray(guia.items) && guia.items.length) {
+      items = guia.items.map(it => ({ ...it, enviado: it.cantidad }))
+    } else if (!items.length && despacho?.items && Array.isArray(despacho.items) && despacho.items.length) {
+      items = despacho.items.map(it => ({ ...it, enviado: it.cantidad }))
+    }
+    const doc = guia.documentos?.[0] || null
+    const validacionDte52 = validarCamposDte52({
+      receptor: doc?.receptor || {},
+      extra: doc?.extra || {},
+      items,
+    })
     return {
       guia,
       despacho,
       orden: orden ? { id: orden.id, nInterno: orden.nInterno, tipo: orden.tipo, rutCliente: orden.rutCliente, cliente: orden.cliente } : null,
       items,
+      documentoDte: doc ? {
+        id: doc.id,
+        folio: doc.folio,
+        estado: doc.estado,
+        trackId: doc.trackId,
+        xmlDisponible: !!doc.xml,
+        receptor: doc.receptor,
+        extra: doc.extra,
+      } : null,
+      validacionDte52,
     }
   })
 
@@ -1467,66 +1972,215 @@ export default async function despachosRoutes(fastify) {
   }, async (request, reply) => {
     const parsed = GuiaCreate.safeParse(request.body || {})
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
-    const { ordenId, odtId, nInterno, nGuia, fechaGuia, origen, origenTipo, origenId, despachoId } = parsed.data
+    const { ordenId, odtId, nInterno, nGuia, fechaGuia, origen, origenTipo, origenId, despachoId, indTraslado, tipoDespacho, receptor: inputReceptor, items: inputItems, emitirSii } = parsed.data
     const cleanNGuia = cleanText(nGuia)
-    const resolved = await resolveDispatchTraceability(fastify.prisma, {
-      ordenId,
-      odtId,
-      nInterno,
-      origenTipo,
-      origenId,
-    })
+
+    const despachoRef = parsePackingReferenceId(despachoId, 'despachoId')
+    if (despachoRef.error) return reply.code(400).send({ error: despachoRef.error })
+
+    let despacho = null
+    if (despachoRef.id) {
+      despacho = await fastify.prisma.despacho.findFirst({
+        where: withOrdenSucursalScope(request.user, { id: despachoRef.id, eliminado: false }),
+      })
+      if (!despacho) return reply.code(404).send({ error: 'Despacho no encontrado' })
+      if (ordenId && despacho.ordenId && despacho.ordenId !== parseInt(ordenId, 10)) {
+        return reply.code(400).send({ error: 'Despacho no pertenece a la orden' })
+      }
+    }
+
+    const esManual = origenTipo === 'manual' || despacho?.origenTipo === 'manual'
+    let resolved = { orden: null, odt: null, nInterno: null, origenTipo: 'manual', origenId: null, manual: true }
+
+    if (!esManual) {
+      resolved = await resolveDispatchTraceability(fastify.prisma, {
+        ordenId: ordenId || despacho?.ordenId,
+        odtId: odtId || despacho?.odtId,
+        nInterno: nInterno || despacho?.interno,
+        origenTipo,
+        origenId,
+      })
+      if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
+      if (!userCanAccessOrden(request.user, resolved.orden)) return reply.code(403).send({ error: 'Forbidden' })
+      if (despacho && despacho.ordenId && resolved.orden && despacho.ordenId !== resolved.orden.id) {
+        return reply.code(400).send({ error: 'Despacho no pertenece a la orden' })
+      }
+    }
+
     const parsedFechaGuia = fechaGuia ? parseDate(fechaGuia) : new Date()
-    if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
-    if (!userCanAccessOrden(request.user, resolved.orden)) return reply.code(403).send({ error: 'Forbidden' })
     if (fechaGuia && !parsedFechaGuia) return reply.code(400).send({ error: 'fechaGuia invalida' })
     if (cleanNGuia) {
       const duplicate = await ensureUniqueGuia(fastify.prisma, cleanNGuia)
       if (duplicate) return reply.code(duplicate.status).send({ error: duplicate.error })
     }
-    const despachoRef = parsePackingReferenceId(despachoId, 'despachoId')
-    if (despachoRef.error) return reply.code(400).send({ error: despachoRef.error })
-    if (despachoRef.id) {
-      const despacho = await fastify.prisma.despacho.findFirst({
-        where: { id: despachoRef.id, ordenId: resolved.orden.id, eliminado: false },
-        select: { id: true },
-      })
-      if (!despacho) return reply.code(400).send({ error: 'Despacho no pertenece a la orden' })
-    }
+
+    const items = (Array.isArray(inputItems) && inputItems.length) ? inputItems : ((despacho?.items && Array.isArray(despacho.items)) ? despacho.items : [])
     const autoNGuia = !cleanNGuia
     const data = {
-      ordenId: resolved.orden.id,
+      ordenId: resolved.orden?.id ?? null,
       odtId: resolved.odt?.id ?? null,
-      nInterno: resolved.nInterno,
-      // Placeholder temporal unico si no se indico N guia: se reemplaza por
-      // el id real de la guia (autogenerado, nunca choca) despues de crearla.
+      nInterno: resolved.nInterno ?? null,
       nGuia: autoNGuia ? `__auto_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` : cleanNGuia,
       fechaGuia: parsedFechaGuia,
       origen: origen || null,
-      origenTipo: resolved.origenTipo,
-      origenId: resolved.origenId,
-      despachoId: despachoRef.id,
+      origenTipo: esManual ? 'manual' : resolved.origenTipo,
+      origenId: esManual ? null : resolved.origenId,
+      despachoId: despacho?.id ?? null,
+      items: items.length ? items : undefined,
     }
+
+    const receptorData = inputReceptor || {
+      rut: despacho?.receptorRut || resolved.orden?.rutCliente || '',
+      razonSocial: despacho?.receptorRazonSocial || '',
+      giro: despacho?.receptorGiro || '',
+      direccion: despacho?.direccion || '',
+      comuna: despacho?.comuna || '',
+      ciudad: despacho?.ciudad || '',
+      contacto: despacho?.contacto || '',
+      email: despacho?.emailContacto || '',
+    }
+    const extraData = {
+      indTraslado: Number(indTraslado || 1),
+      tipoDespacho: Number(tipoDespacho || 2),
+      transporte: despacho?.transporte || null,
+    }
+
+    const validation = validarCamposDte52({
+      receptor: receptorData,
+      extra: extraData,
+      items,
+    })
+
+    if (emitirSii && !validation.valido) {
+      return reply.code(400).send({
+        error: 'Faltan campos obligatorios para emitir la guía DTE 52 al SII',
+        faltantes: validation.faltantes,
+      })
+    }
+
+    // La creación con emisión inmediata debe fallar antes de abrir la
+    // transacción y antes de reservar un folio si el certificado local no está
+    // disponible. El endpoint de reintento más abajo devuelve el mismo 422.
+    if (emitirSii) {
+      const engine = createFacturacionEngine({
+        db: createFacturacionDb(fastify.prisma),
+        dataDir: path.join(process.cwd(), 'data', 'facturacion'),
+      })
+      const certificado = await engine.certInfo()
+      if (!certificado.cargado || !certificado.valido) {
+        return reply.code(422).send({
+          error: certificado.error || 'No hay certificado digital cargado. Súbelo en Configuración.',
+        })
+      }
+    }
+
     return fastify.prisma.$transaction(async (tx) => {
       let guia = await tx.guiaDespacho.create({ data })
       if (autoNGuia) {
         guia = await tx.guiaDespacho.update({ where: { id: guia.id }, data: { nGuia: String(guia.id) } })
       }
-      const orden = await tx.orden.findUnique({
-        where: { id: data.ordenId },
-        select: { estadoEntrega: true },
-      })
-      const hasExplicitNonPartialDespachoSignal = orden?.estadoEntrega === 'Parcial'
-        ? await hasNonPartialDespachoEntregaSignal(tx, data.ordenId)
-        : false
-      const entregaSync = buildOrdenEntregaSyncFromGuia({
-        ordenId: data.ordenId,
-        currentEstadoEntrega: orden?.estadoEntrega,
-        hasExplicitNonPartialDespachoSignal,
-      })
-      await applyOrdenEntregaSync(tx, entregaSync)
-      return guia
+
+      const totales = computeTotales(items, 52)
+      const docData = {
+        usuarioNombre: userLabel(request.user),
+        clienteId: resolved.orden?.clienteId ?? null,
+        ordenId: resolved.orden?.id ?? null,
+        guiaDespachoId: guia.id,
+        tipoDte: 52,
+        fechaEmision: new Date().toISOString().slice(0, 10),
+        receptor: receptorData,
+        items,
+        extra: extraData,
+        totales,
+        estado: 'borrador',
+      }
+      const factDoc = await tx.factDocumento.create({ data: docData })
+
+      if (data.ordenId) {
+        const orden = await tx.orden.findUnique({
+          where: { id: data.ordenId },
+          select: { estadoEntrega: true },
+        })
+        const hasExplicitNonPartialDespachoSignal = orden?.estadoEntrega === 'Parcial'
+          ? await hasNonPartialDespachoEntregaSignal(tx, data.ordenId)
+          : false
+        const entregaSync = buildOrdenEntregaSyncFromGuia({
+          ordenId: data.ordenId,
+          currentEstadoEntrega: orden?.estadoEntrega,
+          hasExplicitNonPartialDespachoSignal,
+        })
+        await applyOrdenEntregaSync(tx, entregaSync)
+      }
+
+      let emitidoResult = null
+      if (emitirSii && validation.valido) {
+        const db = createFacturacionDb(tx)
+        const engine = createFacturacionEngine({ db, dataDir: path.join(process.cwd(), 'data', 'facturacion') })
+        emitidoResult = await engine.emitir(factDoc.id)
+        try {
+          await engine.enviar([factDoc.id])
+        } catch {
+          // background sync error does not revert emission
+        }
+      }
+
+      return {
+        ...guia,
+        guia,
+        documento: emitidoResult || factDoc,
+        valido: validation.valido,
+        faltantes: validation.faltantes,
+      }
     })
+  })
+
+  fastify.post('/guias/:id/emitir-sii', {
+    preHandler: [fastify.authenticate, fastify.rbac('facturacion.emitir', 'write')],
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
+    const guia = await fastify.prisma.guiaDespacho.findFirst({
+      where: withOrdenSucursalScope(request.user, { id, eliminado: false }),
+      include: { documentos: { where: { tipoDte: 52 } } },
+    })
+    if (!guia) return reply.code(404).send({ error: 'Guía no encontrada' })
+
+    const factDoc = guia.documentos?.[0]
+    if (!factDoc) {
+      return reply.code(400).send({ error: 'La guía no tiene un documento DTE 52 borrador asociado' })
+    }
+    if (['emitido', 'enviado', 'aceptado'].includes(factDoc.estado)) {
+      return reply.code(400).send({ error: `La guía ya fue emitida al SII (Folio ${factDoc.folio || 'N/A'})` })
+    }
+
+    const validation = validarCamposDte52({
+      receptor: factDoc.receptor,
+      extra: factDoc.extra,
+      items: factDoc.items,
+    })
+    if (!validation.valido) {
+      return reply.code(400).send({
+        error: 'No se puede emitir la guía al SII porque faltan campos obligatorios',
+        faltantes: validation.faltantes,
+      })
+    }
+
+    const db = createFacturacionDb(fastify.prisma)
+    const engine = createFacturacionEngine({ db, dataDir: path.join(process.cwd(), 'data', 'facturacion') })
+    try {
+      const emitido = await engine.emitir(factDoc.id)
+      try {
+        const envio = await engine.enviar([factDoc.id])
+        const documento = envio.documentos?.find(item => item.id === factDoc.id) || emitido
+        return { ok: true, documento, folio: emitido.folio, estado: documento.estado, trackId: envio.trackId }
+      } catch (sendError) {
+        // La emisión ya consumió un folio y debe quedar claramente visible
+        // como pendiente de envío; nunca se debe informar falsamente éxito SII.
+        return { ok: false, documento: emitido, folio: emitido.folio, estado: emitido.estado, envioError: sendError?.message || 'No se pudo enviar la guía al SII' }
+      }
+    } catch (error) {
+      return reply.code(422).send({ error: error?.message || 'No se pudo emitir la guía al SII' })
+    }
   })
 
   fastify.put('/guias/:id', {
@@ -1556,7 +2210,7 @@ export default async function despachosRoutes(fastify) {
       })
       if (resolved.error) return reply.code(resolved.status).send({ error: resolved.error })
       if (!userCanAccessOrden(request.user, resolved.orden)) return reply.code(403).send({ error: 'Forbidden' })
-      data.ordenId = resolved.orden.id
+      data.ordenId = resolved.orden?.id ?? null
       data.odtId = resolved.odt?.id ?? null
       data.nInterno = resolved.nInterno
       data.origenTipo = resolved.origenTipo
@@ -1574,25 +2228,23 @@ export default async function despachosRoutes(fastify) {
       data.fechaGuia = fechaGuia || new Date()
     }
     if (b.origen !== undefined) data.origen = b.origen || null
+    if (b.items !== undefined) data.items = b.items
     if (b.despachoId !== undefined) {
       const despachoRef = parsePackingReferenceId(b.despachoId, 'despachoId')
       if (despachoRef.error) return reply.code(400).send({ error: despachoRef.error })
       const targetOrdenId = data.ordenId !== undefined ? data.ordenId : existing.ordenId
       if (despachoRef.id) {
         const despacho = await fastify.prisma.despacho.findFirst({
-          where: { id: despachoRef.id, ordenId: targetOrdenId, eliminado: false },
+          where: { id: despachoRef.id, ...(targetOrdenId ? { ordenId: targetOrdenId } : {}), eliminado: false },
           select: { id: true },
         })
-        if (!despacho) return reply.code(400).send({ error: 'Despacho no pertenece a la orden' })
+        if (!despacho) return reply.code(400).send({ error: 'Despacho no válido para esta guía' })
       }
       data.despachoId = despachoRef.id
     }
 
     return fastify.prisma.$transaction(async (tx) => {
       const guia = await tx.guiaDespacho.update({ where: { id }, data })
-      // Lo que se empaco para esta guia mientras estaba pendiente (sin
-      // despacho) queda tambien contado en el despacho recien asignado, para
-      // que el resumen de packing del despacho sea consistente.
       if (data.despachoId) {
         await tx.packingEvento.updateMany({
           where: { guiaDespachoId: id, despachoId: null },
@@ -1631,7 +2283,7 @@ export default async function despachosRoutes(fastify) {
           motivoEliminacion,
         },
       })
-      await recalculateOrdenEntrega(tx, existing.ordenId)
+      if (existing.ordenId) await recalculateOrdenEntrega(tx, existing.ordenId)
       return guia
     })
   })

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DOC-07: Rol Facturación Electrónica DTE | Plastimar SisGestión 3.0</title>
+  <link rel="stylesheet" href="../../assets/manual-style.css">
+</head>
+<body>
+
+  <header class="doc-header">
+    <div class="doc-header-inner">
+      <div class="doc-brand">
+        <img src="../../assets/plastimar-logo.webp" alt="Plastimar Logo" class="doc-logo">
+        <div class="doc-title-group">
+          <h1>Manual Operativo: Facturación Electrónica (DTE)</h1>
+          <div class="doc-subtitle">SisGestión 3.0 &middot; Emisión SII, Validación Tributaria y Trazabilidad</div>
+        </div>
+      </div>
+      <div class="doc-actions">
+        <a href="../../00_MAPA_DOCUMENTACION_Y_GUIA_INICIO/index.html" class="btn-action btn-nav">&larr; Volver al Mapa</a>
+        <button class="btn-action btn-print">🖨️ Imprimir / Guardar PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="doc-container">
+
+    <!-- Misión del Rol -->
+    <section class="doc-card">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">1. Tu Rol en el ERP Plastimar</h2>
+        <span class="badge-role">Cumplimiento Tributario</span>
+      </div>
+      <p style="font-size: 1.05rem; margin-bottom: 1rem;">
+        El área de facturación electrónica conecta la gestión comercial de Plastimar con las normativas del <strong>Servicio de Impuestos Internos (SII)</strong>. En el SisGestión 3.0, el motor de facturación está integrado directamente en la plataforma: firma los documentos con el certificado digital de Plastimar, valida los códigos de autorización (CAF) y genera el timbre electrónico reglamentario.
+      </p>
+      <div class="callout callout-info">
+        <div class="callout-icon">⚖️</div>
+        <div class="callout-content">
+          <h4>Tu Misión Principal</h4>
+          <p>Supervisar la emisión de Facturas, Boletas, Guías y Notas de Crédito, garantizando que todo documento cumpla con los requisitos tributarios chilenos y que las ventas mantengan su trazabilidad <strong>Venta &rarr; Guía &rarr; DTE</strong>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tipos de Documentos y Reglas del SII -->
+    <section class="doc-card">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">2. Documentos Electrónicos y Reglas Clave del SII</h2>
+        <span class="badge-role">Normativa Tributaria</span>
+      </div>
+
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>Tipo DTE</th>
+            <th>Nombre del Documento</th>
+            <th>Destinatario</th>
+            <th>Requisitos y Efecto</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>DTE 33</strong></td>
+            <td><strong>Factura Electrónica</strong></td>
+            <td>Empresas, Municipalidades y Colegios con RUT.</td>
+            <td>Afecta a IVA (19%). Da derecho a crédito fiscal.</td>
+          </tr>
+          <tr>
+            <td><strong>DTE 34</strong></td>
+            <td><strong>Factura No Afecta o Exenta</strong></td>
+            <td>Operaciones o instituciones exentas.</td>
+            <td>Sin cobro de IVA.</td>
+          </tr>
+          <tr>
+            <td><strong>DTE 39</strong></td>
+            <td><strong>Boleta Electrónica</strong></td>
+            <td>Personas naturales / Consumidor Final.</td>
+            <td>Venta en mesón de sucursal. IVA incluido.</td>
+          </tr>
+          <tr>
+            <td><strong>DTE 52</strong></td>
+            <td><strong>Guía de Despacho Electrónica</strong></td>
+            <td>Todo traslado de mercadería a clientes.</td>
+            <td>Respaldo físico y legal obligatorio en carretera.</td>
+          </tr>
+          <tr>
+            <td><strong>DTE 61</strong></td>
+            <td><strong>Nota de Crédito Electrónica</strong></td>
+            <td>Clientes con facturas emitidas previas.</td>
+            <td>Anulación total, descuento o devolución de producto.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-regla-oro">
+        <div class="callout-icon">📌</div>
+        <div class="callout-content">
+          <h4>Regla operativa interna: máximo 20 líneas por documento</h4>
+          <p>SisGestión aplica un <strong>límite interno de Plastimar</strong> de 20 líneas. Si la operación lo supera, divide manualmente los ítems, evita omisiones/duplicidades y verifica que la suma de ambos documentos represente el total. El ERP no divide automáticamente 35 líneas en 20 + 15.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pantalla de Documentos Emitidos -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">3. Pantalla de Facturación y Documentos Emitidos</h2>
+        <span class="badge-role">Tu Mesa de Trabajo</span>
+      </div>
+      <p style="margin-bottom: 1.5rem;">
+        Al ingresar a <strong>Facturación &rarr; Documentos</strong> verás el panel de control tributario:
+      </p>
+
+      <div class="screenshot-wrapper">
+        <div class="screenshot-container">
+          <img src="../../capturas/07_facturacion/01_modulo_facturacion.png" alt="Módulo de Facturación DTE Plastimar" class="screenshot-img">
+          <div class="screenshot-badge">🔍 Clic para ampliar en pantalla completa</div>
+        </div>
+        <div class="screenshot-caption">Figura 1: Módulo de Facturación Electrónica. Se aprecia el bloque de trazabilidad venta &rarr; guía &rarr; DTE, filtros por estado del SII y listado de folios.</div>
+      </div>
+
+      <h3 style="font-size: 1.15rem; color: var(--brand-primary); margin-top: 1.5rem; margin-bottom: 0.75rem;">Procedimiento Paso a Paso para Emitir un Documento</h3>
+      <div class="step-list">
+        
+        <div class="step-item">
+          <div class="step-number">1</div>
+          <div class="step-body">
+            <h4>Generar el Borrador del Documento</h4>
+            <p>Haz clic en el botón superior <strong>[+ Emitir documento]</strong> o ingresa desde una venta confirmada. El sistema pre-cargará los datos tributarios del cliente (Razón Social, RUT, Giro, Dirección) y las líneas de detalle.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">2</div>
+          <div class="step-body">
+            <h4>Validación y Timbraje Digital (Emitir DTE)</h4>
+            <p>Al presionar <strong>[Emitir DTE]</strong> en la fila del borrador, el ERP:</p>
+            <ul style="margin-left: 1.25rem; margin-top: 0.35rem; font-size: 0.88rem; color: #475569;">
+              <li>Asigna el folio correlativo disponible del CAF vigente.</li>
+              <li>Genera el XML oficial y lo firma con el Certificado Digital de Plastimar.</li>
+              <li>Genera el código de barras bidimensional PDF417 (timbre fiscal). El documento pasa a estado <strong>Emitido</strong>.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">3</div>
+          <div class="step-body">
+            <h4>Envío al SII y Confirmación</h4>
+            <p>Haz clic una vez en <strong>[Enviar al SII]</strong>. El resultado inicial queda como <strong>Enviado</strong> con Track ID; luego consulta/actualiza hasta obtener Aceptado, Rechazado o Reparo. Track ID no equivale a aceptación.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">4</div>
+          <div class="step-body">
+            <h4>Auditoría de Excepciones</h4>
+            <p>En la parte superior, revisa el panel <strong>Trazabilidad venta &rarr; guía &rarr; DTE</strong>. Presiona <em>Revisar excepciones</em> para auditar ventas antiguas que requieran regularizar su factura o guía de despacho pendiente.</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Notas de Crédito -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">4. Emisión de Notas de Crédito (DTE 61)</h2>
+        <span class="badge-role">Correcciones y Devoluciones</span>
+      </div>
+      <p style="font-size: 0.95rem; margin-bottom: 1rem;">
+        Si un cliente solicita la anulación de una factura o la devolución parcial de productos entregados:
+      </p>
+      <ol style="margin-left: 1.5rem; line-height: 1.7; font-size: 0.9rem;">
+        <li>Ubica la Factura original en la tabla y selecciona la opción <strong>Emitir Nota de Crédito</strong>.</li>
+        <li>Selecciona el motivo reglamentario exigido por el SII:
+          <ul style="margin-left: 1.25rem; margin-top: 0.25rem;">
+            <li><em>1: Anula Documento de Referencia</em> (para anulación total).</li>
+            <li><em>2: Corrige Texto Documento de Referencia</em> (para corrección de razón social o dirección).</li>
+            <li><em>3: Corrige Montos</em> (para descuentos o devoluciones parciales).</li>
+          </ul>
+        </li>
+        <li>El sistema emite el DTE 61 con referencia obligatoria al folio de la factura original y actualiza el saldo en cobranza.</li>
+      </ol>
+    </section>
+
+    <!-- Dudas y Soporte -->
+    <section class="doc-card" style="background: #fef2f2; border-color: #fecaca;">
+      <h3 style="color: #991b1b; margin-bottom: 0.5rem;">¿Rechazo del SII o problema con el Certificado Digital?</h3>
+      <p style="color: #7f1d1d; font-size: 0.95rem; margin-bottom: 1rem;">
+        Si el servidor del SII retorna un error en el track ID o el certificado arroja advertencias de expiración:
+      </p>
+      <p style="color: #7f1d1d; font-size: 0.9rem;">
+        Haz clic en el botón flotante rojo <strong>[Reportar observación]</strong> abajo a la izquierda. Marca la casilla <em>"Este caso depende de una integración externa (SII...)"</em> para que el equipo de soporte técnico analice el log tributario de inmediato.
+      </p>
+    </section>
+
+    <section class="doc-card"><div class="doc-card-header"><h2 class="doc-card-title">5. Semáforo ante errores</h2><span class="badge-role">No duplicar</span></div><ul class="check-list"><li>Sin folio: corrige el borrador.</li><li>Con folio y sin Track ID: no vuelvas a emitir; revisa el envío.</li><li>Con Track ID: consulta el estado; no vuelvas a subir el mismo XML.</li><li>En rechazo, conserva código, mensaje, folio, Track ID, tipo, ambiente y hora.</li><li>Nunca adjuntes certificado, clave, CAF ni secretos en Feedback.</li></ul></section>
+
+    <footer class="doc-footer">
+      <p><strong>Plastimar SisGestión 3.0</strong> &middot; Facturación DTE &middot; MB-1.1 &middot; 2026-09-04</p>
+    </footer>
+
+  </main>
+
+  <script src="../../assets/manual-scripts.js"></script>
+</body>
+</html>

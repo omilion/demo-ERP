@@ -24,6 +24,11 @@ export async function streamChat({ messages, signal, onText, onTool, onDocument,
 
   if (!res.ok || !res.body) {
     if (res.status === 403) onError?.('No tienes acceso al asistente IA.')
+    else if (res.status === 429) {
+      let detail = null
+      try { detail = await res.json() } catch {}
+      onError?.(detail?.error || 'Alcanzaste el límite de consultas IA. Espera un momento e inténtalo de nuevo.')
+    }
     else onError?.('El asistente no está disponible en este momento.')
     return
   }

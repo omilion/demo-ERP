@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DOC-06: Rol Caja y Cobranza | Plastimar SisGestión 3.0</title>
+  <link rel="stylesheet" href="../../assets/manual-style.css">
+</head>
+<body>
+
+  <header class="doc-header">
+    <div class="doc-header-inner">
+      <div class="doc-brand">
+        <img src="../../assets/plastimar-logo.webp" alt="Plastimar Logo" class="doc-logo">
+        <div class="doc-title-group">
+          <h1>Manual Operativo: Caja y Cobranza</h1>
+          <div class="doc-subtitle">SisGestión 3.0 &middot; Control de Turnos, Arqueos, Medios de Pago y Cartera</div>
+        </div>
+      </div>
+      <div class="doc-actions">
+        <a href="../../00_MAPA_DOCUMENTACION_Y_GUIA_INICIO/index.html" class="btn-action btn-nav">&larr; Volver al Mapa</a>
+        <button class="btn-action btn-print">🖨️ Imprimir / Guardar PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="doc-container">
+
+    <!-- Misión del Rol -->
+    <section class="doc-card">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">1. Tu Rol en el ERP Plastimar</h2>
+        <span class="badge-role">Tesorería y Cartera</span>
+      </div>
+      <p style="font-size: 1.05rem; margin-bottom: 1rem;">
+        El equipo de caja y cobranza administra la liquidez de Plastimar. Cada peso que ingresa por compras en sala, anticipos de clientes o transferencias bancarias de colegios debe quedar registrado con precisión contable para evitar descuadres y asegurar la entrega oportuna de los productos.
+      </p>
+      <div class="callout callout-info">
+        <div class="callout-icon">💰</div>
+        <div class="callout-content">
+          <h4>Tu Misión Principal</h4>
+          <p>
+            <strong>En Caja:</strong> Abrir turnos por sucursal, recibir pagos multiformato (efectivo, tarjetas, cheques, transferencias) y cerrar cada jornada con un <strong>arqueo físico 100% cuadrado</strong>.<br>
+            <strong>En Cobranza:</strong> Monitorear las ventas entregadas pendientes de pago, registrar compromisos y mantener la cartera institucional al día.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- La Pantalla de Caja y Control de Turnos -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">2. Pantalla de Caja en el ERP</h2>
+        <span class="badge-role">Tu Mesa de Trabajo</span>
+      </div>
+      <p style="margin-bottom: 1.5rem;">
+        Al ingresar a <strong>Caja</strong> en el menú superior encontrarás la consola de movimientos del turno activo:
+      </p>
+
+      <div class="screenshot-wrapper">
+        <div class="screenshot-container">
+          <img src="../../capturas/06_caja/01_modulo_caja.png" alt="Módulo de Caja Plastimar" class="screenshot-img">
+          <div class="screenshot-badge">🔍 Clic para ampliar en pantalla completa</div>
+        </div>
+        <div class="screenshot-caption">Figura 1: Módulo de Caja en vivo. Observa los indicadores de ingresos operativos, saldo operativo, aviso de turno abierto y botones de cuadratura.</div>
+      </div>
+
+      <h3 style="font-size: 1.15rem; color: var(--brand-primary); margin-top: 1.5rem; margin-bottom: 0.75rem;">Procedimiento Diario de Caja (Paso a Paso)</h3>
+      <div class="step-list">
+        
+        <div class="step-item">
+          <div class="step-number">1</div>
+          <div class="step-body">
+            <h4>Apertura de Turno</h4>
+            <p>Al iniciar la jornada, confirma caja/sucursal y presiona <strong>Abrir Turno</strong>. El flujo vigente no solicita fondo fijo; si se controla externamente, mantenlo según la instrucción administrativa y repórtalo como <em>Falta</em>.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">2</div>
+          <div class="step-body">
+            <h4>Registrar Pagos de Ventas (+ Nuevo Movimiento)</h4>
+            <p>Cada vez que un cliente paga una venta en mesón o abona a un pedido:</p>
+            <ul style="margin-left: 1.25rem; margin-top: 0.35rem; font-size: 0.88rem; color: #475569;">
+              <li>Haz clic en <strong>[+ Nuevo Movimiento]</strong>.</li>
+              <li>Selecciona el número de orden de venta asociada.</li>
+              <li>Elige la <strong>Forma de Pago</strong>: <em>Efectivo</em>, <em>Tarjeta Débito/Crédito</em>, <em>Transferencia</em> o <em>Cheque al Día/Fecha</em>.</li>
+              <li>Ingresa el monto recibido. El sistema rebaja automáticamente el saldo por cobrar de la venta.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">3</div>
+          <div class="step-body">
+            <h4>Cierre de Turno y Arqueo Diario</h4>
+            <p>Al término de la jornada, antes de retirarse, presiona el botón <strong>[Cerrar Turno]</strong>:</p>
+            <ul style="margin-left: 1.25rem; margin-top: 0.35rem; font-size: 0.88rem; color: #475569;">
+              <li>El sistema solicitará el <strong>conteo físico</strong> de billetes y monedas.</li>
+              <li>Se ingresa el total de vouchers de Transbank y cheques en custodia.</li>
+              <li>El sistema compara el conteo físico contra el <em>Saldo Operativo</em> calculado.</li>
+              <li>Si existe diferencia, vuelve a contar, revisa movimientos y registra la observación. La pantalla puede permitir confirmar; la autorización sigue siendo responsabilidad de la jefatura.</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Módulo de Cobranza y Cartera -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">3. Gestión de Cobranza y Cuentas por Cobrar</h2>
+        <span class="badge-role">Control de Mora</span>
+      </div>
+      <p style="margin-bottom: 1.25rem;">
+        En <strong>Cobranza</strong> se controla la cartera de instituciones públicas, fundaciones y colegios que compran a 30, 60 o 90 días:
+      </p>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
+        
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1.25rem;">
+          <h4 style="color: #0369a1; margin-bottom: 0.35rem;">📅 Compromisos de Pago</h4>
+          <p style="font-size: 0.88rem; color: #475569;">Cuando contactes a la encargada de adquisiciones o finanzas del colegio, registra la <strong>Fecha Comprometida de Pago</strong> y la bitácora de la llamada. Esto mantiene informada a la fuerza de ventas.</p>
+        </div>
+
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1.25rem;">
+          <h4 style="color: #b45309; margin-bottom: 0.35rem;">⚠️ Alerta de Bloqueo Comercial</h4>
+          <p style="font-size: 0.88rem; color: #475569;">Prioriza la cartera marcada con más de 30 días y aplica la política comercial definida. No se debe prometer un bloqueo automático de ventas o despachos; escala el caso al responsable.</p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Dudas y Soporte -->
+    <section class="doc-card" style="background: #fef2f2; border-color: #fecaca;">
+      <h3 style="color: #991b1b; margin-bottom: 0.5rem;">¿Diferencia en el arqueo o error al registrar un medio de pago?</h3>
+      <p style="color: #7f1d1d; font-size: 0.95rem; margin-bottom: 1rem;">
+        Si un movimiento no refleja el abono correcto o hay una discrepancia en el saldo operativo:
+      </p>
+      <p style="color: #7f1d1d; font-size: 0.9rem;">
+        Haz clic en el botón flotante rojo <strong>[Reportar observación]</strong> en la esquina inferior izquierda. Indica la sucursal, el número de caja y el detalle del movimiento para soporte inmediato.
+      </p>
+    </section>
+
+    <section class="doc-card"><div class="doc-card-header"><h2 class="doc-card-title">4. Controles y excepciones</h2><span class="badge-role">Dinero</span></div><ul class="check-list"><li>Todo pago requiere turno abierto, venta con saldo y documento referencial activo.</li><li>El monto debe ser mayor que cero y no superar el saldo.</li><li>Después de confirmar, verifica movimiento y saldo antes de repetir.</li><li>El sistema puede permitir cerrar con diferencia: recontar, documentar y obtener autorización.</li><li>No compensar pagos equivocados con otro movimiento informal.</li></ul></section>
+
+    <footer class="doc-footer">
+      <p><strong>Plastimar SisGestión 3.0</strong> &middot; Caja y Cobranza &middot; MB-1.1 &middot; 2026-09-04</p>
+    </footer>
+
+  </main>
+
+  <script src="../../assets/manual-scripts.js"></script>
+</body>
+</html>

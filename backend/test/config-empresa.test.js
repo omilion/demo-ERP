@@ -54,6 +54,29 @@ describe('config empresa legacy perfil parity', () => {
     expect(isValidRut('00000000-0')).toBe(false)
   })
 
+  it('does not expose email signatures or operational locks to a user without Configuración', async () => {
+    const email = `qa-config-sin-acceso-${marker}@plastimar.test`
+    const user = await app.prisma.user.create({
+      data: { email, passwordHash: 'x', role: 'vendedor', nombre: 'QA Sin Configuracion', activo: true },
+    })
+    try {
+      const token = app.jwt.sign({
+        id: user.id,
+        role: user.role,
+        nombre: user.nombre,
+        permisosExtra: null,
+        scope: 'erp',
+        aud: 'plastimar:erp',
+        tokenType: 'access',
+      })
+      const headers = { authorization: `Bearer ${token}` }
+      expect((await app.inject({ method: 'GET', url: '/api/config/firmas', headers })).statusCode).toBe(403)
+      expect((await app.inject({ method: 'GET', url: '/api/config/bloqueos', headers })).statusCode).toBe(403)
+    } finally {
+      await app.prisma.user.delete({ where: { id: user.id } })
+    }
+  })
+
   it('creates, lists and reads multiple company profiles with legacy fields', async () => {
     const token = tokenFor(app)
     const first = await app.inject({

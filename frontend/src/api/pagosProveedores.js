@@ -68,6 +68,43 @@ export const useAnularPagoProveedor = () => {
       qc.invalidateQueries({ queryKey: ['pagos-proveedores', vars.id] })
       qc.invalidateQueries({ queryKey: ['stock-ingresos'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['caja'] })
+      qc.invalidateQueries({ queryKey: ['turnos'] })
     },
   })
+}
+
+export const useRegistrarAbonoProveedor = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }) => api.post(`/pagos-proveedores/${id}/abonos`, data).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['pagos-proveedores'] })
+      qc.invalidateQueries({ queryKey: ['pagos-proveedores', vars.id] })
+      qc.invalidateQueries({ queryKey: ['caja'] })
+      qc.invalidateQueries({ queryKey: ['turnos'] })
+    },
+  })
+}
+
+export const useAnularAbonoProveedor = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, abonoId, motivo }) => api.post(`/pagos-proveedores/${id}/abonos/${abonoId}/anular`, { motivo }).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['pagos-proveedores'] })
+      qc.invalidateQueries({ queryKey: ['pagos-proveedores', vars.id] })
+      qc.invalidateQueries({ queryKey: ['caja'] })
+      qc.invalidateQueries({ queryKey: ['turnos'] })
+    },
+  })
+}
+
+export const uploadComprobantePago = async (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await api.post('/pagos-proveedores/upload-comprobante', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
 }

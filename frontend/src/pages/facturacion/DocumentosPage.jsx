@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
-import { useConsultarEstado, useDocumento, useDocumentos, useEnviarDocumento, useEnviarLote, useReenviarDocumento, useTrazabilidadExcepciones } from '../../api/facturacion'
+import { useConsultarEstado, useDocumento, useDocumentos, useEmitirDocumento, useEnviarDocumento, useEnviarLote, useReenviarDocumento, useTrazabilidadExcepciones } from '../../api/facturacion'
 import { can, ventaPath } from '../../utils/permissions'
 import { useAuthStore } from '../../store/auth'
 import { TIPOS_DTE } from '../../utils/facturacion'
@@ -111,6 +111,7 @@ export default function DocumentosPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const canWrite = can(user, 'facturacion', 'write')
+  const emitirDocumento = useEmitirDocumento()
   const enviarDocumento = useEnviarDocumento()
   const enviarLote = useEnviarLote()
   const consultarEstado = useConsultarEstado()
@@ -163,6 +164,16 @@ export default function DocumentosPage() {
       toast.success(`Documento enviado al SII. Track ID: ${result.trackId}`)
     } catch (error) { toast.error(errorText(error)) }
   }
+  const emitirUno = async (event, doc) => {
+    event.stopPropagation()
+    const tipo = TIPOS_DTE[doc.tipoDte] || `DTE ${doc.tipoDte}`
+    const receptor = doc.receptor?.razonSocial || doc.receptor?.rut || 'receptor sin identificar'
+    if (!await confirmDialog({ title: 'Emitir DTE', detail: `Asignar folio y firmar ${tipo} para ${receptor}? El documento quedará listo para enviarlo al SII desde este mismo listado.` })) return
+    try {
+      const result = await emitirDocumento.mutateAsync(doc.id)
+      toast.success(`${tipo} emitido: folio ${result.folio}. Revisa y envíalo al SII.`)
+    } catch (error) { toast.error(errorText(error)) }
+  }
   const consultarUno = async (event, doc) => {
     event.stopPropagation()
     try {
@@ -201,7 +212,7 @@ export default function DocumentosPage() {
       ),
     },
     { key: 'ordenId', label: 'Venta', render: value => value ? <button onClick={event => { event.stopPropagation(); navigate(ventaPath(value, user)) }} style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', fontWeight: 600 }}>#{value}</button> : '—' },
-    { key: '_actions', label: 'Accion', required: true, width: 180, render: (_, row) => <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{canWrite && row.estado === 'emitido' && <button type="button" onClick={event => enviarUno(event, row)} disabled={enviarDocumento.isPending} style={actionButtonStyle}>Enviar al SII</button>}{row.estado === 'enviado' && <button type="button" onClick={event => consultarUno(event, row)} disabled={consultarEstado.isPending} style={actionButtonStyle}>Consultar estado</button>}</div> },
+    { key: '_actions', label: 'Accion', required: true, width: 180, render: (_, row) => <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{canWrite && row.estado === 'borrador' && <button type="button" onClick={event => emitirUno(event, row)} disabled={emitirDocumento.isPending} style={actionButtonStyle}>{emitirDocumento.isPending ? 'Emitiendo...' : 'Emitir DTE'}</button>}{canWrite && row.estado === 'emitido' && <button type="button" onClick={event => enviarUno(event, row)} disabled={enviarDocumento.isPending} style={actionButtonStyle}>Enviar al SII</button>}{row.estado === 'enviado' && <button type="button" onClick={event => consultarUno(event, row)} disabled={consultarEstado.isPending} style={actionButtonStyle}>Consultar estado</button>}</div> },
   ]
   return <main className="page page-wide">
     {!!resultadoLote.length && <section style={resultPanelStyle}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}><strong>Resultado del ultimo envio masivo</strong><button type="button" onClick={() => setResultadoLote([])} style={{ border: 0, background: 'none', color: 'var(--text-3)', cursor: 'pointer' }}>Cerrar</button></div><div style={{ display: 'grid', gap: 6, marginTop: 10 }}>{resultadoLote.map(result => <div key={result.id} style={{ display: 'grid', gridTemplateColumns: '90px 90px minmax(180px, 1fr)', gap: 10, fontSize: 12 }}><span>Folio {result.folio || '-'}</span><strong style={{ color: result.ok ? 'var(--green-700)' : 'var(--red)' }}>{result.ok ? 'Enviado' : 'Error'}</strong><span style={{ color: 'var(--text-2)' }}>{result.ok ? `Track ${result.trackId}` : result.error}</span></div>)}</div></section>}

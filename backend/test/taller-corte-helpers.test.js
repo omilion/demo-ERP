@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { buildProgressSummary, parseImageDataUrl } from '../src/routes/taller-corte/index.js'
+import { buildProgressSummary, getCorteAdvanceBlocker, parseImageDataUrl } from '../src/routes/taller-corte/index.js'
 
 describe('Taller de Corte helpers', () => {
+  it('bloquea cualquier avance que supere el objetivo acumulado', () => {
+    expect(getCorteAdvanceBlocker({ objetivo: 10, totalPrevio: 7, cantidad: 3 })).toBeNull()
+    expect(getCorteAdvanceBlocker({ objetivo: 10, totalPrevio: 7, cantidad: 3.01 })).toMatch(/supera la cantidad objetivo/)
+  })
+
   it('calcula avance acumulado y porcentaje sin superar 100%', () => {
     const item = { odtItem: { cantidad: 10 } }
     const result = buildProgressSummary(item, [

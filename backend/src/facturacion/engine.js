@@ -233,6 +233,9 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
     if (!['borrador', 'error'].includes(doc.estado)) {
       throw new Error(`El documento ya fue emitido (estado: ${doc.estado}).`);
     }
+    if (doc.estado === 'error' && doc.folio) {
+      throw new Error(`El documento ya tiene folio ${doc.folio} y quedó con error. No se puede reemitir: revisa su rechazo o envío antes de cualquier acción manual.`);
+    }
     if (!TIPOS_DTE[doc.tipoDte]) throw new Error(`Tipo de DTE no soportado: ${doc.tipoDte}.`);
     // Debe ejecutarse antes de cargar certificado o tomar folio: un documento
     // fuera del schema del SII no puede consumir un folio irrecuperable.
@@ -304,15 +307,21 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
     return emitirDocumento(docId);
   };
 
-  const enviar = async (docIds) => {
+  const enviarDocumentos = async (docIds) => {
     const docs = [];
     for (const idValue of docIds) {
       const doc = await db.documentos.get(idValue);
       if (!doc) throw new Error(`Documento ${idValue} no encontrado.`);
-      if (doc.estado !== 'emitido' && doc.estado !== 'enviado') {
+      // Una vez recibido un trackId, el DTE se consulta: no se vuelve a subir.
+      // Esto evita que reintentos concurrentes generen envíos duplicados al SII.
+      if (doc.estado !== 'emitido') {
         throw new Error(`El documento folio ${doc.folio ?? '?'} no está emitido (estado: ${doc.estado}).`);
       }
       if (!doc.xml) throw new Error(`El documento folio ${doc.folio ?? '?'} no tiene XML.`);
+      // Los documentos antiguos pueden haberse emitido antes de que una
+      // validación fuera endurecida. Revalidar el receptor impide enviarlos
+      // al SII con un XML que será rechazado y evita perder trazabilidad.
+      resolveDatosReceptor(doc, doc.receptor || {});
       docs.push(doc);
     }
 
@@ -340,12 +349,23 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
     if (!rutEmisorSii) throw new Error('El RUT de la empresa emisora no es válido.');
 
     let resultado;
-    if (esBoleta) {
-      const token = await sii.getTokenBoleta(ambiente, cert);
-      resultado = await sii.uploadEnvioBoleta({ ambiente, token, rutEnvia: firmante, rutEmisor: rutEmisorSii, filename, xmlLatin1 });
-    } else {
-      const token = await sii.getToken(ambiente, cert);
-      resultado = await sii.uploadEnvioDte({ ambiente, token, rutEnvia: firmante, rutEmisor: rutEmisorSii, filename, xmlLatin1 });
+    try {
+      if (esBoleta) {
+        const token = await sii.getTokenBoleta(ambiente, cert);
+        resultado = await sii.uploadEnvioBoleta({ ambiente, token, rutEnvia: firmante, rutEmisor: rutEmisorSii, filename, xmlLatin1 });
+      } else {
+        const token = await sii.getToken(ambiente, cert);
+        resultado = await sii.uploadEnvioDte({ ambiente, token, rutEnvia: firmante, rutEmisor: rutEmisorSii, filename, xmlLatin1 });
+      }
+    } catch (error) {
+      // Si el SII rechaza el upload (o la respuesta queda ambigua), no se
+      // permite reemitir ni reenviar automáticamente el mismo folio. Queda
+      // una evidencia persistente para conciliación manual.
+      await Promise.all(docs.map(doc => db.documentos.update(doc.id, {
+        estado: 'error',
+        estadoDetalle: `Envío SII no confirmado: ${error?.message || 'error desconocido'}`,
+      })));
+      throw error;
     }
 
     const actualizados = [];
@@ -357,6 +377,18 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
       }));
     }
     return { trackId: resultado.trackId, documentos: actualizados, envioXml: xml };
+  };
+
+  const enviar = async (docIds) => {
+    const ids = [...new Set((Array.isArray(docIds) ? docIds : [docIds])
+      .map(Number)
+      .filter(id => Number.isInteger(id) && id > 0))]
+      .sort((a, b) => a - b);
+    if (!ids.length) throw new Error('Indica al menos un documento para enviar al SII.');
+    if (db.documentos.withEnvioLock) {
+      return db.documentos.withEnvioLock(ids, () => enviarDocumentos(ids));
+    }
+    return enviarDocumentos(ids);
   };
 
   const consultarEstado = async (docId) => {

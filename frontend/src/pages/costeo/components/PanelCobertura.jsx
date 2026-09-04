@@ -21,10 +21,14 @@ export default function PanelCobertura({ onVerProducto }) {
   // mano de obra se calcula en cero y el costo queda corto sin avisar.
   const faltanTarifas = tarifasActivas < 3
 
+  // El endpoint simula: no toca precios salvo que se le pase `aplicar`. El
+  // mensaje decia "Recalculadas N recetas" leyendo campos que la respuesta no
+  // trae, asi que anunciaba un cambio que no habia ocurrido y ademas sin numero.
   const recalcularTodo = async () => {
     try {
-      const r = await recalcular.mutateAsync({})
-      toast.success(`Recalculadas ${r?.actualizadas ?? r?.total ?? ''} recetas`.trim())
+      const r = await recalcular.mutateAsync({ aplicar: false })
+      const conDiferencia = (r?.resultados || []).filter(x => !x.error && Number(x.diferencia || 0) !== 0).length
+      toast.success(`Simulacion sobre ${r?.totalProcesados ?? 0} recetas: ${conDiferencia} con diferencia de costo. No se modifico ningun precio.`)
     } catch (error) {
       toast.error(error.response?.data?.error || 'No se pudo recalcular')
     }
@@ -54,7 +58,7 @@ export default function PanelCobertura({ onVerProducto }) {
             </Btn>
           )}
           <Btn variant="secondary" size="sm" onClick={recalcularTodo} disabled={recalcular.isPending || faltanTarifas}>
-            {recalcular.isPending ? 'Recalculando…' : 'Recalcular con las tarifas vigentes'}
+            {recalcular.isPending ? 'Simulando…' : 'Simular con las tarifas vigentes'}
           </Btn>
         </div>
       </div>

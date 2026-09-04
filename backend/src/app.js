@@ -25,7 +25,6 @@ import ordenesCompraRoutes from './routes/ordenes-compra/index.js'
 import pagosProveedoresRoutes from './routes/pagos-proveedores/index.js'
 import telasRoutes from './routes/telas/index.js'
 import bodegaTallerRoutes from './routes/bodega-taller/index.js'
-import accesosRoutes from './routes/accesos/index.js'
 import descuentosRoutes from './routes/descuentos/index.js'
 import configRoutes from './routes/config/index.js'
 import matrizVentasRoutes from './routes/matriz-ventas/index.js'
@@ -55,6 +54,7 @@ import notasInternasRoutes from './routes/notas-internas/index.js'
 import importacionesRoutes from './routes/importaciones/index.js'
 import ordenesCompraProveedoresRoutes from './routes/ordenes-compra-proveedores/index.js'
 import excepcionesRoutes from './routes/excepciones/index.js'
+import pilotFeedbackRoutes from './routes/pilot-feedback/index.js'
 import { decorateRbac } from './middleware/rbac.js'
 import { isErpAccessToken } from './plugins/jwt.js'
 
@@ -71,6 +71,17 @@ export function buildApp(opts = {}) {
 
     if (!isErpAccessToken(request.user)) {
       return reply.status(401).send({ error: 'Unauthorized' })
+    }
+
+    // La sesión refresh no protege el bearer token ya emitido. Contrastamos una
+    // versión de autorización persistida para que una baja o cambio de permisos
+    // lo deje inválido en la siguiente llamada, sin esperar su expiración JWT.
+    const user = await app.prisma.user.findUnique({
+      where: { id: Number(request.user.id) },
+      select: { activo: true, authVersion: true },
+    })
+    if (!user || !user.activo || Number(user.authVersion || 0) !== Number(request.user.authVersion || 0)) {
+      return reply.status(401).send({ error: 'Session revoked' })
     }
   })
   decorateRbac(app)
@@ -99,7 +110,6 @@ export function buildApp(opts = {}) {
   app.register(pagosProveedoresRoutes, { prefix: '/api/pagos-proveedores' })
   app.register(telasRoutes, { prefix: '/api/telas' })
   app.register(bodegaTallerRoutes, { prefix: '/api/bodega-taller' })
-  app.register(accesosRoutes, { prefix: '/api/accesos' })
   app.register(descuentosRoutes, { prefix: '/api/descuentos' })
   app.register(configRoutes, { prefix: '/api/config' })
   app.register(matrizVentasRoutes, { prefix: '/api/matriz-ventas' })
@@ -128,6 +138,7 @@ export function buildApp(opts = {}) {
   app.register(importacionesRoutes, { prefix: '/api/importaciones' })
   app.register(ordenesCompraProveedoresRoutes, { prefix: '/api/ordenes-compra-proveedores' })
   app.register(excepcionesRoutes, { prefix: '/api/excepciones' })
+  app.register(pilotFeedbackRoutes, { prefix: '/api/feedback' })
   app.register(uploadsRoutes, { prefix: '/uploads' })
 
   app.get('/api/health', async () => ({ status: 'ok' }))

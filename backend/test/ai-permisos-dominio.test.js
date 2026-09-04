@@ -20,7 +20,7 @@ const conAi = { ai: ['read'] }
 
 describe('cada herramienta exige el permiso del modulo que consulta', () => {
   it('las sensibles estan declaradas', () => {
-    expect(permisoDeHerramienta('consultar_planillas')).toBe('rrhh')
+    expect(permisoDeHerramienta('consultar_planillas')).toBe('rrhh.remuneracion')
     expect(permisoDeHerramienta('consultar_rrhh')).toBe('rrhh')
     expect(permisoDeHerramienta('consultar_caja')).toBe('caja')
     expect(permisoDeHerramienta('consultar_comisiones')).toBe('ventas')
@@ -39,9 +39,9 @@ describe('ai:read no abre las remuneraciones', () => {
     expect(alcanza('taller_operario', conAi, 'consultar_caja')).toBe(false)
   })
 
-  it('tampoco un vendedor ni un bodeguero', () => {
+  it('tampoco un vendedor, bodeguero ni cuenta de solo lectura', () => {
     for (const rol of ['vendedor', 'bodeguero', 'solo_lectura']) {
-      expect(alcanza(rol, conAi, 'consultar_planillas'), rol).toBe(rol === 'solo_lectura')
+      expect(alcanza(rol, conAi, 'consultar_planillas'), rol).toBe(false)
     }
   })
 
@@ -54,6 +54,10 @@ describe('ai:read no abre las remuneraciones', () => {
     expect(alcanza('cajero', conAi, 'consultar_planillas')).toBe(false)
 
     expect(alcanza('taller_operario', conAi, 'consultar_taller')).toBe(true)
+  })
+
+  it('solo una autorizacion explicita de remuneraciones habilita la planilla', () => {
+    expect(alcanza('solo_lectura', { ai: ['read'], 'rrhh.remuneracion': ['read'] }, 'consultar_planillas')).toBe(true)
   })
 
   it('gerencia alcanza todo, como antes', () => {

@@ -9,9 +9,20 @@ const PERMISSIONS = {
     catalogo:     ['read'],
     despacho:     ['read'],
     taller:       ['read'],
+    // Puede resolver sus propias ventas trabadas en taller sin heredar taller:write
+    // completo (que le daria cerrar/anular OTs de cualquiera).
+    'taller.excepciones': ['read', 'write'],
   },
-  // Igual que vendedor: unico extra es visibilidad ampliada del CRM de todos
-  // los vendedores (backend/src/routes/crm/index.js), no un modulo/permiso nuevo aqui.
+  // Coordina la fuerza de venta: ademas de vender, responde por el avance
+  // del equipo. Ya tenia visibilidad ampliada del CRM de todos los vendedores
+  // (backend/src/routes/crm/index.js); `equipo_comercial` es la otra mitad: el
+  // desempeno por vendedor.
+  //
+  // Es un modulo propio y no un permiso por funcion ('ventas.equipo') a
+  // proposito: los permisos por funcion caen al modulo cuando el rol no tiene
+  // entrada propia, asi que 'ventas.equipo' se lo habria regalado a todo el que
+  // tiene ventas:read -vendedor, bodega, caja, solo_lectura- salvo negandolo
+  // explicitamente en cada uno. Un modulo aparte no lo hereda nadie.
   coordinador_comercial: {
     reportes:     ['read'],
     ventas:       ['read', 'write'],    licitaciones: ['read', 'write'],
@@ -19,6 +30,8 @@ const PERMISSIONS = {
     catalogo:     ['read'],
     despacho:     ['read'],
     taller:       ['read'],
+    equipo_comercial: ['read'],
+    'taller.excepciones': ['read', 'write'],
   },
   bodeguero:    {
     reportes:    ['read'],
@@ -28,6 +41,7 @@ const PERMISSIONS = {
     ventas:      ['read'],
     clientes:    ['read'],
     proveedores: ['read', 'write'],
+    'caja.pagos_proveedores': ['read'],
   },
   cajero:       {
     reportes: ['read'],
@@ -36,6 +50,13 @@ const PERMISSIONS = {
     clientes: ['read'],
     ventas:   ['read'],
   },
+  // Jefe de taller. El nombre del rol es generico por historia, pero corresponde al
+  // "Jefe de Taller" de los documentos del cliente: gestiona la OT, la cierra y
+  // aprueba la calidad de lo que sale de SU taller.
+  //
+  // De que taller es jefe no se sabe por el rol -este da gestion sobre todos- sino
+  // por `Taller.jefeId`. Sin esa distincion, el jefe de Corte aprobaria lo que sale
+  // de Espumas.
   taller:       {
     reportes: ['read'],
     taller:   ['read', 'write'],
@@ -69,6 +90,11 @@ const PERMISSIONS = {
     licitaciones: ['read'],
     proveedores:  ['read'],
     rrhh:         ['read'],
+    // Ver la nomina no es ver los sueldos. Una cuenta de observacion podia listar a
+    // todo el personal con su sueldo liquido, y hay dos activas. Se niega explicito
+    // porque los permisos por funcion heredan del modulo: sin esta linea, `rrhh:read`
+    // le daria tambien la remuneracion.
+    'rrhh.remuneracion': [],
   },
 }
 
@@ -100,6 +126,9 @@ function decidir(perms, { base, completo }, permission) {
 }
 
 export function can(role, module, permission, extraPerms = null, options = {}) {
+  if (Array.isArray(module)) {
+    return module.some(m => can(role, m, permission, extraPerms, options))
+  }
   const allowExtra = options.allowExtra !== false
   const objetivo = separarFuncion(module)
   const rolePerms = PERMISSIONS[role]

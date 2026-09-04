@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app.js'
+import { TIPO_VENTA_VALUES } from '../src/routes/ventas/estados-normalize.js'
 
 process.env.JWT_ACCESS_SECRET ||= 'test-access-secret'
 process.env.JWT_REFRESH_SECRET ||= 'test-refresh-secret'
@@ -73,15 +74,7 @@ describe('admin comisiones reglas', () => {
       headers: { authorization: `Bearer ${adminToken}` },
     })
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body).tiposVenta).toEqual([
-      'Todos',
-      'Venta sala',
-      'Venta directa',
-      'Normal',
-      'Venta Web',
-      'Convenio Marco',
-      'Licitaci\u00f3n',
-    ])
+    expect(JSON.parse(res.body).tiposVenta).toEqual(['Todos', ...TIPO_VENTA_VALUES])
   })
 
   it('crea, lista y desactiva regla global fija para Todos', async () => {
@@ -135,7 +128,7 @@ describe('admin comisiones reglas', () => {
   })
 
   it('acepta cada tipo exacto de venta configurado por el admin', async () => {
-    const tipos = ['Venta sala', 'Venta directa', 'Normal', 'Venta Web', 'Convenio Marco', 'Licitaci\u00f3n']
+    const tipos = TIPO_VENTA_VALUES
 
     for (const tipoVenta of tipos) {
       const create = await app.inject({
@@ -178,7 +171,7 @@ describe('admin comisiones reglas', () => {
     expect(create.statusCode).toBe(201)
     const regla = JSON.parse(create.body)
     createdReglas.push(regla.id)
-    expect(regla.tipoVenta).toBe('Venta sala')
+    expect(regla.tipoVenta).toBe('Venta Sala')
     expect(regla.vendedorId).toBe(vendedor.id)
     expect(regla.vendedorNombre).toBe(vendedor.nombre)
     expect(regla.base).toBe('COBRADO')
@@ -253,5 +246,53 @@ describe('admin comisiones reglas', () => {
     })
     expect(overlap.statusCode).toBe(400)
     expect(JSON.parse(overlap.body).error).toMatch(/traslaparse/)
+
+    const gap = await app.inject({
+      method: 'POST',
+      url: '/api/admin/comisiones/reglas',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: {
+        nombre: 'Tramos con hueco',
+        tipoVenta: 'Marketplace',
+        modalidad: 'ESCALA_MONTO',
+        base: 'VENDIDO',
+        tramos: [
+          { montoDesde: 0, montoHasta: 1000, porcentaje: 1 },
+          { montoDesde: 2000, porcentaje: 2 },
+        ],
+      },
+    })
+    expect(gap.statusCode).toBe(400)
+    expect(JSON.parse(gap.body).error).toMatch(/continuos/)
+  })
+
+  it('rechaza reglas activas ambiguas de igual alcance, prioridad y vigencia', async () => {
+    const payload = {
+      tipoVenta: 'Marketplace',
+      vendedorId: vendedor.id,
+      modalidad: 'FIJA',
+      base: 'VENDIDO',
+      porcentaje: 2,
+      prioridad: 912,
+      vigenteDesde: '2026-06-01',
+      vigenteHasta: '2026-12-31',
+    }
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/admin/comisiones/reglas',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { ...payload, nombre: 'Regla única de marketplace' },
+    })
+    expect(first.statusCode).toBe(201)
+    createdReglas.push(JSON.parse(first.body).id)
+
+    const duplicate = await app.inject({
+      method: 'POST',
+      url: '/api/admin/comisiones/reglas',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { ...payload, nombre: 'Regla duplicada de marketplace' },
+    })
+    expect(duplicate.statusCode).toBe(409)
+    expect(JSON.parse(duplicate.body).error).toMatch(/mismo alcance/)
   })
 })

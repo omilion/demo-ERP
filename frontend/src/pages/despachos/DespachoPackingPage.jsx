@@ -50,6 +50,8 @@ function PackingForm({ row, onDone, onCancel }) {
   const defaultDespachoId = row.despachos?.[0]?.id ? String(row.despachos[0].id) : ''
   const [despachoId, setDespachoId] = useState(defaultDespachoId)
   const [bultoNumero, setBultoNumero] = useState('')
+  const [bultoDimensiones, setBultoDimensiones] = useState('')
+  const [bultoPeso, setBultoPeso] = useState('')
   const [observacion, setObservacion] = useState('')
   const [drafts, setDrafts] = useState({})
   const [codigosBarrasLeidos, setCodigosBarrasLeidos] = useState({})
@@ -88,6 +90,8 @@ function PackingForm({ row, onDone, onCancel }) {
         ordenId: row.ordenId,
         despachoId: despachoId || undefined,
         bultoNumero: bultoNumero.trim() || undefined,
+        bultoDimensiones: bultoDimensiones.trim() || undefined,
+        bultoPeso: bultoPeso.trim() || undefined,
         observacion: observacion.trim() || undefined,
         codigosBarrasLeidos,
         items,
@@ -106,7 +110,7 @@ function PackingForm({ row, onDone, onCancel }) {
         <PackingProgress row={{ itemsDetalle: lines.map(line => ({ ...line, entregados: Number.parseInt(line.entregadosDraft || '0', 10) || 0 })) }} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(130px, 0.8fr) minmax(150px, 1fr) minmax(180px, 1.5fr)', gap: 10, marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(130px, 0.8fr) minmax(110px, 1fr) minmax(130px, 1fr) minmax(90px, 0.6fr) minmax(160px, 1.3fr)', gap: 10, marginBottom: 12 }}>
         <Field label="Despacho">
           <select value={despachoId} onChange={event => setDespachoId(event.target.value)} style={input}>
             <option value="">Sin despacho asociado</option>
@@ -120,10 +124,26 @@ function PackingForm({ row, onDone, onCancel }) {
         <Field label="Bulto">
           <input value={bultoNumero} onChange={event => setBultoNumero(event.target.value)} placeholder="Ej: B1" style={input} />
         </Field>
+        <Field label="Dimensiones">
+          <input value={bultoDimensiones} onChange={event => setBultoDimensiones(event.target.value)} placeholder="Ej: 40x30x25 cm" style={input} />
+        </Field>
+        <Field label="Peso (kg)">
+          <input value={bultoPeso} onChange={event => setBultoPeso(event.target.value)} placeholder="Ej: 8.5" style={input} />
+        </Field>
         <Field label="Observacion">
           <input value={observacion} onChange={event => setObservacion(event.target.value)} placeholder="Nota del ajuste" style={input} />
         </Field>
       </div>
+
+      {(trace.bultos || []).length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+          {trace.bultos.map(bulto => (
+            <span key={bulto.id} style={{ fontSize: 11, padding: '4px 8px', borderRadius: 6, background: 'var(--bg)', border: '1px solid var(--border)' }}>
+              {bulto.numero}{bulto.dimensiones ? ` - ${bulto.dimensiones}` : ''}{bulto.peso ? ` - ${bulto.peso}kg` : ''}
+            </span>
+          ))}
+        </div>
+      )}
 
       {!lines.length ? (
         <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 8 }}>
@@ -149,6 +169,12 @@ function PackingForm({ row, onDone, onCancel }) {
                     <td style={{ padding: '8px 10px' }}>
                       <div style={{ fontWeight: 600 }}>{line.nombre || 'Producto'}</div>
                       <Mono muted>{line.codigo || `Item #${line.id}`}</Mono>
+                      {!line.pickingConfirmado && (
+                        <div style={{ fontSize: 11, color: 'var(--amber-700, #b45309)', fontWeight: 600, marginTop: 2 }}>⚠ Picking sin confirmar</div>
+                      )}
+                      {line.pickingObservacion && (
+                        <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 2 }}>Ajuste picking: {line.pickingObservacion}</div>
+                      )}
                     </td>
                     <td style={{ padding: '8px 10px', textAlign: 'right' }}><Mono strong>{cantidad}</Mono></td>
                     <td style={{ padding: '5px 10px', textAlign: 'right' }}>
@@ -157,8 +183,10 @@ function PackingForm({ row, onDone, onCancel }) {
                         min="0"
                         max={cantidad}
                         value={line.entregadosDraft}
+                        disabled={!line.pickingConfirmado}
+                        title={!line.pickingConfirmado ? 'Confirma esta linea en Picking antes de empacarla' : undefined}
                         onChange={event => setLine(line.id, event.target.value)}
-                        style={{ width: 78, padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono', monospace", textAlign: 'right' }}
+                        style={{ width: 78, padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono', monospace", textAlign: 'right', opacity: line.pickingConfirmado ? 1 : 0.5 }}
                       />
                     </td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', color: pendiente > 0 ? 'var(--amber)' : 'var(--green-600)', fontWeight: 700 }}>
@@ -174,7 +202,7 @@ function PackingForm({ row, onDone, onCancel }) {
                     </td>
                     <td style={{ padding: '8px 10px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-                        <button type="button" onClick={() => completeLine(line)} style={btnSm('var(--green-700)')}>Completar</button>
+                        <button type="button" disabled={!line.pickingConfirmado} onClick={() => completeLine(line)} style={{ ...btnSm('var(--green-700)'), opacity: line.pickingConfirmado ? 1 : 0.5 }}>Completar</button>
                         <button type="button" onClick={() => clearLine(line)} style={btnSm('var(--text-2)')}>Cero</button>
                       </div>
                     </td>

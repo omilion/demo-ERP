@@ -22,7 +22,12 @@ const ESTADO_INVENTARIO_OPTIONS = [
   { value: 'Reserva', label: 'Reservado' },
 ]
 
-const MOTIVO_CATEGORIA_OPTIONS = ['', 'Merma', 'Perdida', 'Dano', 'Error inventario', 'Otro']
+const MOTIVO_CATEGORIAS_POR_TIPO = {
+  egreso: ['', 'Perdida', 'Otro'],
+  ajuste: ['', 'Perdida', 'Error inventario', 'Otro'],
+  dano: ['', 'Dano'],
+  merma: ['', 'Merma'],
+}
 
 function MiniTable({ columns, rows, getRowKey, maxHeight }) {
   if (!rows.length) return null
@@ -607,6 +612,10 @@ function MovimientosSection({ productoId, stockActual, stockReservado = 0, stock
   const cantidadNumero = parseInt(cantidad, 10)
   const disponibleActual = Number(stockDisponible ?? (Number(stockActual || 0) - Number(stockReservado || 0) - Number(stockDanado || 0)))
   const requiereCategoria = tipo === 'egreso' || tipo === 'dano' || tipo === 'merma' || (tipo === 'ajuste' && !isNaN(cantidadNumero) && cantidadNumero < Number(stockActual || 0))
+  const motivoCategoriaOptions = requiereCategoria ? (MOTIVO_CATEGORIAS_POR_TIPO[tipo] || ['']) : ['']
+  useEffect(() => {
+    if (!motivoCategoriaOptions.includes(motivoCategoria)) setMotivoCategoria('')
+  }, [tipo, requiereCategoria, motivoCategoria])
   const movementLabels = {
     ingreso: 'Ingreso: suma físico',
     egreso: 'Egreso: resta disponible',
@@ -661,7 +670,7 @@ function MovimientosSection({ productoId, stockActual, stockReservado = 0, stock
           value={motivoCategoria}
           onChange={setMotivoCategoria}
           disabled={!requiereCategoria}
-          options={MOTIVO_CATEGORIA_OPTIONS.map(value => ({ value, label: value || 'Motivo operacional' }))}
+          options={motivoCategoriaOptions.map(value => ({ value, label: value || 'Motivo operacional' }))}
         />
         <Input value={motivo} onChange={setMotivo} placeholder="Motivo (obligatorio)" />
         <Btn variant="primary" size="sm" icon="check" onClick={submit} disabled={addMov.isPending} style={{ width: '100%' }}>

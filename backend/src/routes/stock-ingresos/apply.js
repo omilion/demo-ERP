@@ -130,6 +130,24 @@ async function loadStockTargets(tx, normalized, sucursalId = null) {
   }
 }
 
+// Usa la misma llave de producto que Ventas para serializar cualquier egreso
+// contra una aplicación o reversa de ingreso. Materiales y telas usan llaves
+// independientes, siempre ordenadas, para evitar interbloqueos entre documentos
+// mixtos.
+async function lockStockTargets(tx, maps) {
+  if (typeof tx.$executeRaw !== 'function') return false
+  const targets = [
+    ...[...maps.producto.values()].map(item => ({ key: `stock-producto:${item.id}` })),
+    ...[...maps.material.values()].map(item => ({ key: `stock-material:${item.id}` })),
+    ...[...maps.tela.values()].map(item => ({ key: `stock-tela:${item.id}` })),
+  ].sort((a, b) => a.key.localeCompare(b.key))
+
+  for (const target of targets) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${target.key})::bigint)`
+  }
+  return true
+}
+
 async function createMissingTargets({ tx, missing, pago, proveedorId, sucursalId }) {
   for (const d of missing) {
     if (!d.nombre) continue
@@ -391,6 +409,13 @@ export async function validateAndApplyStockIngreso({
       error: 'items no encontrados para ingresar stock',
       items: missing.map(d => ({ codigoInterno: d.codigoInterno, destino: d.destino })),
     }
+  }
+
+  // Los saldos leídos antes del lock pueden haber quedado obsoletos mientras
+  // esperábamos otro movimiento. Volvemos a cargarlos antes de validar
+  // underflow y de actualizar los stocks.
+  if (await lockStockTargets(tx, maps)) {
+    maps = await loadStockTargets(tx, normalized, sucursalId)
   }
 
   const underflow = stockUnderflow(normalized, maps, direction)

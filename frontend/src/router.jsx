@@ -1,7 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Shell } from './components/Shell'
-import { LicitacionesLegacyRedirect, OdtLegacyRedirect } from './components/LegacyRedirects'
+import { LicitacionesLegacyRedirect, OdtLegacyRedirect, PasarTallerLegacyRedirect } from './components/LegacyRedirects'
 import LoginPage from './pages/login/LoginPage'
 import DashboardPage, { DashboardOperativoPage } from './pages/dashboard/DashboardPage'
 import MatrizVentasPage from './pages/matriz-ventas/MatrizVentasPage'
@@ -11,6 +11,8 @@ import VentaPrintPage from './pages/ventas/VentaPrintPage'
 import AsistentePage from './pages/asistente/AsistentePage'
 import BodegaPage from './pages/bodega/BodegaPage'
 import BodegaFormPage from './pages/bodega/BodegaFormPage'
+import PanelPickingPage from './pages/bodega/PanelPickingPage'
+import PanelPackingPage from './pages/bodega/PanelPackingPage'
 import TallerPage from './pages/taller/TallerPage'
 import TallerFormPage from './pages/taller/TallerFormPage'
 import TallerOperarioPage from './pages/taller/TallerOperarioPage'
@@ -30,7 +32,6 @@ import PagoProveedorDetallePage from './pages/pagos-proveedores/PagoProveedorDet
 import TelasPage from './pages/telas/TelasPage'
 import TelaDetallePage from './pages/telas/TelaDetallePage'
 import BodegaTallerPage from './pages/bodega-taller/BodegaTallerPage'
-import AccesosPage from './pages/accesos/AccesosPage'
 import DescuentosPage from './pages/descuentos/DescuentosPage'
 import ProveedoresPage from './pages/proveedores/ProveedoresPage'
 import ProveedorDetallePage from './pages/proveedores/ProveedorDetallePage'
@@ -42,6 +43,7 @@ import GuiaPrintPage from './pages/despachos/GuiaPrintPage'
 import GuiaFormPage from './pages/despachos/GuiaFormPage'
 import DespachoFormPage from './pages/despachos/DespachoFormPage'
 import DespachoPackingPage from './pages/despachos/DespachoPackingPage'
+import PickingConfirmPage from './pages/despachos/PickingConfirmPage'
 import DespachoTrackingPage from './pages/despachos/DespachoTrackingPage'
 import BitacoraTallerPage from './pages/bitacora-taller/BitacoraTallerPage'
 import HistorialMaterialesPage from './pages/historial-materiales/HistorialMaterialesPage'
@@ -52,7 +54,9 @@ import ReportesGerencialesPage from './pages/reportes-gerenciales/ReportesGerenc
 import ReportesComisionesPage from './pages/reportes-comisiones/ReportesComisionesPage'
 import ReportesMovimientosAnormalesPage from './pages/reportes-movimientos-anormales/ReportesMovimientosAnormalesPage'
 import UsuariosPage from './pages/usuarios/UsuariosPage'
+import UsuarioFormPage from './pages/usuarios/UsuarioFormPage'
 import RrhhPage, { TrabajadorDetallePage } from './pages/rrhh/RrhhPage'
+import TrabajadorFormPage from './pages/rrhh/TrabajadorFormPage'
 import IntegridadPage from './pages/admin/IntegridadPage'
 import AuditoriaPage from './pages/admin/AuditoriaPage'
 import HistoricoPage from './pages/admin/HistoricoPage'
@@ -67,12 +71,19 @@ import EmitirLiquidacionPage from './pages/facturacion/EmitirLiquidacionPage'
 import EmitirExportacionPage from './pages/facturacion/EmitirExportacionPage'
 import DocumentosRecibidosPage from './pages/facturacion/DocumentosRecibidosPage'
 import CosteoPage from './pages/costeo/CosteoPage'
+import MateriaPrimaFormPage from './pages/materias-primas/MateriaPrimaFormPage'
 import ImportacionesPage from './pages/importaciones/ImportacionesPage'
 import OrdenesCompraProveedoresPage from './pages/ordenes-compra-proveedores/OrdenesCompraProveedoresPage'
 import ExcepcionesPage from './pages/admin/ExcepcionesPage'
+import PilotFeedbackPage from './pages/admin/PilotFeedbackPage'
+import AyudaPage from './pages/ayuda/AyudaPage'
 
 
-const ALL = ['admin', 'vendedor', 'coordinador_comercial', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
+// Tienen que estar TODOS los roles del rbac. Falta uno y ese rol queda en un
+// bucle cerrado: entra a '/', falla el guardia, lo mandan a '/dashboard' -que
+// cuelga de '/'- y vuelve a fallar. La pantalla queda en blanco, sin error.
+// Asi quedo taller_operario cuando se creo el rol.
+const ALL = ['admin', 'vendedor', 'coordinador_comercial', 'bodeguero', 'cajero', 'taller', 'taller_operario', 'rrhh', 'solo_lectura']
 
 const protect = (element, props) => <ProtectedRoute {...props}>{element}</ProtectedRoute>
 
@@ -89,6 +100,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
       { path: 'dashboard/operativo', element: <DashboardOperativoPage /> },
+      { path: 'ayuda', element: protect(<AyudaPage />, { allowedRoles: ALL }) },
       { path: 'ventas', element: protect(<MatrizVentasPage />, { module: 'ventas' }) },
       { path: 'ventas/:id', element: protect(<VentaDetallePage />, { module: 'ventas' }) },
       { path: 'ventas/nueva', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
@@ -96,6 +108,8 @@ export const router = createBrowserRouter([
       { path: 'ventas/:id/imprimir', element: protect(<VentaPrintPage />, { module: 'ventas' }) },
       { path: 'asistente', element: protect(<AsistentePage />, { allowedRoles: ALL }) },
       { path: 'bodega', element: protect(<BodegaPage />, { module: 'bodega' }) },
+      { path: 'bodega/picking', element: protect(<PanelPickingPage />, { module: 'bodega' }) },
+      { path: 'bodega/packing', element: protect(<PanelPackingPage />, { module: 'bodega' }) },
       { path: 'bodega/nuevo', element: protect(<BodegaFormPage />, { module: 'bodega', permission: 'write' }) },
       { path: 'bodega/:id/editar', element: protect(<BodegaFormPage />, { module: 'bodega', permission: 'write' }) },
       { path: 'importaciones', element: protect(<ImportacionesPage />, { module: 'bodega' }) },
@@ -127,8 +141,14 @@ export const router = createBrowserRouter([
       { path: 'telas/:id', element: protect(<TelaDetallePage />, { module: 'taller' }) },
       { path: 'bodega-taller', element: protect(<BodegaTallerPage />, { module: 'taller' }) },
       { path: 'costeo', element: protect(<CosteoPage />, { module: 'costeo' }) },
-      { path: 'accesos',    element: <ProtectedRoute allowedRoles={['admin']}><AccesosPage /></ProtectedRoute> },
+      { path: 'materias-primas/nueva', element: protect(<MateriaPrimaFormPage />, { requirements: [['taller', 'write'], ['costeo', 'write']] }) },
+      { path: 'materias-primas/:id', element: protect(<MateriaPrimaFormPage />, { requirements: [['taller', 'read'], ['costeo', 'read']] }) },
+      { path: 'materias-primas/:id/editar', element: protect(<MateriaPrimaFormPage />, { requirements: [['taller', 'write'], ['costeo', 'write']] }) },
+      { path: 'accesos',    element: <Navigate to="/usuarios" replace /> },
       { path: 'usuarios',   element: <ProtectedRoute allowedRoles={['admin']}><UsuariosPage /></ProtectedRoute> },
+      { path: 'usuarios/nuevo', element: <ProtectedRoute allowedRoles={['admin']}><UsuarioFormPage /></ProtectedRoute> },
+      { path: 'usuarios/:id', element: <ProtectedRoute allowedRoles={['admin']}><UsuarioFormPage /></ProtectedRoute> },
+      { path: 'usuarios/:id/editar', element: <ProtectedRoute allowedRoles={['admin']}><UsuarioFormPage /></ProtectedRoute> },
       { path: 'descuentos', element: protect(<DescuentosPage />, { module: 'descuentos', permission: 'write' }) },
       { path: 'proveedores', element: protect(<ProveedoresPage />, { module: 'proveedores' }) },
       { path: 'proveedores/:id', element: protect(<ProveedorDetallePage />, { module: 'proveedores' }) },
@@ -143,6 +163,7 @@ export const router = createBrowserRouter([
       { path: 'despachos', element: protect(<DespachosPage />, { module: 'despacho' }) },
       { path: 'despachos/nuevo', element: protect(<DespachoFormPage />, { module: 'despacho', permission: 'write' }) },
       { path: 'despachos/:id/editar', element: protect(<DespachoFormPage />, { module: 'despacho', permission: 'write' }) },
+      { path: 'despachos/ordenes/:ordenId/picking', element: protect(<PickingConfirmPage />, { module: 'despacho', permission: 'write' }) },
       { path: 'despachos/ordenes/:ordenId/packing', element: protect(<DespachoPackingPage />, { module: 'despacho', permission: 'write' }) },
       { path: 'despachos/:id/tracking', element: protect(<DespachoTrackingPage />, { module: 'despacho' }) },
       { path: 'despachos/guias/nueva', element: protect(<GuiaFormPage />, { module: 'despacho', permission: 'write' }) },
@@ -158,14 +179,17 @@ export const router = createBrowserRouter([
       { path: 'bitacora-taller', element: protect(<BitacoraTallerPage />, { module: 'taller' }) },
       { path: 'historial-materiales', element: protect(<HistorialMaterialesPage />, { module: 'taller' }) },
       { path: 'stock-ingresos', element: protect(<StockIngresosPage />, { module: 'bodega' }) },
-      { path: 'pasar-taller', element: protect(<PasarTallerPage />, { requirements: [['taller', 'write'], ['ventas', 'write']] }) },
+      { path: 'excepciones-taller', element: protect(<PasarTallerPage />, { requirements: [['taller', 'write'], ['ventas', 'write']] }) },
+      { path: 'pasar-taller', element: <PasarTallerLegacyRedirect /> },
       { path: 'consulta-precios', element: protect(<ConsultaPreciosPage />, { module: 'catalogo' }) },
       { path: 'reportes/gerenciales', element: protect(<ReportesGerencialesPage />, { module: 'reportes' }) },
       { path: 'reportes/comisiones', element: <ProtectedRoute allowedRoles={['admin']}><ReportesComisionesPage /></ProtectedRoute> },
       { path: 'reportes/movimientos-anormales', element: protect(<ReportesMovimientosAnormalesPage />, { module: 'bodega' }) },
       { path: 'reportes/licitaciones', element: protect(<LicitacionesLegacyRedirect destination="reportes" />, { module: 'reportes' }) },
       { path: 'rrhh', element: protect(<RrhhPage />, { module: 'rrhh' }) },
+      { path: 'rrhh/nuevo', element: protect(<TrabajadorFormPage />, { module: 'rrhh', permission: 'write' }) },
       { path: 'rrhh/:id', element: protect(<TrabajadorDetallePage />, { module: 'rrhh' }) },
+      { path: 'rrhh/:id/editar', element: protect(<TrabajadorFormPage />, { module: 'rrhh', permission: 'write' }) },
       { path: 'admin/integridad', element: <ProtectedRoute allowedRoles={['admin']}><IntegridadPage /></ProtectedRoute> },
       { path: 'admin/comisiones', element: <ProtectedRoute allowedRoles={['admin']}><ComisionesPage /></ProtectedRoute> },
       { path: 'admin/auditoria',  element: <ProtectedRoute allowedRoles={['admin']}><AuditoriaPage /></ProtectedRoute> },
@@ -173,6 +197,7 @@ export const router = createBrowserRouter([
       { path: 'admin/saneamiento-legacy', element: <ProtectedRoute allowedRoles={['admin']}><SaneamientoLegacyPage /></ProtectedRoute> },
       { path: 'admin/ia-balance', element: <ProtectedRoute allowedRoles={['admin']}><IaBalancePage /></ProtectedRoute> },
       { path: 'admin/excepciones', element: <ProtectedRoute allowedRoles={['admin']}><ExcepcionesPage /></ProtectedRoute> },
+      { path: 'admin/feedback', element: <ProtectedRoute allowedRoles={['admin']}><PilotFeedbackPage /></ProtectedRoute> },
 
     ],
   },

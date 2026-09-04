@@ -26,6 +26,8 @@ export function createErpAccessTokenPayload(user) {
     permisoAprobarDescuentos: !!user.permisoAprobarDescuentos,
     permisosExtra: user.permisosExtra || null,
     tiposVentaPermitidos: user.tiposVentaPermitidos || null,
+    // Invalida de inmediato los access tokens cuando se cambia el acceso del usuario.
+    authVersion: Number(user.authVersion || 0),
     scope: TOKEN_SCOPES.ERP,
     aud: TOKEN_AUDIENCES.ERP,
     tokenType: TOKEN_TYPES.ACCESS,

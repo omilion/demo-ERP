@@ -1,16 +1,16 @@
 import { toast, confirmDialog, promptDialog } from '../../store/notif'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Badge, Btn, KpiCard, PageHeader, Table } from '../../components/shared'
-import { FormField, FormPanel, Input, Select, Textarea } from '../../components/forms'
+import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table } from '../../components/shared'
+import { DetailRow, FormField, FormPanel, Input, Select, Textarea, ViewPanel } from '../../components/forms'
 import { downloadStockIngresosCsv, useAplicarStock, useStockIngresos } from '../../api/stockIngresos'
 import { useCreatePagoProveedor, useAnularPagoProveedor } from '../../api/pagosProveedores'
-import { useProveedores } from '../../api/proveedores'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 import CodigoProveedorField from '../../components/bodega/CodigoProveedorField'
+import ProveedorAutocomplete from '../../components/proveedores/ProveedorAutocomplete'
 
-const BODEGAS = ['Inventario', 'Materias', 'ActivoFijo', 'GMantencion', 'GTransporte', 'GOperacionales', 'GAdministrativos', 'Importacion', 'Equipos']
+const BODEGAS = ['Inventario', 'Materias', 'Taller', 'ActivoFijo', 'GMantencion', 'GTransporte', 'GOperacionales', 'GAdministrativos', 'Importacion', 'Equipos']
 const STOCK_BODEGAS = new Set(['Inventario', 'Materias', 'Taller'])
 const DOCUMENTOS = ['Factura', 'Boleta', 'Nota']
 const ESTADOS = ['Pendiente', 'Pagado', 'Vencido']
@@ -54,9 +54,10 @@ export default function StockIngresosPage() {
   const { user } = useAuthStore()
   const canWriteBodega = can(user, 'bodega', 'write')
   const canWriteProveedores = can(user, 'proveedores', 'write')
+  const canReadProveedores = can(user, 'proveedores', 'read')
   const canReverse = can(user, 'proveedores', 'delete')
-  const [filters, setFilters] = useState({ desde: '', hasta: '', nDoc: '', documento: '', estado: '', bodega: '', proveedor: '' })
-  const [proveedorSearch, setProveedorSearch] = useState('')
+  const [filters, setFilters] = useState({ search: '', desde: '', hasta: '', nDoc: '', documento: '', estado: '', bodega: '' })
+  const [formProveedor, setFormProveedor] = useState(null)
   const [page, setPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [header, setHeader] = useState(() => emptyHeader(canWriteBodega))
@@ -65,6 +66,7 @@ export default function StockIngresosPage() {
   const [totalXmlReferencia, setTotalXmlReferencia] = useState(0)
   const [rutProveedorRecibido, setRutProveedorRecibido] = useState('')
   const [nombreProveedorRecibido, setNombreProveedorRecibido] = useState('')
+  const [selectedRow, setSelectedRow] = useState(null)
 
   const queryParams = useMemo(() => {
     const params = { page: String(page) }
@@ -81,8 +83,7 @@ export default function StockIngresosPage() {
     return params
   }, [filters])
 
-  const { data = { items: [], total: 0 }, isLoading } = useStockIngresos(queryParams)
-  const { data: proveedores = { items: [] } } = useProveedores(proveedorSearch ? { search: proveedorSearch } : {})
+  const { data = { items: [], total: 0, stats: {} }, isLoading, isError, error, refetch } = useStockIngresos(queryParams)
   const aplicarMut = useAplicarStock()
   const createMut = useCreatePagoProveedor()
   const anularMut = useAnularPagoProveedor()
@@ -100,19 +101,9 @@ export default function StockIngresosPage() {
     setTotalXmlReferencia(Number(prefill.totalReferencia || 0))
     setRutProveedorRecibido(prefill.proveedorRut || '')
     setNombreProveedorRecibido(prefill.proveedorNombre || '')
-    setProveedorSearch(prefill.proveedorRut || prefill.proveedorNombre || '')
     setShowForm(true)
     navigate(location.pathname, { replace: true, state: null })
   }, [location.pathname, location.state, navigate, canWriteBodega])
-
-  useEffect(() => {
-    if (!rutProveedorRecibido || header.proveedorId) return
-    const normalizarRut = value => String(value || '').replace(/[^0-9kK]/g, '').toUpperCase()
-    const proveedor = (proveedores.items || []).find(item => normalizarRut(item.rut) === normalizarRut(rutProveedorRecibido))
-    // Complete the prefilled supplier after the asynchronous lookup resolves.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (proveedor) setHeader(current => ({ ...current, proveedorId: String(proveedor.id) }))
-  }, [proveedores, rutProveedorRecibido, header.proveedorId])
 
   const setFilter = (key, value) => {
     setFilters(f => ({ ...f, [key]: value }))
@@ -121,7 +112,7 @@ export default function StockIngresosPage() {
   const resetForm = () => {
     setHeader(emptyHeader(canWriteBodega))
     setDetails([emptyDetail()])
-    setProveedorSearch('')
+    setFormProveedor(null)
     setDocumentoRecibidoId(null)
     setTotalXmlReferencia(0)
     setRutProveedorRecibido('')
@@ -133,6 +124,10 @@ export default function StockIngresosPage() {
   }
   const addDetail = () => setDetails(rows => [...rows, emptyDetail()])
   const removeDetail = idx => setDetails(rows => rows.length === 1 ? rows : rows.filter((_, i) => i !== idx))
+  const clearFilters = () => {
+    setFilters({ search: '', desde: '', hasta: '', nDoc: '', documento: '', estado: '', bodega: '' })
+    setPage(1)
+  }
 
   const totalForm = details.reduce((sum, d) => sum + Number(d.cantidad || 0) * Number(d.precio || 0), 0)
   const validDetails = details
@@ -175,7 +170,10 @@ export default function StockIngresosPage() {
       ingresaStock: canWriteBodega && isStockBodega(header.bodega) && header.ingresaStock,
       detalles: validDetails.map(d => ({ ...d, codigoInterno: d.codigoInterno.trim() })),
     }, {
-      onSuccess: () => resetForm(),
+      onSuccess: result => {
+        toast.success(result.idempotent ? 'El documento ya estaba ingresado.' : header.ingresaStock ? 'Documento guardado y stock aplicado.' : 'Documento guardado. El stock quedó pendiente de aplicación.')
+        resetForm()
+      },
       onError: err => toast.error(err.response?.data?.error || 'No se pudo crear el documento'),
     })
   }
@@ -188,6 +186,14 @@ export default function StockIngresosPage() {
     anularMut.mutate({ id: row.id, motivo: motivo.trim() }, {
       onError: err => toast.error(err.response?.data?.error || 'No se pudo anular'),
     })
+  }
+
+  const handleExport = async (detalle = false) => {
+    try {
+      await downloadStockIngresosCsv(detalle ? { ...exportParams, detalle: '1' } : exportParams, detalle ? 'facturas_bodega_detalle.csv' : 'facturas_bodega_resumen.csv')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se pudo descargar el CSV. Verifique sus permisos.')
+    }
   }
 
   const resumenDetalle = (r) => {
@@ -208,53 +214,65 @@ export default function StockIngresosPage() {
     { key: 'stockAplicadoAt', label: 'Stock', render: (v, r) => v ? <Badge tone={r.stockReversadoAt ? 'gray' : 'green'}>{r.stockReversadoAt ? 'Reversado' : 'Aplicado'}</Badge> : <Badge tone="amber">Pendiente</Badge> },
     { key: '_acc', label: '', render: (_, r) => (
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <Btn variant="ghost" size="xs" icon="eye" onClick={() => setSelectedRow(r)}>Ver</Btn>
         {canWriteBodega && isStockBodega(r.bodega) && !r.stockAplicadoAt && (r.detallesFactura?.length > 0) && <Btn variant="secondary" size="xs" icon="check" onClick={() => applyStock(r)} disabled={aplicarMut.isPending}>Aplicar</Btn>}
         {canReverse && <Btn variant="ghost" size="xs" icon="trash" onClick={() => anular(r)} disabled={anularMut.isPending}>Anular</Btn>}
       </div>
     ) },
   ]
 
+  const filterInputStyle = { height: 28, padding: '0 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }
+  const toolbarExtra = (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+      <SearchBar placeholder="Buscar N° doc, proveedor, RUT, código o producto…" value={filters.search} onChange={value => setFilter('search', value)} style={{ height: 28, width: 260 }} />
+      <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>Fecha doc:</span>
+      <input type="date" value={filters.desde} onChange={e => setFilter('desde', e.target.value)} style={filterInputStyle} />
+      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>-</span>
+      <input type="date" value={filters.hasta} onChange={e => setFilter('hasta', e.target.value)} style={filterInputStyle} />
+      <input placeholder="N° documento" value={filters.nDoc} onChange={e => setFilter('nDoc', e.target.value)} style={{ ...filterInputStyle, width: 110 }} />
+      <select value={filters.documento} onChange={e => setFilter('documento', e.target.value)} style={filterInputStyle}>
+        <option value="">Todo documento</option>
+        {DOCUMENTOS.map(d => <option key={d} value={d}>{d}</option>)}
+      </select>
+      <select value={filters.estado} onChange={e => setFilter('estado', e.target.value)} style={filterInputStyle}>
+        <option value="">Todo estado pago</option>
+        {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
+      </select>
+      <select value={filters.bodega} onChange={e => setFilter('bodega', e.target.value)} style={filterInputStyle}>
+        <option value="">Toda bodega</option>
+        {BODEGAS.map(b => <option key={b} value={b}>{b}</option>)}
+      </select>
+      {Object.values(filters).some(Boolean) && <Btn variant="ghost" size="sm" onClick={clearFilters}>Limpiar filtros</Btn>}
+    </div>
+  )
+
   return (
     <main className="page page-wide">
       <PageHeader
-        title="Ingreso Mercaderia"
+        title="Ingreso Manual"
         subtitle="Facturas, boletas y notas que afectan stock de bodega"
         breadcrumb={['Inicio', 'Bodega', 'Ingreso']}
         actions={
           <>
-            <Btn variant="secondary" icon="download" size="sm" onClick={() => downloadStockIngresosCsv(exportParams, 'facturas_bodega_resumen.csv')}>CSV resumen</Btn>
-            <Btn variant="secondary" icon="download" size="sm" onClick={() => downloadStockIngresosCsv({ ...exportParams, detalle: '1' }, 'facturas_bodega_detalle.csv')}>CSV detalle</Btn>
+            {canReadProveedores && <Btn variant="secondary" icon="download" size="sm" onClick={() => handleExport(false)}>CSV resumen</Btn>}
+            {canReadProveedores && <Btn variant="secondary" icon="download" size="sm" onClick={() => handleExport(true)}>CSV detalle</Btn>}
             {canWriteProveedores && <Btn variant="primary" icon="plus" size="sm" onClick={() => setShowForm(true)}>Nuevo doc</Btn>}
           </>
         }
       />
       <div className="kpi-strip">
         <KpiCard label="Documentos" value={data.total || 0} icon="fileText" />
-        <KpiCard label="Pendientes stock" value={(data.items || []).filter(i => !i.stockAplicadoAt).length} icon="clock" tone="amber" sublabel="Pagina actual" />
-        <KpiCard label="Monto pagina" value={fmt((data.items || []).reduce((s, p) => s + Number(p.total || 0), 0))} icon="dollarSign" tone="blue" />
+        <KpiCard label="Pendientes stock" value={data.stats?.pendientesStock || 0} icon="clock" tone="amber" sublabel="Total filtrado" />
+        <KpiCard label="Monto documentos" value={fmt(data.stats?.montoTotal || 0)} icon="dollarSign" tone="blue" sublabel="Total filtrado" />
       </div>
 
       <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: 16, borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
-          <FormField label="Desde"><Input type="date" value={filters.desde} onChange={v => setFilter('desde', v)} /></FormField>
-          <FormField label="Hasta"><Input type="date" value={filters.hasta} onChange={v => setFilter('hasta', v)} /></FormField>
-          <FormField label="N Doc"><Input value={filters.nDoc} onChange={v => setFilter('nDoc', v)} /></FormField>
-          <FormField label="Documento"><Select value={filters.documento} onChange={v => setFilter('documento', v)} options={[{ value: '', label: 'Todos' }, ...DOCUMENTOS]} /></FormField>
-          <FormField label="Estado pago"><Select value={filters.estado} onChange={v => setFilter('estado', v)} options={[{ value: '', label: 'Todos' }, ...ESTADOS]} /></FormField>
-          <FormField label="Bodega"><Select value={filters.bodega} onChange={v => setFilter('bodega', v)} options={[{ value: '', label: 'Todas' }, ...BODEGAS]} /></FormField>
-          <FormField label="Proveedor"><Input value={filters.proveedor} onChange={v => setFilter('proveedor', v)} placeholder="Nombre, RUT o codigo" /></FormField>
-        </div>
         {isLoading
-          ? <div style={{ padding: 48, textAlign: 'center' }}>Cargando...</div>
-          : <Table columns={cols} rows={data.items || []} emptyMessage="Sin documentos de bodega" keyboard ariaLabel="Documentos de ingreso de mercaderia" getRowKey={row => row.id} />
+          ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando documentos de ingreso…</div>
+          : isError
+            ? <div style={{ padding: 48, textAlign: 'center' }}><strong>No se pudieron cargar los documentos.</strong><div style={{ margin: '8px 0 14px', color: 'var(--text-3)', fontSize: 13 }}>{error?.response?.data?.error || 'Revise la conexión e intente nuevamente.'}</div><Btn variant="secondary" icon="refreshCw" size="sm" onClick={() => refetch()}>Reintentar</Btn></div>
+            : <Table columns={cols} rows={data.items || []} onRowClick={setSelectedRow} emptyMessage="Sin documentos para los filtros seleccionados" keyboard ariaLabel="Documentos de ingreso de mercadería" getRowKey={row => row.id} columnPrefsKey="stock-ingresos" toolbarExtra={toolbarExtra} pager={{ page, pages: totalPages, total: data.total || 0, limit, shown: (data.items || []).length, onChange: setPage, disabled: isLoading }} />
         }
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Pagina {page} de {totalPages} - {data.total || 0} registros</span>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Btn variant="secondary" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1 || isLoading}>Anterior</Btn>
-            <Btn variant="secondary" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages || isLoading}>Siguiente</Btn>
-          </div>
-        </div>
       </div>
 
       {showForm && (
@@ -263,10 +281,15 @@ export default function StockIngresosPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
             <FormField label="Documento" required><Select value={header.documento} onChange={v => setHeader(h => ({ ...h, documento: v }))} options={DOCUMENTOS} /></FormField>
             <FormField label="N Doc" required><Input value={header.nDoc} onChange={v => setHeader(h => ({ ...h, nDoc: v }))} /></FormField>
-            <FormField label="Buscar proveedor"><Input value={proveedorSearch} onChange={setProveedorSearch} placeholder="Nombre, RUT o codigo" /></FormField>
-            <FormField label="Proveedor" required>
-              <Select value={header.proveedorId} onChange={v => setHeader(h => ({ ...h, proveedorId: v }))} options={[{ value: '', label: 'Seleccionar' }, ...(proveedores.items || []).map(p => ({ value: String(p.id), label: `${p.nombre} ${p.rut ? `(${p.rut})` : ''}` }))]} />
-            </FormField>
+            <ProveedorAutocomplete
+              label="Proveedor"
+              required
+              selected={formProveedor}
+              initialQuery={rutProveedorRecibido || nombreProveedorRecibido}
+              autoSelectRut={rutProveedorRecibido}
+              onSelect={provider => { setFormProveedor(provider); setHeader(h => ({ ...h, proveedorId: String(provider.id) })) }}
+              onClear={() => { setFormProveedor(null); setHeader(h => ({ ...h, proveedorId: '' })) }}
+            />
             <FormField label="Bodega">
               <Select
                 value={header.bodega}
@@ -332,6 +355,28 @@ export default function StockIngresosPage() {
             </div>
           </div>
         </FormPanel>
+      )}
+      {selectedRow && (
+        <ViewPanel title={`${selectedRow.documento || 'Documento'} ${selectedRow.nDoc || `#${selectedRow.id}`}`} subtitle="Detalle y trazabilidad del ingreso" onClose={() => setSelectedRow(null)}>
+          <DetailRow label="Proveedor" value={selectedRow.proveedor?.nombre || 'Sin proveedor vinculado'} />
+          <DetailRow label="RUT" value={selectedRow.proveedor?.rut || '—'} mono />
+          <DetailRow label="Bodega" value={selectedRow.bodega || '—'} />
+          <DetailRow label="Estado pago" value={selectedRow.estado || 'Pendiente'} />
+          <DetailRow label="Estado stock" value={selectedRow.stockReversadoAt ? 'Reversado' : selectedRow.stockAplicadoAt ? 'Aplicado' : 'Pendiente'} />
+          <DetailRow label="Fecha documento" value={dateFmt(selectedRow.fechaDoc)} />
+          <DetailRow label="Vencimiento" value={dateFmt(selectedRow.fechaVencimiento)} />
+          <DetailRow label="Fecha pago" value={dateFmt(selectedRow.fechaPago)} />
+          <DetailRow label="Creado por" value={selectedRow.usuario || '—'} />
+          <DetailRow label="Total" value={fmt(selectedRow.total)} mono />
+          {selectedRow.obs && <DetailRow label="Observaciones" value={selectedRow.obs} />}
+          <h3 style={{ margin: '22px 0 10px', fontSize: 14 }}>Líneas del documento</h3>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead><tr style={{ background: 'var(--bg)' }}>{['Código', 'Destino', 'Cantidad', 'Costo'].map(label => <th key={label} style={{ padding: 8, textAlign: label === 'Cantidad' || label === 'Costo' ? 'right' : 'left' }}>{label}</th>)}</tr></thead>
+              <tbody>{(selectedRow.detallesFactura || []).map(detail => <tr key={detail.id || `${detail.codigoInterno}-${detail.destino}`} style={{ borderTop: '1px solid var(--border)' }}><td style={{ padding: 8 }}>{detail.codigoInterno}</td><td style={{ padding: 8 }}>{detail.destino}</td><td style={{ padding: 8, textAlign: 'right' }}>{detail.cantidad}</td><td style={{ padding: 8, textAlign: 'right' }}>{fmt(detail.precio)}</td></tr>)}</tbody>
+            </table>
+          </div>
+        </ViewPanel>
       )}
     </main>
   )

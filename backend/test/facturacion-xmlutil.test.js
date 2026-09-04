@@ -35,5 +35,6 @@ describe('facturacion/xmlUtil', () => {
     expect(rutDv('76354051')).toBe('0')
     expect(isValidRut('76.354.051-0')).toBe(true)
     expect(isValidRut('76.354.051-1')).toBe(false)
+    expect(isValidRut('881788374-6')).toBe(false)
   })
 })

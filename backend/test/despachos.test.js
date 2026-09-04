@@ -80,6 +80,7 @@ async function createFixture(app, overrides = {}) {
           nombre: producto.nombre,
           cantidad: 2,
           precioUnitario: 1000,
+          pickingConfirmado: true,
         }],
       },
     },
@@ -312,22 +313,21 @@ describe('despachos legacy matrix parity', () => {
       })
       expect(invalid.statusCode).toBe(400)
 
-      const enRuta = await app.inject({
+      const patio = await app.inject({
         method: 'POST',
         url: `/api/despachos/${despacho.id}/tracking`,
         headers: { authorization: `Bearer ${adminToken}` },
         payload: {
-          estado: 'en ruta',
+          estado: 'Patio',
           transporte: 'Transportista QA',
           ubicacion: 'Valparaiso',
           observacion: 'Carga retirada',
-          fechaEvento: '2026-06-02T10:00:00.000Z',
         },
       })
-      expect(enRuta.statusCode).toBe(200)
-      expect(JSON.parse(enRuta.body).evento).toMatchObject({
+      expect(patio.statusCode).toBe(200)
+      expect(JSON.parse(patio.body).evento).toMatchObject({
         despachoId: despacho.id,
-        estado: 'En ruta',
+        estado: 'Patio',
         transporte: 'Transportista QA',
         ubicacion: 'Valparaiso',
         usuario: 'Test admin',
@@ -342,14 +342,24 @@ describe('despachos legacy matrix parity', () => {
       expect(JSON.parse(list.body).items[0]).toMatchObject({
         id: despacho.id,
         transporte: 'Transportista QA',
-        tracking: { estado: 'En ruta', ubicacion: 'Valparaiso' },
+        tracking: { estado: 'Patio', ubicacion: 'Valparaiso' },
       })
+
+      for (const estado of ['Didáctico', 'Reparto']) {
+        const transition = await app.inject({
+          method: 'POST',
+          url: `/api/despachos/${despacho.id}/tracking`,
+          headers: { authorization: `Bearer ${adminToken}` },
+          payload: { estado },
+        })
+        expect(transition.statusCode).toBe(200)
+      }
 
       const delivered = await app.inject({
         method: 'POST',
         url: `/api/despachos/${despacho.id}/tracking`,
         headers: { authorization: `Bearer ${adminToken}` },
-        payload: { estado: 'Entregado', fechaEvento: '2026-06-02T12:00:00.000Z' },
+        payload: { estado: 'Entregado' },
       })
       expect(delivered.statusCode).toBe(200)
       expect(JSON.parse(delivered.body).latest.estado).toBe('Entregado')
@@ -360,7 +370,7 @@ describe('despachos legacy matrix parity', () => {
         headers: { authorization: `Bearer ${adminToken}` },
       })
       expect(trace.statusCode).toBe(200)
-      expect(JSON.parse(trace.body).eventos.map(evento => evento.estado)).toEqual(['Entregado', 'En ruta'])
+      expect(JSON.parse(trace.body).eventos.map(evento => evento.estado)).toEqual(['Entregado', 'Reparto', 'Didáctico', 'Patio', 'Preparado'])
       const order = await app.prisma.orden.findUnique({ where: { id: fixture.orden.id } })
       expect(order.estadoEntrega).toBe('Entregada')
     } finally {
@@ -395,11 +405,7 @@ describe('despachos legacy matrix parity', () => {
         headers: { authorization: `Bearer ${adminToken}` },
         payload: { estado: 'Incidencia', observacion: 'Falta responsable' },
       })
-      expect(legacyIncident.statusCode).toBe(200)
-      expect(JSON.parse(legacyIncident.body).evento).toMatchObject({
-        estado: 'Incidencia',
-        observacion: 'Falta responsable',
-      })
+      expect(legacyIncident.statusCode).toBe(400)
 
       const incident = await app.inject({
         method: 'POST',
@@ -422,14 +428,6 @@ describe('despachos legacy matrix parity', () => {
         accionTomada: 'Preparar reposicion',
         responsable: 'Bodega',
       })
-
-      const normalTrack = await app.inject({
-        method: 'POST',
-        url: `/api/despachos/${despachoB.id}/tracking`,
-        headers: { authorization: `Bearer ${adminToken}` },
-        payload: { estado: 'Preparado' },
-      })
-      expect(normalTrack.statusCode).toBe(200)
 
       const list = await app.inject({
         method: 'GET',
@@ -882,6 +880,92 @@ describe('despachos legacy matrix parity', () => {
       expect(guia2.nGuia).toBe(String(guia2.id))
       expect(guia2.nGuia).not.toBe(guia1.nGuia)
       expect(guia2.nInterno).toBe(guia1.nInterno)
+    } finally {
+      await cleanupFixture(app, fixture)
+    }
+  })
+
+  it('registra un despacho aislado sin vincular ni modificar una venta', async () => {
+    let despachoId
+    try {
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/despachos',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          origenTipo: 'manual',
+          motivoOperacion: 'Traslado interno autorizado para prueba',
+          tipoDespacho: 'Traslado interno',
+          transporte: 'Camioneta bodega',
+        },
+      })
+      expect(created.statusCode, created.body).toBe(200)
+      const despacho = JSON.parse(created.body)
+      despachoId = despacho.id
+      expect(despacho).toMatchObject({
+        ordenId: null,
+        odtId: null,
+        interno: null,
+        origenTipo: 'manual',
+        origenId: null,
+        motivoOperacion: 'Traslado interno autorizado para prueba',
+      })
+
+      const sinMotivo = await app.inject({
+        method: 'POST',
+        url: '/api/despachos',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { origenTipo: 'manual' },
+      })
+      expect(sinMotivo.statusCode).toBe(400)
+      expect(JSON.parse(sinMotivo.body).error).toContain('motivoOperacion requerido')
+    } finally {
+      if (despachoId) await app.prisma.despacho.delete({ where: { id: despachoId } }).catch(() => {})
+    }
+  })
+
+  it('bloquea packing hasta confirmar picking y registra el ajuste + dimensiones del bulto', async () => {
+    const fixture = await createFixture(app)
+    try {
+      const item = await app.prisma.ordenItem.findFirst({ where: { ordenId: fixture.orden.id } })
+      await app.prisma.ordenItem.update({ where: { id: item.id }, data: { pickingConfirmado: false } })
+
+      const packSinConfirmar = await app.inject({
+        method: 'PUT',
+        url: `/api/despachos/ordenes/${fixture.orden.id}/packing`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { items: [{ itemId: item.id, nEntregados: 1 }] },
+      })
+      expect(packSinConfirmar.statusCode).toBe(400)
+      expect(JSON.parse(packSinConfirmar.body).error).toContain('no tiene picking confirmado')
+
+      const pickingRes = await app.inject({
+        method: 'PUT',
+        url: `/api/despachos/ordenes/${fixture.orden.id}/picking`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { items: [{ itemId: item.id, confirmado: true, observacion: 'color rojo agotado, se envia azul' }] },
+      })
+      expect(pickingRes.statusCode).toBe(200)
+      const pickingBody = JSON.parse(pickingRes.body)
+      const pickedItem = pickingBody.items.find(i => i.id === item.id)
+      expect(pickedItem.pickingConfirmado).toBe(true)
+      expect(pickedItem.pickingObservacion).toBe('color rojo agotado, se envia azul')
+
+      const packOk = await app.inject({
+        method: 'PUT',
+        url: `/api/despachos/ordenes/${fixture.orden.id}/packing`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          bultoNumero: `B-${fixture.marker}`,
+          bultoDimensiones: '40x30x25 cm',
+          bultoPeso: 8.5,
+          items: [{ itemId: item.id, nEntregados: 1 }],
+        },
+      })
+      expect(packOk.statusCode).toBe(200)
+      const packBody = JSON.parse(packOk.body)
+      expect(packBody.bultos[0].dimensiones).toBe('40x30x25 cm')
+      expect(packBody.bultos[0].peso).toBe(8.5)
     } finally {
       await cleanupFixture(app, fixture)
     }

@@ -1,17 +1,18 @@
 import { sendExport } from '../../utils/export.js'
 import { parseDate } from '../operational-utils.js'
 import { computeTotal } from '../ventas/helpers.js'
-import { GRAFIAS_CONVENIO_MARCO, GRAFIAS_LICITACION, LICITACION_MOJIBAKE } from '../ventas/estados-normalize.js'
+import {
+  GRAFIAS_VENTA_DIRECTA,
+  TIPO_VENTA_VALUES,
+  grafiasDeTipoVenta,
+  normalizeEstadoEntrega,
+  normalizeEstadoPago,
+  normalizeTipoVenta,
+  tipoVentaFromSlug,
+} from '../ventas/estados-normalize.js'
 
 const TIPO_VENTA_TODOS = 'Todos'
-const TIPOS_VENTA = [
-  'Venta sala',
-  'Venta directa',
-  'Normal',
-  'Venta Web',
-  'Convenio Marco',
-  'Licitaci\u00f3n',
-]
+const TIPOS_VENTA = TIPO_VENTA_VALUES
 
 function aliasKey(value) {
   return String(value ?? '')
@@ -23,39 +24,31 @@ function aliasKey(value) {
     .replace(/\s+/g, ' ')
 }
 
-const TIPO_ALIASES = new Map([
-  ...TIPOS_VENTA.map(tipo => [aliasKey(tipo), tipo]),
-  [aliasKey('Venta Sala'), 'Venta sala'],
-  [aliasKey('Venta Directa'), 'Venta directa'],
-  [aliasKey('venta-sala'), 'Venta sala'],
-  [aliasKey('venta-directa'), 'Venta directa'],
-  [aliasKey('venta-web'), 'Venta Web'],
-  [aliasKey('convenio-marco'), 'Convenio Marco'],
-  [aliasKey('licitacion'), 'Licitaci\u00f3n'],
-])
+const TIPO_DB_VARIANTS = Object.fromEntries(TIPOS_VENTA.map(tipo => [tipo, grafiasDeTipoVenta(tipo)]))
+// En la data legacy, Venta directa es la grafía previa de Venta Sala. El
+// catálogo único usa Venta Sala, por lo que ambos deben entrar al mismo filtro.
+TIPO_DB_VARIANTS['Venta Sala'] = [...new Set([
+  ...TIPO_DB_VARIANTS['Venta Sala'],
+  ...GRAFIAS_VENTA_DIRECTA,
+])]
 
-const TIPO_DB_VARIANTS = {
-  'Venta sala': ['Venta sala', 'Venta Sala'],
-  'Venta directa': ['Venta directa', 'Venta Directa'],
-  Normal: ['Normal'],
-  'Venta Web': ['Venta Web'],
-  'Convenio Marco': [...GRAFIAS_CONVENIO_MARCO],
-  'Licitaci\u00f3n': [...GRAFIAS_LICITACION],
+function normalizeCommissionType(value) {
+  return normalizeTipoVenta(value)
+    || tipoVentaFromSlug(value)
+    || (GRAFIAS_VENTA_DIRECTA.some(item => aliasKey(item) === aliasKey(value)) ? 'Venta Sala' : null)
 }
 
 function parseTipoVenta(value) {
   if (value === undefined || value === null || String(value).trim() === '') return undefined
   const raw = String(value).trim()
   if (aliasKey(raw) === aliasKey(TIPO_VENTA_TODOS)) return null
-  if (raw === LICITACION_MOJIBAKE) return 'Licitaci\u00f3n'
-  const tipo = TIPO_ALIASES.get(aliasKey(raw))
+  const tipo = normalizeCommissionType(raw)
   return tipo || { error: 'tipoVenta invalido' }
 }
 
 function normalizeOrdenTipoVenta(value) {
   if (!value) return null
-  if (value === LICITACION_MOJIBAKE) return 'Licitaci\u00f3n'
-  return TIPO_ALIASES.get(aliasKey(value)) || String(value)
+  return normalizeCommissionType(value) || String(value)
 }
 
 function buildDateRange(desde, hasta) {
@@ -109,8 +102,9 @@ function ruleInForce(rule, fecha) {
 }
 
 function rankRule(rule, vendedorId, tipoVenta) {
+  const ruleTipoVenta = rule.tipoVenta ? (normalizeCommissionType(rule.tipoVenta) || rule.tipoVenta) : null
   const vendedorRank = rule.vendedorId === vendedorId ? 2 : rule.vendedorId == null ? 1 : 0
-  const tipoRank = rule.tipoVenta === tipoVenta ? 2 : rule.tipoVenta == null ? 1 : 0
+  const tipoRank = ruleTipoVenta === tipoVenta ? 2 : ruleTipoVenta == null ? 1 : 0
   if (!vendedorRank || !tipoRank) return null
   return {
     vendedorRank,
@@ -206,7 +200,15 @@ function roundMoney(value) {
   return Math.round(Number(value || 0) * 100) / 100
 }
 
-function mapOrdenComision(orden, rules, cobradoByOrden = new Map(), multasByOrden = new Map(), ncByOrden = new Map()) {
+function mapOrdenComision(
+  orden,
+  rules,
+  cobradoByOrden = new Map(),
+  multasByOrden = new Map(),
+  ncByOrden = new Map(),
+  facturadoByOrden = new Set(),
+  vendedoresComisionables = new Map(),
+) {
   const tipoVenta = normalizeOrdenTipoVenta(orden.tipo)
   const totalVendido = roundMoney(computeTotal(orden.items || [], orden.descuentoPct, orden.cargos || [], orden.descuentoMonto))
   const totalCobrado = roundMoney(Math.max(0, Math.min(totalVendido, cobradoByOrden.get(orden.id) || 0)))
@@ -214,11 +216,13 @@ function mapOrdenComision(orden, rules, cobradoByOrden = new Map(), multasByOrde
   const totalMultas = roundMoney(multasByOrden.get(orden.id) || 0)
   const totalNC = roundMoney(ncByOrden.get(orden.id) || 0)
 
-  const rule = findApplicableRule(rules, {
+  const vendedor = vendedoresComisionables.get(orden.userId)
+  const vendedorComisionable = Boolean(vendedor)
+  const rule = vendedorComisionable ? findApplicableRule(rules, {
     vendedorId: orden.userId,
     tipoVenta,
     fecha: orden.createdAt,
-  })
+  }) : null
 
   // base of commission depends on rule's base (COBRADO vs VENDIDO)
   const baseMonto = rule?.base === 'COBRADO' ? totalCobrado : totalVendido
@@ -226,10 +230,20 @@ function mapOrdenComision(orden, rules, cobradoByOrden = new Map(), multasByOrde
 
   // Restricted eligibility check:
   // "una comisión solo debe pagarse si la venta está despachada, facturada y completamente pagada."
-  const isPaid = orden.estadoPago === 'Pagada'
-  const isDelivered = orden.estadoEntrega === 'Entregada'
-  const isBilled = Number(orden.facturado || 0) > 0
-  const isEligible = isPaid && isDelivered && isBilled
+  const estadoPago = normalizeEstadoPago(orden.estadoPago) || orden.estadoPago
+  const estadoEntrega = normalizeEstadoEntrega(orden.estadoEntrega) || orden.estadoEntrega
+  const isPaid = estadoPago === 'Pagada'
+  const isDelivered = estadoEntrega === 'Entregada'
+  const hasDte = facturadoByOrden.has(orden.id)
+  const hasLegacyFactura = Number(orden.facturado || 0) > 0
+  const isBilled = hasDte || hasLegacyFactura
+  const motivosNoElegible = [
+    ...(!vendedorComisionable ? ['sin vendedor comisionable asignado'] : []),
+    ...(!isPaid ? ['pago pendiente'] : []),
+    ...(!isDelivered ? ['entrega pendiente'] : []),
+    ...(!isBilled ? ['sin DTE o facturación trazable'] : []),
+  ]
+  const isEligible = motivosNoElegible.length === 0
 
   // Commission is only paid (calculated) if the order is eligible
   const commissionBase = isEligible ? baseAjustada : 0
@@ -241,25 +255,31 @@ function mapOrdenComision(orden, rules, cobradoByOrden = new Map(), multasByOrde
     fecha: orden.createdAt,
     tipoVenta,
     vendedorId: orden.userId,
-    vendedorNombre: orden.creadorNombre || orden.vendedor?.nombre || null,
+    vendedorNombre: vendedor?.nombre || orden.creadorNombre || null,
+    vendedorCuentaNombre: vendedor?.nombre || null,
+    creadorNombreLegacy: orden.creadorNombre || null,
+    vendedorComisionable,
     totalVendido,
     totalCobrado,
     totalMultas,
     totalNC,
     baseRegla: rule?.base || null,
-    baseComision: roundMoney(baseAjustada),
+    basePreElegibilidad: roundMoney(baseAjustada),
+    baseComision: roundMoney(commissionBase),
     comisionEstimada: roundMoney(commission.comisionEstimada),
     porcentajeAplicado: commission.porcentajeAplicado,
     tramoId: commission.tramoId,
     reglaId: rule?.id || null,
     reglaNombre: rule?.nombre || null,
     reglaScope: ruleScope(rule),
-    reglaTipoVenta: rule?.tipoVenta || null,
-    reglaTipoVentaLabel: rule?.tipoVenta || TIPO_VENTA_TODOS,
+    reglaTipoVenta: rule?.tipoVenta ? (normalizeCommissionType(rule.tipoVenta) || rule.tipoVenta) : null,
+    reglaTipoVentaLabel: rule?.tipoVenta ? (normalizeCommissionType(rule.tipoVenta) || rule.tipoVenta) : TIPO_VENTA_TODOS,
     reglaVendedorId: rule?.vendedorId || null,
     modalidad: rule?.modalidad || null,
-    estadoPago: orden.estadoPago,
-    estadoEntrega: orden.estadoEntrega,
+    estadoPago,
+    estadoEntrega,
+    estadoFactura: hasDte ? 'DTE vigente' : hasLegacyFactura ? 'Facturación legacy' : 'Sin factura trazable',
+    motivoNoElegible: motivosNoElegible.join(' · ') || null,
     isEligible,
     facturado: Number(orden.facturado || 0),
   }
@@ -275,6 +295,9 @@ function buildSummary(rows) {
     totalMultas: 0,
     totalNC: 0,
     totalComision: 0,
+    sinRegla: 0,
+    sinVendedorComisionable: 0,
+    noElegibles: 0,
   }
 
   for (const row of rows) {
@@ -283,6 +306,9 @@ function buildSummary(rows) {
     totales.totalMultas += row.totalMultas
     totales.totalNC += row.totalNC
     totales.totalComision += row.comisionEstimada
+    if (!row.reglaId) totales.sinRegla += 1
+    if (!row.vendedorComisionable) totales.sinVendedorComisionable += 1
+    if (!row.isEligible) totales.noElegibles += 1
     addSummary(byVendedor, row.vendedorNombre || String(row.vendedorId || ''), row)
     addSummary(byTipo, row.tipoVenta, row)
   }
@@ -312,7 +338,7 @@ export async function buildComisionesReporte(fastify, query = {}, { exportAll = 
   if (tipoVenta?.error) return tipoVenta
   const vendedorId = parsePositiveInt(query.vendedorId, 'vendedorId')
   if (vendedorId?.error) return vendedorId
-  const limit = exportAll ? parseLimit(query.limit, 5000, 10000) : parseLimit(query.limit)
+  const limit = exportAll ? parseLimit(query.limit, 10000, 10000) : parseLimit(query.limit)
   if (limit?.error) return limit
   const offset = exportAll ? 0 : parseOffset(query.offset)
   if (offset?.error) return offset
@@ -333,6 +359,9 @@ export async function buildComisionesReporte(fastify, query = {}, { exportAll = 
       skip: offset,
     }),
   ])
+  if (exportAll && total > limit) {
+    return { error: `La exportación supera el máximo seguro de ${limit.toLocaleString('es-CL')} ventas. Acota el período o los filtros antes de exportar.` }
+  }
 
   const ordenIds = ordenes.map(orden => orden.id)
   const vendedorIds = [...new Set(ordenes.map(orden => orden.userId).filter(Boolean))]
@@ -349,7 +378,7 @@ export async function buildComisionesReporte(fastify, query = {}, { exportAll = 
     if (cobroRange.lte) pagosWhere.fecha.lte = cobroRange.lte
   }
 
-  const [rules, pagos, multas, ncMovements] = await Promise.all([
+  const [rules, pagos, multas, ncMovements, facturas, vendedores] = await Promise.all([
     fastify.prisma.comisionRegla.findMany({
       where: {
         activo: true,
@@ -381,7 +410,18 @@ export async function buildComisionesReporte(fastify, query = {}, { exportAll = 
         eliminado: false,
       },
       select: { ordenId: true, monto: true, documento: true, tipoDocumento: true, numeroNCInterna: true }
-    })
+    }),
+    fastify.prisma.factDocumento.findMany({
+      where: {
+        ordenId: { in: ordenIds.length ? ordenIds : [-1] },
+        tipoDte: { in: [33, 39] },
+      },
+      select: { ordenId: true, estado: true },
+    }),
+    fastify.prisma.user.findMany({
+      where: { id: { in: vendedorIds.length ? vendedorIds : [-1] }, role: 'vendedor' },
+      select: { id: true, nombre: true },
+    }),
   ])
 
   const cobradoByOrden = new Map()
@@ -402,7 +442,21 @@ export async function buildComisionesReporte(fastify, query = {}, { exportAll = 
     ncByOrden.set(mov.ordenId, (ncByOrden.get(mov.ordenId) || 0) + Math.abs(Number(mov.monto || 0)))
   }
 
-  const rows = ordenes.map(orden => mapOrdenComision(orden, rules, cobradoByOrden, multasByOrden, ncByOrden))
+  const estadosDteComisionables = new Set(['emitido', 'enviado', 'aceptado'])
+  const facturadoByOrden = new Set(facturas
+    .filter(documento => estadosDteComisionables.has(String(documento.estado || '').toLowerCase()))
+    .map(documento => documento.ordenId)
+    .filter(Boolean))
+  const vendedoresComisionables = new Map(vendedores.map(vendedor => [vendedor.id, vendedor]))
+  const rows = ordenes.map(orden => mapOrdenComision(
+    orden,
+    rules,
+    cobradoByOrden,
+    multasByOrden,
+    ncByOrden,
+    facturadoByOrden,
+    vendedoresComisionables,
+  ))
   const resumen = buildSummary(rows)
 
   return {
@@ -421,6 +475,7 @@ export async function buildComisionesReporte(fastify, query = {}, { exportAll = 
       limit,
       offset,
     },
+    resumenAlcance: exportAll ? 'filtrado_completo' : 'pagina_actual',
     ...resumen,
     rows,
   }
@@ -451,6 +506,7 @@ export function registerComisionesReportRoutes(fastify) {
       { key: 'fecha', label: 'Fecha' },
       { key: 'tipoVenta', label: 'Tipo venta' },
       { key: 'vendedorNombre', label: 'Vendedor' },
+      { key: 'vendedorComisionable', label: 'Vendedor comisionable' },
       { key: 'totalVendido', label: 'Total vendido' },
       { key: 'totalCobrado', label: 'Total cobrado' },
       { key: 'totalMultas', label: 'Multas' },
@@ -463,7 +519,9 @@ export function registerComisionesReportRoutes(fastify) {
       { key: 'reglaScope', label: 'Alcance regla' },
       { key: 'estadoPago', label: 'Estado pago' },
       { key: 'estadoEntrega', label: 'Estado entrega' },
+      { key: 'estadoFactura', label: 'Estado factura' },
       { key: 'isEligible', label: 'Elegible' },
+      { key: 'motivoNoElegible', label: 'Motivo no elegible' },
     ],
     })
   })

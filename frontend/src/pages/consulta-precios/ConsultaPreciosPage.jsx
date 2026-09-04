@@ -196,95 +196,93 @@ export default function ConsultaPreciosPage() {
       </div>
 
       <section style={panelStyle}>
-        <div style={toolbarStyle}>
-          <div style={modeBarStyle}>
-            {SEARCH_MODES.map(item => (
-              <button key={item.id} onClick={() => changeMode(item.id)} style={modeButtonStyle(mode === item.id)}>
-                {item.label}
-              </button>
-            ))}
-          </div>
-
-          <div style={filtersStyle}>
-            <select value={bodega} onChange={e => { setBodega(e.target.value); setPage(1) }} style={selectStyle}>
-              <option value="">Todas las bodegas</option>
-              <option value="Inventario">Inventario</option>
-              <option value="Taller">Taller</option>
-            </select>
-
-            {mode !== 'proveedor' && (
-              <select value={proveedorId} onChange={e => { setProveedorId(e.target.value); setPage(1) }} style={{ ...selectStyle, minWidth: 240 }}>
-                <option value="">Todos los proveedores</option>
-                {(proveedores.items || []).map(p => (
-                  <option key={p.id} value={p.id}>{p.nombre}{p.rut ? ` (${p.rut})` : ''}</option>
-                ))}
-              </select>
-            )}
-
-            {mode !== 'categoria' && (
-              <>
-                <select value={categoriaId} onChange={e => { setCategoriaId(e.target.value); setSubcategoriaId(''); setPage(1) }} style={{ ...selectStyle, minWidth: 200 }}>
-                  <option value="">Todas las categorias</option>
-                  {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                </select>
-                <select value={subcategoriaId} onChange={e => { setSubcategoriaId(e.target.value); setPage(1) }} style={{ ...selectStyle, minWidth: 200 }} disabled={!subcategorias.length}>
-                  <option value="">Todas las subcategorias</option>
-                  {subcategorias.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-                </select>
-              </>
-            )}
-
-            {mode === 'proveedor' ? (
-              <select value={proveedorId} onChange={e => { setProveedorId(e.target.value); setPage(1) }} style={{ ...selectStyle, minWidth: 260 }}>
-                <option value="">Proveedor</option>
-                {(proveedores.items || []).map(p => (
-                  <option key={p.id} value={p.id}>{p.nombre}{p.rut ? ` (${p.rut})` : ''}</option>
-                ))}
-              </select>
-            ) : mode === 'categoria' ? (
-              <>
-                <select value={categoriaId} onChange={e => { setCategoriaId(e.target.value); setSubcategoriaId(''); setPage(1) }} style={{ ...selectStyle, minWidth: 220 }}>
-                  <option value="">Categoría</option>
-                  {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                </select>
-                <select value={subcategoriaId} onChange={e => { setSubcategoriaId(e.target.value); setPage(1) }} style={{ ...selectStyle, minWidth: 220 }} disabled={!subcategorias.length}>
-                  <option value="">Subcategoría</option>
-                  {subcategorias.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-                </select>
-              </>
-            ) : (
-              <input
-                autoFocus
-                value={term}
-                onChange={e => { setTerm(e.target.value); setPage(1) }}
-                placeholder={mode === 'general' ? 'Buscar producto...' : SEARCH_MODES.find(m => m.id === mode)?.label}
-                style={inputStyle}
-              />
-            )}
-
-            <Btn variant="ghost" icon="x" size="sm" onClick={clearFilters}>Limpiar</Btn>
-          </div>
-        </div>
-
         {total > (data.limit ?? 500) && (
           <div style={noticeStyle}>
             Mostrando {items.length.toLocaleString('es-CL')} de {total.toLocaleString('es-CL')}. Ajuste los filtros para acotar.
           </div>
         )}
 
-        {isLoading
-          ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando productos...</div>
-          : <Table
-              columns={cols}
-              rows={items}
-              emptyMessage="No hay productos con ese criterio"
-              onRowDoubleClick={canEditPrecio ? row => navigate('/bodega/' + row.id + '/editar') : undefined}
-              autoFocus
-              ariaLabel="Consulta de precios de productos"
-              getRowKey={row => row.id}
-              columnPrefsKey="consulta-precios"
-            />
-        }
+        <Table
+          columns={cols}
+          rows={isLoading ? [] : items}
+          emptyMessage={isLoading ? 'Cargando productos...' : 'No hay productos con ese criterio'}
+          onRowDoubleClick={canEditPrecio ? row => navigate('/bodega/' + row.id + '/editar') : undefined}
+          autoFocus
+          ariaLabel="Consulta de precios de productos"
+          getRowKey={row => row.id}
+          columnPrefsKey="consulta-precios"
+          toolbarExtra={
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+              <div style={modeBarStyle}>
+                {SEARCH_MODES.map(item => (
+                  <button key={item.id} onClick={() => changeMode(item.id)} style={modeButtonStyle(mode === item.id)}>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              <div style={filtersStyle}>
+                <select value={bodega} onChange={e => { setBodega(e.target.value); setPage(1) }} style={selectStyle}>
+                  <option value="">Todas las bodegas</option>
+                  <option value="Inventario">Inventario</option>
+                  <option value="Taller">Taller</option>
+                </select>
+
+                {mode !== 'proveedor' && (
+                  <select value={proveedorId} onChange={e => { setProveedorId(e.target.value); setPage(1) }} style={{ ...selectStyle, minWidth: 200 }}>
+                    <option value="">Todos los proveedores</option>
+                    {(proveedores.items || []).map(p => (
+                      <option key={p.id} value={p.id}>{p.nombre}{p.rut ? ` (${p.rut})` : ''}</option>
+                    ))}
+                  </select>
+                )}
+
+                {mode !== 'categoria' && (
+                  <>
+                    <select value={categoriaId} onChange={e => { setCategoriaId(e.target.value); setSubcategoriaId(''); setPage(1) }} style={{ ...selectStyle, minWidth: 170 }}>
+                      <option value="">Todas las categorias</option>
+                      {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                    <select value={subcategoriaId} onChange={e => { setSubcategoriaId(e.target.value); setPage(1) }} style={{ ...selectStyle, minWidth: 170 }} disabled={!subcategorias.length}>
+                      <option value="">Todas las subcategorias</option>
+                      {subcategorias.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                    </select>
+                  </>
+                )}
+
+                {mode === 'proveedor' ? (
+                  <select value={proveedorId} onChange={e => { setProveedorId(e.target.value); setPage(1) }} style={{ ...selectStyle, minWidth: 220 }}>
+                    <option value="">Proveedor</option>
+                    {(proveedores.items || []).map(p => (
+                      <option key={p.id} value={p.id}>{p.nombre}{p.rut ? ` (${p.rut})` : ''}</option>
+                    ))}
+                  </select>
+                ) : mode === 'categoria' ? (
+                  <>
+                    <select value={categoriaId} onChange={e => { setCategoriaId(e.target.value); setSubcategoriaId(''); setPage(1) }} style={{ ...selectStyle, minWidth: 190 }}>
+                      <option value="">Categoría</option>
+                      {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                    <select value={subcategoriaId} onChange={e => { setSubcategoriaId(e.target.value); setPage(1) }} style={{ ...selectStyle, minWidth: 190 }} disabled={!subcategorias.length}>
+                      <option value="">Subcategoría</option>
+                      {subcategorias.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                    </select>
+                  </>
+                ) : (
+                  <input
+                    autoFocus
+                    value={term}
+                    onChange={e => { setTerm(e.target.value); setPage(1) }}
+                    placeholder={mode === 'general' ? 'Buscar producto...' : SEARCH_MODES.find(m => m.id === mode)?.label}
+                    style={inputStyle}
+                  />
+                )}
+
+                <Btn variant="ghost" icon="x" size="sm" onClick={clearFilters}>Limpiar</Btn>
+              </div>
+            </div>
+          }
+        />
         <Pager
           page={data.page ?? page}
           pages={data.pages ?? 1}
@@ -301,11 +299,10 @@ export default function ConsultaPreciosPage() {
 
 const imgStyle = { width: 42, height: 42, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }
 const panelStyle = { background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }
-const toolbarStyle = { padding: '14px 16px', borderBottom: '1px solid var(--border)' }
-const modeBarStyle = { display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 12 }
+const modeBarStyle = { display: 'flex', gap: 4, flexWrap: 'wrap' }
 const filtersStyle = { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }
-const inputStyle = { width: 320, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', fontFamily: 'inherit', fontSize: 13, color: 'var(--text-1)', outline: 'none' }
-const selectStyle = { padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', fontFamily: 'inherit', fontSize: 13, color: 'var(--text-1)', cursor: 'pointer' }
+const inputStyle = { width: 260, height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', fontFamily: 'inherit', fontSize: 12, color: 'var(--text-1)', outline: 'none' }
+const selectStyle = { height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', fontFamily: 'inherit', fontSize: 12, color: 'var(--text-1)', cursor: 'pointer' }
 const noticeStyle = { padding: '8px 16px', background: 'var(--amber-bg, #fffbeb)', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text-2)' }
 const priceEditStyle = { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, minWidth: 132 }
 const priceInputStyle = { width: 94, padding: '5px 7px', borderRadius: 6, border: '1px solid var(--border)', fontFamily: "'DM Mono', monospace", fontSize: 12, textAlign: 'right' }

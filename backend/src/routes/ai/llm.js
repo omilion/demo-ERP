@@ -2,8 +2,11 @@ import Anthropic from '@anthropic-ai/sdk'
 
 // Config desde entorno (ver .env / ecosystem.config.cjs en el VPS).
 export const AI_MODEL = process.env.RAG_LLM_MODEL || 'claude-opus-4-8'
-export const AI_MAX_TOKENS = Number(process.env.RAG_LLM_MAX_TOKENS || 8000)
+// Un turno operativo no necesita 8k tokens. Este máximo también protege de
+// configuraciones de entorno sobredimensionadas.
+export const AI_MAX_TOKENS = Math.min(Math.max(Number(process.env.RAG_LLM_MAX_TOKENS || 4096), 256), 4096)
 export const AI_EFFORT = process.env.RAG_LLM_EFFORT || 'high'
+export const AI_REQUEST_TIMEOUT_MS = Math.min(Math.max(Number(process.env.AI_REQUEST_TIMEOUT_MS || 120_000), 10_000), 300_000)
 
 let client = null
 

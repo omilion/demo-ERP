@@ -5,7 +5,7 @@ export const useStockIngresos = (params = {}) =>
   useQuery({
     queryKey: ['stock-ingresos', params],
     queryFn: () => api.get('/stock-ingresos', { params }).then(r => r.data),
-    placeholderData: { items: [], total: 0, limit: 100 },
+    placeholderData: { items: [], total: 0, limit: 100, stats: { montoTotal: 0, pendientesStock: 0 } },
     staleTime: 60_000,
   })
 

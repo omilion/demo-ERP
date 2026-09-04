@@ -5,13 +5,14 @@ const cleanParams = (params = {}) => Object.fromEntries(
   Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
 )
 
-export const useDespachos = (params = {}) => {
+export const useDespachos = (params = {}, options = {}) => {
   const queryParams = cleanParams(params)
   return useQuery({
     queryKey: ['despachos', queryParams],
     queryFn: () => api.get('/despachos', { params: queryParams }).then(r => r.data),
     placeholderData: { items: [], total: 0, limit: 100 },
     staleTime: 60_000,
+    ...options,
   })
 }
 
@@ -25,14 +26,27 @@ export const useDespachoMatriz = (params = {}) => {
   })
 }
 
-export const useDespachoConsolidadoTaller = (enabled = true) =>
-  useQuery({
-    queryKey: ['despachos', 'consolidado-taller'],
-    queryFn: () => api.get('/despachos/consolidado-taller').then(r => r.data),
-    enabled,
+export const useDespachoConsolidadoTaller = (params = {}, options = {}) => {
+  const queryParams = cleanParams(params)
+  return useQuery({
+    queryKey: ['despachos', 'consolidado-taller', queryParams],
+    queryFn: () => api.get('/despachos/consolidado-taller', { params: queryParams }).then(r => r.data),
     placeholderData: { items: [], total: 0 },
     staleTime: 30_000,
+    ...options,
   })
+}
+
+export const useDespachoColaOperativa = (params = {}, options = {}) => {
+  const queryParams = cleanParams(params)
+  return useQuery({
+    queryKey: ['despachos', 'cola-operativa', queryParams],
+    queryFn: () => api.get('/despachos/cola-operativa', { params: queryParams }).then(r => r.data),
+    placeholderData: { items: [] },
+    staleTime: 15_000,
+    ...options,
+  })
+}
 
 export const useDespacho = (id) =>
   useQuery({
@@ -74,7 +88,10 @@ export const useCreateDespacho = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data) => api.post('/despachos', data).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['despachos'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['despachos'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+    },
   })
 }
 
@@ -82,7 +99,10 @@ export const useUpdateDespacho = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, data }) => api.put(`/despachos/${id}`, data).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['despachos'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['despachos'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+    },
   })
 }
 
@@ -114,6 +134,19 @@ export const useUpdateDespachoPacking = () => {
   })
 }
 
+export const useConfirmarPicking = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ordenId, ...data }) => api.put(`/despachos/ordenes/${ordenId}/picking`, data).then(r => r.data),
+    onSuccess: (_, { ordenId }) => {
+      qc.invalidateQueries({ queryKey: ['despachos'] })
+      qc.invalidateQueries({ queryKey: ['despachos', 'packing', ordenId] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['matriz-ventas'] })
+    },
+  })
+}
+
 export const useDeleteDespacho = () => {
   const qc = useQueryClient()
   return useMutation({
@@ -126,13 +159,14 @@ export const useDeleteDespacho = () => {
   })
 }
 
-export const useGuias = (params = {}) => {
+export const useGuias = (params = {}, options = {}) => {
   const queryParams = cleanParams(params)
   return useQuery({
     queryKey: ['guias', queryParams],
     queryFn: () => api.get('/despachos/guias/list', { params: queryParams }).then(r => r.data),
     placeholderData: { items: [], total: 0, limit: 100 },
     staleTime: 60_000,
+    ...options,
   })
 }
 

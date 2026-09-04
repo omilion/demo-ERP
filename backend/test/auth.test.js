@@ -122,6 +122,41 @@ describe('JWT scope separation', () => {
   })
 })
 
+describe('Revocación inmediata de acceso', () => {
+  let app
+  let user
+
+  beforeAll(async () => {
+    app = buildApp({ logger: false })
+    await app.ready()
+    user = await app.prisma.user.create({
+      data: {
+        email: `revocacion-${Date.now()}@plastimar.cl`,
+        passwordHash: 'x',
+        role: 'vendedor',
+        nombre: 'Usuario de revocación',
+        activo: true,
+      },
+    })
+  })
+
+  afterAll(async () => {
+    await app?.prisma?.session.deleteMany({ where: { userId: user?.id } }).catch(() => {})
+    await app?.prisma?.user.delete({ where: { id: user?.id } }).catch(() => {})
+    await app?.close()
+  })
+
+  it('rechaza un access token vigente tras cambiar la versión de autorización', async () => {
+    const token = app.jwt.sign(createErpAccessTokenPayload(user))
+    const before = await app.inject({ method: 'GET', url: '/api/ai/status', headers: { authorization: `Bearer ${token}` } })
+    expect(before.statusCode).toBe(200)
+
+    await app.prisma.user.update({ where: { id: user.id }, data: { authVersion: { increment: 1 } } })
+    const after = await app.inject({ method: 'GET', url: '/api/ai/status', headers: { authorization: `Bearer ${token}` } })
+    expect(after.statusCode).toBe(401)
+  })
+})
+
 describe('POST /api/usuarios-web/login', () => {
   let app, email
 

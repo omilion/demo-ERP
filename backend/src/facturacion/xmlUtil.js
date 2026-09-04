@@ -121,5 +121,8 @@ export const isValidRut = (value) => {
   const rut = normalizeRut(value);
   if (!rut) return false;
   const [body, dv] = rut.split('-');
-  return rutDv(body) === dv;
+  // El XSD del SII admite como máximo ocho dígitos en RUTRecep (más el
+  // guion y DV). El algoritmo módulo 11 por sí solo acepta cuerpos de nueve
+  // dígitos, pero esos XML se rechazan después de consumir el folio.
+  return /^\d{1,8}$/.test(body) && rutDv(body) === dv;
 };

@@ -1,3 +1,5 @@
+import { getAiLimitConfig } from '../ai/limits.js'
+
 export function estimateCost(modelName, tokenUsage) {
   if (!tokenUsage) return 0
   const input = Number(tokenUsage.input_tokens || 0)
@@ -28,6 +30,7 @@ export function estimateCost(modelName, tokenUsage) {
 
 export default async function aiBalanceRoutes(fastify) {
   const adminRead = fastify.rbac('admin', 'read', { allowExtra: false })
+  const limits = getAiLimitConfig()
   
   fastify.get('/ai-balance', {
     preHandler: [fastify.authenticate, adminRead]
@@ -174,6 +177,12 @@ export default async function aiBalanceRoutes(fastify) {
     }))
     
     return {
+      limits: {
+        maxQueriesPerDay: limits.maxQueriesPerDay,
+        maxRequestsPerWindow: limits.maxRequestsPerWindow,
+        windowSeconds: Math.round(limits.windowMs / 1_000),
+        maxConcurrentRequests: limits.maxConcurrentRequests,
+      },
       summary: {
         totalQueries,
         totalDocumentos,
