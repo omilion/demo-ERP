@@ -5,6 +5,7 @@ import { useDashboardStats } from '../../api/dashboard'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 import { useCrmPendientesHoy } from '../../api/crm'
+import { useRrhhOperativo } from '../../api/rrhh'
 import { NotificacionesBell } from '../../components/NotificacionesBell'
 
 const TALLER_ICONS = { Espumas: 'layers', Confecciones: 'scissors', Madera: 'box', Externo: 'truck' }
@@ -98,17 +99,359 @@ function HeaderUtilityCluster() {
   )
 }
 
-function QuickAccessTile({ label, icon, tone = 'blue', badge, onClick }) {
-  const [hov, setHov] = useState(false)
-  const colors = {
-    red: { bg: '#dc4f4f', hover: '#d94747', glow: 'oklch(0.54 0.13 25 / 0.20)' },
-    green: { bg: '#58b957', hover: '#51ae50', glow: 'oklch(0.54 0.11 150 / 0.20)' },
-    blue: { bg: '#337fb9', hover: '#3078af', glow: 'oklch(0.50 0.11 240 / 0.20)' },
-    cyan: { bg: '#56bed9', hover: '#50b5d0', glow: 'oklch(0.62 0.10 215 / 0.20)' },
-    amber: { bg: '#f3b247', hover: '#e7a941', glow: 'oklch(0.66 0.12 70 / 0.20)' },
-    purple: { bg: '#8e24aa', hover: '#8623a0', glow: 'oklch(0.48 0.13 315 / 0.20)' },
+// Las agendas de los distintos roles son la misma pieza: un titulo, un par de
+// contadores, una lista corta donde cada fila abre su ficha, y un pie que lleva
+// al listado completo. Se comparte la estructura para que un cambio de forma no
+// haya que repetirlo en cada rol.
+function AgendaCard({ titulo, badges = [], filas, vacio, cargando, pie, onPie }) {
+  return (
+    <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 22, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--text-1)' }}>{titulo}</h2>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {badges.map(b => <Badge key={b.texto} tone={b.tone}>{b.texto}</Badge>)}
+        </div>
+      </div>
+
+      {cargando && <div style={{ padding: '18px 16px', fontSize: 13, color: 'var(--text-3)' }}>Cargando…</div>}
+      {!cargando && filas.length === 0 && (
+        <div style={{ padding: '18px 16px', fontSize: 13, color: 'var(--text-3)' }}>{vacio}</div>
+      )}
+
+      {filas.map(fila => (
+        <button
+          key={fila.key}
+          type="button"
+          onClick={fila.onClick}
+          style={{
+            width: '100%', display: 'grid', gridTemplateColumns: '4px minmax(0, 1fr) auto',
+            alignItems: 'center', gap: 12, padding: '10px 16px', border: 0,
+            borderBottom: '1px solid var(--border)', background: 'transparent',
+            cursor: 'pointer', textAlign: 'left', font: 'inherit',
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = 'var(--green-50)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+        >
+          <span style={{ alignSelf: 'stretch', borderRadius: 99, background: fila.urgente ? 'var(--red)' : 'var(--amber)' }} />
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-1)', overflowWrap: 'anywhere' }}>{fila.titulo}</span>
+            <span style={{ display: 'block', fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{fila.detalle}</span>
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            {fila.badge && <Badge tone={fila.badgeTone || 'red'}>{fila.badge}</Badge>}
+            <span style={{ color: 'var(--green-600)' }}><Icon name={fila.icon || 'chevronRight'} size={15} /></span>
+          </span>
+        </button>
+      ))}
+
+      {pie && (
+        <div style={{ padding: '8px 16px 12px' }}>
+          <button type="button" onClick={onPie} style={{ fontSize: 12, color: 'var(--green-600)', fontWeight: 600, background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>
+            {pie}
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+// Dias transcurridos desde una fecha, con el reloj fijado por quien llama para
+// no leerlo durante el render.
+function diasDesde(fecha, ahora) {
+  if (!fecha) return 0
+  return Math.max(0, Math.floor((ahora - new Date(fecha).getTime()) / 86_400_000))
+}
+
+// Un contador de "12 pendientes" no dice a quien llamar. Esta agenda lista los
+// leads con nombre y telefono, vencidos primero, y cada fila abre su gestion:
+// el vendedor entra al dia sabiendo su primera llamada.
+function AgendaCrmCard({ pendientes, isLoading, onAbrirLead, onVerTodo }) {
+  const vencidas = pendientes?.vencidas ?? []
+  const hoy = pendientes?.hoy ?? []
+  const resumen = pendientes?.resumen ?? { vencidas: 0, hoy: 0, total: 0 }
+  const filas = [
+    ...vencidas.map(lead => ({ lead, atrasada: true })),
+    ...hoy.map(lead => ({ lead, atrasada: false })),
+  ]
+
+  // Se fija al montar: leer el reloj durante el render hace que el mismo dato
+  // cambie entre renders sin que cambien los datos.
+  const [ahora] = useState(() => Date.now())
+  const diasDeAtraso = fecha => {
+    if (!fecha) return 0
+    const dia = 24 * 60 * 60 * 1000
+    return Math.max(0, Math.floor((ahora - new Date(fecha).getTime()) / dia))
   }
-  const palette = colors[tone] || colors.blue
+
+  return (
+    <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 22, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--text-1)' }}>A quién contactar hoy</h2>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {resumen.vencidas > 0 && <Badge tone="red">{resumen.vencidas} atrasada{resumen.vencidas !== 1 ? 's' : ''}</Badge>}
+          {resumen.hoy > 0 && <Badge tone="amber">{resumen.hoy} para hoy</Badge>}
+          {!isLoading && resumen.total === 0 && <Badge tone="neutral">Al día</Badge>}
+        </div>
+      </div>
+
+      {isLoading && <div style={{ padding: '18px 16px', fontSize: 13, color: 'var(--text-3)' }}>Cargando tu agenda…</div>}
+
+      {!isLoading && filas.length === 0 && (
+        <div style={{ padding: '18px 16px', fontSize: 13, color: 'var(--text-3)' }}>
+          No tienes gestiones pendientes. Buen momento para prospectar.
+        </div>
+      )}
+
+      {filas.map(({ lead, atrasada }) => {
+        const dias = diasDeAtraso(lead.fechaProximo)
+        return (
+          <button
+            key={lead.id}
+            type="button"
+            onClick={() => onAbrirLead(lead.id)}
+            style={{
+              width: '100%', display: 'grid', gridTemplateColumns: '4px minmax(0, 1fr) auto',
+              alignItems: 'center', gap: 12, padding: '10px 16px', border: 0,
+              borderBottom: '1px solid var(--border)', background: 'transparent',
+              cursor: 'pointer', textAlign: 'left', font: 'inherit',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--green-50)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          >
+            <span style={{ alignSelf: 'stretch', borderRadius: 99, background: atrasada ? 'var(--red)' : 'var(--amber)' }} />
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-1)', overflowWrap: 'anywhere' }}>
+                {lead.rsocial || lead.nombre || lead.rut || 'Cliente sin nombre'}
+              </span>
+              <span style={{ display: 'block', fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+                {lead.telefono || 'Sin teléfono'}
+                {lead.ncotizacion ? ` · Cot. ${lead.ncotizacion}` : ''}
+                {atrasada && dias > 0 ? ` · ${dias} día${dias !== 1 ? 's' : ''} de atraso` : ''}
+              </span>
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              {String(lead.prioridad || '').toLowerCase() === 'alta' && <Badge tone="red">Alta</Badge>}
+              <span style={{ color: 'var(--green-600)' }}><Icon name="phone" size={15} /></span>
+            </span>
+          </button>
+        )
+      })}
+
+      <div style={{ padding: '8px 16px 12px' }}>
+        <button type="button" onClick={onVerTodo} style={{ fontSize: 12, color: 'var(--green-600)', fontWeight: 600, background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>
+          Ver todo el CRM →
+        </button>
+      </div>
+    </section>
+  )
+}
+
+// El taller sabia cuantas OT tenia pendientes, no cual tomar primero.
+//
+// Se muestra el compromiso cuando existe y, si no, hace cuanto espera la OT:
+// hoy ninguna tiene fecha cargada, y una tarjeta que solo mirara el compromiso
+// se veria vacia teniendo 45 ordenes en cola.
+function TallerAgendaCard({ odts, isLoading, onAbrir, onVerTodo }) {
+  const [ahora] = useState(() => Date.now())
+  const atrasadas = odts.filter(o => (o.fechaEntregaCompromiso || o.plazo) && diasDesde(o.fechaEntregaCompromiso || o.plazo, ahora) > 0).length
+  const filas = odts.map(odt => {
+    const compromiso = odt.fechaEntregaCompromiso || odt.plazo
+    const diasAtraso = compromiso ? diasDesde(compromiso, ahora) : 0
+    const enCola = diasDesde(odt.createdAt, ahora)
+    const alta = String(odt.prioridad || '').toLowerCase() === 'alta'
+    return {
+      key: odt.id,
+      urgente: alta || diasAtraso > 0,
+      titulo: odt.clienteNombre || `OT ${odt.legacyNInterno ?? odt.id}`,
+      detalle: [
+        odt.tipo || 'Sin taller',
+        odt.estado,
+        compromiso
+          ? (diasAtraso > 0 ? `${diasAtraso} día${diasAtraso !== 1 ? 's' : ''} de atraso` : 'vence hoy')
+          : `${enCola} día${enCola !== 1 ? 's' : ''} en cola`,
+      ].filter(Boolean).join(' · '),
+      badge: diasAtraso > 0 ? 'Atrasada' : alta ? 'Prioritaria' : null,
+      badgeTone: diasAtraso > 0 ? 'red' : 'amber',
+      icon: 'wrench',
+      onClick: () => onAbrir(odt.id),
+    }
+  })
+  return (
+    <AgendaCard
+      titulo="Qué trabajar primero"
+      badges={[
+        ...(atrasadas > 0 ? [{ texto: `${atrasadas} atrasada${atrasadas !== 1 ? 's' : ''}`, tone: 'red' }] : []),
+        ...(!isLoading && odts.length === 0 ? [{ texto: 'Sin OT en cola', tone: 'neutral' }] : []),
+      ]}
+      filas={filas}
+      vacio="No hay órdenes de trabajo pendientes."
+      cargando={isLoading}
+      pie="Ver todas las OT →"
+      onPie={onVerTodo}
+    />
+  )
+}
+
+// Bodega veia "75 pendientes de entrega" sin saber cual sacar primero.
+function EntregasAgendaCard({ entregas, isLoading, onAbrir, onVerTodo }) {
+  const [ahora] = useState(() => Date.now())
+  const filas = entregas.map(orden => {
+    const dias = diasDesde(orden.createdAt, ahora)
+    return {
+      key: orden.id,
+      urgente: dias > 7,
+      titulo: `N° ${orden.nInterno ?? orden.id}${orden.rutCliente ? ` · ${orden.rutCliente}` : ''}`,
+      detalle: `${dias} día${dias !== 1 ? 's' : ''} esperando${orden.estadoPago === 'No pagada' ? ' · sin pagar' : ''}`,
+      badge: orden.estadoPago === 'No pagada' ? 'No pagada' : null,
+      badgeTone: 'amber',
+      icon: 'truck',
+      onClick: () => onAbrir(orden.id),
+    }
+  })
+  return (
+    <AgendaCard
+      titulo="Qué despachar primero"
+      badges={filas.length ? [{ texto: 'Las más antiguas', tone: 'neutral' }] : []}
+      filas={filas}
+      vacio="No hay entregas pendientes."
+      cargando={isLoading}
+      pie="Ver todas las entregas →"
+      onPie={onVerTodo}
+    />
+  )
+}
+
+// RRHH tenia los conteos pero no los nombres. Vienen del modulo de personal
+// (/rrhh/operativo), donde los datos personales si corresponden: el bloque del
+// tablero se mantiene como conteos.
+function RrhhAgendaCard({ operativo, isLoading, onAbrir, onVerTodo }) {
+  const [ahora] = useState(() => Date.now())
+  const contratos = operativo?.contratosPorVencer ?? []
+  const licencias = operativo?.licenciasActivas ?? []
+  const filas = [
+    ...contratos.map(item => {
+      const dias = -diasDesde(item.termino, ahora)
+      return {
+        key: `c-${item.id}`,
+        urgente: dias <= 7,
+        titulo: item.trabajador?.nombre || 'Trabajador',
+        detalle: `Contrato vence ${item.termino ? new Date(item.termino).toLocaleDateString('es-CL') : 'sin fecha'}${item.trabajador?.cargo ? ` · ${item.trabajador.cargo}` : ''}`,
+        badge: 'Contrato',
+        badgeTone: dias <= 7 ? 'red' : 'amber',
+        icon: 'fileText',
+        onClick: () => onAbrir(item.trabajador?.id),
+      }
+    }),
+    ...licencias.map(item => ({
+      key: `l-${item.id}`,
+      urgente: false,
+      titulo: item.trabajador?.nombre || 'Trabajador',
+      detalle: `Con licencia hasta ${item.termino ? new Date(item.termino).toLocaleDateString('es-CL') : 'sin fecha'}`,
+      badge: 'Ausente',
+      badgeTone: 'amber',
+      icon: 'users',
+      onClick: () => onAbrir(item.trabajador?.id),
+    })),
+  ].slice(0, 8)
+
+  return (
+    <AgendaCard
+      titulo="Personal que requiere gestión"
+      badges={[
+        ...(contratos.length ? [{ texto: `${contratos.length} por vencer`, tone: 'amber' }] : []),
+        ...(licencias.length ? [{ texto: `${licencias.length} con licencia`, tone: 'neutral' }] : []),
+        ...(!isLoading && !filas.length ? [{ texto: 'Sin pendientes', tone: 'neutral' }] : []),
+      ]}
+      filas={filas}
+      vacio="No hay contratos por vencer ni licencias activas."
+      cargando={isLoading}
+      pie="Ver todo el personal →"
+      onPie={onVerTodo}
+    />
+  )
+}
+
+// El coordinador responde por el avance del equipo, no solo por el suyo. El
+// backend entrega este bloque unicamente a quien tiene `equipo_comercial`
+// (backend/src/routes/dashboard/stats.js), asi que aqui no hay que volver a
+// decidir quien lo ve: si llega, se muestra.
+function EquipoComercialCard({ equipo, isLoading, onVerDetalle }) {
+  const vendedores = equipo?.vendedores ?? []
+  const total = equipo?.total ?? 0
+  const fmt = monto => monto.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })
+  const lider = vendedores[0]?.total || 0
+  const mes = new Date().toLocaleDateString('es-CL', { month: 'long' })
+
+  return (
+    <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 22, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--text-1)' }}>
+          Equipo comercial · {mes}
+        </h2>
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+            hoy {isLoading ? '…' : fmt(equipo?.totalHoy ?? 0)}
+          </span>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 14, fontWeight: 700, color: 'var(--green-600)' }}>
+            {isLoading ? '…' : fmt(total)}
+          </span>
+        </span>
+      </div>
+
+      {!isLoading && vendedores.length === 0 && (
+        <div style={{ padding: '18px 16px', fontSize: 13, color: 'var(--text-3)' }}>
+          Todavía no hay ventas registradas este mes.
+        </div>
+      )}
+
+      <div style={{ padding: '6px 8px' }}>
+        {vendedores.map(v => {
+          const pct = lider > 0 ? Math.round((v.total / lider) * 100) : 0
+          return (
+            <div key={v.vendedor} style={{ padding: '8px 8px 10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, marginBottom: 5 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', overflowWrap: 'anywhere' }}>{v.vendedor}</span>
+                <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexShrink: 0 }}>
+                  {/* Lo que interesa al coordinador es quien esta parado hoy,
+                      no solo quien acumula mas en el mes. */}
+                  {v.ordenesHoy > 0
+                    ? <Badge tone="green">hoy {fmt(v.hoy)}</Badge>
+                    : <Badge tone="neutral">sin venta hoy</Badge>}
+                  <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{v.ordenes.toLocaleString('es-CL')} {v.ordenes === 1 ? 'venta' : 'ventas'}</span>
+                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>{fmt(v.total)}</span>
+                </span>
+              </div>
+              <div style={{ height: 6, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: pct + '%', background: 'var(--green-600)', borderRadius: 99, transition: 'width 0.4s ease' }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={{ padding: '8px 16px 12px' }}>
+        <button type="button" onClick={onVerDetalle} style={{ fontSize: 12, color: 'var(--green-600)', fontWeight: 600, background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>
+          Ver reporte comercial completo →
+        </button>
+      </div>
+    </section>
+  )
+}
+
+// Los accesos cuelgan de su modulo, asi que repiten su color pero apagado: si
+// compitieran en saturacion con el boton principal, la columna dejaria de
+// leerse como "un modulo y lo que hay dentro".
+const MODULE_TINTS = {
+  green: { bg: '#eaf3ef', hover: '#dfeee7', fg: '#0b5138', border: '#cbe3d8' },
+  blue:  { bg: '#e8f1f9', hover: '#dbe9f6', fg: '#11507f', border: '#c9dff1' },
+  amber: { bg: '#fdf3e2', hover: '#fbebd2', fg: '#8a5a10', border: '#f3dfbc' },
+  slate: { bg: '#eef1f5', hover: '#e4e9ef', fg: '#33415a', border: '#d8dfe8' },
+  red:   { bg: '#fceded', hover: '#fae2e2', fg: '#93231f', border: '#f3d3d3' },
+}
+
+function SubAccessTile({ label, icon, badge, tone = 'green', onClick }) {
+  const [hov, setHov] = useState(false)
+  const palette = MODULE_TINTS[tone] || MODULE_TINTS.green
   return (
     <button
       type="button"
@@ -116,53 +459,39 @@ function QuickAccessTile({ label, icon, tone = 'blue', badge, onClick }) {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        minHeight: 66,
-        border: 0,
-        borderRadius: 6,
-        background: `linear-gradient(135deg, ${hov ? palette.hover : palette.bg}, ${palette.bg})`,
-        color: '#fff',
+        minHeight: 46,
+        width: '100%',
+        border: `1px solid ${palette.border}`,
+        borderRadius: 7,
+        background: hov ? palette.hover : palette.bg,
+        color: palette.fg,
         display: 'grid',
-        gridTemplateColumns: '52px minmax(0, 1fr) auto',
+        gridTemplateColumns: '20px minmax(0, 1fr) auto',
         alignItems: 'center',
-        gap: 12,
-        padding: '10px 18px',
+        gap: 9,
+        padding: '8px 11px',
         cursor: 'pointer',
         textAlign: 'left',
-        position: 'relative',
-        overflow: 'hidden',
         transform: hov ? 'translateY(-1px)' : 'translateY(0)',
-        boxShadow: hov
-          ? `0 10px 22px ${palette.glow}, inset 0 1px 0 oklch(1 0 0 / 0.18)`
-          : 'inset 0 -1px 0 oklch(0 0 0 / 0.08)',
-        outline: hov ? '1px solid oklch(1 0 0 / 0.18)' : '1px solid transparent',
-        transition: 'transform 0.18s ease, box-shadow 0.18s ease, outline-color 0.18s ease, background 0.18s ease',
+        boxShadow: hov ? '0 4px 12px oklch(0 0 0 / 0.07)' : 'none',
+        transition: 'transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease',
       }}
     >
-      <span style={{
-        position: 'absolute',
-        inset: 0,
-        opacity: hov ? 1 : 0,
-        background: 'linear-gradient(110deg, transparent 0%, oklch(1 0 0 / 0.10) 42%, transparent 68%)',
-        transform: hov ? 'translateX(10%)' : 'translateX(-24%)',
-        transition: 'opacity 0.18s ease, transform 0.36s ease',
-        pointerEvents: 'none',
-      }} />
-      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', transform: hov ? 'scale(1.04)' : 'scale(1)', transition: 'transform 0.18s ease', position: 'relative' }}>
-        <Icon name={icon} size={35} />
+      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: 0.85 }}>
+        <Icon name={icon} size={16} />
       </span>
-      <span style={{ fontSize: 17, lineHeight: 1.2, fontWeight: 700, overflowWrap: 'anywhere', position: 'relative' }}>{label}</span>
+      <span style={{ fontSize: 12.5, lineHeight: 1.2, fontWeight: 600, overflowWrap: 'anywhere' }}>{label}</span>
       {badge != null && (
         <span style={{
-          minWidth: 34,
+          minWidth: 24,
           justifySelf: 'end',
-          padding: '5px 8px',
+          padding: '2px 6px',
           borderRadius: 999,
-          background: 'oklch(1 0 0 / 0.18)',
+          background: 'oklch(0 0 0 / 0.07)',
           fontFamily: "'DM Mono', monospace",
-          fontSize: 13,
+          fontSize: 11,
           fontWeight: 700,
           textAlign: 'center',
-          position: 'relative',
         }}>{badge}</span>
       )}
     </button>
@@ -236,39 +565,164 @@ function MainMenuTile({ label, icon, route, tone = 'green', onClick }) {
   )
 }
 
-function buildQuickAccess({ show, canReadCatalogo, canWriteVentas, canReadProveedores, canReadCaja, stats, inv, tal, isLoading }) {
+// La botonera es la pantalla de inicio porque es la que el equipo ya sabe usar:
+// viene del ERP anterior y es su punto de partida diario. El tablero de
+// indicadores (DashboardOperativoPage) es del ERP nuevo y hoy queda sin enlace
+// -no borrado- hasta que el equipo lo pida.
+//
+// Por eso esta pantalla tiene que bastarse sola: ademas de los botones, muestra
+// los numeros que cada rol mira al llegar y lleva a los filtros que abre todos
+// los dias.
+
+// Un KPI vale la pena solo si al hacer clic deja al usuario en la lista
+// filtrada que iba a abrir igual. Si no lleva a ninguna parte, es decoracion.
+function buildKpis({ show, canReadProveedores, stats, inv, tal, isLoading }) {
+  const n = v => isLoading ? '…' : (v ?? 0).toLocaleString('es-CL')
+  const invCritico = (inv.critico ?? 0) + (inv.sinStock ?? 0)
+  const talCritico = (tal.critico ?? 0) + (tal.sinStock ?? 0)
+  const rrhh = stats?.rrhh ?? {}
+  const provPagos = stats?.proveedoresPagos ?? {}
+
+  const equipo = stats?.equipoComercial
+  return [
+    // Doble llave: el permiso decide y el dato confirma que el backend lo
+    // entrego. Colgarlo solo del dato dejaria la decision en manos de la API.
+    show.equipoComercial && equipo && {
+      label: 'Venta del equipo (mes)',
+      value: isLoading ? '…' : '$' + Math.round((equipo.total || 0) / 1_000_000 * 10) / 10 + 'M',
+      icon: 'trendingUp', tone: 'neutral',
+      sublabel: `${(equipo.vendedores?.length ?? 0).toLocaleString('es-CL')} vendedores con venta`,
+      route: '/reportes/gerenciales',
+    },
+    show.ventas && {
+      label: 'Ventas no pagadas', value: n(stats?.ventas?.noPagadas), icon: 'dollarSign',
+      tone: (stats?.ventas?.noPagadas ?? 0) > 0 ? 'red' : 'neutral',
+      sublabel: 'Requieren cobranza', route: '/ventas?noPagada=1',
+    },
+    show.ventas && {
+      label: 'Pendientes de entrega', value: n(stats?.ventas?.pendienteEntrega), icon: 'truck',
+      tone: 'blue', sublabel: 'Por despachar', route: '/ventas?pendienteEntrega=1',
+    },
+    show.crm && {
+      label: 'CRM pendientes', value: n(stats?.crm?.pendientes), icon: 'phone',
+      tone: (stats?.crm?.altaPrioridad ?? 0) > 0 ? 'red' : 'blue',
+      sublabel: `${n(stats?.crm?.altaPrioridad)} de prioridad alta`, route: '/crm',
+    },
+    show.taller && {
+      label: 'OT activas', value: n(stats?.odts?.total), icon: 'wrench',
+      tone: (stats?.odts?.urgentes ?? 0) > 0 ? 'amber' : 'neutral',
+      sublabel: `${n(stats?.odts?.urgentes)} urgentes`, route: '/taller?pendiente=si',
+    },
+    show.bodega && {
+      label: 'Stock crítico inventario', value: n(invCritico), icon: 'alertTriangle',
+      tone: invCritico > 0 ? 'amber' : 'neutral',
+      sublabel: `${n(inv.sinStock)} sin stock`, route: '/bodega?filtro=critico',
+    },
+    show.bodega && {
+      label: 'Stock crítico taller', value: n(talCritico), icon: 'alertTriangle',
+      tone: talCritico > 0 ? 'amber' : 'neutral',
+      sublabel: `${n(tal.sinStock)} sin stock`, route: '/bodega?tab=taller&filtro=critico',
+    },
+    show.cobranza && {
+      label: 'Cobranza pendiente', value: n(stats?.cobranzaHistorico?.pendientes), icon: 'dollarSign',
+      tone: (stats?.cobranzaHistorico?.pendientes ?? 0) > 0 ? 'amber' : 'neutral',
+      sublabel: 'Documentos por cobrar', route: '/cobranza',
+    },
+    canReadProveedores && {
+      label: 'Facturas prov. por pagar', value: n(provPagos.facturasNoPagadas), icon: 'briefcase',
+      tone: (provPagos.facturasNoPagadas ?? 0) > 0 ? 'amber' : 'neutral',
+      sublabel: `${n(provPagos.boletasNoPagadas)} boletas`, route: '/pagos-proveedores?doc=Factura&estado=Pendiente',
+    },
+    // El backend ya entrega este bloque solo a quien puede ver rrhh
+    // (backend/src/routes/dashboard/stats.js); son conteos, no datos personales.
+    show.rrhh && {
+      label: 'Dotación activa', value: n(rrhh.dotacionActiva), icon: 'users',
+      tone: 'neutral', sublabel: 'Trabajadores vigentes', route: '/rrhh',
+    },
+    // RrhhPage todavia no lee filtros por query param, asi que estos llevan al
+    // listado completo. Prometer ?filtro=... daria un clic que no filtra nada.
+    show.rrhh && {
+      label: 'Contratos por vencer', value: n(rrhh.contratosPorVencer), icon: 'fileText',
+      tone: (rrhh.contratosPorVencer ?? 0) > 0 ? 'amber' : 'neutral',
+      sublabel: 'Próximos a término', route: '/rrhh',
+    },
+    show.rrhh && {
+      label: 'Licencias activas', value: n(rrhh.licenciasActivas), icon: 'alertTriangle',
+      tone: (rrhh.licenciasActivas ?? 0) > 0 ? 'amber' : 'neutral',
+      sublabel: 'Ausencias en curso', route: '/rrhh',
+    },
+  ].filter(Boolean)
+}
+
+function buildQuickAccess({ show, canReadCatalogo, canReadReportes, canWriteVentas, canWriteTaller, canWriteBodega, canReadDespacho, canWriteDespacho, canReadProveedores, canReadCaja, canWriteCaja, canWriteRrhh, isOperario, stats, inv, tal, isLoading }) {
   const n = v => isLoading ? '...' : (v ?? 0).toLocaleString('es-CL')
   const invCritico = (inv.critico ?? 0) + (inv.sinStock ?? 0)
   const talCritico = (tal.critico ?? 0) + (tal.sinStock ?? 0)
   const talleres = stats?.talleres ?? []
   const porTipo = tipo => talleres.find(t => t.tipo === tipo) ?? {}
+  // El operario no gestiona la OT: solo registra avance sobre las suyas
+  // (permiso 'taller.avance'). Ofrecerle el listado de gestion completo lo manda
+  // a una pantalla donde no puede hacer nada.
+  const showGestionTaller = show.taller && !isOperario
+  // El desglose por tipo de taller es la carga de trabajo del jefe. Al vendedor
+  // y a bodega les basta el total: cinco tarjetas de OT les tapan lo suyo.
+  const showDesgloseTaller = canWriteTaller
+  // "Mantencion" es mantener el maestro de productos. Quien solo lee no puede,
+  // y el titulo le prometia una accion que la pantalla le niega.
+  const mantencion = canWriteBodega ? 'Mantención' : 'Consultar'
 
   return [
-    show.bodega && { label: 'Mantención Bodega Inventario y Web', icon: 'warehouse', tone: 'red', route: '/bodega' },
-    show.bodega && { label: 'Stock Crítico Bodega Inventario', icon: 'alertTriangle', tone: 'red', badge: n(invCritico), route: '/bodega?filtro=critico' },
-    show.bodega && { label: 'Mantención Bodega Taller', icon: 'box', tone: 'green', route: '/bodega?tab=taller' },
-    show.bodega && { label: 'Stock Crítico Bodega Taller', icon: 'alertTriangle', tone: 'green', badge: n(talCritico), route: '/bodega?tab=taller&filtro=critico' },
+    // Comercial
+    canWriteVentas && { label: 'Nueva Venta', icon: 'plusCircle', tone: 'green', route: '/ventas/nueva' },
     show.ventas && { label: 'Matriz Ventas', icon: 'grid', tone: 'blue', route: '/ventas' },
     show.ventas && { label: 'Ventas No pagadas', icon: 'alertTriangle', tone: 'red', badge: n(stats?.ventas?.noPagadas), route: '/ventas?noPagada=1' },
     show.ventas && { label: 'Ventas Pendientes entrega', icon: 'truck', tone: 'amber', badge: n(stats?.ventas?.pendienteEntrega), route: '/ventas?pendienteEntrega=1' },
+    // El CRM lo trabaja quien vende. Bodega y caja tienen ventas:read para
+    // consultar notas, no para gestionar prospectos.
+    canWriteVentas && { label: 'SISVENTA', icon: 'trendingUp', tone: 'blue', badge: n(stats?.crm?.pendientes), route: '/crm' },
+    canWriteVentas && { label: 'Nueva Cotización', icon: 'clipboard', tone: 'cyan', route: '/crm/nueva/cotizacion-simple' },
     canReadCatalogo && { label: 'Consulta Precios', icon: 'tag', tone: 'blue', route: '/consulta-precios' },
-    canWriteVentas && { label: 'Venta por Sala', icon: 'shoppingCart', tone: 'cyan', route: '/ventas/nueva' },
-    show.taller && { label: 'OT Taller Pendientes', icon: 'wrench', tone: 'cyan', badge: n(stats?.odts?.pendientes), route: '/taller?pendiente=si' },
-    show.taller && { label: 'OT Taller Prioritarias', icon: 'wrench', tone: 'red', badge: n(stats?.odts?.urgentes), route: '/taller?prioridad=urgente' },
-    show.taller && { label: 'OT Taller Espumas Pendientes', icon: 'wrench', tone: 'cyan', badge: n(porTipo('Espumas').activas), route: '/taller?tipo=Espumas&pendiente=si' },
-    show.taller && { label: 'OT Taller Espumas Prioritarias', icon: 'wrench', tone: 'red', badge: n(porTipo('Espumas').urgentes), route: '/taller?tipo=Espumas&prioridad=urgente' },
-    show.taller && { label: 'OT Taller Confecciones Pendientes', icon: 'wrench', tone: 'cyan', badge: n(porTipo('Confecciones').activas), route: '/taller?tipo=Confecciones&pendiente=si' },
-    show.taller && { label: 'OT Taller Confecciones Prioritarias', icon: 'wrench', tone: 'red', badge: n(porTipo('Confecciones').urgentes), route: '/taller?tipo=Confecciones&prioridad=urgente' },
-    show.taller && { label: 'OT Taller Madera Pendientes', icon: 'wrench', tone: 'cyan', badge: n(porTipo('Externo').activas), route: '/taller?tipo=Externo&pendiente=si' },
-    show.taller && { label: 'OT Taller Madera Prioritarias', icon: 'wrench', tone: 'red', badge: n(porTipo('Externo').urgentes), route: '/taller?tipo=Externo&prioridad=urgente' },
+    canReadReportes && { label: 'Reportería Gerencial', icon: 'barChart2', tone: 'slate', route: '/reportes/gerenciales' },
+    // La ruta es solo de admin (router.jsx), asi que el acceso tambien.
+    show.admin && { label: 'Comisiones', icon: 'dollarSign', tone: 'slate', route: '/reportes/comisiones' },
+    show.clientes && { label: 'Clientes', icon: 'users', tone: 'green', route: '/clientes' },
+
+    // Bodega y despacho
+    show.bodega && { label: `${mantencion} Bodega Inventario y Web`, icon: 'warehouse', tone: 'green', route: '/bodega' },
+    show.bodega && { label: 'Stock Crítico Bodega Inventario', icon: 'alertTriangle', tone: 'red', badge: n(invCritico), route: '/bodega?filtro=critico' },
+    show.bodega && { label: `${mantencion} Bodega Taller`, icon: 'box', tone: 'green', route: '/bodega?tab=taller' },
+    show.bodega && { label: 'Stock Crítico Bodega Taller', icon: 'alertTriangle', tone: 'red', badge: n(talCritico), route: '/bodega?tab=taller&filtro=critico' },
+    canWriteBodega && { label: 'Ingreso de Mercadería', icon: 'plusCircle', tone: 'cyan', route: '/stock-ingresos' },
+    canReadDespacho && { label: 'Despachos', icon: 'truck', tone: 'blue', route: '/despachos' },
+    canWriteDespacho && { label: 'Nueva Guía de Despacho', icon: 'fileText', tone: 'cyan', route: '/despachos/guias/nueva' },
+
+    // Operaciones y taller
+    isOperario && { label: 'Mis Órdenes de Trabajo', icon: 'wrench', tone: 'cyan', badge: n(stats?.odts?.pendientes), route: '/taller-operario' },
+    isOperario && { label: 'Terminal de Corte', icon: 'scissors', tone: 'blue', route: '/taller-corte' },
+    canWriteTaller && { label: 'Nueva OT', icon: 'plusCircle', tone: 'green', route: '/taller/nueva' },
+    showGestionTaller && { label: 'OT Taller Pendientes', icon: 'wrench', tone: 'cyan', badge: n(stats?.odts?.pendientes), route: '/taller?pendiente=si' },
+    showGestionTaller && { label: 'OT Taller Prioritarias', icon: 'wrench', tone: 'red', badge: n(stats?.odts?.urgentes), route: '/taller?prioridad=urgente' },
+    showDesgloseTaller && { label: 'OT Taller Espumas Pendientes', icon: 'wrench', tone: 'cyan', badge: n(porTipo('Espumas').activas), route: '/taller?tipo=Espumas&pendiente=si' },
+    showDesgloseTaller && { label: 'OT Taller Confecciones Pendientes', icon: 'wrench', tone: 'cyan', badge: n(porTipo('Confecciones').activas), route: '/taller?tipo=Confecciones&pendiente=si' },
+    showDesgloseTaller && { label: 'OT Taller Madera Pendientes', icon: 'wrench', tone: 'cyan', badge: n(porTipo('Externo').activas), route: '/taller?tipo=Externo&pendiente=si' },
+    canWriteTaller && { label: 'Bitácora de Taller', icon: 'edit', tone: 'green', route: '/bitacora-taller' },
+    show.taller && { label: 'Historial de Materiales', icon: 'layers', tone: 'green', route: '/historial-materiales' },
+
+    // Finanzas
     show.cobranza && { label: 'Cobranza', icon: 'dollarSign', tone: 'amber', route: '/cobranza' },
     canReadCaja && { label: 'Movimientos de caja', icon: 'creditCard', tone: 'amber', route: '/caja' },
+    canWriteCaja && { label: 'Nuevo Movimiento de caja', icon: 'plusCircle', tone: 'amber', route: '/caja/nuevo' },
     canReadProveedores && { label: 'Pagos a proveedores', icon: 'briefcase', tone: 'amber', route: '/pagos-proveedores' },
-  ].filter(Boolean).map(item => {
-    if (item.route === '/bodega') return { ...item, tone: 'green' }
-    if (item.route === '/bodega?tab=taller&filtro=critico') return { ...item, tone: 'red' }
-    return item
-  })
+
+    // Personas
+    show.rrhh && { label: 'Trabajadores', icon: 'users', tone: 'purple', route: '/rrhh' },
+    canWriteRrhh && { label: 'Nuevo Trabajador', icon: 'plusCircle', tone: 'purple', route: '/rrhh/nuevo' },
+
+    // Administración
+    show.admin && { label: 'Usuarios', icon: 'users', tone: 'red', route: '/usuarios' },
+    show.admin && { label: 'Auditoría de Actividad', icon: 'fileText', tone: 'red', route: '/admin/auditoria' },
+    show.admin && { label: 'Integridad de Datos', icon: 'alertTriangle', tone: 'red', route: '/admin/integridad' },
+  ].filter(Boolean)
 }
 
 function getAccessModel(user, stats, isLoading) {
@@ -280,29 +734,49 @@ function getAccessModel(user, stats, isLoading) {
   const canReadCaja = can(user, 'caja')
   const canReadClientes = can(user, 'clientes')
   const canReadProveedores = can(user, 'proveedores')
+  const canReadDespacho = can(user, 'despacho')
   const canWriteVentas = can(user, 'ventas', 'write')
+  const canWriteTaller = can(user, 'taller', 'write')
+  const canWriteBodega = can(user, 'bodega', 'write')
+  const canWriteDespacho = can(user, 'despacho', 'write')
+  const canWriteCaja = can(user, 'caja', 'write')
+  const canWriteRrhh = can(user, 'rrhh', 'write')
+  // Registra avance pero no gestiona: 'taller.avance' sin 'taller:write'.
+  const isOperario = canReadTaller && !canWriteTaller && can(user, 'taller.avance', 'write')
   const show = {
     ventas: canReadVentas,
     bodega: canReadBodega,
     taller: canReadTaller,
-    cobranza: canReadVentas || canReadCaja || canReadProveedores,
+    // Tiene que ser el mismo permiso que usa el backend para entregar el bloque
+    // (soloSi(ve('cobranza')) en dashboard/stats.js). Colgaba de ventas||caja||
+    // proveedores, asi que bodega veia la tarjeta y al abrirla recibia un 403.
+    cobranza: can(user, 'cobranza'),
     admin: role === 'admin',
     clientes: canReadClientes,
     crm: canReadVentas,
     caja: canReadCaja,
     rrhh: can(user, 'rrhh'),
     licitaciones: can(user, 'licitaciones'),
+    equipoComercial: can(user, 'equipo_comercial'),
+    despacho: canReadDespacho,
   }
   const inv = stats?.stock?.Inventario ?? {}
   const tal = stats?.stock?.Taller ?? {}
-  const quickAccess = buildQuickAccess({ show, canReadCatalogo, canWriteVentas, canReadProveedores, canReadCaja, stats, inv, tal, isLoading })
-  return { show, inv, tal, quickAccess }
+  const quickAccess = buildQuickAccess({
+    show, canReadCatalogo, canReadReportes: can(user, 'reportes'), canWriteVentas, canWriteTaller, canWriteBodega,
+    canReadDespacho, canWriteDespacho, canReadProveedores, canReadCaja, canWriteCaja,
+    canWriteRrhh, isOperario, stats, inv, tal, isLoading,
+  })
+  const kpis = buildKpis({ show, canReadProveedores, stats, inv, tal, isLoading })
+  return { show, inv, tal, quickAccess, kpis, isOperario }
 }
 
+// Centraba vertical contra el alto de la ventana porque era una portada sin
+// barra. Con la barra arriba eso empujaba el contenido hacia abajo y agregaba
+// scroll en una pantalla que cabia entera.
 const dashboardStartShell = {
-  minHeight: '100dvh',
   display: 'flex',
-  alignItems: 'center',
+  alignItems: 'flex-start',
   justifyContent: 'center',
   background: 'var(--bg)',
   padding: 'clamp(16px, 3vh, 34px) clamp(12px, 2vw, 28px)',
@@ -314,144 +788,199 @@ const dashboardStartFrame = {
   minWidth: 0,
 }
 
+// Cada modulo encabeza una columna y debajo cuelgan sus accesos mas usados. La
+// lista larga de "accesos rapidos" en un bloque aparte obligaba a leer 30
+// botones para encontrar uno; aqui el modulo dice donde mirar.
+//
+// El orden manda: se toman los TRES primeros que el rol pueda ver, asi que el
+// mismo modulo se adapta al puesto sin escribir una lista por rol.
+const MAX_ACCESOS_POR_MODULO = 3
+
+function accesosDelModulo(rutas, quickAccess) {
+  const encontrados = []
+  for (const ruta of rutas) {
+    const item = quickAccess.find(a => a.route === ruta)
+    if (item) encontrados.push(item)
+    if (encontrados.length === MAX_ACCESOS_POR_MODULO) break
+  }
+  return encontrados
+}
+
+function buildModuleColumns({ user, show, quickAccess, isOperario, isComercial }) {
+  const modulos = [
+    show.ventas && {
+      label: 'Ventas', icon: 'shoppingCart', tone: 'blue', route: '/ventas',
+      // Quien vende parte por crear; quien supervisa parte por lo que quedo pendiente.
+      rutas: isComercial
+        ? ['/ventas/nueva', '/crm', '/consulta-precios', '/ventas', '/ventas?noPagada=1']
+        : show.admin
+          ? ['/ventas', '/crm', '/clientes', '/ventas?noPagada=1']
+          : ['/ventas', '/ventas?noPagada=1', '/ventas?pendienteEntrega=1', '/consulta-precios', '/clientes'],
+    },
+    // Solo reporteria: colgarle Clientes o Consulta Precios lo convertia en el
+    // cajon de lo que no calzaba en otra columna.
+    can(user, 'reportes') && {
+      label: 'Gerencia', icon: 'barChart2', tone: 'slate', route: '/reportes/gerenciales',
+      rutas: ['/reportes/gerenciales', '/reportes/comisiones'],
+    },
+    show.bodega && {
+      label: 'Bodega', icon: 'warehouse', tone: 'green', route: '/bodega',
+      rutas: ['/bodega', '/bodega?filtro=critico', '/stock-ingresos', '/despachos', '/bodega?tab=taller'],
+    },
+    show.caja && {
+      label: 'Caja', icon: 'creditCard', tone: 'slate', route: '/caja',
+      rutas: ['/caja', '/caja/nuevo', '/cobranza', '/pagos-proveedores'],
+    },
+    show.rrhh && {
+      label: 'RRHH', icon: 'users', tone: 'amber', route: '/rrhh',
+      rutas: ['/rrhh', '/rrhh/nuevo'],
+    },
+    show.taller && {
+      label: 'Taller', icon: 'wrench', tone: 'green', route: isOperario ? '/taller-operario' : '/taller',
+      rutas: isOperario
+        ? ['/taller-operario', '/taller-corte', '/historial-materiales']
+        : ['/taller/nueva', '/taller?pendiente=si', '/taller?prioridad=urgente', '/bitacora-taller'],
+    },
+    show.admin && {
+      label: 'Admin', icon: 'settings', tone: 'red', route: '/usuarios',
+      rutas: ['/usuarios', '/admin/auditoria', '/admin/integridad'],
+    },
+  ].filter(Boolean)
+
+  return modulos.map(modulo => ({ ...modulo, items: accesosDelModulo(modulo.rutas, quickAccess) }))
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate()
   const { data: stats, isLoading } = useDashboardStats()
   const { user } = useAuthStore()
-  const { show, quickAccess } = getAccessModel(user, stats, isLoading)
-  const quickAccessGroups = [
-    { label: 'Comercial', tone: 'var(--blue)', items: quickAccess.filter(item => item.route.startsWith('/ventas') || item.route === '/matriz-ventas' || item.route === '/consulta-precios') },
-    { label: 'Bodega', tone: 'var(--green-600)', items: quickAccess.filter(item => item.route.startsWith('/bodega')) },
-    { label: 'Operaciones y taller', tone: '#0891b2', items: quickAccess.filter(item => item.route.startsWith('/taller')) },
-    { label: 'Finanzas', tone: 'var(--amber)', items: quickAccess.filter(item => item.route.startsWith('/cobranza') || item.route.startsWith('/caja') || item.route.startsWith('/pagos-proveedores')) },
-  ].filter(group => group.items.length)
+  const { show, quickAccess, kpis, isOperario } = getAccessModel(user, stats, isLoading)
 
-  // coordinador_comercial es igual a vendedor en todo (backend/src/middleware/rbac.js);
-  // comparte el mismo panel de ventas, solo cambia su visibilidad ampliada dentro del CRM.
-  const showSellerDashboard = user?.role === 'vendedor' || user?.role === 'coordinador_comercial'
-  const { data: pendientesCrm } = useCrmPendientesHoy(showSellerDashboard)
+  // Las gestiones de hoy + las vencidas es lo que el vendedor tiene que hacer
+  // ahora; el total de pendientes del CRM incluye lo que aun no vence.
+  // Se pide solo a quien vende: bodega y caja tienen ventas:read y estarian
+  // pagando una consulta cuyo resultado no se muestra en ninguna parte.
+  const canWriteVentas = can(user, 'ventas', 'write')
+  const { data: pendientesCrm } = useCrmPendientesHoy(canWriteVentas)
+  // Los nombres del personal viven en su modulo, no en el bloque de conteos
+  // del tablero; se piden aparte y solo a quien puede ver RRHH.
+  const { data: rrhhOperativo, isLoading: cargandoRrhh } = useRrhhOperativo({ dias: 30 }, show.rrhh)
+  // El endpoint devuelve hasta 10 filas para la agenda; el total real viene en
+  // `resumen`. Contar las filas dejaba el badge pegado en 10.
+  const totalCrmPendientes = pendientesCrm?.resumen?.total ?? 0
+  const sisventa = quickAccess.find(item => item.route === '/crm')
+  if (sisventa && pendientesCrm) sisventa.badge = totalCrmPendientes.toLocaleString('es-CL')
 
-  if (showSellerDashboard) {
-    const totalCrmPendientes = (pendientesCrm?.hoy?.length || 0) + (pendientesCrm?.vencidas?.length || 0)
-    const sellerQuickAccess = [
-      { label: 'SISVENTA', icon: 'trendingUp', tone: 'blue', badge: totalCrmPendientes, route: '/crm' },
-      { label: 'Matriz Ventas', icon: 'grid', tone: 'blue', route: '/matriz-ventas' },
-      { label: 'Consulta Precios', icon: 'tag', tone: 'blue', route: '/consulta-precios' },
-      { label: 'Clientes', icon: 'users', tone: 'green', route: '/clientes' },
-    ]
-
-    return (
-      <main className="page" style={dashboardStartShell}>
-        <div style={dashboardStartFrame}>
-          <PageHeader
-            title={`¡Hola, ${user.nombre || 'Vendedor'}!`}
-            subtitle="Tu panel personal"
-            breadcrumb={['Inicio', 'Mi Panel']}
-            actions={<HeaderUtilityCluster />}
-          />
-
-          <section style={{ marginTop: 16 }}>
-            <div style={{
-              background: 'var(--green-700)',
-              color: '#fff',
-              padding: '9px 12px',
-              fontSize: 14,
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              borderRadius: '6px 6px 0 0',
-            }}>
-              Accesos rápidos
-            </div>
-            <div style={{
-              background: '#fff',
-              border: '1px solid var(--border)',
-              borderTop: 0,
-              borderRadius: '0 0 8px 8px',
-              padding: 6,
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-              gap: 6,
-            }}>
-              {sellerQuickAccess.map(item => (
-                <QuickAccessTile
-                  key={item.label}
-                  {...item}
-                  onClick={() => navigate(item.route)}
-                />
-              ))}
-            </div>
-          </section>
-
-          <div style={{ marginTop: 28, paddingTop: 14, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Plastimar ERP · Panel de Ventas</span>
-          </div>
-        </div>
-      </main>
-    )
-  }
-
-  const mainModules = [
-    { label: 'Dashboard', icon: 'barChart2', tone: 'green', route: '/dashboard/operativo' },
-    show.ventas && { label: 'Ventas', icon: 'shoppingCart', tone: 'blue', route: '/matriz-ventas' },
-    can(user, 'reportes') && { label: 'Gerencia', icon: 'barChart2', tone: 'slate', route: '/reportes/gerenciales' },
-    show.bodega && { label: 'Bodega', icon: 'warehouse', tone: 'green', route: '/bodega' },
-    show.caja && { label: 'Caja', icon: 'creditCard', tone: 'slate', route: '/caja' },
-    show.rrhh && { label: 'RRHH', icon: 'users', tone: 'amber', route: '/rrhh' },
-    show.taller && { label: 'Taller', icon: 'wrench', tone: 'green', route: '/taller' },
-    show.admin && { label: 'Admin', icon: 'settings', tone: 'red', route: '/usuarios' },
-  ].filter(Boolean)
+  // Los roles comerciales parten creando; los demas, revisando lo pendiente.
+  const isComercial = canWriteVentas && !show.admin
+  const canWriteTaller = can(user, 'taller', 'write')
+  const columnas = buildModuleColumns({ user, show, quickAccess, isOperario, isComercial })
+  const saludo = user?.nombre ? `¡Hola, ${user.nombre}!` : '¡Hola!'
 
   return (
     <main className="page" style={dashboardStartShell}>
       <div style={dashboardStartFrame}>
-        <section style={{ marginBottom: 22 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: 10 }}>
-            {mainModules.map(item => (
-              <MainMenuTile key={item.route} {...item} onClick={navigate} />
+        <PageHeader
+          title={saludo}
+          subtitle="Tu panel de inicio"
+          breadcrumb={['Inicio']}
+          actions={<HeaderUtilityCluster />}
+        />
+
+        {/* Solo para quien gestiona su propia cartera. El admin ve los leads de
+            TODA la empresa (applyScopeByRole en routes/crm), asi que titularlo
+            "a quien contactar hoy" le prometia una agenda personal que no es
+            suya; su vista del CRM es el KPI de pendientes. */}
+        {isComercial && (
+          <AgendaCrmCard
+            pendientes={pendientesCrm}
+            isLoading={!pendientesCrm}
+            onAbrirLead={id => navigate(`/crm/${id}/gestion`)}
+            onVerTodo={() => navigate('/crm')}
+          />
+        )}
+
+        {show.taller && stats?.tallerAgenda && (
+          <TallerAgendaCard
+            odts={stats.tallerAgenda}
+            isLoading={isLoading}
+            onAbrir={id => navigate(canWriteTaller ? `/taller/${id}/editar` : `/taller/${id}`)}
+            onVerTodo={() => navigate('/taller?pendiente=si')}
+          />
+        )}
+
+        {show.despacho && stats?.entregasAgenda && (
+          <EntregasAgendaCard
+            entregas={stats.entregasAgenda}
+            isLoading={isLoading}
+            onAbrir={id => navigate(`/ventas/${id}`)}
+            onVerTodo={() => navigate('/ventas?pendienteEntrega=1')}
+          />
+        )}
+
+        {show.rrhh && (
+          <RrhhAgendaCard
+            operativo={rrhhOperativo}
+            isLoading={cargandoRrhh}
+            onAbrir={id => navigate(id ? `/rrhh/${id}` : '/rrhh')}
+            onVerTodo={() => navigate('/rrhh')}
+          />
+        )}
+
+        {show.equipoComercial && stats?.equipoComercial && (
+          <EquipoComercialCard
+            equipo={stats.equipoComercial}
+            isLoading={isLoading}
+            onVerDetalle={() => navigate('/reportes/gerenciales')}
+          />
+        )}
+
+        {/* Los numeros primero: son el estado del dia. Los modulos vienen
+            despues, porque son la respuesta a lo que esos numeros muestran. */}
+        {kpis.length > 0 && (
+          <section className="kpi-strip" style={{ margin: '16px 0 22px' }}>
+            {kpis.map(kpi => (
+              <KpiCard
+                key={kpi.label}
+                label={kpi.label}
+                value={kpi.value}
+                icon={kpi.icon}
+                tone={kpi.tone}
+                sublabel={kpi.sublabel}
+                onClick={() => navigate(kpi.route)}
+              />
             ))}
-          </div>
+          </section>
+        )}
+
+        {/* Cada modulo con lo que mas se abre dentro de el, en su misma columna. */}
+        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(168px, 1fr))', gap: 12, alignItems: 'start' }}>
+          {columnas.map(modulo => (
+            <div key={modulo.route} style={{ display: 'grid', gap: 7, minWidth: 0 }}>
+              <MainMenuTile
+                label={modulo.label}
+                icon={modulo.icon}
+                tone={modulo.tone}
+                route={modulo.route}
+                onClick={navigate}
+              />
+              {modulo.items.map(item => (
+                <SubAccessTile
+                  key={`${item.route}-${item.label}`}
+                  label={item.label}
+                  icon={item.icon}
+                  badge={item.badge}
+                  tone={modulo.tone}
+                  onClick={() => navigate(item.route)}
+                />
+              ))}
+            </div>
+          ))}
         </section>
 
-        <section>
-          <div style={{
-            background: 'var(--green-700)',
-            color: '#fff',
-            padding: '9px 12px',
-            fontSize: 16,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            borderRadius: '6px 6px 0 0',
-          }}>
-            Accesos rápidos
-          </div>
-          <div style={{
-            background: '#fff',
-            border: '1px solid var(--border)',
-            borderTop: 0,
-            borderRadius: '0 0 8px 8px',
-            padding: 12,
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-            gap: 12,
-            alignItems: 'start',
-          }}>
-            {quickAccessGroups.map(group => (
-              <section key={group.label} aria-label={group.label} style={{ minWidth: 0 }}>
-                <h2 style={{ margin: '0 0 8px', paddingLeft: 9, borderLeft: `4px solid ${group.tone}`, color: 'var(--text-2)', fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase' }}>{group.label}</h2>
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {group.items.map(item => (
-                    <QuickAccessTile
-                      key={`${item.route}-${item.label}`}
-                      {...item}
-                      onClick={() => navigate(item.route)}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        </section>
-
+        <div style={{ marginTop: 28, paddingTop: 14, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Plastimar ERP · Sucursal 5 Oriente</span>
+        </div>
       </div>
     </main>
   )
@@ -639,7 +1168,9 @@ export function DashboardOperativoPage() {
             {(stats?.talleres ?? []).map(t => <TallerBar key={t.tipo} {...t} max={maxTaller} />)}
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 14px' }} />
             {canWriteTaller && <ActionRow icon="plusCircle" label="Nueva OT" onClick={() => navigate('/taller/nueva')} />}
-            <ActionRow icon="edit" label="Registrar Bitácora" onClick={() => navigate('/bitacora-taller')} />
+            {/* Registrar es escribir: solo_lectura veia el boton porque este
+                ActionRow no tenia el guard que si tienen sus vecinos. */}
+            {canWriteTaller && <ActionRow icon="edit" label="Registrar Bitácora" onClick={() => navigate('/bitacora-taller')} />}
             {canWriteTaller && <ActionRow icon="package" label="Excepciones de Taller" onClick={() => navigate('/excepciones-taller')} />}
             <ActionRow icon="layers" label="Historial Materiales" onClick={() => navigate('/historial-materiales')} />
           </SectionCard>

@@ -392,7 +392,8 @@ export function TopBar() {
   const userRef = useRef()
   const clock = useClock()
   const role = getUserRole(user)
-  const dashboardActive = location.pathname === '/dashboard/operativo'
+  const isDashboard = location.pathname === '/dashboard' || location.pathname === '/'
+  const dashboardActive = isDashboard
   const visibleGroups = NAV_GROUPS
     .map(group => ({ ...group, items: group.items.filter(item => canUseNavItem(user, item)) }))
     .filter(group => group.items.length > 0)
@@ -419,7 +420,10 @@ export function TopBar() {
         </div>
 
         <nav className="topbar-nav">
-          <button onClick={e => handleNav('/dashboard/operativo', null, e)} style={{
+          {/* Apunta a la botonera, que es el inicio del equipo. El tablero de
+              indicadores (/dashboard/operativo) queda sin enlace por ahora: la
+              ruta sigue viva para quien la tenga guardada. */}
+          <button onClick={e => handleNav('/dashboard', null, e)} style={{
             padding: '6px 12px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
             color: dashboardActive ? '#fff' : 'rgba(255,255,255,0.78)',
             fontWeight: dashboardActive ? 600 : 400,
@@ -437,8 +441,12 @@ export function TopBar() {
         </nav>
 
         <div className="topbar-actions">
-          <span className="topbar-clock" style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, fontFamily: "'DM Mono', monospace", letterSpacing: 0 }}>{clock}</span>
-          <NotificacionesBell />
+          {!isDashboard && (
+            <>
+              <span className="topbar-clock" style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, fontFamily: "'DM Mono', monospace", letterSpacing: 0 }}>{clock}</span>
+              <NotificacionesBell />
+            </>
+          )}
 
           <div ref={userRef} style={{ position: 'relative' }}>
             <button onClick={() => setUserMenuOpen(o => !o)} style={{
