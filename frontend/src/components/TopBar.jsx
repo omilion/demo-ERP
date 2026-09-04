@@ -6,6 +6,7 @@ import api from '../api/client'
 import { can, canAny, getUserRole, hasRole } from '../utils/permissions'
 import { NotificacionesBell } from './NotificacionesBell'
 import { useExcepcionesTallerCount } from '../api/pasarTaller'
+import { toggleHelpDrawer } from '../store/helpDrawer'
 import plastimarLogo from '../assets/plastimar-logo.webp'
 
 const HIGHLIGHT_STYLES = {
@@ -99,6 +100,7 @@ const NAV_GROUPS = [
     { label: 'Integridad', route: '/admin/integridad', roles: ['admin'] },
   ] },
   { label: 'AYUDA', items: [
+    { label: '⚡ Ayuda rápida contextual (F1)', action: 'helpDrawer', allAuthenticated: true, highlight: 'amber' },
     { label: 'Centro de ayuda', route: '/ayuda', allAuthenticated: true },
     { label: 'Guía general', route: '/ayuda/00_MAPA_DOCUMENTACION_Y_GUIA_INICIO/index.html', allAuthenticated: true, external: true },
     { label: 'Gerencia', route: '/ayuda/01_DOSSIER_GERENCIA/index.html', roles: ['admin', 'solo_lectura'], external: true },
@@ -208,7 +210,14 @@ const DropdownItem = ({ item, isLast, currentPath, handleNav, onCloseAll }) => {
     >
       <button
         type="button"
-        onClick={e => handleNav(item.route, onCloseAll, e, { external: item.external })}
+        onClick={e => {
+          if (item.action === 'helpDrawer') {
+            if (onCloseAll) onCloseAll()
+            toggleHelpDrawer()
+            return
+          }
+          handleNav(item.route, onCloseAll, e, { external: item.external })
+        }}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -460,13 +469,41 @@ export function TopBar() {
           ))}
         </nav>
 
-        <div className="topbar-actions">
+        <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {!isDashboard && (
-            <>
-              <span className="topbar-clock" style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, fontFamily: "'DM Mono', monospace", letterSpacing: 0 }}>{clock}</span>
-              <NotificacionesBell />
-            </>
+            <span className="topbar-clock" style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, fontFamily: "'DM Mono', monospace", letterSpacing: 0 }}>{clock}</span>
           )}
+          {!isDashboard && <NotificacionesBell />}
+
+          <button
+            onClick={() => toggleHelpDrawer()}
+            title="Ayuda rápida contextual (F1)"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              cursor: 'pointer',
+              background: 'rgba(255,255,255,0.09)',
+              border: '1px solid rgba(255,255,255,0.14)',
+              borderRadius: 6,
+              padding: '4px 9px',
+              color: '#fff',
+              fontSize: 12,
+              fontWeight: 600,
+              transition: 'background 0.15s, border-color 0.15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.18)'
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.28)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.09)'
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.14)'
+            }}
+          >
+            <Icon name="helpCircle" size={15} color="#a7f3d0" />
+            <span>Ayuda</span>
+          </button>
 
           <div ref={userRef} style={{ position: 'relative' }}>
             <button onClick={() => setUserMenuOpen(o => !o)} style={{
@@ -491,6 +528,17 @@ export function TopBar() {
                   <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-1)' }}>{user?.nombre || 'Usuario'}</div>
                   <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{role || 'Sin rol'}</div>
                 </div>
+                <button onClick={() => { setUserMenuOpen(false); navigate('/ayuda'); }} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                  padding: '10px 16px', fontSize: 13, color: 'var(--text-1)',
+                  cursor: 'pointer', transition: 'background 0.1s', borderBottom: '1px solid var(--border)',
+                }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-2)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <Icon name="book" size={14} color="var(--green-700)" />
+                  Manuales y guías
+                </button>
                 <button onClick={handleLogout} style={{
                   display: 'flex', alignItems: 'center', gap: 8, width: '100%',
                   padding: '10px 16px', fontSize: 13, color: 'var(--red)',
