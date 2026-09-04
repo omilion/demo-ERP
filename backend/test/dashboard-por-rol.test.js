@@ -142,3 +142,54 @@ describe('el tablero de RRHH', () => {
     }
   })
 })
+
+// El coordinador comercial responde por el avance de la fuerza de venta, pero
+// veia exactamente lo mismo que un vendedor: su propio panel. El desempeno por
+// vendedor es un modulo aparte (`equipo_comercial`) justamente para que no lo
+// herede quien solo tiene ventas:read.
+describe('el desempeno por vendedor', () => {
+  let app
+  let userId
+  beforeAll(async () => {
+    app = buildApp({ logger: false })
+    await app.ready()
+    const u = await app.prisma.user.findFirst({ where: { activo: true }, select: { id: true } })
+    userId = u.id
+  })
+  afterAll(async () => { await app.close() })
+
+  const pedir = async role => {
+    const token = app.jwt.sign({
+      id: userId, role, nombre: 'Test', permisosExtra: null,
+      scope: 'erp', aud: 'plastimar:erp', tokenType: 'access',
+    })
+    const res = await app.inject({ method: 'GET', url: '/api/dashboard/stats', headers: { authorization: `Bearer ${token}` } })
+    expect(res.statusCode).toBe(200)
+    return res.json()
+  }
+
+  it('el coordinador ve el desglose por vendedor', async () => {
+    const b = await pedir('coordinador_comercial')
+    expect(b.equipoComercial).not.toBeNull()
+    expect(Array.isArray(b.equipoComercial.vendedores)).toBe(true)
+    expect(b.equipoComercial).toHaveProperty('total')
+  })
+
+  it('el vendedor no: veria el rendimiento de sus companeros', async () => {
+    expect((await pedir('vendedor')).equipoComercial).toBeNull()
+  })
+
+  // Tienen ventas:read para consultar notas. Si el permiso colgara del modulo
+  // en vez de ser propio, se lo llevarian de arrastre.
+  it('nadie con solo ventas:read lo hereda', async () => {
+    for (const role of ['bodeguero', 'cajero', 'solo_lectura']) {
+      expect((await pedir(role)).equipoComercial, role).toBeNull()
+    }
+  })
+
+  it('el ranking viene ordenado de mayor a menor', async () => {
+    const { vendedores } = (await pedir('coordinador_comercial')).equipoComercial
+    const totales = vendedores.map(v => v.total)
+    expect(totales).toEqual([...totales].sort((a, b) => b - a))
+  })
+})

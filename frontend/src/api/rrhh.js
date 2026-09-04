@@ -26,7 +26,9 @@ export const useRrhhCargos = (params = {}) =>
     staleTime: 5 * 60_000,
   })
 
-export const useRrhhOperativo = (params = {}) =>
+// `enabled` para que el tablero pueda montar el hook sin consultar cuando el
+// rol no ve RRHH: sin eso, la llamada sale igual y vuelve 403.
+export const useRrhhOperativo = (params = {}, enabled = true) =>
   useQuery({
     queryKey: ['rrhh', 'operativo', params],
     queryFn: () => api.get('/rrhh/operativo', { params }).then(r => r.data),
@@ -42,6 +44,7 @@ export const useRrhhOperativo = (params = {}) =>
       vacacionesProgramadas: [],
     },
     staleTime: 60_000,
+    enabled,
   })
 
 export const useCumplimientoPrevisional = (params = {}) =>
