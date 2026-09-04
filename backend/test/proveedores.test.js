@@ -5,12 +5,15 @@ import { createErpAccessTokenPayload } from '../src/plugins/jwt.js'
 process.env.JWT_ACCESS_SECRET ||= 'test-access-secret'
 process.env.JWT_REFRESH_SECRET ||= 'test-refresh-secret'
 
+let qaUser
+
 function tokenFor(app, role = 'admin', permisosExtra = null) {
   return app.jwt.sign(createErpAccessTokenPayload({
-    id: Math.floor(Math.random() * 1000000) + 1000,
+    id: qaUser?.id ?? 1,
     role,
     nombre: `QA ${role}`,
     permisosExtra,
+    authVersion: qaUser?.authVersion ?? 0,
   }))
 }
 
@@ -63,9 +66,22 @@ describe('SPR-34 proveedores legacy parity', () => {
   beforeAll(async () => {
     app = buildApp({ logger: false })
     await app.ready()
+    qaUser = await app.prisma.user.create({
+      data: {
+        email: `qa-prov-${marker}@plastimar.cl`,
+        passwordHash: 'x',
+        role: 'admin',
+        nombre: 'QA Proveedor User',
+        activo: true,
+        authVersion: 0,
+      },
+    })
   })
 
   afterAll(async () => {
+    if (qaUser?.id) {
+      await app.prisma.user.delete({ where: { id: qaUser.id } }).catch(() => {})
+    }
     await app.prisma.pagoProveedor.deleteMany({ where: { id: { in: createdPagos } } }).catch(() => {})
     await app.prisma.proveedor.deleteMany({ where: { id: { in: created } } }).catch(() => {})
     await app.close()

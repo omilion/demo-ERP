@@ -5,15 +5,18 @@ import { can } from '../src/middleware/rbac.js'
 process.env.JWT_ACCESS_SECRET ||= 'test-access-secret'
 process.env.JWT_REFRESH_SECRET ||= 'test-refresh-secret'
 
+let testUser
+
 function signErpToken(app, payload = {}) {
   return app.jwt.sign({
-    id: 999,
-    role: 'vendedor',
+    id: payload.id ?? testUser?.id,
+    role: payload.role || 'vendedor',
     nombre: 'Test RBAC',
     permisosExtra: null,
     scope: 'erp',
     aud: 'plastimar:erp',
     tokenType: 'access',
+    authVersion: testUser?.authVersion ?? 0,
     ...payload,
   })
 }
@@ -77,6 +80,7 @@ describe('RBAC permissions map', () => {
 
 describe('RBAC middleware', () => {
   let app
+  const marker = `rbac-${Date.now()}`
 
   beforeAll(async () => {
     app = buildApp({ logger: false })
@@ -118,9 +122,24 @@ describe('RBAC middleware', () => {
     )
 
     await app.ready()
+    testUser = await app.prisma.user.create({
+      data: {
+        email: `${marker}@plastimar.cl`,
+        passwordHash: 'x',
+        role: 'vendedor',
+        nombre: 'Test RBAC User',
+        activo: true,
+        authVersion: 0,
+      },
+    })
   })
 
-  afterAll(() => app.close())
+  afterAll(async () => {
+    if (testUser?.id) {
+      await app.prisma.user.delete({ where: { id: testUser.id } }).catch(() => {})
+    }
+    await app.close()
+  })
 
   it('admin can access ventas', async () => {
     const token = signErpToken(app, { role: 'admin' })

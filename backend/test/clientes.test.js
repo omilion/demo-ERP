@@ -10,11 +10,25 @@ async function loginAs(app, role = 'admin') {
 }
 
 async function tokenFor(app, payload = {}) {
+  let userId = payload.id
+  let authVersion = payload.authVersion ?? 0
+  if (!userId) {
+    const user = await app.prisma.user.findFirst({
+      where: { activo: true, role: payload.role ?? 'rrhh' },
+      select: { id: true, authVersion: true },
+    })
+    if (user) {
+      userId = user.id
+      authVersion = user.authVersion
+    }
+  }
+
   return app.jwt.sign({
-    id: payload.id ?? 9999,
+    id: userId ?? 9999,
     role: payload.role ?? 'rrhh',
     nombre: payload.nombre ?? 'QA scoped',
     permisosExtra: payload.permisosExtra ?? null,
+    authVersion,
     scope: 'erp',
     aud: 'plastimar:erp',
     tokenType: 'access',

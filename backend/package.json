@@ -21,6 +21,8 @@
     "db:migrate": "prisma migrate dev",
     "db:migrate:docker": "node --env-file=.env.docker ./node_modules/prisma/build/index.js migrate deploy",
     "db:migrate:test:docker": "node --env-file=.env.test.docker ./node_modules/prisma/build/index.js migrate deploy",
+    "db:release:docker": "node --env-file=.env.docker ./node_modules/prisma/build/index.js migrate deploy && prisma generate",
+    "db:release:test:docker": "node --env-file=.env.test.docker ./node_modules/prisma/build/index.js migrate deploy && prisma generate",
     "db:seed": "node prisma/seed.js",
     "db:seed:docker": "node --env-file=.env.docker prisma/seed.js",
     "db:seed:test:docker": "node --env-file=.env.test.docker prisma/seed.js",
