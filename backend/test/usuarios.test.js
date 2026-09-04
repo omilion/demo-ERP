@@ -147,4 +147,96 @@ describe('usuarios legacy parity and safety', () => {
     })
     expect(selfDeactivate.statusCode).toBe(409)
   })
+
+  it('updates passwords through PUT /:id and PUT /:id/password, invalidating sessions and allowing login', async () => {
+    const userEmail = `${marker}-pwd@plastimar.cl`
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/usuarios',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        email: userEmail,
+        password: 'initialPass123',
+        role: 'cajero',
+        nombre: `${marker} Password User`,
+      },
+    })
+    expect(createRes.statusCode).toBe(201)
+    const user = JSON.parse(createRes.body)
+
+    // Initial login works
+    const login1 = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: userEmail, password: 'initialPass123' },
+    })
+    expect(login1.statusCode).toBe(200)
+
+    // Reject short password
+    const shortRes = await app.inject({
+      method: 'PUT',
+      url: `/api/usuarios/${user.id}/password`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { password: '12345' },
+    })
+    expect(shortRes.statusCode).toBe(400)
+
+    // Update password via PUT /:id/password
+    const updatePwdRes = await app.inject({
+      method: 'PUT',
+      url: `/api/usuarios/${user.id}/password`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { password: 'secondPass456' },
+    })
+    expect(updatePwdRes.statusCode).toBe(200)
+
+    // Old password fails
+    const loginOld = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: userEmail, password: 'initialPass123' },
+    })
+    expect(loginOld.statusCode).toBe(401)
+
+    // New password succeeds
+    const login2 = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: userEmail, password: 'secondPass456' },
+    })
+    expect(login2.statusCode).toBe(200)
+
+    // Update password together with profile data via PUT /:id
+    const updateProfileRes = await app.inject({
+      method: 'PUT',
+      url: `/api/usuarios/${user.id}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        nombre: `${marker} Pwd User Modificado`,
+        cargo: 'Jefe de Caja',
+        password: 'thirdPass789',
+      },
+    })
+    expect(updateProfileRes.statusCode).toBe(200)
+    const updatedUser = JSON.parse(updateProfileRes.body)
+    expect(updatedUser.nombre).toBe(`${marker} Pwd User Modificado`)
+    expect(updatedUser.cargo).toBe('Jefe de Caja')
+
+    // Second password now fails
+    const loginOld2 = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: userEmail, password: 'secondPass456' },
+    })
+    expect(loginOld2.statusCode).toBe(401)
+
+    // Third password succeeds
+    const login3 = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: userEmail, password: 'thirdPass789' },
+    })
+    expect(login3.statusCode).toBe(200)
+  })
 })
+

@@ -28,7 +28,21 @@ export const useUpdateUsuario = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, data }) => api.put(`/usuarios/${id}`, data).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['usuarios'] }),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['usuarios'] })
+      qc.invalidateQueries({ queryKey: ['usuarios', id] })
+    },
+  })
+}
+
+export const useUpdateUsuarioPassword = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, password }) => api.put(`/usuarios/${id}/password`, { password }).then(r => r.data),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['usuarios'] })
+      qc.invalidateQueries({ queryKey: ['usuarios', id] })
+    },
   })
 }
 
@@ -36,7 +50,10 @@ export const useUpdatePermisos = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, permisosExtra }) => api.put(`/usuarios/${id}/permisos`, { permisosExtra }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['usuarios'] }),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['usuarios'] })
+      qc.invalidateQueries({ queryKey: ['usuarios', id] })
+    },
   })
 }
 
