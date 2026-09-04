@@ -63,8 +63,9 @@ function canReadPagosProveedor(user) {
 }
 
 function canReadProveedorList(user) {
-  return can(user?.role, 'proveedores', 'read', user?.permisosExtra)
-    || can(user?.role, 'catalogo', 'read', user?.permisosExtra)
+  // Costeo entra por la ficha de materia prima, que lleva proveedor. Es la
+  // lista saneada, no los datos sensibles: esos siguen con su propio permiso.
+  return can(user?.role, ['proveedores', 'catalogo', 'costeo'], 'read', user?.permisosExtra)
 }
 
 async function lockProveedorWrite(tx) {

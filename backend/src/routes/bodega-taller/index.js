@@ -88,9 +88,15 @@ async function enrichOne(prisma, item) {
   return enriched[0]
 }
 
+// La ficha de materia prima es una sola y la administran dos modulos: Taller
+// (stock, lotes) y Costeo (costo unitario, ficha tecnica de espuma). El permiso
+// acepta cualquiera de los dos; con solo `taller` esta pantalla se veia vacia
+// desde Costeo y viceversa.
+const MODULOS_MATERIAS = ['taller', 'costeo']
+
 export default async function bodegaTallerRoutes(fastify) {
   fastify.get('/', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
+    preHandler: [fastify.authenticate, fastify.rbac(MODULOS_MATERIAS, 'read')],
   }, async (request, reply) => {
     const filter = await buildBodegaTallerWhere(fastify.prisma, request.query, request.user)
     if (filter.error) return reply.code(400).send({ error: filter.error })
@@ -122,7 +128,7 @@ export default async function bodegaTallerRoutes(fastify) {
   })
 
   fastify.get('/autocomplete', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
+    preHandler: [fastify.authenticate, fastify.rbac(MODULOS_MATERIAS, 'read')],
   }, async (request, reply) => {
     const q = String(request.query.q || '').trim()
     if (q.length < 2) return []
@@ -154,7 +160,7 @@ export default async function bodegaTallerRoutes(fastify) {
   })
 
   fastify.get('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
+    preHandler: [fastify.authenticate, fastify.rbac(MODULOS_MATERIAS, 'read')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
@@ -166,7 +172,7 @@ export default async function bodegaTallerRoutes(fastify) {
   })
 
   fastify.post('/', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac(MODULOS_MATERIAS, 'write')],
   }, async (request, reply) => {
     const {
       codigoInterno,
@@ -263,7 +269,7 @@ export default async function bodegaTallerRoutes(fastify) {
   })
 
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')],
+    preHandler: [fastify.authenticate, fastify.rbac(MODULOS_MATERIAS, 'write')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
@@ -400,7 +406,7 @@ export default async function bodegaTallerRoutes(fastify) {
   })
 
   fastify.delete('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'delete')],
+    preHandler: [fastify.authenticate, fastify.rbac(MODULOS_MATERIAS, 'delete')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
@@ -412,7 +418,7 @@ export default async function bodegaTallerRoutes(fastify) {
     return reply.code(204).send()
   })
 
-  fastify.get('/:id/lotes', { preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')] }, async (request, reply) => {
+  fastify.get('/:id/lotes', { preHandler: [fastify.authenticate, fastify.rbac(MODULOS_MATERIAS, 'read')] }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'ID invalido' })
     const filter = await buildBodegaTallerWhere(fastify.prisma, { page: '1' }, request.user)
@@ -422,6 +428,7 @@ export default async function bodegaTallerRoutes(fastify) {
     return { items: await fastify.prisma.bodegaTallerLote.findMany({ where: { bodegaTallerId: id }, orderBy: { recibidoAt: 'asc' } }) }
   })
 
+  // Los lotes son trazabilidad de stock: eso sigue siendo de Taller.
   fastify.post('/:id/lotes', { preHandler: [fastify.authenticate, fastify.rbac('taller', 'write')] }, async (request, reply) => {
     const bodegaTallerId = parseInt(request.params.id, 10)
     const codigo = cleanText(request.body?.codigo)
