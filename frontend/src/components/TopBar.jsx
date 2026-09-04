@@ -92,7 +92,6 @@ const NAV_GROUPS = [
   ] },
   { label: 'Admin', items: [
     { label: 'Usuarios', route: '/usuarios', roles: ['admin'] },
-    { label: 'Accesos', route: '/accesos', roles: ['admin'] },
     { label: 'Configuracion', route: '/config', roles: ['admin'] },
     { label: 'Reglas de Descuento', route: '/descuentos', requirements: [{ module: 'descuentos', permission: 'write' }] },
     { label: 'Asistente IA', route: '/asistente', roles: ['admin'] },

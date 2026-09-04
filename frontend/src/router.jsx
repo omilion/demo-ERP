@@ -30,7 +30,6 @@ import PagoProveedorDetallePage from './pages/pagos-proveedores/PagoProveedorDet
 import TelasPage from './pages/telas/TelasPage'
 import TelaDetallePage from './pages/telas/TelaDetallePage'
 import BodegaTallerPage from './pages/bodega-taller/BodegaTallerPage'
-import AccesosPage from './pages/accesos/AccesosPage'
 import DescuentosPage from './pages/descuentos/DescuentosPage'
 import ProveedoresPage from './pages/proveedores/ProveedoresPage'
 import ProveedorDetallePage from './pages/proveedores/ProveedorDetallePage'
@@ -132,7 +131,7 @@ export const router = createBrowserRouter([
       { path: 'materias-primas/nueva', element: protect(<MateriaPrimaFormPage />, { requirements: [['taller', 'write'], ['costeo', 'write']] }) },
       { path: 'materias-primas/:id', element: protect(<MateriaPrimaFormPage />, { requirements: [['taller', 'read'], ['costeo', 'read']] }) },
       { path: 'materias-primas/:id/editar', element: protect(<MateriaPrimaFormPage />, { requirements: [['taller', 'write'], ['costeo', 'write']] }) },
-      { path: 'accesos',    element: <ProtectedRoute allowedRoles={['admin']}><AccesosPage /></ProtectedRoute> },
+      { path: 'accesos',    element: <Navigate to="/usuarios" replace /> },
       { path: 'usuarios',   element: <ProtectedRoute allowedRoles={['admin']}><UsuariosPage /></ProtectedRoute> },
       { path: 'usuarios/nuevo', element: <ProtectedRoute allowedRoles={['admin']}><UsuarioFormPage /></ProtectedRoute> },
       { path: 'usuarios/:id', element: <ProtectedRoute allowedRoles={['admin']}><UsuarioFormPage /></ProtectedRoute> },

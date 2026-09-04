@@ -25,7 +25,6 @@ import ordenesCompraRoutes from './routes/ordenes-compra/index.js'
 import pagosProveedoresRoutes from './routes/pagos-proveedores/index.js'
 import telasRoutes from './routes/telas/index.js'
 import bodegaTallerRoutes from './routes/bodega-taller/index.js'
-import accesosRoutes from './routes/accesos/index.js'
 import descuentosRoutes from './routes/descuentos/index.js'
 import configRoutes from './routes/config/index.js'
 import matrizVentasRoutes from './routes/matriz-ventas/index.js'
@@ -99,7 +98,6 @@ export function buildApp(opts = {}) {
   app.register(pagosProveedoresRoutes, { prefix: '/api/pagos-proveedores' })
   app.register(telasRoutes, { prefix: '/api/telas' })
   app.register(bodegaTallerRoutes, { prefix: '/api/bodega-taller' })
-  app.register(accesosRoutes, { prefix: '/api/accesos' })
   app.register(descuentosRoutes, { prefix: '/api/descuentos' })
   app.register(configRoutes, { prefix: '/api/config' })
   app.register(matrizVentasRoutes, { prefix: '/api/matriz-ventas' })
