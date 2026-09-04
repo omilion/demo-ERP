@@ -53,6 +53,7 @@ import ReportesMovimientosAnormalesPage from './pages/reportes-movimientos-anorm
 import UsuariosPage from './pages/usuarios/UsuariosPage'
 import UsuarioFormPage from './pages/usuarios/UsuarioFormPage'
 import RrhhPage, { TrabajadorDetallePage } from './pages/rrhh/RrhhPage'
+import TrabajadorFormPage from './pages/rrhh/TrabajadorFormPage'
 import IntegridadPage from './pages/admin/IntegridadPage'
 import AuditoriaPage from './pages/admin/AuditoriaPage'
 import HistoricoPage from './pages/admin/HistoricoPage'
@@ -173,7 +174,9 @@ export const router = createBrowserRouter([
       { path: 'reportes/movimientos-anormales', element: protect(<ReportesMovimientosAnormalesPage />, { module: 'bodega' }) },
       { path: 'reportes/licitaciones', element: protect(<LicitacionesLegacyRedirect destination="reportes" />, { module: 'reportes' }) },
       { path: 'rrhh', element: protect(<RrhhPage />, { module: 'rrhh' }) },
+      { path: 'rrhh/nuevo', element: protect(<TrabajadorFormPage />, { module: 'rrhh', permission: 'write' }) },
       { path: 'rrhh/:id', element: protect(<TrabajadorDetallePage />, { module: 'rrhh' }) },
+      { path: 'rrhh/:id/editar', element: protect(<TrabajadorFormPage />, { module: 'rrhh', permission: 'write' }) },
       { path: 'admin/integridad', element: <ProtectedRoute allowedRoles={['admin']}><IntegridadPage /></ProtectedRoute> },
       { path: 'admin/comisiones', element: <ProtectedRoute allowedRoles={['admin']}><ComisionesPage /></ProtectedRoute> },
       { path: 'admin/auditoria',  element: <ProtectedRoute allowedRoles={['admin']}><AuditoriaPage /></ProtectedRoute> },

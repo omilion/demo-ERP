@@ -3,9 +3,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Badge, KpiCard, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
 import {
-  useTrabajadores, useTrabajador, useCreateTrabajador, useUpdateTrabajador, useDeleteTrabajador,
-  useRrhhCargos, useRrhhOperativo, useCumplimientoPrevisional, useResumenRRHH, useCuentasDisponibles,
+  useTrabajadores, useTrabajador, useDeleteTrabajador,
+  useRrhhCargos, useRrhhOperativo, useCumplimientoPrevisional, useResumenRRHH,
   contratos, liquidaciones, anticipos, licencias, vacaciones, epps, useUploadRrhhDocumento,
+  hojasVida, horasExtras, reglamentos,
   subcontratos, certificadosAntecedentes, vacunas,
 } from '../../api/rrhh'
 import { useAuthStore } from '../../store/auth'
@@ -100,6 +101,14 @@ function TabDatos({ t }) {
       <DataRow l="Fecha término" v={fmtDate(t.fechaTermino)} />
       <DataRow l="Tipo contrato" v={t.tipoContrato} />
       <DataRow l="Cargo" v={t.cargo} />
+
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-3)', marginTop: 14, marginBottom: 8 }}>Remuneración</div>
+      <DataRow l="Sueldo base" v={t.sueldoBase != null ? fmtPeso(t.sueldoBase) : null} />
+      <DataRow l="Valor hora extra" v={t.valorHoraExtra != null ? fmtPeso(t.valorHoraExtra) : null} />
+
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-3)', marginTop: 14, marginBottom: 8 }}>Sistema</div>
+      <DataRow l="Estado" v={t.estado === false ? 'Dado de baja' : 'Activo'} />
+      <DataRow l="Cuenta de login" v={t.usuario?.nombre || t.usuario?.email || (t.usuarioId ? `#${t.usuarioId}` : null)} />
       {t.observacion && <DataRow l="Observación" v={t.observacion} />}
     </>
   )
@@ -239,6 +248,49 @@ const RRHH_TAB_CONFIG = {
       ['Emisión', it => fmtDate(it.fechaEmision)], ['Vencimiento', it => fmtDate(it.fechaVencimiento)],
       ['Observación', 'observacion'],
       ['Estado', it => it.estado ? <Badge tone="green">Vigente</Badge> : <Badge tone="gray">Vencido</Badge>],
+    ],
+  },
+  hojasVida: {
+    label: 'Hoja de vida', singular: 'registro', addLabel: 'Nuevo registro',
+    resource: hojasVida, documentField: 'imagen', required: ['fecha'],
+    defaults: { fecha: '', documento: '', imagen: '', estado: true },
+    fields: [
+      { key: 'fecha', label: 'Fecha', type: 'date', required: true },
+      { key: 'documento', label: 'Documento', wide: true },
+      { key: 'estado', label: 'Vigente', type: 'checkbox' },
+    ],
+    columns: [
+      ['Fecha', it => fmtDate(it.fecha)], ['Documento', 'documento'],
+      ['Estado', it => it.estado ? <Badge tone="green">Vigente</Badge> : <Badge tone="gray">Archivado</Badge>],
+    ],
+  },
+  horasExtras: {
+    label: 'Horas extras', singular: 'registro', addLabel: 'Nuevo registro',
+    resource: horasExtras, documentField: 'imagen', required: ['contrato'],
+    defaults: { contrato: '', plazo: '', inicio: '', termino: '', estado: true, imagen: '' },
+    fields: [
+      { key: 'contrato', label: 'Detalle', required: true }, { key: 'plazo', label: 'Plazo' },
+      { key: 'inicio', label: 'Desde', type: 'date' }, { key: 'termino', label: 'Hasta', type: 'date' },
+      { key: 'estado', label: 'Vigente', type: 'checkbox' },
+    ],
+    columns: [
+      ['Detalle', 'contrato'], ['Desde', it => fmtDate(it.inicio)], ['Hasta', it => fmtDate(it.termino)],
+      ['Estado', it => it.estado ? <Badge tone="green">Vigente</Badge> : <Badge tone="gray">Cerrado</Badge>],
+    ],
+  },
+  reglamentos: {
+    label: 'Reglamentos', singular: 'reglamento', addLabel: 'Nuevo reglamento',
+    resource: reglamentos, documentField: 'documento', required: ['nombre'],
+    defaults: { nombre: '', documento: '', link: '', fechaEntrega: '', estado: true },
+    fields: [
+      { key: 'nombre', label: 'Nombre', required: true },
+      { key: 'fechaEntrega', label: 'Fecha de entrega', type: 'date' },
+      { key: 'link', label: 'Enlace', wide: true },
+      { key: 'estado', label: 'Vigente', type: 'checkbox' },
+    ],
+    columns: [
+      ['Nombre', 'nombre'], ['Entrega', it => fmtDate(it.fechaEntrega)],
+      ['Estado', it => it.estado ? <Badge tone="green">Vigente</Badge> : <Badge tone="gray">Archivado</Badge>],
     ],
   },
   vacunas: {
@@ -465,7 +517,7 @@ function ViewTrabajadorPage({ trabajador, onClose, onEdit, canWrite, canDelete }
         breadcrumb={['Inicio', 'RRHH', 'Trabajador']}
         actions={(
           <>
-            {canWrite && <Btn variant="secondary" size="sm" icon="edit" onClick={() => onEdit(t)}>Editar</Btn>}
+            {canWrite && <Btn variant="secondary" size="sm" icon="edit" onClick={() => onEdit(t)}>Editar ficha</Btn>}
             {canDelete && <Btn variant="secondary" size="sm" onClick={handleDelete} disabled={del.isPending} style={{ color: 'var(--red)' }}>Baja</Btn>}
             <Btn variant="ghost" size="sm" icon="x" onClick={onClose}>Cerrar</Btn>
           </>
@@ -484,6 +536,9 @@ function ViewTrabajadorPage({ trabajador, onClose, onEdit, canWrite, canDelete }
           <TabBtn active={tab === 'subcontratos'} onClick={() => setTab('subcontratos')} badge={full?.subcontratos?.length}>Subcontratos</TabBtn>
           <TabBtn active={tab === 'certificadosAntecedentes'} onClick={() => setTab('certificadosAntecedentes')} badge={full?.certificadosAntecedentes?.length}>Cert. Antecedentes</TabBtn>
           <TabBtn active={tab === 'vacunas'} onClick={() => setTab('vacunas')} badge={full?.vacunas?.length}>Vacunas</TabBtn>
+          <TabBtn active={tab === 'hojasVida'} onClick={() => setTab('hojasVida')} badge={full?.hojasVida?.length}>Hoja de vida</TabBtn>
+          <TabBtn active={tab === 'horasExtras'} onClick={() => setTab('horasExtras')} badge={full?.horasExtras?.length}>Horas extras</TabBtn>
+          <TabBtn active={tab === 'reglamentos'} onClick={() => setTab('reglamentos')} badge={full?.reglamentos?.length}>Reglamentos</TabBtn>
         </div>
 
         <div style={{ padding: '18px 22px' }}>
@@ -498,113 +553,12 @@ function ViewTrabajadorPage({ trabajador, onClose, onEdit, canWrite, canDelete }
           {tab === 'subcontratos' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.subcontratos} items={full?.subcontratos} canWrite={canWrite} />}
           {tab === 'certificadosAntecedentes' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.certificadosAntecedentes} items={full?.certificadosAntecedentes} canWrite={canWrite} />}
           {tab === 'vacunas' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.vacunas} items={full?.vacunas} canWrite={canWrite} />}
+          {tab === 'hojasVida' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.hojasVida} items={full?.hojasVida} canWrite={canWrite} />}
+          {tab === 'horasExtras' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.horasExtras} items={full?.horasExtras} canWrite={canWrite} />}
+          {tab === 'reglamentos' && <EditableRrhhTab trabajadorId={t.id} config={RRHH_TAB_CONFIG.reglamentos} items={full?.reglamentos} canWrite={canWrite} />}
         </div>
       </section>
     </main>
-  )
-}
-
-// ── TrabajadorFormModal ─────────────────────────────────────────────────
-function TrabajadorFormModal({ trabajador, onClose }) {
-  const isEdit = !!trabajador?.id
-  const [form, setForm] = useState({
-    empresa: trabajador?.empresa || 'plastimar',
-    apellidoPaterno: trabajador?.apellidoPaterno || '',
-    apellidoMaterno: trabajador?.apellidoMaterno || '',
-    nombres: trabajador?.nombres || '',
-    rut: trabajador?.rut || '',
-    fechaNacimiento: trabajador?.fechaNacimiento || '',
-    estadoCivil: trabajador?.estadoCivil || '',
-    cargasFamiliares: trabajador?.cargasFamiliares || '',
-    direccion: trabajador?.direccion || '',
-    comuna: trabajador?.comuna || '',
-    nacionalidad: trabajador?.nacionalidad || '',
-    afp: trabajador?.afp || '',
-    salud: trabajador?.salud || '',
-    telefono: trabajador?.telefono || '',
-    contactoEmergencia: trabajador?.contactoEmergencia || '',
-    numeroEmergencia: trabajador?.numeroEmergencia || '',
-    email: trabajador?.email || '',
-    banco: trabajador?.banco || '',
-    tipoCuenta: trabajador?.tipoCuenta || '',
-    numeroCuenta: trabajador?.numeroCuenta || '',
-    cargo: trabajador?.cargo || '',
-    fechaIngreso: trabajador?.fechaIngreso || '',
-    fechaTermino: trabajador?.fechaTermino ? trabajador.fechaTermino.slice(0, 10) : '',
-    tipoContrato: trabajador?.tipoContrato || '',
-    sueldoLiquido: trabajador?.sueldoLiquido || '',
-    observacion: trabajador?.observacion || '',
-    usuarioId: trabajador?.usuarioId ? String(trabajador.usuarioId) : '',
-  })
-  const create = useCreateTrabajador()
-  const update = useUpdateTrabajador()
-  const { data: cuentasData } = useCuentasDisponibles()
-  const cuentas = cuentasData?.items || []
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const handleSave = () => {
-    if (!form.nombres.trim() || !form.apellidoPaterno.trim() || !form.rut.trim()) {
-      return toast.warning('Nombres, apellido paterno y RUT son requeridos')
-    }
-    if (isEdit) update.mutate({ id: trabajador.id, ...form }, { onSuccess: onClose })
-    else create.mutate(form, { onSuccess: onClose })
-  }
-  const pending = create.isPending || update.isPending
-  const inp = { width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box' }
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'oklch(0 0 0 / 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width: 'min(640px, 100%)', maxHeight: '90vh', overflowY: 'auto',
-        background: '#fff', borderRadius: 12, padding: '18px 20px',
-      }}>
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>{isEdit ? 'Editar trabajador' : 'Nuevo trabajador'}</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 12 }}>
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>Empresa *</div>
-            <select value={form.empresa} onChange={e => set('empresa', e.target.value)} style={inp}>
-              <option value="plastimar">Plastimar</option>
-              <option value="allegro">Allegro</option>
-            </select>
-          </div>
-          {[
-            ['Nombres *', 'nombres'], ['Apellido paterno *', 'apellidoPaterno'], ['Apellido materno', 'apellidoMaterno'],
-            ['RUT *', 'rut'], ['Fecha nacimiento', 'fechaNacimiento'], ['Estado civil', 'estadoCivil'],
-            ['Cargas familiares', 'cargasFamiliares'], ['Nacionalidad', 'nacionalidad'],
-            ['Email', 'email'], ['Teléfono', 'telefono'],
-            ['Dirección', 'direccion'], ['Comuna', 'comuna'],
-            ['Contacto emergencia', 'contactoEmergencia'], ['N° emergencia', 'numeroEmergencia'],
-            ['AFP', 'afp'], ['Salud', 'salud'],
-            ['Banco', 'banco'], ['Tipo cuenta', 'tipoCuenta'], ['N° cuenta', 'numeroCuenta'],
-            ['Cargo', 'cargo'], ['Fecha ingreso', 'fechaIngreso'], ['Fecha término', 'fechaTermino'],
-            ['Tipo contrato', 'tipoContrato'], ['Sueldo líquido', 'sueldoLiquido'],
-          ].map(([label, key]) => (
-            <div key={key}>
-              <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>{label}</div>
-              <input type={key === 'fechaTermino' ? 'date' : 'text'} value={form[key]} onChange={e => set(key, e.target.value)} style={inp} />
-            </div>
-          ))}
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>Cuenta de sistema (login)</div>
-            <select value={form.usuarioId} onChange={e => set('usuarioId', e.target.value)} style={inp}>
-              <option value="">Sin vincular</option>
-              {cuentas.map(u => (
-                <option key={u.id} value={u.id} disabled={u.id !== trabajador?.usuarioId && u.linked}>
-                  {u.nombre} ({u.email})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 3 }}>Observación</div>
-          <textarea value={form.observacion} onChange={e => set('observacion', e.target.value)} rows={2} style={{ ...inp, fontFamily: 'inherit', resize: 'vertical' }} />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-          <button onClick={onClose} style={{ padding: '7px 14px', background: 'none', border: '1px solid var(--border)', borderRadius: 7, fontSize: 12, cursor: 'pointer', color: 'var(--text-2)' }}>Cancelar</button>
-          <button onClick={handleSave} disabled={pending} style={{ padding: '7px 14px', background: 'var(--green-600)', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{pending ? 'Guardando…' : 'Guardar'}</button>
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -725,8 +679,7 @@ export default function RrhhPage() {
   const [debounced, setDebounced] = useState('')
   const [empresa, setEmpresa] = useState('')
   const [cargo, setCargo] = useState('')
-  const [editing, setEditing] = useState(null)
-  const [creating, setCreating] = useState(false)
+  const [estado, setEstado] = useState('true')
   const ref = useRef(null)
 
   useEffect(() => {
@@ -735,7 +688,8 @@ export default function RrhhPage() {
     return () => clearTimeout(ref.current)
   }, [search])
 
-  const params = { estado: 'true' }
+  const params = {}
+  if (estado) params.estado = estado
   if (debounced) params.search = debounced
   if (empresa) params.empresa = empresa
   if (cargo) params.cargo = cargo
@@ -773,6 +727,7 @@ export default function RrhhPage() {
     { key: 'fechaIngreso', label: 'Ingreso', render: v => <span style={{ fontSize: 12, fontFamily: "'DM Mono', monospace" }}>{v || '—'}</span> },
     { key: 'telefono', label: 'Teléfono', render: v => <span style={{ fontSize: 12, fontFamily: "'DM Mono', monospace" }}>{v || '—'}</span> },
     { key: 'sueldoLiquido', label: 'Líquido', render: v => <span style={{ fontSize: 12 }}>{v ? `$${v}` : '—'}</span> },
+    { key: 'estado', label: 'Estado', render: v => v === false ? <Badge tone="gray">Baja</Badge> : <Badge tone="green">Activo</Badge> },
   ]
 
   const plastimarCount = resumen?.porEmpresa?.find(e => e.empresa === 'plastimar')?.count || 0
@@ -789,6 +744,11 @@ export default function RrhhPage() {
         <option value="">Todos los cargos</option>
         {cargos.map(c => <option key={c} value={c}>{c}</option>)}
       </select>
+      <select value={estado} onChange={e => setEstado(e.target.value)} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12 }}>
+        <option value="true">Activos</option>
+        <option value="false">Dados de baja</option>
+        <option value="">Todos</option>
+      </select>
       <div style={{ flex: 1, minWidth: 160 }}>
         <SearchBar placeholder="Nombre, RUT…" value={search} onChange={setSearch} />
       </div>
@@ -799,9 +759,9 @@ export default function RrhhPage() {
     <main className="page page-wide">
       <PageHeader
         title="RRHH — Trabajadores"
-        subtitle={`${total.toLocaleString('es-CL')} trabajadores ${empresa ? `en ${empresa}` : 'activos'}`}
+        subtitle={`${total.toLocaleString('es-CL')} trabajadores ${estado === 'false' ? 'dados de baja' : estado === '' ? 'en total' : 'activos'}${empresa ? ` · ${empresa}` : ''}`}
         breadcrumb={['Inicio', 'RRHH', 'Trabajadores']}
-        actions={canWriteRrhh ? <Btn variant="primary" icon="plus" size="sm" onClick={() => setCreating(true)}>Nuevo</Btn> : null}
+        actions={canWriteRrhh ? <Btn variant="primary" icon="plus" size="sm" onClick={() => navigate('/rrhh/nuevo')}>Nuevo</Btn> : null}
       />
 
       <div className="kpi-strip">
@@ -839,8 +799,6 @@ export default function RrhhPage() {
         )}
       </div>
 
-      {creating && canWriteRrhh && <TrabajadorFormModal onClose={() => setCreating(false)} />}
-      {editing && canWriteRrhh && <TrabajadorFormModal trabajador={editing} onClose={() => setEditing(null)} />}
     </main>
   )
 }
@@ -851,19 +809,15 @@ export function TrabajadorDetallePage() {
   const { user } = useAuthStore()
   const canWriteRrhh = can(user, 'rrhh', 'write')
   const canDeleteRrhh = can(user, 'rrhh', 'delete')
-  const [editing, setEditing] = useState(null)
   const trabajadorId = Number(id)
 
   return (
-    <>
-      <ViewTrabajadorPage
-        trabajador={{ id: trabajadorId }}
-        canWrite={canWriteRrhh}
-        canDelete={canDeleteRrhh}
-        onClose={() => navigate('/rrhh')}
-        onEdit={setEditing}
-      />
-      {editing && canWriteRrhh && <TrabajadorFormModal trabajador={editing} onClose={() => setEditing(null)} />}
-    </>
+    <ViewTrabajadorPage
+      trabajador={{ id: trabajadorId }}
+      canWrite={canWriteRrhh}
+      canDelete={canDeleteRrhh}
+      onClose={() => navigate('/rrhh')}
+      onEdit={() => navigate(`/rrhh/${trabajadorId}/editar`)}
+    />
   )
 }

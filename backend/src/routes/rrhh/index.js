@@ -160,7 +160,11 @@ export default async function rrhhRoutes(fastify) {
           vacaciones: { orderBy: { fechaInicio: 'desc' } },
           epps: { orderBy: { fechaEntrega: 'desc' } },
           hojasVida: { orderBy: { fecha: 'desc' } },
+          horasExtras: { orderBy: { inicio: 'desc' } },
           reglamentos: true,
+          // La cuenta vinculada se mostraba como "#12" en la ficha porque solo
+          // venia el id.
+          usuario: { select: { id: true, nombre: true, email: true, role: true } },
           subcontratos: { orderBy: { inicio: 'desc' } },
           certificadosAntecedentes: { orderBy: { fechaEmision: 'desc' } },
           vacunas: { orderBy: { fecha: 'desc' } },
