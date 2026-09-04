@@ -472,6 +472,11 @@ model PagoProveedor {
   fechaVencimiento        DateTime?                 @map("fecha_vencimiento")
   estado                  String                    @default("Pendiente")
   total                   Float                     @default(0)
+  neto                    Decimal?                  @default(0) @db.Decimal(12, 2)
+  iva                     Decimal?                  @default(0) @db.Decimal(12, 2)
+  exento                  Decimal?                  @default(0) @db.Decimal(12, 2)
+  montoPagado             Decimal                   @default(0) @map("monto_pagado") @db.Decimal(12, 2)
+  saldo                   Decimal                   @default(0) @db.Decimal(12, 2)
   usuario                 String?
   bodega                  String?
   nc                      Boolean                   @default(false)
@@ -489,14 +494,49 @@ model PagoProveedor {
   detallesFactura         DetalleFacturaProveedor[]
   telaMovimientos         TelaMovimiento[]
   bodegaTallerMovimientos BodegaTallerMovimiento[]
+  abonos                  AbonoPagoProveedor[]
+  documentoRecibido       FactDocumentoRecibido?
 
   @@index([proveedorId])
   @@index([codigoProveedor])
   @@index([nDoc])
   @@index([eliminado])
+  @@index([fechaVencimiento])
+  @@index([estado])
+  @@index([sucursalId, eliminado, estado])
+  @@index([fechaDoc])
   @@map("pagos_proveedores")
   @@schema("catalogo")
 }
+
+model AbonoPagoProveedor {
+  id               Int             @id @default(autoincrement())
+  pagoId           Int             @map("pago_id")
+  monto            Decimal         @db.Decimal(12, 2)
+  fechaPago        DateTime        @default(now()) @map("fecha_pago")
+  medioPago        String          @map("medio_pago")
+  origenFondos     String          @map("origen_fondos")
+  bancoOrigen      String?         @map("banco_origen")
+  numeroOperacion  String?         @map("numero_operacion")
+  movimientoCajaId Int?            @unique @map("movimiento_caja_id")
+  usuario          String?
+  comprobanteUrl   String?         @map("comprobante_url")
+  obs              String?
+  anulado          Boolean         @default(false)
+  motivoAnulacion  String?         @map("motivo_anulacion")
+  anuladoAt        DateTime?       @map("anulado_at")
+  anuladoPor       String?         @map("anulado_por")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  pago             PagoProveedor   @relation(fields: [pagoId], references: [id], onDelete: Cascade)
+  movimientoCaja   MovimientoCaja? @relation(fields: [movimientoCajaId], references: [id], onDelete: SetNull)
+
+  @@index([pagoId])
+  @@index([anulado])
+  @@index([fechaPago])
+  @@map("abonos_pagos_proveedores")
+  @@schema("catalogo")
+}
+
 
 model PrecioHistorial {
   id             Int      @id @default(autoincrement())
@@ -1358,6 +1398,7 @@ model MovimientoCaja {
   turno           Turno?    @relation(fields: [turnoId], references: [id])
   orden           Orden?    @relation(fields: [ordenId], references: [id], onDelete: SetNull)
   gastoTipo       Gasto?    @relation(fields: [gastoTipoId], references: [id])
+  abonoPagoProveedor AbonoPagoProveedor?
 
   @@index([turnoId])
   @@index([ordenId])
@@ -2913,6 +2954,7 @@ model FactDocumentoRecibido {
   referencias       Json      @default("[]")
   totales           Json      @default("{}")
   pagoProveedorId   Int?      @unique @map("pago_proveedor_id")
+  pagoProveedor     PagoProveedor? @relation(fields: [pagoProveedorId], references: [id])
   estado            String    @default("pendiente")
   vistoEn           DateTime? @map("visto_en")
   createdAt         DateTime  @default(now()) @map("created_at")

@@ -28,6 +28,7 @@ const PERMISSIONS = {
     ventas:      ['read'],
     clientes:    ['read'],
     proveedores: ['read', 'write'],
+    'caja.pagos_proveedores': ['read'],
   },
   cajero:       {
     reportes: ['read'],
@@ -112,6 +113,9 @@ function decidir(perms, { base, completo }, permission) {
 }
 
 export function can(role, module, permission, extraPerms = null, options = {}) {
+  if (Array.isArray(module)) {
+    return module.some(m => can(role, m, permission, extraPerms, options))
+  }
   const allowExtra = options.allowExtra !== false
   const objetivo = separarFuncion(module)
   const rolePerms = PERMISSIONS[role]

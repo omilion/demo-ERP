@@ -11,7 +11,9 @@ import {
   aplicarCosteoProducto,
   getSnapshots,
   recalcularMasivo,
+  calcularCosteoBorrador,
 } from './service.js';
+import { PROCESOS_COSTEO } from './procesos.js';
 
 export default async function costeoRoutes(fastify) {
   const readAuth = [fastify.authenticate, fastify.rbac('costeo', 'read')];
@@ -67,6 +69,25 @@ export default async function costeoRoutes(fastify) {
       tarifasActivas: tarifas,
       pendientes: sinReceta,
     })
+  });
+
+  // Catalogo de procesos. Lo sirve el servidor para que el editor y el alta de
+  // tarifas ofrezcan exactamente los mismos nombres que despues cruzan con la
+  // receta; escritos libres, un nombre distinto deja la hora en cero.
+  fastify.get('/procesos', { preHandler: readAuth }, async (request, reply) => {
+    return reply.send(PROCESOS_COSTEO);
+  });
+
+  // Calculo de una receta en borrador, sin guardar nada. Es el mismo motor y
+  // los mismos precios que usa "aplicar": el navegador ya no calcula por su
+  // cuenta, de modo que el desglose que se ve es el que se graba.
+  fastify.post('/calcular', { preHandler: readAuth }, async (request, reply) => {
+    try {
+      const resultado = await calcularCosteoBorrador(fastify.prisma, request.body || {});
+      return reply.send(resultado);
+    } catch (e) {
+      return reply.code(400).send({ error: e.message });
+    }
   });
 
   // ── TARIFAS DE MANO DE OBRA ──────────────────────────────────────────

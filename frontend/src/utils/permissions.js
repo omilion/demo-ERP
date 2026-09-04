@@ -27,6 +27,7 @@ export const ROLE_PERMISSIONS = {
     ventas: ['read'],
     clientes: ['read'],
     proveedores: ['read', 'write'],
+    'caja.pagos_proveedores': ['read'],
   },
   cajero: {
     reportes: ['read'],
@@ -95,6 +96,9 @@ function decidir(perms, moduleName, permission) {
 
 export function can(user, moduleName, permission = 'read') {
   if (!user || !moduleName) return false
+  if (Array.isArray(moduleName)) {
+    return moduleName.some(m => can(user, m, permission))
+  }
 
   const rolePerms = ROLE_PERMISSIONS[getUserRole(user)]
   if (rolePerms?.['*']) return true

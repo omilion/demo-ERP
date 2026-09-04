@@ -674,19 +674,35 @@ export default async function facturacionRoutes(fastify) {
 
   // --- Documentos recibidos por Gmail (sólo archivo/visualización) ---
 
-  fastify.get('/recibidos', readAuth, async () => {
+  const dteRecibidoReadAuth = {
+    preHandler: [
+      fastify.authenticate,
+      (request, reply, done) => {
+        const allowed = can(request.user?.role, 'facturacion', 'read', request.user?.permisosExtra)
+          || can(request.user?.role, 'caja.pagos_proveedores', 'read', request.user?.permisosExtra)
+          || can(request.user?.role, 'proveedores', 'read', request.user?.permisosExtra)
+        if (!allowed) {
+          reply.code(403).send({ error: 'No tienes permiso para ver DTEs recibidos' })
+          return
+        }
+        done()
+      },
+    ],
+  }
+
+  fastify.get('/recibidos', dteRecibidoReadAuth, async () => {
     const documentos = await fastify.prisma.factDocumentoRecibido.findMany({ orderBy: [{ recibidoEn: 'desc' }, { createdAt: 'desc' }] })
     return { documentos }
   })
 
-  fastify.get('/recibidos/:id', readAuth, async (request, reply) => {
+  fastify.get('/recibidos/:id', dteRecibidoReadAuth, async (request, reply) => {
     const documento = await fastify.prisma.factDocumentoRecibido.findUnique({ where: { id: Number(request.params.id) } })
     if (!documento) return reply.code(404).send({ error: 'Documento recibido no encontrado.' })
     if (documento.estado === 'pendiente') await fastify.prisma.factDocumentoRecibido.update({ where: { id: documento.id }, data: { estado: 'visto', vistoEn: new Date() } })
     return documento
   })
 
-  fastify.get('/recibidos/:id/xml', readAuth, async (request, reply) => {
+  fastify.get('/recibidos/:id/xml', dteRecibidoReadAuth, async (request, reply) => {
     const documento = await fastify.prisma.factDocumentoRecibido.findUnique({ where: { id: Number(request.params.id) } })
     if (!documento) return reply.code(404).send({ error: 'Documento recibido no encontrado.' })
     reply.header('Content-Type', 'application/xml; charset=utf-8')
@@ -694,7 +710,7 @@ export default async function facturacionRoutes(fastify) {
     return reply.send(documento.xml)
   })
 
-  fastify.get('/recibidos/:id/html', readAuth, async (request, reply) => {
+  fastify.get('/recibidos/:id/html', dteRecibidoReadAuth, async (request, reply) => {
     try {
       const documento = await fastify.prisma.factDocumentoRecibido.findUnique({ where: { id: Number(request.params.id) } })
       if (!documento) return reply.code(404).send({ error: 'Documento recibido no encontrado.' })
@@ -704,7 +720,7 @@ export default async function facturacionRoutes(fastify) {
     } catch (error) { return sendError(reply, error) }
   })
 
-  fastify.get('/recibidos/:id/pdf', readAuth, async (request, reply) => {
+  fastify.get('/recibidos/:id/pdf', dteRecibidoReadAuth, async (request, reply) => {
     try {
       const documento = await fastify.prisma.factDocumentoRecibido.findUnique({ where: { id: Number(request.params.id) } })
       if (!documento) return reply.code(404).send({ error: 'Documento recibido no encontrado.' })

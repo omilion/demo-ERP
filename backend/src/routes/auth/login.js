@@ -14,7 +14,8 @@ export default async function loginRoute(fastify) {
     const parsed = schema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid input' })
 
-    const { email, password } = parsed.data
+    const { password } = parsed.data
+    const email = parsed.data.email.trim().toLowerCase()
     const user = await fastify.prisma.user.findUnique({ where: { email } })
     if (!user || !user.activo) return reply.status(401).send({ error: 'Invalid credentials' })
 

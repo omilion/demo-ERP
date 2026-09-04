@@ -1,25 +1,21 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useReceta, useUpdateReceta, useAplicarCosteo, useTarifas } from '../../../api/costeo';
+import { useReceta, useUpdateReceta, useAplicarCosteo, useCosteoBorrador, useProcesosCosteo } from '../../../api/costeo';
 import { useBodegaTaller } from '../../../api/bodegaTaller';
 import { useTelas } from '../../../api/telas';
 import { useTalleres } from '../../../api/pasarTaller';
-import { calcularCosteo } from '../../../../../backend/src/routes/costeo/engine.js';
 import { toast, confirmDialog } from '../../../store/notif';
 import { Badge, Btn, Icon } from '../../../components/shared';
 
-const PROCESOS_SUGERIDOS = [
-  { id: 'corte', label: 'Corte de espuma' },
-  { id: 'confeccion', label: 'Confección' },
-  { id: 'enfundado', label: 'Enfundado' },
-  { id: 'armado', label: 'Armado / Esquelaje' },
-  { id: 'tapizado', label: 'Tapizado' },
-];
+const CALCULO_VACIO = {
+  costoMateriales: 0, costoManoObra: 0, costoAccesorios: 0, costoFabricacion: 0,
+  costoAjustado: 0, costoTransferencia: 0, avisos: [], detalle: { materiales: [], procesos: [] },
+};
 
 export function EditorRecetaModal({ producto, isOpen, onClose }) {
   const { data: recetaData } = useReceta(producto?.id);
   const { data: materialesBodega = [] } = useBodegaTaller();
   const { data: telas = [] } = useTelas();
-  const { data: tarifasVigentes = [] } = useTarifas();
+  const { data: procesosCatalogo = [] } = useProcesosCosteo();
   const { data: talleresData } = useTalleres();
   const talleres = Array.isArray(talleresData) ? talleresData : (talleresData?.data || talleresData?.items || []);
 
@@ -30,6 +26,10 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
   const [margenTransferencia, setMargenTransferencia] = useState(35);
   const [ajusteGlobalPct, setAjusteGlobalPct] = useState(3);
   const [accesoriosMonto, setAccesoriosMonto] = useState(0);
+  // Monto de materiales importado del Excel de MK, sin desglose por linea. El
+  // editor lo tiene que conservar: al no enviarlo, cada guardado lo dejaba en 0
+  // y la receta perdia en silencio la mayor parte de su costo.
+  const [materialesMonto, setMaterialesMonto] = useState(0);
   const [notas, setNotas] = useState('');
 
   const [materiales, setMateriales] = useState([]);
@@ -45,6 +45,7 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
       setMargenTransferencia(r.margenTransferencia ?? 35);
       setAjusteGlobalPct(r.ajusteGlobalPct ?? 3);
       setAccesoriosMonto(r.accesoriosMonto ?? 0);
+      setMaterialesMonto(r.materialesMonto ?? 0);
       setNotas(r.notas || '');
 
       setMateriales(
@@ -67,89 +68,59 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
     }
   }, [recetaData, producto]);
 
-  // Lookup map for tariffs
-  const tarifasMap = useMemo(() => {
-    const map = new Map();
-    for (const t of tarifasVigentes) {
-      map.set(`${t.tallerId}_${t.proceso.toLowerCase()}`, t.valorHora);
-    }
-    return map;
-  }, [tarifasVigentes]);
+  // El desglose lo calcula el servidor: mismo motor, mismos precios y mismas
+  // tarifas que al aplicar. Cuando el navegador tenia su propia copia del motor,
+  // preview y valor aplicado podian diferir sin que nada lo indicara.
+  const borrador = useMemo(() => ({
+    materiales: materiales.map((m) => ({
+      bodegaTallerId: m.bodegaTallerId || null,
+      telaId: m.telaId || null,
+      cantidad: Number(m.cantidad) || 0,
+      unidad: m.unidad || null,
+    })),
+    procesos: procesos.map((p) => ({
+      tallerId: p.tallerId || tallerId || null,
+      proceso: p.proceso,
+      horas: Number(p.horas) || 0,
+    })),
+    accesoriosMonto: Number(accesoriosMonto) || 0,
+    materialesMonto: Number(materialesMonto) || 0,
+    ajusteGlobalPct: Number(ajusteGlobalPct) || 0,
+    margenTransferencia: Number(margenTransferencia) || 0,
+  }), [materiales, procesos, tallerId, accesoriosMonto, materialesMonto, ajusteGlobalPct, margenTransferencia]);
 
-  // Prepared materials for engine calculation
-  const materialesForEngine = useMemo(() => {
-    const items = Array.isArray(materialesBodega) ? materialesBodega : (materialesBodega?.data || []);
-    const telasItems = Array.isArray(telas) ? telas : (telas?.data || []);
+  const [borradorDebounced, setBorradorDebounced] = useState(borrador);
+  useEffect(() => {
+    const timer = setTimeout(() => setBorradorDebounced(borrador), 300);
+    return () => clearTimeout(timer);
+  }, [borrador]);
 
-    return materiales.map((m) => {
-      let precioUnitario = 0;
-      let nombre = 'Material';
-      let unidad = m.unidad;
+  const { data: calculoServidor, isFetching: calculando } = useCosteoBorrador(borradorDebounced, isOpen);
+  const liveCalculation = calculoServidor || CALCULO_VACIO;
+  const avisos = liveCalculation.avisos || [];
+  const detalleMateriales = liveCalculation.detalle?.materiales || [];
+  const detalleProcesos = liveCalculation.detalle?.procesos || [];
 
-      if (m.bodegaTallerId) {
-        const mat = items.find((i) => i.id === m.bodegaTallerId);
-        if (mat) {
-          precioUnitario = mat.precio || 0;
-          nombre = mat.nombre;
-          if (!unidad) unidad = mat.unidadMedida;
-        }
-      } else if (m.telaId) {
-        const tel = telasItems.find((t) => t.id === m.telaId);
-        if (tel) {
-          precioUnitario = tel.precio || 0;
-          nombre = tel.nombre || `Tela ${tel.codigo}`;
-          if (!unidad) unidad = 'm';
-        }
-      }
-
-      return {
-        bodegaTallerId: m.bodegaTallerId,
-        telaId: m.telaId,
-        nombre,
-        unidad,
-        cantidad: m.cantidad,
-        precioUnitario,
-      };
-    });
-  }, [materiales, materialesBodega, telas]);
-
-  // Prepared processes for engine calculation
-  const procesosForEngine = useMemo(() => {
-    return procesos.map((p) => {
-      const key = `${p.tallerId || tallerId}_${(p.proceso || '').toLowerCase()}`;
-      // Nunca se inventa una tarifa en pantalla. Un valor supuesto hacía que
-      // la previsualización pareciera sana aunque el backend calculara mano
-      // de obra en cero por no tener una tarifa vigente.
-      const valorHora = tarifasMap.get(key) || 0;
-
-      return {
-        tallerId: p.tallerId || tallerId,
-        proceso: p.proceso,
-        horas: p.horas,
-        valorHora,
-      };
-    });
-  }, [procesos, tallerId, tarifasMap]);
-
-  // Live calculation preview
-  const liveCalculation = useMemo(() => {
-    return calcularCosteo({
-      materiales: materialesForEngine,
-      procesos: procesosForEngine,
-      accesoriosMonto,
-      ajusteGlobalPct,
-      margenTransferencia,
-    });
-  }, [materialesForEngine, procesosForEngine, accesoriosMonto, ajusteGlobalPct, margenTransferencia]);
+  // El proceso que ya tiene la receta se ofrece aunque no este en el catalogo:
+  // de lo contrario el <select> se abria en blanco y al guardar lo reescribia
+  // con otro proceso distinto del que la receta tenia.
+  const opcionesProceso = useMemo(() => {
+    const catalogo = Array.isArray(procesosCatalogo) ? procesosCatalogo : [];
+    const extras = procesos
+      .map((p) => p.proceso)
+      .filter((nombre) => nombre && !catalogo.some((c) => c.id === nombre))
+      .map((nombre) => ({ id: nombre, label: `${nombre} (fuera del catálogo)` }));
+    return [...catalogo, ...new Map(extras.map((e) => [e.id, e])).values()];
+  }, [procesosCatalogo, procesos]);
 
   const diferencia = liveCalculation.costoTransferencia - (producto?.precioLista || 0);
   const pctDiferencia = producto?.precioLista
     ? ((diferencia / producto.precioLista) * 100).toFixed(1)
     : 0;
   const alertasCosteo = useMemo(() => ({
-    materialesSinPrecio: materialesForEngine.filter(item => Number(item.cantidad) > 0 && Number(item.precioUnitario) <= 0),
-    procesosSinTarifa: procesosForEngine.filter(item => Number(item.horas) > 0 && Number(item.valorHora) <= 0),
-  }), [materialesForEngine, procesosForEngine]);
+    materialesSinPrecio: detalleMateriales.filter(item => Number(item.cantidad) > 0 && Number(item.precioUnitario) <= 0),
+    procesosSinTarifa: detalleProcesos.filter(item => Number(item.horas) > 0 && Number(item.valorHora) <= 0),
+  }), [detalleMateriales, detalleProcesos]);
   const costeoIncompleto = alertasCosteo.materialesSinPrecio.length > 0 || alertasCosteo.procesosSinTarifa.length > 0;
 
   // Handlers for dynamic material rows
@@ -224,6 +195,7 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
           margenTransferencia: Number(margenTransferencia),
           ajusteGlobalPct: Number(ajusteGlobalPct),
           accesoriosMonto: Number(accesoriosMonto),
+          materialesMonto: Number(materialesMonto) || 0,
           notas,
           materiales,
           procesos,
@@ -244,8 +216,15 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
       toast.warning('No se puede aplicar: corrige los materiales sin precio o los procesos sin tarifa vigente.');
       return;
     }
+    // Aplicar reescribe el precio de venta del catalogo: si el calculo trae
+    // ceros por falta de tarifa o de material, eso tiene que decirse ANTES.
+    const advertencia = avisos.length
+      ? `
+
+ATENCION: ${avisos.map((a) => a.detalle).join(' · ')}`
+      : '';
     const ok = await confirmDialog(
-      `¿Confirmas aplicar el nuevo costo de transferencia ($${liveCalculation.costoTransferencia.toLocaleString('es-CL')}) a la lista de precios? El precio actual ($${(producto.precioLista || 0).toLocaleString('es-CL')}) se actualizará y quedará registrado inmutablemente.`
+      `¿Confirmas aplicar el nuevo costo de transferencia ($${liveCalculation.costoTransferencia.toLocaleString('es-CL')}) a la lista de precios? El precio actual ($${(producto.precioLista || 0).toLocaleString('es-CL')}) se actualizará y quedará registrado inmutablemente.${advertencia}`
     );
     if (!ok) return;
 
@@ -258,6 +237,7 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
           margenTransferencia: Number(margenTransferencia),
           ajusteGlobalPct: Number(ajusteGlobalPct),
           accesoriosMonto: Number(accesoriosMonto),
+          materialesMonto: Number(materialesMonto) || 0,
           notas,
           materiales,
           procesos,
@@ -355,7 +335,7 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {materiales.map((row, idx) => {
-                    const engineMat = materialesForEngine[idx];
+                    const engineMat = detalleMateriales[idx];
                     return (
                       <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 100px 30px', gap: 8, alignItems: 'center', background: '#fafafa', padding: 8, borderRadius: 6, border: '1px solid var(--border)' }}>
                         {row.bodegaTallerId !== null ? (
@@ -425,7 +405,8 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {procesos.map((row, idx) => {
-                    const engineProc = procesosForEngine[idx];
+                    const engineProc = detalleProcesos[idx];
+                    const sinTarifa = engineProc && !engineProc.valorHora;
                     return (
                       <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 100px 30px', gap: 8, alignItems: 'center', background: '#fafafa', padding: 8, borderRadius: 6, border: '1px solid var(--border)' }}>
                         <select
@@ -433,7 +414,7 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
                           onChange={(e) => updateProcesoRow(idx, 'proceso', e.target.value)}
                           style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', fontSize: 12 }}
                         >
-                          {PROCESOS_SUGERIDOS.map((p) => (
+                          {opcionesProceso.map((p) => (
                             <option key={p.id} value={p.id}>{p.label}</option>
                           ))}
                         </select>
@@ -447,8 +428,10 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
                           style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', fontSize: 12 }}
                         />
 
-                        <div style={{ fontSize: 12, fontWeight: 600, textAlign: 'right' }}>
-                          ${(Number(engineProc?.horas || 0) * Number(engineProc?.valorHora || 0)).toLocaleString('es-CL')}
+                        <div style={{ fontSize: 12, fontWeight: 600, textAlign: 'right', color: sinTarifa ? 'var(--red)' : undefined }}>
+                          {sinTarifa
+                            ? <span title="Sin tarifa vigente para este proceso en este taller">$0 · sin tarifa</span>
+                            : `$${(engineProc?.subtotal || 0).toLocaleString('es-CL')}`}
                         </div>
 
                         <button onClick={() => removeProcesoRow(idx)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--red-600)' }}>
@@ -477,8 +460,9 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
           {/* Right Panel: Live Calculation & Comparison */}
           <div style={{ background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', padding: 16, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div>
-              <h3 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 12px 0', borderBottom: '1px solid #cbd5e1', paddingBottom: 8 }}>
-                Desglose en Vivo
+              <h3 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 12px 0', borderBottom: '1px solid #cbd5e1', paddingBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Desglose en Vivo</span>
+                {calculando && <span style={{ fontSize: 11, fontWeight: 500, color: '#64748b' }}>calculando…</span>}
               </h3>
 
               {costeoIncompleto && (
@@ -488,12 +472,26 @@ export function EditorRecetaModal({ producto, isOpen, onClose }) {
                   {alertasCosteo.procesosSinTarifa.length > 0 && <div>Procesos sin tarifa: {alertasCosteo.procesosSinTarifa.map(item => item.proceso).join(', ')}.</div>}
                 </section>
               )}
+              {avisos.length > 0 && (
+                <div style={{ marginBottom: 12, padding: '8px 10px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fca5a5' }}>
+                  {avisos.map((aviso, i) => (
+                    <div key={i} style={{ fontSize: 11, color: '#991b1b' }}>{aviso.detalle}</div>
+                  ))}
+                </div>
+              )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#64748b' }}>Coste Materiales:</span>
                   <span style={{ fontWeight: 600 }}>${liveCalculation.costoMateriales.toLocaleString('es-CL')}</span>
                 </div>
+
+                {Number(materialesMonto) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#64748b' }}>
+                    <span>· de ellos, monto importado del Excel:</span>
+                    <span>${Number(materialesMonto).toLocaleString('es-CL')}</span>
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#64748b' }}>Mano de Obra:</span>

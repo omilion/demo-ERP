@@ -37,7 +37,7 @@ async function findDuplicateSubcategoria(prisma, { id, nombre, categoriaId }) {
 
 export default async function categoriasBodegaTallerRoutes(fastify) {
   fastify.get('/', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
+    preHandler: [fastify.authenticate, fastify.rbac(['taller', 'costeo'], 'read')],
   }, async () => {
     return fastify.prisma.categoriaBodegaTaller.findMany({
       where: { activo: true },
@@ -105,7 +105,7 @@ export default async function categoriasBodegaTallerRoutes(fastify) {
   })
 
   fastify.get('/:id/subcategorias', {
-    preHandler: [fastify.authenticate, fastify.rbac('taller', 'read')],
+    preHandler: [fastify.authenticate, fastify.rbac(['taller', 'costeo'], 'read')],
   }, async (request, reply) => {
     const categoriaId = parseId(request.params.id)
     if (!categoriaId) return reply.code(400).send({ error: 'ID invalido' })

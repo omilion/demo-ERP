@@ -87,6 +87,16 @@ function cleanEmail(value) {
   return text ? text.toLowerCase() : null
 }
 
+function parsePassword(value, { required = false } = {}) {
+  if (value === undefined || value === null || value === '') {
+    return required ? { error: 'password requerida' } : { value: null }
+  }
+  if (typeof value !== 'string') return { error: 'password invalida' }
+  if (value !== value.trim()) return { error: 'La password no debe comenzar ni terminar con espacios' }
+  if (value.length < 6) return { error: 'La password debe tener al menos 6 caracteres' }
+  return { value }
+}
+
 function parseOptionalId(value, field) {
   if (value === undefined || value === null || value === '') return { provided: value !== undefined, value: null }
   const parsed = Number.parseInt(value, 10)
@@ -153,6 +163,10 @@ function uniqueErrorMessage(error) {
   return 'dato unico ya existe'
 }
 
+function sameJson(left, right) {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
+}
+
 async function ensureAdminSafety(prisma, requestUser, current, nextData) {
   const nextRole = nextData.role ?? current.role
   const nextActivo = nextData.activo ?? current.activo
@@ -201,11 +215,13 @@ export default async function usuariosRoutes(fastify) {
     const b = request.body || {}
     const email = cleanEmail(b.email)
     const nombre = cleanText(b.nombre)
-    const password = cleanText(b.password)
+    const parsedPassword = parsePassword(b.password, { required: true })
+    const password = parsedPassword.value
     const role = cleanText(b.role)
-    if (!email || !password || !role || !nombre) {
+    if (!email || !role || !nombre) {
       return reply.code(400).send({ error: 'email, password, role, nombre requeridos' })
     }
+    if (parsedPassword.error) return reply.code(400).send({ error: parsedPassword.error })
     if (!ROLES.has(role)) return reply.code(400).send({ error: 'role invalido' })
     const rut = cleanText(b.rut)
     const codigoVendedor = cleanText(b.codigoVendedor)
@@ -291,7 +307,11 @@ export default async function usuariosRoutes(fastify) {
       if (sucursalError) return reply.code(404).send({ error: sucursalError })
       data.sucursalId = parsedSucursal.value
     }
-    if (b.password) data.passwordHash = await bcrypt.hash(String(b.password), 10)
+    if (b.password !== undefined) {
+      const parsedPassword = parsePassword(b.password)
+      if (parsedPassword.error) return reply.code(400).send({ error: parsedPassword.error })
+      if (parsedPassword.value) data.passwordHash = await bcrypt.hash(parsedPassword.value, 10)
+    }
 
     const duplicate = await validateDuplicates(fastify.prisma, {
       id,
@@ -320,6 +340,28 @@ export default async function usuariosRoutes(fastify) {
     } catch (e) {
       if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrado' })
       if (e.code === 'P2002') return reply.code(409).send({ error: uniqueErrorMessage(e) })
+      throw e
+    }
+  })
+
+  fastify.put('/:id/password', {
+    preHandler: [fastify.authenticate, fastify.rbac('usuarios', 'write', { allowExtra: false })],
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10)
+    if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
+    const password = parsePassword(request.body?.password, { required: true })
+    if (password.error) return reply.code(400).send({ error: password.error })
+
+    try {
+      const u = await fastify.prisma.user.update({
+        where: { id },
+        data: { passwordHash: await bcrypt.hash(password.value, 10) },
+        select: userSelect,
+      })
+      await fastify.prisma.session.deleteMany({ where: { userId: id } })
+      return u
+    } catch (e) {
+      if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrado' })
       throw e
     }
   })

@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { Badge, Btn, Icon, PageHeader, Pager, SearchBar, Table } from '../../components/shared';
-import { useRecetas, useTarifas, useCreateTarifa, useDeleteTarifa, useMaterialesHistorialPrecios, useRecalcularMasivo } from '../../api/costeo';
-import { useBodegaTaller, useUpdateBodegaTaller, useCreateBodegaTaller, useDeleteBodegaTaller } from '../../api/bodegaTaller';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Badge, Btn, FilterSelect, PageHeader, Pager, SearchBar, Table, Tabs } from '../../components/shared';
+import { useRecetas, useTarifas, useCreateTarifa, useDeleteTarifa, useRecalcularMasivo, useProcesosCosteo } from '../../api/costeo';
+import { useBodegaTaller, useDeleteBodegaTaller } from '../../api/bodegaTaller';
 import { useTalleres } from '../../api/pasarTaller';
 import { EditorRecetaModal } from './components/EditorRecetaModal';
 import { toast, confirmDialog } from '../../store/notif';
@@ -16,72 +17,48 @@ const toArray = (value) => {
 
 const COSTEO_PAGE_SIZE = 50;
 
+const TABS = [
+  { id: 'recetas', label: 'Recetas y Costeo (BOM)' },
+  { id: 'materias', label: 'Materias Primas' },
+  { id: 'tarifas', label: 'Tarifas Mano de Obra' },
+];
+
 export default function CosteoPage() {
-  const [activeTab, setActiveTab] = useState('recetas');
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const activeTab = TABS.some((t) => t.id === tabParam) ? tabParam : 'recetas';
+  const [creandoTarifa, setCreandoTarifa] = useState(false);
+
+  // La accion de cada pestaña vive a la altura de las pestañas, no encima de la
+  // tabla: asi la fila de herramientas de la tabla queda solo para filtros.
+  const accionDePestana = {
+    materias: <Btn size="sm" icon="plusCircle" onClick={() => navigate('/materias-primas/nueva?volver=/costeo%3Ftab%3Dmaterias')}>Nueva materia prima</Btn>,
+    tarifas: <Btn size="sm" icon="plusCircle" onClick={() => setCreandoTarifa(true)}>Nueva tarifa de proceso</Btn>,
+  }[activeTab];
 
   return (
-    <div style={{ padding: 24 }}>
-      <PageHeader
-        title="Módulo de Costeo de Fabricación"
-        subtitle="Cálculo de costos reales Allegro, margen de transferencia y snapshots inmutables"
-      />
+    <main className="page page-wide">
+      <PageHeader title="Módulo de Costeo de Fabricación" />
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 12, borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
-        <button
-          onClick={() => setActiveTab('recetas')}
-          style={{
-            padding: '10px 16px',
-            border: 'none',
-            background: 'transparent',
-            fontWeight: 600,
-            fontSize: 14,
-            cursor: 'pointer',
-            borderBottom: activeTab === 'recetas' ? '2px solid var(--primary)' : '2px solid transparent',
-            color: activeTab === 'recetas' ? 'var(--primary)' : 'var(--text-2)',
-          }}
-        >
-          Recetas y Costeo (BOM)
-        </button>
-
-        <button
-          onClick={() => setActiveTab('materias')}
-          style={{
-            padding: '10px 16px',
-            border: 'none',
-            background: 'transparent',
-            fontWeight: 600,
-            fontSize: 14,
-            cursor: 'pointer',
-            borderBottom: activeTab === 'materias' ? '2px solid var(--primary)' : '2px solid transparent',
-            color: activeTab === 'materias' ? 'var(--primary)' : 'var(--text-2)',
-          }}
-        >
-          Materias Primas
-        </button>
-
-        <button
-          onClick={() => setActiveTab('tarifas')}
-          style={{
-            padding: '10px 16px',
-            border: 'none',
-            background: 'transparent',
-            fontWeight: 600,
-            fontSize: 14,
-            cursor: 'pointer',
-            borderBottom: activeTab === 'tarifas' ? '2px solid var(--primary)' : '2px solid transparent',
-            color: activeTab === 'tarifas' ? 'var(--primary)' : 'var(--text-2)',
-          }}
-        >
-          Tarifas Mano de Obra
-        </button>
+      <div style={{
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+        gap: 16, flexWrap: 'wrap', borderBottom: '2px solid var(--border)', marginBottom: 20,
+      }}>
+        <Tabs
+          tabs={TABS}
+          active={activeTab}
+          onChange={(id) => setSearchParams(id === 'recetas' ? {} : { tab: id })}
+          style={{ marginBottom: 0, borderBottom: 'none' }}
+        />
+        {accionDePestana && <div style={{ paddingBottom: 8 }}>{accionDePestana}</div>}
       </div>
 
       {activeTab === 'recetas' && <PanelCobertura />}
       {activeTab === 'recetas' && <RecetasTab />}
       {activeTab === 'materias' && <MateriasPrimasTab />}
-      {activeTab === 'tarifas' && <TarifasTab />}
-    </div>
+      {activeTab === 'tarifas' && <TarifasTab creando={creandoTarifa} setCreando={setCreandoTarifa} />}
+    </main>
   );
 }
 
@@ -206,57 +183,6 @@ function RecetasTab() {
         </Btn>
       </div>
 
-      {pages > 1 && (
-        <div
-          aria-label="Paginación de productos MK"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            flexWrap: 'wrap',
-            padding: '10px 14px',
-            marginBottom: 10,
-            border: '1px solid var(--border)',
-            borderRadius: 8,
-            background: '#fff',
-          }}
-        >
-          <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
-            <strong>{total.toLocaleString('es-CL')}</strong> productos MK · {COSTEO_PAGE_SIZE} por página
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <Btn size="xs" variant="secondary" onClick={() => setPage(1)} disabled={page <= 1 || isFetching}>
-              Primera
-            </Btn>
-            <Btn size="xs" variant="secondary" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1 || isFetching}>
-              Anterior
-            </Btn>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-2)' }}>
-              Página
-              <select
-                aria-label="Ir a página de productos MK"
-                value={page}
-                onChange={(event) => setPage(Number(event.target.value))}
-                disabled={isFetching}
-                style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}
-              >
-                {Array.from({ length: pages }, (_, index) => index + 1).map((pageNumber) => (
-                  <option key={pageNumber} value={pageNumber}>{pageNumber}</option>
-                ))}
-              </select>
-              de {pages}
-            </label>
-            <Btn size="xs" variant="secondary" onClick={() => setPage((current) => Math.min(pages, current + 1))} disabled={page >= pages || isFetching}>
-              Siguiente
-            </Btn>
-            <Btn size="xs" variant="secondary" onClick={() => setPage(pages)} disabled={page >= pages || isFetching}>
-              Última
-            </Btn>
-          </div>
-        </div>
-      )}
-
       <Table columns={columns} rows={isLoading ? [] : productos} emptyMessage={isLoading ? 'Cargando recetas…' : 'Sin productos'} />
       <Pager
         page={page}
@@ -281,50 +207,43 @@ function RecetasTab() {
 
 // ── TAB 2: MATERIAS PRIMAS ──────────────────────────────────────────────────
 function MateriasPrimasTab() {
-  const [tallerFiltro, setTallerFiltro] = useState('');
+  const navigate = useNavigate();
   const [busqueda, setBusqueda] = useState('');
-  const { data: bodegaData, isLoading } = useBodegaTaller();
+  const [busquedaAplicada, setBusquedaAplicada] = useState('');
+  const [tallerFiltro, setTallerFiltro] = useState('');
+  const [page, setPage] = useState(1);
+  const debounceRef = useRef(null);
+
   const { data: talleresData } = useTalleres();
-  const updateBodega = useUpdateBodegaTaller();
   const deleteBodega = useDeleteBodegaTaller();
-
-  const [editingItem, setEditingItem] = useState(null);
-  const [newPrecio, setNewPrecio] = useState('');
-  const [motivo, setMotivo] = useState('');
-  const [historyMaterialId, setHistoryMaterialId] = useState(null);
-  const [creando, setCreando] = useState(false);
-  const [editingMaterial, setEditingMaterial] = useState(null);
-
   const talleres = toArray(talleresData);
-  const todos = toArray(bodegaData);
-  const tallerNombre = id => { const t = talleres.find(x => x.id === id); return t ? (t.label || t.nombre) : null; };
 
-  // Filtro en memoria: el listado de materias primas es chico (decenas), no
-  // vale la pena ida y vuelta al servidor por cada tecla.
-  const items = todos.filter(item => {
-    const porTaller = !tallerFiltro
-      || (tallerFiltro === 'sin' ? !item.tallerId : String(item.tallerId) === tallerFiltro);
-    const texto = busqueda.trim().toLowerCase();
-    const porTexto = !texto
-      || [item.codigoInterno, item.nombre, item.detalle].filter(Boolean).join(' ').toLowerCase().includes(texto);
-    return porTaller && porTexto;
-  });
-  const materialesEspuma = todos.filter((item) => /espuma/i.test(String(tallerNombre(item.tallerId) || '')));
-  const espumasSinFichaTecnica = materialesEspuma.filter((item) => item.densidadKgM3 == null || item.espesorMm == null || !item.formato).length;
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => { setBusquedaAplicada(busqueda); setPage(1); }, 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [busqueda]);
 
-  const handleSavePrecio = async () => {
-    if (!editingItem || !newPrecio) return;
-    try {
-      await updateBodega.mutateAsync({
-        id: editingItem.id,
-        data: { precio: Number(newPrecio), motivo },
-      });
-      toast.success('Precio actualizado correctamente');
-      setEditingItem(null);
-    } catch {
-      toast.error('Error al actualizar precio');
-    }
+  // El filtrado corre en el servidor: la lista se sirve paginada de a 200 y el
+  // filtro en memoria solo veia la primera pagina, de modo que el contador y la
+  // busqueda mentian apenas el catalogo superara ese tamaño.
+  const params = { page: String(page) };
+  if (busquedaAplicada) params.search = busquedaAplicada;
+  if (tallerFiltro === 'sin') params.tallerId = '';
+  else if (tallerFiltro) params.tallerId = tallerFiltro;
+
+  const { data: bodegaData, isLoading, isFetching } = useBodegaTaller(params);
+  const items = toArray(bodegaData);
+  const total = Number(bodegaData?.total) || 0;
+  const pages = Math.max(1, Number(bodegaData?.pages) || 1);
+
+  const tallerNombre = (id) => {
+    const t = talleres.find((x) => x.id === id);
+    return t ? (t.label || t.nombre) : null;
   };
+
+  const materialesEspuma = items.filter((item) => /espuma/i.test(String(tallerNombre(item.tallerId) || '')));
+  const espumasSinFichaTecnica = materialesEspuma.filter((item) => item.densidadKgM3 == null || item.espesorMm == null || !item.formato).length;
 
   const handleDelete = async (item) => {
     const ok = await confirmDialog(`¿Desactivar ${item.nombre}? Se conserva su historial y las recetas ya usadas.`);
@@ -355,24 +274,58 @@ function MateriasPrimasTab() {
     { key: 'stock', label: 'Stock', render: (v) => (v || 0).toLocaleString('es-CL') },
     { key: 'precio', label: 'Precio Unitario', render: (v) => `$${(v || 0).toLocaleString('es-CL')}` },
     {
-      key: 'actions',
+      key: '_actions',
       label: 'Acciones',
       render: (_, r) => (
         <div style={{ display: 'flex', gap: 8 }}>
-          <Btn size="xs" variant="secondary" onClick={() => setEditingMaterial(r)}>Editar</Btn>
-          <Btn size="xs" variant="secondary" onClick={() => { setEditingItem(r); setNewPrecio(r.precio || ''); }}>
-            Editar Precio
-          </Btn>
-          <Btn size="xs" variant="ghost" onClick={() => setHistoryMaterialId(r.id)}>
-            Histórico
-          </Btn>
-          <Btn size="xs" variant="ghost" onClick={() => handleDelete(r)}>
-            Eliminar
-          </Btn>
+          <Btn size="xs" variant="secondary" onClick={() => navigate(`/materias-primas/${r.id}?volver=/costeo%3Ftab%3Dmaterias`)}>Ver</Btn>
+          <Btn size="xs" variant="secondary" onClick={() => navigate(`/materias-primas/${r.id}/editar?volver=/costeo%3Ftab%3Dmaterias`)}>Editar</Btn>
+          <Btn size="xs" variant="ghost" onClick={() => handleDelete(r)}>Eliminar</Btn>
         </div>
       ),
     },
   ];
+
+  const tallerOptions = [
+    { value: '', label: 'Todos los talleres' },
+    ...talleres.map((t) => ({ value: String(t.id), label: t.label || t.nombre })),
+    { value: 'sin', label: 'Sin taller asignado' },
+  ];
+
+  const hayFiltros = Boolean(busqueda || tallerFiltro);
+
+  const toolbarExtra = (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+      <FilterSelect
+        value={tallerFiltro}
+        onChange={(v) => { setTallerFiltro(v); setPage(1); }}
+        options={tallerOptions}
+        placeholder="Talleres"
+        active={Boolean(tallerFiltro)}
+        minMenuWidth={220}
+      />
+      {hayFiltros && (
+        <button
+          type="button"
+          className="table-tool-btn"
+          onClick={() => { setBusqueda(''); setTallerFiltro(''); setPage(1); }}
+        >
+          Limpiar filtros
+        </button>
+      )}
+      <span style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>
+        {items.length} de {total.toLocaleString('es-CL')}
+      </span>
+      <div style={{ marginLeft: 'auto' }}>
+        <SearchBar
+          placeholder="Buscar por código, nombre o detalle"
+          value={busqueda}
+          onChange={setBusqueda}
+          style={{ width: 280, height: 28 }}
+        />
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -382,306 +335,38 @@ function MateriasPrimasTab() {
           <div style={{ fontSize: 12, color: '#075985', marginTop: 3 }}>La densidad, espesor y formato pertenecen a la materia prima; lote, calidad y merma se controlan en Taller.</div>
         </div>
         <div style={{ display: 'flex', gap: 18, alignItems: 'center' }}>
-          <div><div style={{ fontSize: 20, fontWeight: 700, color: '#0369a1' }}>{materialesEspuma.length}</div><div style={{ fontSize: 11, color: '#075985' }}>materiales Espumas</div></div>
+          <div><div style={{ fontSize: 20, fontWeight: 700, color: '#0369a1' }}>{materialesEspuma.length}</div><div style={{ fontSize: 11, color: '#075985' }}>materiales Espumas (en esta vista)</div></div>
           <div><div style={{ fontSize: 20, fontWeight: 700, color: espumasSinFichaTecnica ? '#b45309' : '#15803d' }}>{espumasSinFichaTecnica}</div><div style={{ fontSize: 11, color: '#075985' }}>fichas por completar</div></div>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        <SearchBar placeholder="Buscar por código, nombre o detalle" value={busqueda} onChange={setBusqueda} style={{ width: 300 }} />
-        <select
-          value={tallerFiltro}
-          onChange={(e) => setTallerFiltro(e.target.value)}
-          style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13, fontFamily: 'inherit', background: '#fff' }}
-        >
-          <option value="">Todos los talleres</option>
-          {talleres.map((t) => <option key={t.id} value={String(t.id)}>{t.label || t.nombre}</option>)}
-          <option value="sin">Sin taller asignado</option>
-        </select>
-        <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{items.length} de {todos.length}</span>
-        <div style={{ marginLeft: 'auto' }}>
-          <Btn icon="plusCircle" onClick={() => setCreando(true)}>Nueva materia prima</Btn>
-        </div>
-      </div>
 
-      <Table columns={columns} rows={isLoading ? [] : items} emptyMessage={isLoading ? 'Cargando materias primas…' : 'Sin materias primas'} />
-
-      {creando && <NuevaMateriaPrimaModal talleres={talleres} onClose={() => setCreando(false)} />}
-      {editingMaterial && <EditarMateriaPrimaModal material={editingMaterial} talleres={talleres} onClose={() => setEditingMaterial(null)} />}
-
-      {/* Edit Price Modal */}
-      {editingItem && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', padding: 24, borderRadius: 8, width: 400 }}>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: 16 }}>Editar Precio: {editingItem.nombre}</h3>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600 }}>Precio Nuevo ($)</label>
-                <input
-                  type="number"
-                  value={newPrecio}
-                  onChange={(e) => setNewPrecio(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', marginTop: 4 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600 }}>Motivo del cambio</label>
-                <input
-                  type="text"
-                  value={motivo}
-                  onChange={(e) => setMotivo(e.target.value)}
-                  placeholder="ej. Ajuste proveedor"
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', marginTop: 4 }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-                <Btn variant="secondary" onClick={() => setEditingItem(null)}>Cancelar</Btn>
-                <Btn onClick={handleSavePrecio}>Guardar</Btn>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* History Modal */}
-      {historyMaterialId && <MaterialHistoryModal materialId={historyMaterialId} onClose={() => setHistoryMaterialId(null)} />}
-    </div>
-  );
-}
-
-const UNIDADES = ['kg', 'mt', 'm2', 'm3', 'lt', 'plancha', 'rollo', 'unidad'];
-
-function NuevaMateriaPrimaModal({ talleres, onClose }) {
-  const crear = useCreateBodegaTaller();
-  const [form, setForm] = useState({
-    codigoInterno: '', nombre: '', detalle: '', unidadMedida: 'kg', precio: '', tallerId: '', densidadKgM3: '', espesorMm: '', formato: '',
-  });
-  const set = (campo, valor) => setForm((f) => ({ ...f, [campo]: valor }));
-
-  const guardar = async () => {
-    if (!form.codigoInterno.trim() || !form.nombre.trim()) {
-      toast.warning('Código y nombre son obligatorios');
-      return;
-    }
-    try {
-      await crear.mutateAsync({
-        codigoInterno: form.codigoInterno.trim(),
-        nombre: form.nombre.trim(),
-        detalle: form.detalle.trim() || undefined,
-        unidadMedida: form.unidadMedida || undefined,
-        precio: Number(form.precio) || 0,
-        tallerId: form.tallerId ? Number(form.tallerId) : undefined,
-        densidadKgM3: form.densidadKgM3 === '' ? undefined : Number(form.densidadKgM3),
-        espesorMm: form.espesorMm === '' ? undefined : Number(form.espesorMm),
-        formato: form.formato.trim() || undefined,
-      });
-      toast.success('Materia prima creada');
-      onClose();
-    } catch (e) {
-      toast.error(e.response?.data?.error || 'No se pudo crear la materia prima');
-    }
-  };
-
-  const campo = { width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', marginTop: 4, fontFamily: 'inherit' };
-  const etiqueta = { fontSize: 12, fontWeight: 600 };
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: '#fff', padding: 24, borderRadius: 8, width: 520, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
-        <h3 style={{ margin: '0 0 16px 0', fontSize: 16 }}>Nueva materia prima</h3>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={etiqueta}>Código <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input value={form.codigoInterno} onChange={(e) => set('codigoInterno', e.target.value)} placeholder="ej. MP-ALGODON" style={campo} />
-            </div>
-            <div>
-              <label style={etiqueta}>Taller</label>
-              <select value={form.tallerId} onChange={(e) => set('tallerId', e.target.value)} style={{ ...campo, background: '#fff' }}>
-                <option value="">Sin asignar</option>
-                {talleres.map((t) => <option key={t.id} value={String(t.id)}>{t.label || t.nombre}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div style={{ paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Especificación de espuma</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label style={etiqueta}>Densidad (kg/mÂ³)</label>
-                <input type="number" min="0" value={form.densidadKgM3} onChange={(e) => set('densidadKgM3', e.target.value)} placeholder="ej. 25" style={campo} />
-              </div>
-              <div>
-                <label style={etiqueta}>Espesor (mm)</label>
-                <input type="number" min="0" value={form.espesorMm} onChange={(e) => set('espesorMm', e.target.value)} placeholder="ej. 50" style={campo} />
-              </div>
-            </div>
-            <div>
-              <label style={etiqueta}>Formato</label>
-              <input value={form.formato} onChange={(e) => set('formato', e.target.value)} placeholder="ej. plancha 2 x 1 m" style={campo} />
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6 }}>La densidad identifica la espuma y obliga a seleccionar un lote aprobado al consumirla en taller.</div>
-          </div>
-
-          <div>
-            <label style={etiqueta}>Nombre <span style={{ color: 'var(--red)' }}>*</span></label>
-            <input value={form.nombre} onChange={(e) => set('nombre', e.target.value)} placeholder="ej. Algodón" style={campo} />
-          </div>
-
-          <div>
-            <label style={etiqueta}>Detalle</label>
-            <input value={form.detalle} onChange={(e) => set('detalle', e.target.value)} placeholder="marca, formato u observación" style={campo} />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={etiqueta}>Unidad</label>
-              <select value={form.unidadMedida} onChange={(e) => set('unidadMedida', e.target.value)} style={{ ...campo, background: '#fff' }}>
-                {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={etiqueta}>Costo por unidad ($)</label>
-              <input type="number" value={form.precio} onChange={(e) => set('precio', e.target.value)} placeholder="0" style={campo} />
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-            <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
-            <Btn onClick={guardar} disabled={crear.isPending}>{crear.isPending ? 'Creando…' : 'Crear'}</Btn>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EditarMateriaPrimaModal({ material, talleres, onClose }) {
-  const actualizar = useUpdateBodegaTaller();
-  const [form, setForm] = useState({
-    codigoInterno: material.codigoInterno || '',
-    nombre: material.nombre || '',
-    detalle: material.detalle || '',
-    unidadMedida: material.unidadMedida || 'kg',
-    precio: material.precio ?? '',
-    tallerId: material.tallerId ? String(material.tallerId) : '',
-    densidadKgM3: material.densidadKgM3 ?? '',
-    espesorMm: material.espesorMm ?? '',
-    formato: material.formato || '',
-  });
-  const set = (campo, valor) => setForm((actual) => ({ ...actual, [campo]: valor }));
-  const tallerActual = talleres.find((taller) => String(taller.id) === form.tallerId);
-  const esEspuma = /espuma/i.test(String(tallerActual?.label || tallerActual?.nombre || '')) || form.densidadKgM3 !== '' || form.espesorMm !== '' || form.formato !== '';
-  const campo = { width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', marginTop: 4, fontFamily: 'inherit' };
-  const etiqueta = { fontSize: 12, fontWeight: 600 };
-
-  const guardar = async () => {
-    if (!form.codigoInterno.trim() || !form.nombre.trim()) {
-      toast.warning('Código y nombre son obligatorios');
-      return;
-    }
-    try {
-      const data = {
-        codigoInterno: form.codigoInterno.trim(),
-        nombre: form.nombre.trim(),
-        detalle: form.detalle.trim() || null,
-        unidadMedida: form.unidadMedida,
-        precio: Number(form.precio) || 0,
-        tallerId: form.tallerId ? Number(form.tallerId) : null,
-      };
-      if (esEspuma) {
-        data.densidadKgM3 = form.densidadKgM3 === '' ? null : Number(form.densidadKgM3);
-        data.espesorMm = form.espesorMm === '' ? null : Number(form.espesorMm);
-        data.formato = form.formato.trim() || null;
-      }
-      await actualizar.mutateAsync({ id: material.id, data });
-      toast.success('Materia prima actualizada');
-      onClose();
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'No se pudo actualizar la materia prima');
-    }
-  };
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,.48)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: '#fff', padding: 24, borderRadius: 12, width: 620, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 18px 50px rgba(15,23,42,.25)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 18 }}>
-          <div><h3 style={{ margin: 0, fontSize: 17 }}>Editar materia prima</h3><div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>Ficha maestra para costeo e inventario de Taller</div></div>
-          <button onClick={onClose} style={{ border: 0, background: 'transparent', cursor: 'pointer' }}><Icon name="x" size={18} /></button>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div><label style={etiqueta}>Código</label><input value={form.codigoInterno} onChange={(e) => set('codigoInterno', e.target.value)} style={campo} /></div>
-            <div><label style={etiqueta}>Taller</label><select value={form.tallerId} onChange={(e) => set('tallerId', e.target.value)} style={{ ...campo, background: '#fff' }}><option value="">Sin asignar</option>{talleres.map((t) => <option key={t.id} value={String(t.id)}>{t.label || t.nombre}</option>)}</select></div>
-          </div>
-          <div><label style={etiqueta}>Nombre</label><input value={form.nombre} onChange={(e) => set('nombre', e.target.value)} style={campo} /></div>
-          <div><label style={etiqueta}>Detalle</label><input value={form.detalle} onChange={(e) => set('detalle', e.target.value)} style={campo} /></div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div><label style={etiqueta}>Unidad</label><select value={form.unidadMedida} onChange={(e) => set('unidadMedida', e.target.value)} style={{ ...campo, background: '#fff' }}>{UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}</select></div>
-            <div><label style={etiqueta}>Costo unitario ($)</label><input type="number" min="0" value={form.precio} onChange={(e) => set('precio', e.target.value)} style={campo} /></div>
-          </div>
-          {esEspuma && <div style={{ padding: 12, borderRadius: 8, background: '#f0f9ff', border: '1px solid #bae6fd' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#0369a1', marginBottom: 8 }}>Propiedades técnicas de espuma</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-              <div><label style={etiqueta}>Densidad kg/m³</label><input type="number" min="0" step="0.01" value={form.densidadKgM3} onChange={(e) => set('densidadKgM3', e.target.value)} style={campo} /></div>
-              <div><label style={etiqueta}>Espesor mm</label><input type="number" min="0" step="0.01" value={form.espesorMm} onChange={(e) => set('espesorMm', e.target.value)} style={campo} /></div>
-              <div><label style={etiqueta}>Formato</label><input value={form.formato} onChange={(e) => set('formato', e.target.value)} placeholder="plancha, bloque…" style={campo} /></div>
-            </div>
-            <div style={{ fontSize: 11, color: '#0c4a6e', marginTop: 8 }}>Lote, calidad y merma se registran al recibir o consumir el material.</div>
-          </div>}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}><Btn variant="secondary" onClick={onClose}>Cancelar</Btn><Btn onClick={guardar} disabled={actualizar.isPending}>{actualizar.isPending ? 'Guardando…' : 'Guardar cambios'}</Btn></div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MaterialHistoryModal({ materialId, onClose }) {
-  const { data: historyData } = useMaterialesHistorialPrecios(materialId);
-  const history = toArray(historyData);
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#fff', padding: 24, borderRadius: 8, width: 500, maxHeight: '80vh', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, fontSize: 16 }}>Historial de Precios de Materia Prima</h3>
-          <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}><Icon name="x" size={18} /></button>
-        </div>
-
-        {history.length === 0 ? (
-          <p style={{ fontSize: 13, color: 'var(--text-3)' }}>Sin cambios registrados.</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {history.map((h) => (
-              <div key={h.id} style={{ padding: 10, background: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 13 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
-                  <span>${h.precioAnterior.toLocaleString('es-CL')} ➔ ${h.precioNuevo.toLocaleString('es-CL')}</span>
-                  <span style={{ fontSize: 11, color: '#64748b' }}>{new Date(h.createdAt).toLocaleDateString()}</span>
-                </div>
-                {h.motivo && <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>Motivo: {h.motivo}</div>}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <Table
+        columns={columns}
+        rows={isLoading ? [] : items}
+        emptyMessage={isLoading ? 'Cargando materias primas…' : 'Sin materias primas'}
+        ariaLabel="Materias primas de costeo"
+        columnPrefsKey="costeo-materias-primas"
+        getRowKey={(row) => row.id}
+        onRowDoubleClick={(row) => navigate(`/materias-primas/${row.id}?volver=/costeo%3Ftab%3Dmaterias`)}
+        toolbarExtra={toolbarExtra}
+        pager={{ page, pages, onChange: setPage, disabled: isFetching }}
+      />
     </div>
   );
 }
 
 // ── TAB 3: TARIFAS DE MANO DE OBRA ─────────────────────────────────────────
-function TarifasTab() {
+function TarifasTab({ creando, setCreando }) {
   const { data: tarifasData, isLoading } = useTarifas();
   const { data: talleresData } = useTalleres();
+  const { data: procesosData } = useProcesosCosteo();
   const createTarifa = useCreateTarifa();
   const deleteTarifa = useDeleteTarifa();
 
   const tarifas = toArray(tarifasData);
   const talleres = toArray(talleresData);
+  const procesos = toArray(procesosData);
 
-  const [showCreate, setShowCreate] = useState(false);
   const [tallerId, setTallerId] = useState('');
   const [proceso, setProceso] = useState('corte');
   const [valorHora, setValorHora] = useState('');
@@ -698,10 +383,10 @@ function TarifasTab() {
         valorHora: Number(valorHora),
       });
       toast.success('Nueva tarifa agregada exitosamente');
-      setShowCreate(false);
+      setCreando(false);
       setValorHora('');
-    } catch {
-      toast.error('Error al agregar tarifa');
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al agregar tarifa');
     }
   };
 
@@ -734,13 +419,9 @@ function TarifasTab() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <Btn onClick={() => setShowCreate(true)}>+ Nueva Tarifa Proceso</Btn>
-      </div>
-
       <Table columns={columns} rows={isLoading ? [] : tarifas} emptyMessage={isLoading ? 'Cargando tarifas…' : 'Sin tarifas vigentes'} />
 
-      {showCreate && (
+      {creando && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#fff', padding: 24, borderRadius: 8, width: 400 }}>
             <h3 style={{ margin: '0 0 16px 0', fontSize: 16 }}>Nueva Tarifa de Mano de Obra</h3>
@@ -755,14 +436,16 @@ function TarifasTab() {
               </div>
 
               <div>
+                {/* El proceso sale del catalogo: escrito libre, un nombre que no
+                    cruza con la receta deja esa hora en cero sin avisar. */}
                 <label style={{ fontSize: 12, fontWeight: 600 }}>Proceso</label>
-                <input
-                  type="text"
+                <select
                   value={proceso}
                   onChange={(e) => setProceso(e.target.value)}
-                  placeholder="ej. corte, confeccion, enfundado"
                   style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', marginTop: 4 }}
-                />
+                >
+                  {procesos.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </select>
               </div>
 
               <div>
@@ -777,7 +460,7 @@ function TarifasTab() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-                <Btn variant="secondary" onClick={() => setShowCreate(false)}>Cancelar</Btn>
+                <Btn variant="secondary" onClick={() => setCreando(false)}>Cancelar</Btn>
                 <Btn onClick={handleCreate}>Guardar Vigencia</Btn>
               </div>
             </div>

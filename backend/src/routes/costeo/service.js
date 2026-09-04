@@ -1,4 +1,5 @@
 import { calcularCosteo } from './engine.js';
+import { esProcesoValido, normalizarProceso, PROCESOS_VALIDOS_TEXTO } from './procesos.js';
 
 async function lockProductoCosteo(tx, productoId) {
   // Serializa editar receta + aplicar costo del mismo producto. Sin este lock,
@@ -55,7 +56,7 @@ export async function getTarifas(prisma, { tallerId, historico = false } = {}) {
   // Filter only the latest active tariff per (tallerId, proceso)
   const map = new Map();
   for (const item of all) {
-    const key = `${item.tallerId}_${item.proceso.toLowerCase()}`;
+    const key = `${item.tallerId}_${normalizarProceso(item.proceso)}`;
     if (!map.has(key)) {
       map.set(key, item);
     }
@@ -68,13 +69,19 @@ export async function createTarifa(prisma, { tallerId, proceso, valorHora }) {
     throw new Error('tallerId, proceso y valorHora mayor o igual a 0 son requeridos');
   }
 
+  // El proceso sale del catalogo: escrito libre, un nombre que no cruza con la
+  // receta deja esa hora en cero sin avisar.
+  if (!esProcesoValido(proceso)) {
+    throw new Error(`Proceso invalido. Use uno de: ${PROCESOS_VALIDOS_TEXTO}`);
+  }
+
   const taller = await prisma.taller.findUnique({ where: { id: tallerId } });
   if (!taller) throw new Error('Taller no encontrado');
 
   return prisma.tarifaProceso.create({
     data: {
       tallerId,
-      proceso: String(proceso).trim().toLowerCase(),
+      proceso: normalizarProceso(proceso),
       valorHora: Number(valorHora),
       vigenteDesde: new Date(),
       activo: true,
@@ -313,7 +320,7 @@ export async function upsertReceta(prisma, productoId, data) {
         data: procesos.map((p) => ({
           recetaId: receta.id,
           tallerId: parseInt(p.tallerId, 10),
-          proceso: String(p.proceso).trim().toLowerCase(),
+          proceso: normalizarProceso(p.proceso),
           horas: Number(p.horas) || 0,
         })),
       });
@@ -341,7 +348,163 @@ export async function disableReceta(prisma, productoId) {
   });
 }
 
-export async function calcularCosteoProducto(prisma, productoId) {
+// Mapea una linea de receta -persistida o en borrador- a la entrada del motor.
+// Vive una sola vez para que el calculo del preview y el que se aplica no
+// puedan divergir.
+function materialParaMotor(fila) {
+  let precioUnitario = 0;
+  let nombre = 'Material';
+  let unidad = fila.unidad || null;
+  let encontrado = false;
+
+  if (fila.material) {
+    precioUnitario = fila.material.precio || 0;
+    nombre = fila.material.nombre;
+    if (!unidad) unidad = fila.material.unidadMedida;
+    encontrado = true;
+  } else if (fila.tela) {
+    precioUnitario = fila.tela.precio || 0;
+    nombre = fila.tela.nombre || `Tela ${fila.tela.codigo}`;
+    if (!unidad) unidad = 'm';
+    encontrado = true;
+  }
+
+  return {
+    entrada: {
+      bodegaTallerId: fila.bodegaTallerId ?? null,
+      telaId: fila.telaId ?? null,
+      nombre,
+      unidad,
+      cantidad: fila.cantidad,
+      precioUnitario,
+    },
+    encontrado,
+  };
+}
+
+export async function getTarifasMap(prisma) {
+  const tarifasVigentes = await getTarifas(prisma, { historico: false });
+  const map = new Map();
+  for (const t of tarifasVigentes) {
+    map.set(`${t.tallerId}_${normalizarProceso(t.proceso)}`, t.valorHora);
+  }
+  return map;
+}
+
+// Arma las entradas del motor y, sobre todo, los avisos: sin tarifa vigente la
+// hora vale cero y sin material la linea vale cero, y esos ceros no se
+// distinguen de un costo real si nadie los nombra.
+function prepararEntradas({ materiales = [], procesos = [], tarifasMap }) {
+  const avisos = [];
+
+  const materialesInput = materiales.map((fila, indice) => {
+    const { entrada, encontrado } = materialParaMotor(fila);
+    if (!encontrado) {
+      avisos.push({
+        tipo: 'material_no_encontrado',
+        linea: indice + 1,
+        detalle: `La linea ${indice + 1} de materiales no existe en el catalogo y se cuenta en $0`,
+      });
+    }
+    return entrada;
+  });
+
+  const procesosInput = procesos.map((p) => {
+    const proceso = normalizarProceso(p.proceso);
+    const valorHora = tarifasMap.get(`${p.tallerId}_${proceso}`) || 0;
+    if (!valorHora) {
+      avisos.push({
+        tipo: 'proceso_sin_tarifa',
+        proceso,
+        tallerId: p.tallerId ?? null,
+        detalle: `El proceso "${proceso}" no tiene tarifa vigente en ese taller: su mano de obra se calcula en $0`,
+      });
+    }
+    return { tallerId: p.tallerId ?? null, proceso, horas: p.horas, valorHora };
+  });
+
+  return { materialesInput, procesosInput, avisos };
+}
+
+// El monto importado del Excel entra como una linea mas de material, para que
+// el motor no tenga que saber de donde vino y quede visible en el desglose.
+function conMontoImportado(materialesInput, materialesMonto) {
+  return Number(materialesMonto) > 0
+    ? [...materialesInput, { nombre: 'Materiales (importado del Excel, sin desglose)', cantidad: 1, precioUnitario: Number(materialesMonto), unidad: null }]
+    : materialesInput;
+}
+
+// Calculo de una receta en borrador: lo mismo que se aplica, pero sin guardar
+// nada. El editor lo usa para el desglose en vivo, de modo que el navegador ya
+// no necesita su propia copia del motor ni resolver precios por su cuenta.
+export async function calcularCosteoBorrador(prisma, data = {}) {
+  const {
+    materiales = [],
+    procesos = [],
+    accesoriosMonto = 0,
+    materialesMonto = 0,
+    ajusteGlobalPct = 0,
+    margenTransferencia = 35,
+  } = data || {};
+
+  if (!Array.isArray(materiales) || !Array.isArray(procesos)) {
+    throw new Error('materiales y procesos deben ser listas');
+  }
+  if (materiales.length > 200 || procesos.length > 50) {
+    throw new Error('La receta excede el maximo de lineas admitido');
+  }
+
+  const idsBodega = [...new Set(materiales.map((m) => parseInt(m.bodegaTallerId, 10)).filter(Boolean))];
+  const idsTela = [...new Set(materiales.map((m) => parseInt(m.telaId, 10)).filter(Boolean))];
+
+  const [itemsBodega, itemsTela, tarifasMap] = await Promise.all([
+    idsBodega.length
+      ? prisma.bodegaTaller.findMany({ where: { id: { in: idsBodega } }, select: { id: true, nombre: true, precio: true, unidadMedida: true } })
+      : [],
+    idsTela.length
+      ? prisma.tela.findMany({ where: { id: { in: idsTela } }, select: { id: true, nombre: true, codigo: true, precio: true } })
+      : [],
+    getTarifasMap(prisma),
+  ]);
+
+  const mapaBodega = new Map(itemsBodega.map((i) => [i.id, i]));
+  const mapaTela = new Map(itemsTela.map((i) => [i.id, i]));
+
+  const filas = materiales.map((m) => {
+    const bodegaTallerId = m.bodegaTallerId ? parseInt(m.bodegaTallerId, 10) : null;
+    const telaId = m.telaId ? parseInt(m.telaId, 10) : null;
+    return {
+      bodegaTallerId,
+      telaId,
+      cantidad: Number(m.cantidad) || 0,
+      unidad: m.unidad || null,
+      material: bodegaTallerId ? mapaBodega.get(bodegaTallerId) || null : null,
+      tela: telaId ? mapaTela.get(telaId) || null : null,
+    };
+  });
+
+  const { materialesInput, procesosInput, avisos } = prepararEntradas({
+    materiales: filas,
+    procesos: procesos.map((p) => ({
+      tallerId: p.tallerId ? parseInt(p.tallerId, 10) : null,
+      proceso: p.proceso,
+      horas: Number(p.horas) || 0,
+    })),
+    tarifasMap,
+  });
+
+  const resultado = calcularCosteo({
+    materiales: conMontoImportado(materialesInput, materialesMonto),
+    procesos: procesosInput,
+    accesoriosMonto,
+    ajusteGlobalPct,
+    margenTransferencia,
+  });
+
+  return { ...resultado, avisos };
+}
+
+export async function calcularCosteoProducto(prisma, productoId, { tarifasMap } = {}) {
   const id = parseInt(productoId, 10);
   const producto = await prisma.producto.findUnique({
     where: { id },
@@ -366,59 +529,18 @@ export async function calcularCosteoProducto(prisma, productoId) {
 
   const { receta } = producto;
 
-  // Resolve current rates for processes
-  const tarifasVigentes = await getTarifas(prisma, { historico: false });
-  const tarifasMap = new Map();
-  for (const t of tarifasVigentes) {
-    tarifasMap.set(`${t.tallerId}_${t.proceso.toLowerCase()}`, t.valorHora);
-  }
+  // Las tarifas pueden venir precargadas: el recalculo masivo las leia una vez
+  // por producto, con tres consultas de mas en cada iteracion.
+  const tarifas = tarifasMap || await getTarifasMap(prisma);
 
-  // Build inputs for engine
-  const materialesInput = receta.materiales.map((m) => {
-    let precioUnitario = 0;
-    let nombre = 'Material';
-    let unidad = m.unidad || null;
-
-    if (m.material) {
-      precioUnitario = m.material.precio || 0;
-      nombre = m.material.nombre;
-      if (!unidad) unidad = m.material.unidadMedida;
-    } else if (m.tela) {
-      precioUnitario = m.tela.precio || 0;
-      nombre = m.tela.nombre || `Tela ${m.tela.codigo}`;
-      if (!unidad) unidad = 'm';
-    }
-
-    return {
-      bodegaTallerId: m.bodegaTallerId,
-      telaId: m.telaId,
-      nombre,
-      unidad,
-      cantidad: m.cantidad,
-      precioUnitario,
-    };
+  const { materialesInput, procesosInput, avisos } = prepararEntradas({
+    materiales: receta.materiales,
+    procesos: receta.procesos,
+    tarifasMap: tarifas,
   });
-
-  const procesosInput = receta.procesos.map((p) => {
-    const key = `${p.tallerId}_${p.proceso.toLowerCase()}`;
-    const valorHora = tarifasMap.get(key) || 0;
-
-    return {
-      tallerId: p.tallerId,
-      proceso: p.proceso,
-      horas: p.horas,
-      valorHora,
-    };
-  });
-
-  // El monto importado del Excel entra como una linea mas de material, para que
-  // el motor no tenga que saber de donde vino y quede visible en el desglose.
-  const materialesConImportado = receta.materialesMonto > 0
-    ? [...materialesInput, { nombre: 'Materiales (importado del Excel, sin desglose)', cantidad: 1, precioUnitario: receta.materialesMonto, unidad: null }]
-    : materialesInput;
 
   const costeoResult = calcularCosteo({
-    materiales: materialesConImportado,
+    materiales: conMontoImportado(materialesInput, receta.materialesMonto),
     procesos: procesosInput,
     accesoriosMonto: receta.accesoriosMonto,
     ajusteGlobalPct: receta.ajusteGlobalPct,
@@ -432,9 +554,47 @@ export async function calcularCosteoProducto(prisma, productoId) {
     precioListaActual: producto.precioLista,
     costoTransferenciaCalculado: costeoResult.costoTransferencia,
     diferenciaMonto: costeoResult.costoTransferencia - producto.precioLista,
-    alertas: getCosteoBlockers({ materiales: materialesConImportado, procesos: procesosInput }),
+    alertas: getCosteoBlockers({ materiales: conMontoImportado(materialesInput, receta.materialesMonto), procesos: procesosInput }),
+    avisos,
     ...costeoResult,
   };
+}
+
+// Escritura del costeo aplicado: snapshot inmutable + precio de lista del
+// producto. Recibe el cliente de transaccion para poder usarse de a uno o en
+// lote sin duplicar la logica.
+async function escribirCosteoAplicado(tx, calculation, user) {
+  const snapshot = await tx.costeoSnapshot.create({
+    data: {
+      productoId: calculation.productoId,
+      costoMateriales: calculation.costoMateriales,
+      costoManoObra: calculation.costoManoObra,
+      costoAccesorios: calculation.costoAccesorios,
+      costoFabricacion: calculation.costoFabricacion,
+      ajusteGlobalPct: calculation.ajusteGlobalPct,
+      costoAjustado: calculation.costoAjustado,
+      margenTransferencia: calculation.margenTransferencia,
+      costoTransferencia: calculation.costoTransferencia,
+      precioListaAnterior: calculation.precioListaActual,
+      aplicado: true,
+      detalle: calculation.detalle,
+      userId: user?.id ?? null,
+      userNombre: user?.nombre ?? null,
+    },
+  });
+
+  const productoActualizado = await tx.producto.update({
+    where: { id: calculation.productoId },
+    data: { precioLista: calculation.costoTransferencia },
+    select: {
+      id: true,
+      codigoInterno: true,
+      nombre: true,
+      precioLista: true,
+    },
+  });
+
+  return { snapshot, producto: productoActualizado };
 }
 
 export async function aplicarCosteoProducto(prisma, productoId, user) {
@@ -447,40 +607,7 @@ export async function aplicarCosteoProducto(prisma, productoId, user) {
     const calculation = await calcularCosteoProducto(tx, id);
     throwCosteoIncompleto(calculation.alertas);
 
-    const snapshot = await tx.costeoSnapshot.create({
-      data: {
-        productoId: calculation.productoId,
-        costoMateriales: calculation.costoMateriales,
-        costoManoObra: calculation.costoManoObra,
-        costoAccesorios: calculation.costoAccesorios,
-        costoFabricacion: calculation.costoFabricacion,
-        ajusteGlobalPct: calculation.ajusteGlobalPct,
-        costoAjustado: calculation.costoAjustado,
-        margenTransferencia: calculation.margenTransferencia,
-        costoTransferencia: calculation.costoTransferencia,
-        precioListaAnterior: calculation.precioListaActual,
-        aplicado: true,
-        detalle: calculation.detalle,
-        userId: user?.id ?? null,
-        userNombre: user?.nombre ?? null,
-      },
-    });
-
-    const productoActualizado = await tx.producto.update({
-      where: { id: calculation.productoId },
-      data: { precioLista: calculation.costoTransferencia },
-      select: {
-        id: true,
-        codigoInterno: true,
-        nombre: true,
-        precioLista: true,
-      },
-    });
-
-    return {
-      snapshot,
-      producto: productoActualizado,
-    };
+    return escribirCosteoAplicado(tx, calculation, user);
   });
 }
 
@@ -519,41 +646,61 @@ export async function recalcularMasivo(prisma, { tallerId, productoIds, aplicar 
     take: 500,
   });
 
+  // Las tarifas se leen UNA vez para todo el lote: resolverlas por producto
+  // costaba tres consultas extra en cada iteracion.
+  const tarifasMap = await getTarifasMap(prisma);
+
+  // Primero se calcula todo -solo lecturas- y recien despues se escribe, para
+  // que el error de un producto no deje el lote a medio aplicar.
+  const calculos = [];
   const resultados = [];
 
   for (const p of productos) {
     try {
-      if (aplicar) {
-        const res = await aplicarCosteoProducto(prisma, p.id, user);
-        resultados.push({
-          productoId: p.id,
-          aplicado: true,
-          precioAnterior: res.snapshot.precioListaAnterior,
-          precioNuevo: res.producto.precioLista,
-          diferencia: res.producto.precioLista - (res.snapshot.precioListaAnterior || 0),
-        });
-      } else {
-        const calc = await calcularCosteoProducto(prisma, p.id);
-        resultados.push({
-          productoId: p.id,
-          codigoInterno: calc.codigoInterno,
-          nombre: calc.nombre,
-          precioActual: calc.precioListaActual,
-          precioCalculado: calc.costoTransferenciaCalculado,
-          diferencia: calc.diferenciaMonto,
-        });
-      }
-    } catch (e) {
+      const calc = await calcularCosteoProducto(prisma, p.id, { tarifasMap });
+      calculos.push(calc);
       resultados.push({
         productoId: p.id,
-        error: e.message,
+        codigoInterno: calc.codigoInterno,
+        nombre: calc.nombre,
+        precioActual: calc.precioListaActual,
+        precioCalculado: calc.costoTransferenciaCalculado,
+        diferencia: calc.diferenciaMonto,
+        avisos: calc.avisos,
       });
+    } catch (e) {
+      resultados.push({ productoId: p.id, error: e.message });
     }
   }
 
+  const conError = resultados.filter((r) => r.error).length;
+
+  if (!aplicar) {
+    return { totalProcesados: resultados.length, aplicado: false, conError, resultados };
+  }
+
+  // Aplicar reescribe el precio de lista del catalogo. Va todo en UNA
+  // transaccion: antes era una por producto, y una caida a la mitad dejaba
+  // medio catalogo con el precio nuevo y medio con el viejo.
+  await prisma.$transaction(
+    async (tx) => {
+      for (const calculation of calculos) {
+        await escribirCosteoAplicado(tx, calculation, user);
+      }
+    },
+    { timeout: 120_000, maxWait: 15_000 },
+  );
+
+  const aplicados = new Set(calculos.map((c) => c.productoId));
+
   return {
     totalProcesados: resultados.length,
-    aplicado: Boolean(aplicar),
-    resultados,
+    aplicado: true,
+    conError,
+    resultados: resultados.map((r) => (
+      aplicados.has(r.productoId)
+        ? { ...r, aplicado: true, precioAnterior: r.precioActual, precioNuevo: r.precioCalculado }
+        : { ...r, aplicado: false }
+    )),
   };
 }

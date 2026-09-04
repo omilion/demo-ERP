@@ -1,10 +1,10 @@
 import { toast, confirmDialog } from '../../store/notif'
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs, FilterSelect } from '../../components/shared'
 import { FormField, Input, Select } from '../../components/forms'
-import { useBodegaTaller, useBodegaTallerLotes, useCreateBodegaTaller, useCreateBodegaTallerLote, useDeleteBodegaTaller, useUpdateBodegaTaller } from '../../api/bodegaTaller'
+import { useBodegaTaller, useBodegaTallerLotes, useCreateBodegaTallerLote, useDeleteBodegaTaller } from '../../api/bodegaTaller'
 import { useCategoriasBodegaTaller } from '../../api/categoriasBodegaTaller'
-import { useProveedores } from '../../api/proveedores'
 import { useSucursales } from '../../api/locations'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
@@ -14,8 +14,6 @@ const TABS = [
   { id: 'all', label: 'Todos' },
   { id: 'true', label: 'Stock crítico' },
 ]
-
-const UNIT_OPTIONS = ['Unidad', 'Unidades', 'Mts', 'Mts2', 'Litros', 'Kg', 'Rollos', 'Cajas']
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('es-CL')
 const mono = value => <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'var(--text-2)' }}>{value || '-'}</span>
@@ -34,18 +32,18 @@ export default function BodegaTallerPage() {
   const [sucursalId, setSucursalId] = useState('')
   const [codigoInterno, setCodigoInterno] = useState('')
   const [codigoBarra, setCodigoBarra] = useState('')
-  const [editing, setEditing] = useState(null)
-  const [creating, setCreating] = useState(false)
   const [materialLotes, setMaterialLotes] = useState(null)
   const debounceRef = useRef(null)
-  const createMut = useCreateBodegaTaller()
-  const updateMut = useUpdateBodegaTaller()
+  const navigate = useNavigate()
   const deleteMut = useDeleteBodegaTaller()
   const { data: categorias = [] } = useCategoriasBodegaTaller()
-  const { data: proveedoresResult = { items: [] } } = useProveedores({ page: '1' })
   const { data: sucursales = [] } = useSucursales()
-  const proveedores = proveedoresResult.items || []
   const subcategorias = categorias.find(c => String(c.id) === categoriaId)?.subcategorias ?? []
+
+  // La ficha del material es una pantalla compartida con Costeo: aca solo se
+  // lista y se abre. Tener un formulario propio en cada modulo era lo que hacia
+  // que un material creado desde Costeo naciera sin categoria ni proveedor.
+  const rutaFicha = (sufijo = '') => `/materias-primas/${sufijo}?volver=${encodeURIComponent('/bodega-taller')}`
 
   useEffect(() => {
     clearTimeout(debounceRef.current)
@@ -112,7 +110,8 @@ export default function BodegaTallerPage() {
     { key: 'precio', label: 'Precio', align: 'right', render: v => mono(fmt(v)) },
     { key: '_edit', label: '', render: (_, row) => (
       <div style={{ display: 'flex', gap: 4 }}>
-        {canWrite && <button onClick={(e) => { e.stopPropagation(); setEditing(row) }} style={actionBtn}>Editar</button>}
+        <button onClick={(e) => { e.stopPropagation(); navigate(rutaFicha(row.id)) }} style={actionBtn}>Ver</button>
+        {canWrite && <button onClick={(e) => { e.stopPropagation(); navigate(rutaFicha(`${row.id}/editar`)) }} style={actionBtn}>Editar</button>}
         {canWrite && <button onClick={(e) => { e.stopPropagation(); setMaterialLotes(row) }} style={actionBtn}>Lotes</button>}
       </div>
     ) },
@@ -217,7 +216,7 @@ export default function BodegaTallerPage() {
             params={exportParams}
             label="Exportar"
           />
-          {canWrite && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => setCreating(true)}>Nuevo material</Btn>}
+          {canWrite && <Btn variant="primary" icon="plusCircle" size="sm" onClick={() => navigate(rutaFicha('nueva'))}>Nuevo material</Btn>}
         </>}
       />
       <div className="kpi-strip">
@@ -241,7 +240,7 @@ export default function BodegaTallerPage() {
               columns={cols}
               rows={items}
               emptyMessage="Sin materiales"
-              onRowDoubleClick={canWrite ? row => setEditing(row) : undefined}
+              onRowDoubleClick={row => navigate(rutaFicha(row.id))}
               autoFocus
               ariaLabel="Materiales de bodega taller"
               getRowKey={row => row.id}
@@ -250,93 +249,8 @@ export default function BodegaTallerPage() {
         }
       </div>
 
-      {(editing || creating) && (
-        <MaterialModal
-          title={creating ? 'Nuevo material' : `Editar ${editing.codigoInterno}`}
-          onClose={() => { setEditing(null); setCreating(false) }}
-          onSave={(data) => {
-            const mut = creating ? createMut : updateMut
-            const payload = creating ? data : { id: editing.id, data }
-            mut.mutate(payload, {
-              onSuccess: () => { setEditing(null); setCreating(false) },
-              onError: e => toast.error(e.response?.data?.error || 'No se pudo guardar el material'),
-            })
-          }}
-          initial={editing || {}}
-          saving={createMut.isPending || updateMut.isPending}
-          categorias={categorias}
-          proveedores={proveedores}
-          sucursales={sucursales}
-        />
-      )}
       {materialLotes && <LotesModal material={materialLotes} onClose={() => setMaterialLotes(null)} />}
     </main>
-  )
-}
-
-function MaterialModal({ title, onClose, onSave, initial, saving, categorias = [], proveedores = [], sucursales = [] }) {
-  const [form, setForm] = useState({
-    codigoInterno: initial.codigoInterno || '',
-    codigoBarra: initial.codigoBarra || '',
-    nombre: initial.nombre || '',
-    unidadMedida: initial.unidadMedida || 'Unidad',
-    categoriaId: initial.categoriaId != null ? String(initial.categoriaId) : '',
-    subcategoriaId: initial.subcategoriaId != null ? String(initial.subcategoriaId) : '',
-    proveedorId: initial.proveedorId != null ? String(initial.proveedorId) : '',
-    sucursalId: initial.sucursalId != null ? String(initial.sucursalId) : '',
-    stock: initial.stock ?? 0,
-    stockCritico: initial.stockCritico ?? 0,
-    precio: initial.precio ?? 0,
-    densidadKgM3: initial.densidadKgM3 ?? '',
-    espesorMm: initial.espesorMm ?? '',
-    formato: initial.formato || '',
-  })
-  const subcategorias = categorias.find(c => String(c.id) === String(form.categoriaId))?.subcategorias ?? []
-  const unitOptions = [...new Set([...UNIT_OPTIONS, form.unidadMedida].filter(Boolean))]
-  return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 20, width: 680, maxWidth: '94vw', maxHeight: '92vh', overflowY: 'auto' }}>
-        <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 16 }}>{title}</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <FormField label="Código interno" required><Input value={form.codigoInterno} onChange={v => setForm(f => ({ ...f, codigoInterno: v }))} /></FormField>
-          <FormField label="Código barra"><Input value={form.codigoBarra} onChange={v => setForm(f => ({ ...f, codigoBarra: v }))} /></FormField>
-          <FormField label="Nombre" required><Input value={form.nombre} onChange={v => setForm(f => ({ ...f, nombre: v }))} /></FormField>
-          <FormField label="Unidad medida">
-            <Select value={form.unidadMedida} onChange={v => setForm(f => ({ ...f, unidadMedida: v }))} options={unitOptions.map(u => ({ value: u, label: u }))} />
-          </FormField>
-          <FormField label="Categoría">
-            <Select value={form.categoriaId} onChange={v => setForm(f => ({ ...f, categoriaId: v, subcategoriaId: '' }))} options={[{ value: '', label: 'Sin categoría' }, ...categorias.map(c => ({ value: String(c.id), label: c.nombre }))]} />
-          </FormField>
-          <FormField label="Subcategoría">
-            <Select value={form.subcategoriaId} onChange={v => setForm(f => ({ ...f, subcategoriaId: v }))} disabled={!form.categoriaId || !subcategorias.length} options={[{ value: '', label: 'Sin subcategoría' }, ...subcategorias.map(s => ({ value: String(s.id), label: s.nombre }))]} />
-          </FormField>
-          <FormField label="Proveedor">
-            <Select value={form.proveedorId} onChange={v => setForm(f => ({ ...f, proveedorId: v }))} options={[{ value: '', label: 'Sin proveedor' }, ...proveedores.map(p => ({ value: String(p.id), label: p.nombre || p.razonSocial || `Proveedor #${p.id}` }))]} />
-          </FormField>
-          <FormField label="Sucursal">
-            <Select value={form.sucursalId} onChange={v => setForm(f => ({ ...f, sucursalId: v }))} options={[{ value: '', label: 'Sin sucursal' }, ...sucursales.map(s => ({ value: String(s.id), label: s.nombre }))]} />
-          </FormField>
-          <FormField label="Stock"><Input type="number" value={form.stock} onChange={v => setForm(f => ({ ...f, stock: v }))} /></FormField>
-          <FormField label="Stock crítico"><Input type="number" value={form.stockCritico} onChange={v => setForm(f => ({ ...f, stockCritico: v }))} /></FormField>
-          <FormField label="Precio"><Input type="number" value={form.precio} onChange={v => setForm(f => ({ ...f, precio: v }))} /></FormField>
-        </div>
-        <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>Especificación técnica de espuma</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-            <FormField label="Densidad (kg/mÂ³)"><Input type="number" min="0" value={form.densidadKgM3} onChange={v => setForm(f => ({ ...f, densidadKgM3: v }))} /></FormField>
-            <FormField label="Espesor (mm)"><Input type="number" min="0" value={form.espesorMm} onChange={v => setForm(f => ({ ...f, espesorMm: v }))} /></FormField>
-            <FormField label="Formato"><Input placeholder="Ej. plancha 2 x 1 m" value={form.formato} onChange={v => setForm(f => ({ ...f, formato: v }))} /></FormField>
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Al registrar densidad, la espuma se consumirá por lote aprobado en las órdenes de taller.</div>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-          <Btn variant="secondary" size="sm" onClick={onClose} disabled={saving}>Cancelar</Btn>
-          <Btn variant="primary" size="sm" onClick={() => onSave(form)} disabled={saving || !form.nombre || !form.codigoInterno}>
-            {saving ? 'Guardando...' : 'Guardar'}
-          </Btn>
-        </div>
-      </div>
-    </div>
   )
 }
 

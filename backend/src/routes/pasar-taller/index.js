@@ -37,6 +37,19 @@ async function requirePasarTallerRead(request, reply) {
   }
 }
 
+// El catalogo de talleres lo consume tambien Costeo (ficha de materia prima y
+// tarifas). Es una lista de nombres, no la operacion de pasar a taller, asi que
+// tiene su propio guard en vez de abrir todo el modulo.
+async function requireTalleresCatalogRead(request, reply) {
+  const user = request.user
+  // Suma a quien ya podia leerlo: Costeo lo necesita para la ficha de materia
+  // prima y las tarifas, sin darle el resto del modulo de taller.
+  const permitido = user && (canPasarTallerRead(user) || can(user?.role, 'costeo', 'read', user?.permisosExtra))
+  if (!permitido) {
+    return reply.code(403).send({ error: 'Forbidden' })
+  }
+}
+
 async function requirePasarTallerWrite(request, reply) {
   if (!request.user || !canPasarTallerWrite(request.user)) {
     return reply.code(403).send({ error: 'Forbidden' })
@@ -655,7 +668,7 @@ export default async function pasarTallerRoutes(fastify) {
   })
 
   fastify.get('/talleres', {
-    preHandler: [fastify.authenticate, requirePasarTallerRead],
+    preHandler: [fastify.authenticate, requireTalleresCatalogRead],
   }, async () => {
     const talleres = await fastify.prisma.taller.findMany({ where: { activo: true }, orderBy: { nombre: 'asc' } })
     return buildTallerOptions(talleres)

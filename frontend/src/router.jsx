@@ -55,6 +55,7 @@ import ReportesGerencialesPage from './pages/reportes-gerenciales/ReportesGerenc
 import ReportesComisionesPage from './pages/reportes-comisiones/ReportesComisionesPage'
 import ReportesMovimientosAnormalesPage from './pages/reportes-movimientos-anormales/ReportesMovimientosAnormalesPage'
 import UsuariosPage from './pages/usuarios/UsuariosPage'
+import UsuarioFormPage from './pages/usuarios/UsuarioFormPage'
 import RrhhPage, { TrabajadorDetallePage } from './pages/rrhh/RrhhPage'
 import IntegridadPage from './pages/admin/IntegridadPage'
 import AuditoriaPage from './pages/admin/AuditoriaPage'
@@ -70,6 +71,7 @@ import EmitirLiquidacionPage from './pages/facturacion/EmitirLiquidacionPage'
 import EmitirExportacionPage from './pages/facturacion/EmitirExportacionPage'
 import DocumentosRecibidosPage from './pages/facturacion/DocumentosRecibidosPage'
 import CosteoPage from './pages/costeo/CosteoPage'
+import MateriaPrimaFormPage from './pages/materias-primas/MateriaPrimaFormPage'
 import ImportacionesPage from './pages/importaciones/ImportacionesPage'
 import OrdenesCompraProveedoresPage from './pages/ordenes-compra-proveedores/OrdenesCompraProveedoresPage'
 import ExcepcionesPage from './pages/admin/ExcepcionesPage'
@@ -133,8 +135,14 @@ export const router = createBrowserRouter([
       { path: 'telas/:id', element: protect(<TelaDetallePage />, { module: 'taller' }) },
       { path: 'bodega-taller', element: protect(<BodegaTallerPage />, { module: 'taller' }) },
       { path: 'costeo', element: protect(<CosteoPage />, { module: 'costeo' }) },
+      { path: 'materias-primas/nueva', element: protect(<MateriaPrimaFormPage />, { requirements: [['taller', 'write'], ['costeo', 'write']] }) },
+      { path: 'materias-primas/:id', element: protect(<MateriaPrimaFormPage />, { requirements: [['taller', 'read'], ['costeo', 'read']] }) },
+      { path: 'materias-primas/:id/editar', element: protect(<MateriaPrimaFormPage />, { requirements: [['taller', 'write'], ['costeo', 'write']] }) },
       { path: 'accesos',    element: <ProtectedRoute allowedRoles={['admin']}><AccesosPage /></ProtectedRoute> },
       { path: 'usuarios',   element: <ProtectedRoute allowedRoles={['admin']}><UsuariosPage /></ProtectedRoute> },
+      { path: 'usuarios/nuevo', element: <ProtectedRoute allowedRoles={['admin']}><UsuarioFormPage /></ProtectedRoute> },
+      { path: 'usuarios/:id', element: <ProtectedRoute allowedRoles={['admin']}><UsuarioFormPage /></ProtectedRoute> },
+      { path: 'usuarios/:id/editar', element: <ProtectedRoute allowedRoles={['admin']}><UsuarioFormPage /></ProtectedRoute> },
       { path: 'descuentos', element: protect(<DescuentosPage />, { module: 'descuentos', permission: 'write' }) },
       { path: 'proveedores', element: protect(<ProveedoresPage />, { module: 'proveedores' }) },
       { path: 'proveedores/:id', element: protect(<ProveedorDetallePage />, { module: 'proveedores' }) },
