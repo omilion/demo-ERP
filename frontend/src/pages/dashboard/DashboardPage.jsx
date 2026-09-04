@@ -863,17 +863,30 @@ export default function DashboardPage() {
   const canWriteVentas = can(user, 'ventas', 'write')
   const { data: pendientesCrm } = useCrmPendientesHoy(canWriteVentas)
   // Los nombres del personal viven en su modulo, no en el bloque de conteos
-  // del tablero; se piden aparte y solo a quien puede ver RRHH.
-  const { data: rrhhOperativo, isLoading: cargandoRrhh } = useRrhhOperativo({ dias: 30 }, show.rrhh)
+  // del tablero; se piden aparte y solo a quien de verdad gestiona personal
+  // -no a quien solo puede leer el modulo, como admin o solo_lectura- para no
+  // pagar una consulta cuyo resultado no se va a mostrar.
+  const isRrhhOperativo = can(user, 'rrhh', 'write') && !show.admin
+  const { data: rrhhOperativo, isLoading: cargandoRrhh } = useRrhhOperativo({ dias: 30 }, isRrhhOperativo)
   // El endpoint devuelve hasta 10 filas para la agenda; el total real viene en
   // `resumen`. Contar las filas dejaba el badge pegado en 10.
   const totalCrmPendientes = pendientesCrm?.resumen?.total ?? 0
   const sisventa = quickAccess.find(item => item.route === '/crm')
   if (sisventa && pendientesCrm) sisventa.badge = totalCrmPendientes.toLocaleString('es-CL')
 
-  // Los roles comerciales parten creando; los demas, revisando lo pendiente.
+  // Una agenda es "tu tarea de hoy": cuelga de quien HACE el trabajo -permiso
+  // de escritura del rol operativo-, nunca de quien solo puede leer el modulo.
+  // show.taller/despacho/rrhh son de lectura y admin los tiene los tres via
+  // '*': con eso, admin (y de paso vendedor/coordinador/solo_lectura, que solo
+  // leen taller y despacho) terminaban viendo listas de tareas que no son
+  // suyas. El admin ya tiene sus KPIs de vista general; no necesita la cola.
+  //
+  // Mismo patron que isComercial: permiso de escritura Y no-admin, porque
+  // admin tiene '*' y heredaria el permiso de escritura igual.
   const isComercial = canWriteVentas && !show.admin
   const canWriteTaller = can(user, 'taller', 'write')
+  const isTallerOperativo = canWriteTaller && !show.admin
+  const isBodegaOperativa = can(user, 'despacho', 'write') && !show.admin
   const columnas = buildModuleColumns({ user, show, quickAccess, isOperario, isComercial })
   const saludo = user?.nombre ? `¡Hola, ${user.nombre}!` : '¡Hola!'
 
@@ -900,7 +913,7 @@ export default function DashboardPage() {
           />
         )}
 
-        {show.taller && stats?.tallerAgenda && (
+        {isTallerOperativo && stats?.tallerAgenda && (
           <TallerAgendaCard
             odts={stats.tallerAgenda}
             isLoading={isLoading}
@@ -909,7 +922,7 @@ export default function DashboardPage() {
           />
         )}
 
-        {show.despacho && stats?.entregasAgenda && (
+        {isBodegaOperativa && stats?.entregasAgenda && (
           <EntregasAgendaCard
             entregas={stats.entregasAgenda}
             isLoading={isLoading}
@@ -918,7 +931,7 @@ export default function DashboardPage() {
           />
         )}
 
-        {show.rrhh && (
+        {isRrhhOperativo && (
           <RrhhAgendaCard
             operativo={rrhhOperativo}
             isLoading={cargandoRrhh}
