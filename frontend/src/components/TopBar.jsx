@@ -44,15 +44,13 @@ const NAV_GROUPS = [
     { label: 'Matriz Ventas', route: '/ventas', module: 'ventas' },
     { label: 'CRM', route: '/crm', module: 'ventas' },
     { label: 'Clientes', route: '/clientes', module: 'clientes' },
-    // Misma pantalla que en el menu Taller: el vendedor es quien puede explicar
-    // la venta y el taller quien necesita el trabajo. Si vive en un solo menu,
-    // el otro rol no se entera de que hay algo detenido.
-    { label: 'Excepciones de Taller', route: '/excepciones-taller', module: 'ventas', permission: 'write', badge: 'excepcionesTaller' },
   ] },
   { label: 'Taller', items: [
     { label: 'Órdenes de Taller', route: '/taller', module: 'taller' },
     { label: 'Taller de Corte', route: '/taller-corte', module: 'taller' },
-    { label: 'Excepciones de Taller', route: '/excepciones-taller', module: 'taller', permission: 'write', badge: 'excepcionesTaller' },
+    // Permiso por funcion, no 'taller' completo: vendedor y coordinador_comercial
+    // lo ven aca (via 'taller.excepciones') sin heredar taller:write en bloque.
+    { label: 'Excepciones de Taller', route: '/excepciones-taller', module: 'taller.excepciones', permission: 'write', badge: 'excepcionesTaller' },
     { label: 'Bitacora', route: '/bitacora-taller', module: 'taller' },
     { label: 'Historial Materiales', route: '/historial-materiales', module: 'taller' },
   ] },
@@ -64,7 +62,7 @@ const NAV_GROUPS = [
     { label: 'Importaciones (Tránsito)', route: '/importaciones', module: 'bodega' },
     { label: 'Órdenes de Compra Proveedores', route: '/ordenes-compra-proveedores', module: 'bodega' },
     { label: 'Consulta Precios', route: '/consulta-precios', module: 'catalogo' },
-    { label: 'Ingreso Mercaderia', route: '/stock-ingresos', module: 'bodega' },
+    { label: 'Ingreso Manual', route: '/stock-ingresos', module: 'bodega' },
     { label: 'Bodega Taller', route: '/bodega-taller', module: 'taller' },
     { label: 'Proveedores', route: '/proveedores', module: 'proveedores' },
     { label: 'Movimientos Anormales', route: '/reportes/movimientos-anormales', module: 'bodega' },
@@ -99,7 +97,20 @@ const NAV_GROUPS = [
     { label: 'Asistente IA', route: '/asistente', roles: ['admin'] },
     { label: 'IA Balance', route: '/admin/ia-balance', roles: ['admin'] },
     { label: 'Integridad', route: '/admin/integridad', roles: ['admin'] },
-    { label: 'Feedback marcha blanca', route: '/admin/feedback', roles: ['admin'] },
+  ] },
+  { label: 'AYUDA', items: [
+    { label: 'Centro de ayuda', route: '/ayuda', allAuthenticated: true },
+    { label: 'Guía general', route: '/ayuda/00_MAPA_DOCUMENTACION_Y_GUIA_INICIO/index.html', allAuthenticated: true, external: true },
+    { label: 'Gerencia', route: '/ayuda/01_DOSSIER_GERENCIA/index.html', roles: ['admin', 'solo_lectura'], external: true },
+    { label: 'Ventas y Licitaciones', route: '/ayuda/roles/02_ROL_VENTAS_Y_LICITACIONES/index.html', roles: ['admin', 'vendedor', 'coordinador_comercial'], external: true },
+    { label: 'Bodega y Logística', route: '/ayuda/roles/03_ROL_BODEGA/index.html', roles: ['admin', 'bodeguero'], external: true },
+    { label: 'Despacho y Reparto', route: '/ayuda/roles/04_ROL_DESPACHO/index.html', roles: ['admin', 'bodeguero'], external: true },
+    { label: 'Taller y Producción', route: '/ayuda/roles/05_ROL_TALLER/index.html', roles: ['admin', 'taller'], external: true },
+    { label: 'Ficha rápida Operario', route: '/ayuda/roles/05_ROL_TALLER/FICHA_RAPIDA_OPERARIO.html', roles: ['admin', 'taller', 'taller_operario'], external: true },
+    { label: 'Caja y Cobranza', route: '/ayuda/roles/06_ROL_CAJA_Y_COBRANZA/index.html', roles: ['admin', 'cajero'], external: true },
+    { label: 'Facturación DTE', route: '/ayuda/roles/07_ROL_FACTURACION_DTE/index.html', requirements: [{ module: 'facturacion', permission: 'read' }], external: true },
+    { label: 'Administración', route: '/ayuda/roles/08_ROL_ADMINISTRACION/index.html', roles: ['admin'], external: true },
+    { label: 'Reportar fallas', route: '/ayuda/widget/09_GUIA_FEEDBACK_Y_REPORTE_FALLAS/index.html', allAuthenticated: true, external: true },
   ] },
 ]
 
@@ -108,7 +119,12 @@ function useSmartNavigate() {
   const clickTimerRef = useRef(null)
   const lastRouteRef = useRef(null)
 
-  const handleNav = (route, onAfter, e) => {
+  const handleNav = (route, onAfter, e, options = {}) => {
+    if (options.external) {
+      window.open(route, '_blank', 'noopener,noreferrer')
+      if (onAfter) onAfter()
+      return
+    }
     if (e && (e.ctrlKey || e.metaKey || e.button === 1)) {
       window.open(route, '_blank')
       if (onAfter) onAfter()
@@ -143,6 +159,7 @@ function useSmartNavigate() {
 }
 
 function canUseNavItem(user, item) {
+  if (item.allAuthenticated) return Boolean(user)
   if (item.roles) return hasRole(user, item.roles)
   if (item.requirements) return canAny(user, item.requirements)
   return can(user, item.module, item.permission || 'read')
@@ -191,7 +208,7 @@ const DropdownItem = ({ item, isLast, currentPath, handleNav, onCloseAll }) => {
     >
       <button
         type="button"
-        onClick={e => handleNav(item.route, onCloseAll, e)}
+        onClick={e => handleNav(item.route, onCloseAll, e, { external: item.external })}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -247,7 +264,7 @@ const DropdownItem = ({ item, isLast, currentPath, handleNav, onCloseAll }) => {
                 key={sub.route}
                 onClick={e => {
                   e.stopPropagation()
-                  handleNav(sub.route, onCloseAll, e)
+                  handleNav(sub.route, onCloseAll, e, { external: sub.external })
                 }}
                 style={{
                   display: 'flex',

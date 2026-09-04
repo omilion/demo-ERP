@@ -56,8 +56,7 @@ export default function StockIngresosPage() {
   const canWriteProveedores = can(user, 'proveedores', 'write')
   const canReadProveedores = can(user, 'proveedores', 'read')
   const canReverse = can(user, 'proveedores', 'delete')
-  const [filters, setFilters] = useState({ search: '', desde: '', hasta: '', nDoc: '', documento: '', estado: '', bodega: '', proveedorId: '' })
-  const [filterProveedor, setFilterProveedor] = useState(null)
+  const [filters, setFilters] = useState({ search: '', desde: '', hasta: '', nDoc: '', documento: '', estado: '', bodega: '' })
   const [formProveedor, setFormProveedor] = useState(null)
   const [page, setPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
@@ -126,8 +125,7 @@ export default function StockIngresosPage() {
   const addDetail = () => setDetails(rows => [...rows, emptyDetail()])
   const removeDetail = idx => setDetails(rows => rows.length === 1 ? rows : rows.filter((_, i) => i !== idx))
   const clearFilters = () => {
-    setFilters({ search: '', desde: '', hasta: '', nDoc: '', documento: '', estado: '', bodega: '', proveedorId: '' })
-    setFilterProveedor(null)
+    setFilters({ search: '', desde: '', hasta: '', nDoc: '', documento: '', estado: '', bodega: '' })
     setPage(1)
   }
 
@@ -223,30 +221,35 @@ export default function StockIngresosPage() {
     ) },
   ]
 
+  const filterInputStyle = { height: 28, padding: '0 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff' }
   const toolbarExtra = (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1.5fr) repeat(5, minmax(130px, 1fr))', gap: 10, width: '100%', alignItems: 'start' }}>
-      <SearchBar placeholder="Buscar N° doc, proveedor, RUT, código o producto…" value={filters.search} onChange={value => setFilter('search', value)} style={{ minWidth: 0, width: '100%' }} />
-      <FormField label="Desde"><Input type="date" value={filters.desde} onChange={v => setFilter('desde', v)} /></FormField>
-      <FormField label="Hasta"><Input type="date" value={filters.hasta} onChange={v => setFilter('hasta', v)} /></FormField>
-      <FormField label="N° documento"><Input value={filters.nDoc} onChange={v => setFilter('nDoc', v)} /></FormField>
-      <FormField label="Documento"><Select value={filters.documento} onChange={v => setFilter('documento', v)} options={[{ value: '', label: 'Todos' }, ...DOCUMENTOS]} /></FormField>
-      <FormField label="Estado pago"><Select value={filters.estado} onChange={v => setFilter('estado', v)} options={[{ value: '', label: 'Todos' }, ...ESTADOS]} /></FormField>
-      <FormField label="Bodega"><Select value={filters.bodega} onChange={v => setFilter('bodega', v)} options={[{ value: '', label: 'Todas' }, ...BODEGAS]} /></FormField>
-      <ProveedorAutocomplete
-        label="Proveedor"
-        placeholder="Buscar proveedor…"
-        selected={filterProveedor}
-        onSelect={provider => { setFilterProveedor(provider); setFilter('proveedorId', String(provider.id)) }}
-        onClear={() => { setFilterProveedor(null); setFilter('proveedorId', '') }}
-      />
-      {(Object.values(filters).some(Boolean) || filterProveedor) && <Btn variant="ghost" size="sm" onClick={clearFilters} style={{ alignSelf: 'center', justifySelf: 'start' }}>Limpiar filtros</Btn>}
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+      <SearchBar placeholder="Buscar N° doc, proveedor, RUT, código o producto…" value={filters.search} onChange={value => setFilter('search', value)} style={{ height: 28, width: 260 }} />
+      <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>Fecha doc:</span>
+      <input type="date" value={filters.desde} onChange={e => setFilter('desde', e.target.value)} style={filterInputStyle} />
+      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>-</span>
+      <input type="date" value={filters.hasta} onChange={e => setFilter('hasta', e.target.value)} style={filterInputStyle} />
+      <input placeholder="N° documento" value={filters.nDoc} onChange={e => setFilter('nDoc', e.target.value)} style={{ ...filterInputStyle, width: 110 }} />
+      <select value={filters.documento} onChange={e => setFilter('documento', e.target.value)} style={filterInputStyle}>
+        <option value="">Todo documento</option>
+        {DOCUMENTOS.map(d => <option key={d} value={d}>{d}</option>)}
+      </select>
+      <select value={filters.estado} onChange={e => setFilter('estado', e.target.value)} style={filterInputStyle}>
+        <option value="">Todo estado pago</option>
+        {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
+      </select>
+      <select value={filters.bodega} onChange={e => setFilter('bodega', e.target.value)} style={filterInputStyle}>
+        <option value="">Toda bodega</option>
+        {BODEGAS.map(b => <option key={b} value={b}>{b}</option>)}
+      </select>
+      {Object.values(filters).some(Boolean) && <Btn variant="ghost" size="sm" onClick={clearFilters}>Limpiar filtros</Btn>}
     </div>
   )
 
   return (
     <main className="page page-wide">
       <PageHeader
-        title="Ingreso Mercaderia"
+        title="Ingreso Manual"
         subtitle="Facturas, boletas y notas que afectan stock de bodega"
         breadcrumb={['Inicio', 'Bodega', 'Ingreso']}
         actions={

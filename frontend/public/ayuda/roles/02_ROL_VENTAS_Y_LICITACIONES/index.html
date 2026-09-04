@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DOC-02: Rol Ventas y Licitaciones | Plastimar SisGestión 3.0</title>
+  <link rel="stylesheet" href="../../assets/manual-style.css">
+</head>
+<body>
+
+  <header class="doc-header">
+    <div class="doc-header-inner">
+      <div class="doc-brand">
+        <img src="../../assets/plastimar-logo.webp" alt="Plastimar Logo" class="doc-logo">
+        <div class="doc-title-group">
+          <h1>Manual Operativo: Ventas y Licitaciones</h1>
+          <div class="doc-subtitle">SisGestión 3.0 &middot; Guía Práctica para Ejecutivos Comerciales y Mesón</div>
+        </div>
+      </div>
+      <div class="doc-actions">
+        <a href="../../00_MAPA_DOCUMENTACION_Y_GUIA_INICIO/index.html" class="btn-action btn-nav">&larr; Volver al Mapa</a>
+        <button class="btn-action btn-print">🖨️ Imprimir / Guardar PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="doc-container">
+
+    <!-- Misión del Rol -->
+    <section class="doc-card">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">1. Tu Rol en el ERP Plastimar</h2>
+        <span class="badge-role">Fuerza Comercial</span>
+      </div>
+      <p style="font-size: 1.05rem; margin-bottom: 1rem;">
+        Como ejecutivo de ventas, eres el <strong>punto de partida de la operación</strong>. La venta queda visible en la Matriz y puede activar el tratamiento de Taller para productos transitorios, pero Despacho, Cobranza y Facturación conservan acciones y verificaciones propias.
+      </p>
+      <div class="callout callout-info">
+        <div class="callout-icon">🎯</div>
+        <div class="callout-content">
+          <h4>Tu Misión Principal</h4>
+          <p>Registrar con total exactitud el canal de venta, seleccionar adecuadamente al cliente, cotizar con los plazos reales de entrega acordados y dar seguimiento a los pedidos de tus clientes en la <strong>Matriz de Ventas</strong>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Los Canales de Venta -->
+    <section class="doc-card">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">2. Los Canales de Venta en Plastimar</h2>
+        <span class="badge-role">Reglas de Negocio</span>
+      </div>
+      <p style="margin-bottom: 1rem;">Al crear una venta, el sistema te pedirá definir el <strong>Tipo de Venta</strong>. Cada uno tiene reglas específicas:</p>
+
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>Canal de Venta</th>
+            <th>Público Objetivo</th>
+            <th>Manejo del Cliente</th>
+            <th>Regla de Precios</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Venta Sala / Mostrador</strong></td>
+            <td>Clientes presenciales o de mesón en sucursal.</td>
+            <td><strong>Opcional:</strong> Si no tiene RUT, queda bajo Consumidor Final (Boleta).</td>
+            <td>Precio sala estándar (Costo + margen sala + IVA).</td>
+          </tr>
+          <tr>
+            <td><strong>Convenio Marco</strong></td>
+            <td>Instituciones públicas vía Mercado Público.</td>
+            <td><strong>Obligatorio:</strong> RUT institucional y número de OC pública.</td>
+            <td>Precio fijado por Convenio Marco ChileCompra.</td>
+          </tr>
+          <tr>
+            <td><strong>Licitación</strong></td>
+            <td>Grandes propuestas públicas o privadas adjudicadas.</td>
+            <td><strong>Obligatorio:</strong> Ficha de cliente y número ID de Licitación.</td>
+            <td>Precio de oferta adjudicada según propuesta.</td>
+          </tr>
+          <tr>
+            <td><strong>Trato Directo / Compra Ágil</strong></td>
+            <td>Instituciones públicas fuera de convenio con montos acotados.</td>
+            <td><strong>Obligatorio:</strong> RUT institucional y cotización formal aprobada.</td>
+            <td>Margen negociado autorizado según tramo.</td>
+          </tr>
+          <tr>
+            <td><strong>Venta Web / Online</strong></td>
+            <td>Pedidos ingresados directamente desde la tienda digital.</td>
+            <td>Datos capturados automáticamente desde el checkout online.</td>
+            <td>Precio web publicado en la plataforma pública.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Paso a Paso para Ingresar una Nueva Venta -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">3. Paso a Paso: Cómo Crear una Nueva Venta</h2>
+        <span class="badge-role">Procedimiento Operativo</span>
+      </div>
+      <p style="margin-bottom: 1.5rem;">
+        Para ingresar una nueva venta, haz clic en el botón <strong>Ventas &rarr; + Nueva Venta</strong> en la barra superior. A continuación, revisa cada una de las zonas del formulario:
+      </p>
+
+      <!-- Captura Formulario Nueva Venta -->
+      <div class="screenshot-wrapper">
+        <div class="screenshot-container">
+          <img src="../../capturas/02_ventas/02_formulario_nueva_venta.png" alt="Formulario de Nueva Venta en Plastimar ERP" class="screenshot-img">
+          <div class="screenshot-badge">🔍 Clic para ampliar en pantalla completa</div>
+        </div>
+        <div class="screenshot-caption">Figura 1: Formulario interactivo de Nueva Venta. Observa las zonas de datos del cliente, buscador lateral y plazos de despacho.</div>
+      </div>
+
+      <div class="step-list">
+        
+        <div class="step-item">
+          <div class="step-number">1</div>
+          <div class="step-body">
+            <h4>Elegir el Tipo de Venta y Ejecutivo</h4>
+            <p>En el panel izquierdo, selecciona el tipo de venta (por defecto <code>Venta Sala</code>) y verifica que esté asignado tu nombre como ejecutivo comercial.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">2</div>
+          <div class="step-body">
+            <h4>Asignar el Cliente (o dejarlo para Consumidor Final)</h4>
+            <p>Escribe el nombre o RUT en el buscador de clientes. Si el cliente ya existe, se cargarán de inmediato su Razón Social, Giro, Comuna y Teléfono.</p>
+            <div class="callout callout-regla-oro" style="margin: 0.75rem 0;">
+              <div class="callout-icon">💡</div>
+              <div class="callout-content">
+                <h4>Venta rápida en mesón: No pierdas tiempo creando clientes ficticios</h4>
+                <p>Si corresponde a una Venta Sala de consumidor final, <strong>deja el campo de cliente en blanco</strong>. No crees una ficha ficticia. Para otros canales selecciona el cliente y completa los antecedentes solicitados.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">3</div>
+          <div class="step-body">
+            <h4>Buscar y Agregar Productos</h4>
+            <p>Usa la barra <strong>"Buscar producto por código, nombre o ID Marco"</strong> en el panel izquierdo. Al seleccionar un producto, se agregará a la lista central donde podrás ajustar la cantidad.</p>
+            <p style="font-size: 0.88rem; color: #475569; margin-top: 0.35rem;">
+              <em>¿Qué pasa si no hay stock físico?</em> Confirma si el producto está configurado como transitorio/fabricable. Esos productos pueden generar tratamiento hacia Taller; revisa la bandeja y usa <strong>Pasar a Taller</strong> cuando corresponda. No prometas una fecha sin verificar el estado.
+            </p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">4</div>
+          <div class="step-body">
+            <h4>Definir Plazos y Condiciones de Despacho</h4>
+            <p>En la sección inferior <strong>Información de Despacho</strong>, digita los días para entrega (ejemplo: 15 días) y marca si son <em>Días hábiles</em> o <em>Días corridos</em>. El sistema calculará la <strong>Fecha tope</strong> de forma automática.</p>
+            <p style="font-size: 0.88rem; color: #475569; margin-top: 0.35rem;">
+              Si el cliente acepta entregas parciales a medida que los productos salgan del taller, marca la casilla <code>Permite envíos parciales</code>.
+            </p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">5</div>
+          <div class="step-body">
+            <h4>Revisar y Guardar</h4>
+            <p>Verifica el <strong>TOTAL</strong> en la esquina superior derecha y presiona el botón verde <strong>✓ Crear Venta</strong>. La orden quedará confirmada e ingresará a la Matriz de Ventas.</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section class="doc-card">
+      <div class="doc-card-header"><h2 class="doc-card-title">4. Controles y excepciones de Marcha Blanca</h2><span class="badge-role">Antes de confirmar</span></div>
+      <ul class="check-list">
+        <li>Licitaciones y Compras Ágiles se crean desde CRM y se convierten en venta sólo al aprobarse.</li>
+        <li>Revisa correo de despacho, dirección, plazo, canal, cliente, cantidades, total y autorización de descuento.</li>
+        <li>Si la pantalla demora, busca la venta en Matriz antes de volver a crearla.</li>
+        <li>Con pagos, entregas o DTE registrados, no reconstruyas ni anules para evitar un bloqueo: escala el caso.</li>
+      </ul>
+      <div class="callout callout-warning"><div class="callout-icon">⚠️</div><div class="callout-content"><h4>Qué no ocurre automáticamente</h4><p>Crear la venta no programa la ruta, no emite el DTE y no registra el pago. Cada área debe completar su etapa.</p></div></div>
+    </section>
+
+    <!-- La Matriz de Ventas -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">5. Tu Centro de Control: La Matriz de Ventas</h2>
+        <span class="badge-role">Seguimiento Diario</span>
+      </div>
+      <p style="margin-bottom: 1.5rem;">
+        La <strong>Matriz de Ventas</strong> (menú superior <em>Ventas &rarr; Matriz Ventas</em>) es donde controlas el estado de todos tus pedidos en tiempo real:
+      </p>
+
+      <div class="screenshot-wrapper">
+        <div class="screenshot-container">
+          <img src="../../capturas/02_ventas/01_matriz_ventas.png" alt="Matriz de Ventas Plastimar" class="screenshot-img">
+          <div class="screenshot-badge">🔍 Clic para ampliar en pantalla completa</div>
+        </div>
+        <div class="screenshot-caption">Figura 2: Matriz de Ventas central. Permite filtrar por canal, fecha, estado de entrega y estado de pago.</div>
+      </div>
+
+      <h3 style="font-size: 1.15rem; color: var(--brand-primary); margin-top: 1rem; margin-bottom: 0.5rem;">Cómo responder a tu cliente en 10 segundos</h3>
+      <p style="margin-bottom: 1rem;">
+        Si un cliente te llama para consultar por su pedido, no necesitas llamar a bodega ni bajar al taller. En la Matriz de Ventas busca por su RUT, nombre o número de OT:
+      </p>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem;">
+          <h4 style="color: #0284c7; margin-bottom: 0.25rem;">🟡 Estado "En Taller"</h4>
+          <p style="font-size: 0.85rem; color: #475569;">Significa que el taller de confección o corte está trabajando el producto. Puedes ver la fecha comprometida de entrega en pantalla.</p>
+        </div>
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem;">
+          <h4 style="color: #d97706; margin-bottom: 0.25rem;">🟠 Estado "En Packing / Despacho"</h4>
+          <p style="font-size: 0.85rem; color: #475569;">El producto ya fue fabricado y controlado en calidad. Bodega está armando los bultos o cargando el camión de reparto.</p>
+        </div>
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem;">
+          <h4 style="color: #16a34a; margin-bottom: 0.25rem;">🟢 Estado "Entregado"</h4>
+          <p style="font-size: 0.85rem; color: #475569;">El cliente ya recibió la mercadería con su respectiva Guía de Despacho firmada en terreno.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dudas y Soporte -->
+    <section class="doc-card" style="background: #fef2f2; border-color: #fecaca;">
+      <h3 style="color: #991b1b; margin-bottom: 0.5rem;">¿Detectaste un error o falta un dato en una venta?</h3>
+      <p style="color: #7f1d1d; font-size: 0.95rem; margin-bottom: 1rem;">
+        Durante esta marcha blanca, si un precio no coincide con el acuerdo comercial o el sistema arroja una alerta inesperada, <strong>no improvises</strong>:
+      </p>
+      <p style="color: #7f1d1d; font-size: 0.9rem;">
+        Haz clic en el botón rojo <strong>[Reportar observación]</strong> en la esquina inferior izquierda. Describe brevemente qué sucedió y nuestro equipo de desarrollo lo revisará de inmediato.
+      </p>
+    </section>
+
+    <footer class="doc-footer">
+      <p><strong>Plastimar SisGestión 3.0</strong> &middot; Ventas y Licitaciones &middot; MB-1.1 &middot; 2026-09-04</p>
+    </footer>
+
+  </main>
+
+  <script src="../../assets/manual-scripts.js"></script>
+</body>
+</html>

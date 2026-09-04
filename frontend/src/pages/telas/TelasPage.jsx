@@ -63,13 +63,15 @@ export default function TelasPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
-          <SearchBar placeholder="Buscar código, tipo, nombre…" value={search} onChange={setSearch} style={{ width: 320 }} />
-        </div>
-        {isLoading
-          ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-          : <Table columns={cols} rows={telas} onRowClick={row => navigate('/telas/' + row.id)} emptyMessage="Sin telas" ariaLabel="Telas" getRowKey={row => row.id} />
-        }
+        <Table
+          columns={cols}
+          rows={isLoading ? [] : telas}
+          onRowClick={row => navigate('/telas/' + row.id)}
+          emptyMessage="Sin telas"
+          ariaLabel="Telas"
+          getRowKey={row => row.id}
+          toolbarExtra={<SearchBar placeholder="Buscar código, tipo, nombre…" value={search} onChange={setSearch} style={{ width: 280, height: 28 }} />}
+        />
       </div>
     </main>
   )

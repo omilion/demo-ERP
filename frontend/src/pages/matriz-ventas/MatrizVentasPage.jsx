@@ -100,7 +100,6 @@ export default function MatrizVentasPage() {
   const [searchParams] = useSearchParams()
   const user = useAuthStore(s => s.user)
   const canDeleteVentas = can(user, 'ventas', 'delete')
-  const canWriteDespacho = can(user, 'despacho', 'write')
   const anularVenta = useAnularVenta()
 
   const [tab, setTab] = useState(searchParams.get('tipo') || 'all')
@@ -220,40 +219,93 @@ export default function MatrizVentasPage() {
     customEmptyMessage = `No hay ventas registradas para este filtro`
   }
 
-  const paginationControls = (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', width: '100%' }}>
-      <Tabs 
-        tabs={TABS} 
-        active={tab} 
-        onChange={t => { setTab(t); setPage(1) }} 
-        style={{ marginBottom: 0, borderBottom: 'none', gap: 1 }} 
-      />
-      <div style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '2px 10px',
-        height: 26,
-        borderRadius: 6,
-        background: 'var(--green-50)',
-        border: '1px solid var(--green-200)',
-        fontSize: 12,
-        fontWeight: 600,
-        boxSizing: 'border-box'
-      }}>
-        <span style={{ color: 'var(--green-800)', fontWeight: 700 }}>{badgeTitle}:</span>
-        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: 'var(--text-1)' }}>
-          {ventasCountText}
-        </span>
-        <span style={{ color: 'var(--green-400)', fontWeight: 700 }}>•</span>
-        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 800, color: 'var(--green-700)' }}>
-          {totalAmountText}
-        </span>
+  const toolbarExtra = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', width: '100%' }}>
+        <Tabs
+          tabs={TABS}
+          active={tab}
+          onChange={t => { setTab(t); setPage(1) }}
+          style={{ marginBottom: 0, borderBottom: 'none', gap: 1 }}
+        />
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '2px 10px',
+          height: 26,
+          borderRadius: 6,
+          background: 'var(--green-50)',
+          border: '1px solid var(--green-200)',
+          fontSize: 12,
+          fontWeight: 600,
+          boxSizing: 'border-box'
+        }}>
+          <span style={{ color: 'var(--green-800)', fontWeight: 700 }}>{badgeTitle}:</span>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, color: 'var(--text-1)' }}>
+            {ventasCountText}
+          </span>
+          <span style={{ color: 'var(--green-400)', fontWeight: 700 }}>•</span>
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 800, color: 'var(--green-700)' }}>
+            {totalAmountText}
+          </span>
+        </div>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+          <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={pagerBtn(page <= 1)}>Anterior</button>
+          <span style={{ fontSize: 12, color: 'var(--text-2)', fontFamily: "'DM Mono', monospace", minWidth: 46, textAlign: 'center' }}>{page} / {pages}</span>
+          <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} style={pagerBtn(page >= pages)}>Siguiente</button>
+        </div>
       </div>
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
-        <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={pagerBtn(page <= 1)}>Anterior</button>
-        <span style={{ fontSize: 12, color: 'var(--text-2)', fontFamily: "'DM Mono', monospace", minWidth: 46, textAlign: 'center' }}>{page} / {pages}</span>
-        <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} style={pagerBtn(page >= pages)}>Siguiente</button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', width: '100%' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)' }}>Desde:</span>
+          <input type="date" value={desde} onChange={e => setFilter(setDesde)(e.target.value)} style={compactInputStyle} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)' }}>Hasta:</span>
+          <input type="date" value={hasta} onChange={e => setFilter(setHasta)(e.target.value)} style={compactInputStyle} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <button
+            onClick={aplicarAyer}
+            style={quickDateBtnStyle(isAyerActive)}
+            title="Filtrar ventas del día anterior (Ayer)"
+          >
+            Ayer
+          </button>
+          <button
+            onClick={aplicarEstaSemana}
+            style={quickDateBtnStyle(isEstaSemanaActive)}
+            title="Filtrar ventas de esta semana (Lunes a Hoy)"
+          >
+            Esta semana
+          </button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)' }}>Pago:</span>
+          <select value={estadoPago} onChange={e => setFilter(setEstadoPago)(e.target.value)} style={compactSelectStyle}>
+            {ESTADO_PAGO_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)' }}>Entrega:</span>
+          <select value={estadoEntrega} onChange={e => setFilter(setEstadoEntrega)(e.target.value)} style={compactSelectStyle}>
+            {ESTADO_ENTREGA_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+          <SearchBar
+            placeholder="Buscar cliente, OT, guía, OC..."
+            value={search}
+            onChange={setFilter(setSearch)}
+            style={{ width: 280, height: 28 }}
+          />
+          {hasUserFilters && (
+            <button onClick={limpiarFiltros} style={compactClearBtn} title="Limpiar todos los filtros activos">
+              ✕ Limpiar
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -338,26 +390,6 @@ export default function MatrizVentasPage() {
           <button onClick={e => { e.stopPropagation(); navigate(`/odt?ordenId=${row.id}`) }} style={operationBtn('#0ea5e9')} title="Informe taller">
             Inf. Taller
           </button>
-          {canWriteDespacho && row.estado === 'Activa' && ['EN_TALLER', 'PICKING_PARCIAL', 'LISTA_PICKING', 'PICKING'].includes(row.estadoLogistico?.codigo) && (
-            <button onClick={e => { e.stopPropagation(); navigate(`/despachos/ordenes/${row.id}/picking`) }} style={operationBtn('#7c3aed')} title="Confirmar picking">
-              Picking
-            </button>
-          )}
-          {canWriteDespacho && row.estado === 'Activa' && row.estadoLogistico?.codigo === 'PACKING' && (
-            <button onClick={e => { e.stopPropagation(); navigate(`/despachos/ordenes/${row.id}/packing`) }} style={operationBtn('#7c3aed')} title="Armar bultos">
-              Packing
-            </button>
-          )}
-          {canWriteDespacho && row.estado === 'Activa' && row.estadoLogistico?.codigo === 'LISTA_DESPACHO' && (
-            <>
-              <button onClick={e => { e.stopPropagation(); navigate(`/despachos/nuevo?ordenId=${row.id}&nInterno=${row.nInterno || ''}`) }} style={operationBtn('#059669')} title="Programar salida">
-                Programar Salida
-              </button>
-              <button onClick={e => { e.stopPropagation(); navigate(`/despachos/guias/nueva?ordenId=${row.id}`) }} style={operationBtn('#d97706')} title="Preparar guía DTE 52">
-                Preparar Guía
-              </button>
-            </>
-          )}
           {row.nInterno && (
             <button onClick={e => { e.stopPropagation(); navigate(`/caja?nInterno=${row.nInterno}`) }} style={operationBtn('#16a34a')} title="Ver pagos">
               Ver pagos
@@ -476,35 +508,6 @@ export default function MatrizVentasPage() {
           {row.fechaEstadoEntrega && <span style={{ ...mono, fontSize: 10, color: 'var(--text-3)' }}>{formatDate(row.fechaEstadoEntrega)}</span>}
         </div>
       ) : '-' },
-    { key: 'estadoLogistico', label: 'Operación', render: value => value ? <Badge tone={value.tone || 'gray'}>{value.label}</Badge> : '-' },
-    {
-      key: 'bultos',
-      label: 'Bultos / Retiro',
-      render: (_, row) => {
-        const bultos = row.bultos || []
-        const ajustes = row.pickingAjustes || []
-        if (!bultos.length && !ajustes.length) return <span style={{ color: 'var(--text-3)' }}>-</span>
-        return (
-          <div style={{ fontSize: 11, display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {bultos.length > 0 && (
-              <div>
-                <strong>{bultos.length} bulto{bultos.length === 1 ? '' : 's'}</strong>
-                {bultos.map(b => (
-                  <div key={b.id} style={{ color: 'var(--text-3)' }}>
-                    {b.numero}{b.dimensiones ? ` · ${b.dimensiones}` : ''}{b.peso ? ` · ${b.peso}kg` : ''}
-                  </div>
-                ))}
-              </div>
-            )}
-            {ajustes.length > 0 && (
-              <div style={{ color: 'var(--amber-700, #b45309)' }}>
-                {ajustes.map(a => <div key={a.itemId}>⚠ {a.nombre}: {a.observacion}</div>)}
-              </div>
-            )}
-          </div>
-        )
-      },
-    },
     { key: 'regionDespacho', label: 'Región Desp.', render: v => <span style={{ fontSize: 12 }}>{v || '—'}</span> },
     { key: 'detalleProductos', label: 'Detalle', width: 430, wrap: true, render: (_, row) => renderDetalle(row) },
     { key: 'fecha', label: 'Fecha Creacion', render: v => <span style={{ ...mono, fontSize: 11 }}>{formatDateTime(v)}</span> },
@@ -633,61 +636,9 @@ export default function MatrizVentasPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)' }}>Desde:</span>
-            <input type="date" value={desde} onChange={e => setFilter(setDesde)(e.target.value)} style={compactInputStyle} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)' }}>Hasta:</span>
-            <input type="date" value={hasta} onChange={e => setFilter(setHasta)(e.target.value)} style={compactInputStyle} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <button
-              onClick={aplicarAyer}
-              style={quickDateBtnStyle(isAyerActive)}
-              title="Filtrar ventas del día anterior (Ayer)"
-            >
-              Ayer
-            </button>
-            <button
-              onClick={aplicarEstaSemana}
-              style={quickDateBtnStyle(isEstaSemanaActive)}
-              title="Filtrar ventas de esta semana (Lunes a Hoy)"
-            >
-              Esta semana
-            </button>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)' }}>Pago:</span>
-            <select value={estadoPago} onChange={e => setFilter(setEstadoPago)(e.target.value)} style={compactSelectStyle}>
-              {ESTADO_PAGO_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
-            </select>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)' }}>Entrega:</span>
-            <select value={estadoEntrega} onChange={e => setFilter(setEstadoEntrega)(e.target.value)} style={compactSelectStyle}>
-              {ESTADO_ENTREGA_OPTS.map(v => <option key={v} value={v}>{v || 'Todos'}</option>)}
-            </select>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
-            <SearchBar
-              placeholder="Buscar cliente, OT, guía, OC..."
-              value={search}
-              onChange={setFilter(setSearch)}
-              style={{ width: 280, height: 28 }}
-            />
-            {hasUserFilters && (
-              <button onClick={limpiarFiltros} style={compactClearBtn} title="Limpiar todos los filtros activos">
-                ✕ Limpiar
-              </button>
-            )}
-          </div>
-        </div>
-
         {isLoading
           ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={data.items} emptyMessage={customEmptyMessage} onRowDoubleClick={openVenta} ariaLabel="Matriz de ventas" getRowKey={row => row.id} toolbarExtra={paginationControls} />
+          : <Table columns={cols} rows={data.items} emptyMessage={customEmptyMessage} onRowDoubleClick={openVenta} ariaLabel="Matriz de ventas" getRowKey={row => row.id} toolbarExtra={toolbarExtra} />
         }
       </div>
     </main>

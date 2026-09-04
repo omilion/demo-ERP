@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DOC-09: Guía del Feedback Widget y Reporte de Fallas | Plastimar SisGestión 3.0</title>
+  <link rel="stylesheet" href="../../assets/manual-style.css">
+</head>
+<body>
+
+  <header class="doc-header">
+    <div class="doc-header-inner">
+      <div class="doc-brand">
+        <img src="../../assets/plastimar-logo.webp" alt="Plastimar Logo" class="doc-logo">
+        <div class="doc-title-group">
+          <h1>Protocolo: In-App Feedback Widget</h1>
+          <div class="doc-subtitle">SisGestión 3.0 &middot; Cómo Reportar Dudas, Fallas y Mejoras en Marcha Blanca</div>
+        </div>
+      </div>
+      <div class="doc-actions">
+        <a href="../../00_MAPA_DOCUMENTACION_Y_GUIA_INICIO/index.html" class="btn-action btn-nav">&larr; Volver al Mapa</a>
+        <button class="btn-action btn-print">🖨️ Imprimir / Guardar PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="doc-container">
+
+    <!-- Propósito -->
+    <section class="doc-card">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">1. ¿Qué es el Widget de Observaciones y para qué sirve?</h2>
+        <span class="badge-role" style="background:#fef2f2; color:#991b1b; border-color:#fecaca;">Canal Oficial de Marcha Blanca</span>
+      </div>
+      <p style="font-size: 1.05rem; margin-bottom: 1rem;">
+        Durante la marcha blanca de un sistema nuevo, es natural que surjan dudas, ajustes de pantallas o situaciones imprevistas. Para evitar que las observaciones queden anotadas en papeles sueltos o se pierdan en grupos de WhatsApp, el ERP cuenta con un <strong>sistema de retroalimentación en vivo integrado en pantalla</strong>.
+      </p>
+      <div class="callout callout-info">
+        <div class="callout-icon">🚀</div>
+        <div class="callout-content">
+          <h4>Reporte en 15 Segundos sin Salir del Sistema</h4>
+          <p>Al hacer clic en <strong>[Reportar observación]</strong> en una pantalla habilitada, el ERP incorpora la ruta y el contexto disponible, y prepara una captura para facilitar el diagnóstico. Incluye siempre el identificador de la operación y el impacto.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- La Pantalla del Modal -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">2. Cómo Usar la Ventana de Reporte</h2>
+        <span class="badge-role">Paso a Paso</span>
+      </div>
+      <p style="margin-bottom: 1.5rem;">
+        Al presionar el botón rojo en cualquier parte del ERP se desplegará la siguiente ventana interactiva:
+      </p>
+
+      <div class="screenshot-wrapper">
+        <div class="screenshot-container">
+          <img src="../../capturas/09_widget/01_modal_reportar_observacion.png" alt="Ventana de Reporte de Observaciones" class="screenshot-img">
+          <div class="screenshot-badge">🔍 Clic para ampliar en pantalla completa</div>
+        </div>
+        <div class="screenshot-caption">Figura 1: Ventana de reporte de marcha blanca. Observa la selección de categoría, la previsualización de la captura y la herramienta para marcar el área de la duda.</div>
+      </div>
+
+      <div class="step-list">
+        
+        <div class="step-item">
+          <div class="step-number">1</div>
+          <div class="step-body">
+            <h4>Elegir el Tipo de Observación</h4>
+            <p>Selecciona una de las 3 opciones disponibles:</p>
+            <ul style="margin-left: 1.25rem; margin-top: 0.35rem; font-size: 0.88rem; line-height: 1.6;">
+              <li><strong>⚠️ Falla:</strong> "Algo no funciona como debería" (ej: un botón no responde, un cálculo da error o se pegó una pantalla).</li>
+              <li><strong>➕ Falta:</strong> "Hace falta un campo, control o acción" (ej: se necesita un filtro adicional por sucursal o una columna en la tabla).</li>
+              <li><strong>📈 Mejora:</strong> "Funciona, pero se podría hacer mejor" (ej: un texto confuso, una sugerencia de orden o mayor rapidez).</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">2</div>
+          <div class="step-body">
+            <h4>Describir Brevemente la Situación</h4>
+            <p>Escribe qué estabas intentando hacer y qué ocurrió (ejemplo: <em>"Al guardar la venta de mesón para el cliente Colegio Andes, la tabla de despacho no cargó la dirección de entrega"</em>).</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">3</div>
+          <div class="step-body">
+            <h4>Marcar Área en la Captura (Opcional pero muy útil)</h4>
+            <p>Presiona el botón <strong>[Marcar área]</strong>. Podrás arrastrar el mouse sobre la foto para encerrar en un recuadro el botón o dato exacto donde ocurrió el problema.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">4</div>
+          <div class="step-body">
+            <h4>Enviar Reporte</h4>
+            <p>Presiona <strong>[Enviar reporte]</strong>. Tu observación quedará registrada con un ticket único en la bandeja técnica de marcha blanca y se te notificará en pantalla.</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Privacidad y Buenas Prácticas -->
+    <section class="doc-card page-break">
+      <div class="doc-card-header">
+        <h2 class="doc-card-title">3. Seguridad y Privacidad en tus Reportes</h2>
+        <span class="badge-role">Protección de Datos</span>
+      </div>
+
+      <div class="callout callout-regla-oro">
+        <div class="callout-icon">🔒</div>
+        <div class="callout-content">
+          <h4>Revisa la captura antes de enviarla</h4>
+          <p>El widget oculta campos de entrada y elementos marcados para redacción, pero <strong>no garantiza anonimizar todo nombre, RUT, precio o texto ya visible</strong>. Nunca escribas contraseñas, cuentas, tokens, certificado, CAF ni secretos; limita la captura al área necesaria.</p>
+        </div>
+      </div>
+
+      <h3 style="font-size: 1.15rem; color: var(--brand-primary); margin-top: 1.5rem; margin-bottom: 0.75rem;">¿Qué pasa después de que envías un reporte?</h3>
+      <p style="font-size: 0.92rem; line-height: 1.6; color: #334155;">
+        Los reportes deben revisarse según la cadencia acordada por coordinación. Cada incidencia se clasifica por severidad; un <strong>bloqueo operacional</strong> requiere además aviso inmediato a la jefatura y una contingencia expresamente autorizada.
+      </p>
+    </section>
+
+    <section class="doc-card"><div class="doc-card-header"><h2 class="doc-card-title">4. Reporte que permite resolver</h2><span class="badge-role">Evidencia mínima</span></div><ul class="check-list"><li>Módulo e identificador de venta, ODT, SKU, guía o DTE.</li><li>Pasos realizados, resultado esperado y resultado obtenido.</li><li>Hora y mensaje exacto, sin secretos.</li><li>Impacto en cliente, stock, dinero, despacho o SII.</li><li>Si puede duplicar una operación, no reintentar antes de revisar.</li></ul></section>
+
+    <footer class="doc-footer">
+      <p><strong>Plastimar SisGestión 3.0</strong> &middot; Feedback de Marcha Blanca &middot; MB-1.1 &middot; 2026-09-04</p>
+    </footer>
+
+  </main>
+
+  <script src="../../assets/manual-scripts.js"></script>
+</body>
+</html>

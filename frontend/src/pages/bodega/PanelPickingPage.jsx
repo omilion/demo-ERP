@@ -166,22 +166,24 @@ export default function PanelPickingPage() {
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 20 }}>
-        <KpiCard title="Ventas en Picking" value={items.length} subtitle="Listas o en proceso" tone="blue" />
-        <KpiCard title="Disponibles en Stock" value={prepStats.disponibleInventario} subtitle="Unidades inventariadas" tone="green" />
-        <KpiCard title="Listas de Taller" value={prepStats.disponibleTaller} subtitle="Unidades de ODTs completadas" tone="teal" />
-        <KpiCard title="Pendientes en Taller" value={prepStats.pendienteTaller} subtitle="Unidades en fabricación" tone={prepStats.pendienteTaller > 0 ? 'amber' : 'gray'} />
+        <KpiCard label="Ventas en Picking" value={items.length} sublabel="Listas o en proceso" tone="blue" />
+        <KpiCard label="Disponibles en Stock" value={prepStats.disponibleInventario} sublabel="Unidades inventariadas" tone="green" />
+        <KpiCard label="Listas de Taller" value={prepStats.disponibleTaller} sublabel="Unidades de ODTs completadas" tone="teal" />
+        <KpiCard label="Pendientes en Taller" value={prepStats.pendienteTaller} sublabel="Unidades en fabricación" tone={prepStats.pendienteTaller > 0 ? 'amber' : 'gray'} />
       </div>
 
-      <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ minWidth: 280, flex: 1 }}>
-            <SearchBar value={search} onChange={setSearch} placeholder="Buscar venta, cliente, RUT o comuna..." />
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
+        <Table
+          columns={columns}
+          rows={filtrados}
+          loading={isLoading}
+          emptyMessage="No hay pedidos pendientes de picking con los filtros seleccionados."
+          toolbarExtra={<>
+            <SearchBar value={search} onChange={setSearch} placeholder="Buscar venta, cliente, RUT o comuna..." style={{ height: 28, width: 280 }} />
             <select
               value={filtroTipo}
               onChange={e => setFiltroTipo(e.target.value)}
-              style={{ padding: '7px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, background: '#fff' }}
+              style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, background: '#fff' }}
             >
               <option value="todos">Todos los orígenes ({items.length})</option>
               <option value="inventario">Solo Inventario / Stock</option>
@@ -189,16 +191,9 @@ export default function PanelPickingPage() {
               <option value="mixto">Ventas Mixtas (Stock + Taller)</option>
               <option value="con_pendiente">Con unidades pendientes de Taller</option>
             </select>
-          </div>
-        </div>
+          </>}
+        />
       </div>
-
-      <Table
-        columns={columns}
-        rows={filtrados}
-        loading={isLoading}
-        emptyMessage="No hay pedidos pendientes de picking con los filtros seleccionados."
-      />
     </main>
   )
 }

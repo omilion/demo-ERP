@@ -100,11 +100,15 @@ export default function ProveedoresPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>
-            {total.toLocaleString('es-CL')} proveedores
-          </span>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
+        <Table
+          columns={cols}
+          rows={isLoading ? [] : proveedores}
+          emptyMessage={isLoading ? 'Cargando…' : 'Sin proveedores'}
+          onRowClick={row => navigate(`/proveedores/${row.id}`)}
+          ariaLabel="Proveedores"
+          getRowKey={row => row.id}
+          toolbarExtra={<>
+            <SearchBar placeholder="Buscar por nombre, RUT, razón social o código..." value={search} onChange={setSearch} style={{ width: 300, height: 28 }} />
             {hasActiveFilters && (
               <button
                 type="button"
@@ -128,13 +132,8 @@ export default function ProveedoresPage() {
                 Limpiar
               </button>
             )}
-            <SearchBar placeholder="Buscar por nombre, RUT, razón social o código..." value={search} onChange={setSearch} style={{ width: 300, height: 28 }} />
-          </div>
-        </div>
-        {isLoading
-          ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
-          : <Table columns={cols} rows={proveedores} emptyMessage="Sin proveedores" onRowClick={row => navigate(`/proveedores/${row.id}`)} ariaLabel="Proveedores" getRowKey={row => row.id} />
-        }
+          </>}
+        />
       </div>
       {creating && <ProveedorFormModal onClose={() => setCreating(false)} />}
     </main>

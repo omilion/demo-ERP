@@ -136,37 +136,32 @@ export default function PanelPackingPage() {
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 20 }}>
-        <KpiCard title="Pedidos en Packing" value={items.length} subtitle="En preparación física" tone="blue" />
-        <KpiCard title="Packing Completo" value={items.filter(i => i.packing?.completo).length} subtitle="Listos para despacho" tone="green" />
-        <KpiCard title="Packing Parcial" value={items.filter(i => i.packing?.preparados > 0 && !i.packing?.completo).length} subtitle="En proceso de empaque" tone="amber" />
+        <KpiCard label="Pedidos en Packing" value={items.length} sublabel="En preparación física" tone="blue" />
+        <KpiCard label="Packing Completo" value={items.filter(i => i.packing?.completo).length} sublabel="Listos para despacho" tone="green" />
+        <KpiCard label="Packing Parcial" value={items.filter(i => i.packing?.preparados > 0 && !i.packing?.completo).length} sublabel="En proceso de empaque" tone="amber" />
       </div>
 
-      <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ minWidth: 280, flex: 1 }}>
-            <SearchBar value={search} onChange={setSearch} placeholder="Buscar por venta, interno, cliente o transporte..." />
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
+        <Table
+          columns={columns}
+          rows={filtrados}
+          loading={isLoading}
+          emptyMessage="No hay pedidos en cola de packing."
+          toolbarExtra={<>
+            <SearchBar value={search} onChange={setSearch} placeholder="Buscar por venta, interno, cliente o transporte..." style={{ height: 28, width: 280 }} />
             <select
               value={filtroEstado}
               onChange={e => setFiltroEstado(e.target.value)}
-              style={{ padding: '7px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, background: '#fff' }}
+              style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, background: '#fff' }}
             >
               <option value="todos">Todos los estados de packing</option>
               <option value="pendiente">Sin iniciar</option>
               <option value="iniciado">Empaque en curso</option>
               <option value="completo">Empaque 100% completo</option>
             </select>
-          </div>
-        </div>
+          </>}
+        />
       </div>
-
-      <Table
-        columns={columns}
-        rows={filtrados}
-        loading={isLoading}
-        emptyMessage="No hay pedidos en cola de packing."
-      />
     </main>
   )
 }

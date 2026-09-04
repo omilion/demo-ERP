@@ -188,27 +188,28 @@ export default function ReportesLicitacionesPage() {
         <KpiCard label="Total C/IVA" value={fmt(stats.totalConIva || 0)} icon="dollarSign" tone="green" />
       </div>
 
-      <div className="no-print" style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 16, boxShadow: 'var(--shadow-sm)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, alignItems: 'end' }}>
-          <label style={labelStyle}>Fecha de Inicio<input type="date" value={fechaDesde} onChange={e => setFilter(setFechaDesde)(e.target.value)} style={inputStyle} /></label>
-          <label style={labelStyle}>Fecha de Termino<input type="date" value={fechaHasta} onChange={e => setFilter(setFechaHasta)(e.target.value)} style={inputStyle} /></label>
-          <label style={labelStyle}>Rut Cliente<input value={rutCliente} onChange={e => setFilter(setRutCliente)(e.target.value)} placeholder="Sin puntos ni guion" style={inputStyle} /></label>
-          <label style={labelStyle}>ID Licitacion<input value={idLicitacion} onChange={e => setFilter(setIdLicitacion)(e.target.value)} placeholder="ID licitacion" style={inputStyle} /></label>
-          <label style={labelStyle}>Estado<select value={estado} onChange={e => setFilter(setEstado)(e.target.value)} style={inputStyle}>
-            {ESTADOS.map(s => <option key={s} value={s}>{s || 'Todos'}</option>)}
-          </select></label>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Btn variant="secondary" icon="clock" size="sm" onClick={() => { setEstado('Pendiente'); setPage(1) }}>Pendientes</Btn>
-            <Btn variant="ghost" icon="x" size="sm" onClick={clearFilters}>Limpiar</Btn>
-          </div>
-        </div>
-      </div>
-
       <div style={{ background: '#fff', borderRadius: 10, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
-        {isLoading
-          ? <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={columns} rows={displayItems} onRowClick={row => navigate(`/licitaciones/${row.id}`)} emptyMessage="No hay resultados" ariaLabel="Reporte de licitaciones" getRowKey={row => row.id} />
-        }
+        <Table
+          columns={columns}
+          rows={isLoading ? [] : displayItems}
+          onRowClick={row => navigate(`/licitaciones/${row.id}`)}
+          emptyMessage={isLoading ? 'Cargando...' : 'No hay resultados'}
+          ariaLabel="Reporte de licitaciones"
+          getRowKey={row => row.id}
+          toolbarExtra={
+            <div className="no-print" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input type="date" value={fechaDesde} onChange={e => setFilter(setFechaDesde)(e.target.value)} style={inputStyle} title="Fecha de inicio" />
+              <input type="date" value={fechaHasta} onChange={e => setFilter(setFechaHasta)(e.target.value)} style={inputStyle} title="Fecha de termino" />
+              <input value={rutCliente} onChange={e => setFilter(setRutCliente)(e.target.value)} placeholder="Rut cliente" style={inputStyle} />
+              <input value={idLicitacion} onChange={e => setFilter(setIdLicitacion)(e.target.value)} placeholder="ID licitacion" style={inputStyle} />
+              <select value={estado} onChange={e => setFilter(setEstado)(e.target.value)} style={inputStyle}>
+                {ESTADOS.map(s => <option key={s} value={s}>{s || 'Todos'}</option>)}
+              </select>
+              <Btn variant="secondary" icon="clock" size="sm" onClick={() => { setEstado('Pendiente'); setPage(1) }}>Pendientes</Btn>
+              <Btn variant="ghost" icon="x" size="sm" onClick={clearFilters}>Limpiar</Btn>
+            </div>
+          }
+        />
         <div className="no-print">
           <Pager page={page} pages={pages} total={data.total || 0} limit={data.limit || limit} shown={items.length} onChange={setPage} disabled={isLoading} />
         </div>
@@ -217,23 +218,12 @@ export default function ReportesLicitacionesPage() {
   )
 }
 
-const labelStyle = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 5,
-  fontSize: 11,
-  color: 'var(--text-3)',
-  textTransform: 'uppercase',
-  letterSpacing: 0.3,
-  fontWeight: 600,
-}
-
 const inputStyle = {
-  padding: '8px 10px',
-  borderRadius: 7,
+  height: 28,
+  padding: '0 8px',
+  borderRadius: 6,
   border: '1px solid var(--border)',
   background: '#fff',
   color: 'var(--text-1)',
-  fontSize: 13,
-  minHeight: 36,
+  fontSize: 12,
 }

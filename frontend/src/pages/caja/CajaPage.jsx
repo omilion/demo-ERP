@@ -114,10 +114,6 @@ export default function CajaPage() {
   const ingresos = movimientosCajaReal.filter(m => m.monto > 0).reduce((a, m) => a + m.monto, 0)
   const egresos = Math.abs(movimientosCajaReal.filter(m => m.monto < 0).reduce((a, m) => a + m.monto, 0))
   const saldo = ingresos - egresos
-  const horasTurnoAbierto = turno?.apertura
-    ? Math.floor((Date.now() - new Date(turno.apertura).getTime()) / (1000 * 60 * 60))
-    : 0
-  const turnoRequiereRevision = horasTurnoAbierto >= 24
   const systemConteo = CIERRE_FIELDS.reduce((acc, [key]) => ({ ...acc, [key]: 0 }), {})
   for (const mov of movimientos) {
     if (normalizeMedioPago(mov.medioPago) === 'referencial') continue
@@ -270,6 +266,39 @@ export default function CajaPage() {
     { id: 'historico', label: `Histórico (${histResult.total.toLocaleString('es-CL')})` },
   ]
 
+  const histFilterStyle = { height: 28, padding: '0 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }
+  const histToolbarExtra = (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+      <select value={histYear} onChange={e => setHistYear(e.target.value)} style={histFilterStyle}>
+        <option value="">Todos los años</option>
+        {years.map(y => <option key={y} value={y}>{y}</option>)}
+      </select>
+      <select value={histTipo} onChange={e => setHistTipo(e.target.value)} style={histFilterStyle}>
+        <option value="">Ingreso + Egreso</option>
+        <option value="ingreso">Solo Ingresos</option>
+        <option value="egreso">Solo Egresos</option>
+      </select>
+      <select value={histMedio} onChange={e => setHistMedio(e.target.value)} style={histFilterStyle}>
+        <option value="">Todos los medios</option>
+        {MEDIOS_PAGO.slice(1).map(m => <option key={m} value={m}>{m}</option>)}
+      </select>
+      <input value={histDesde} onChange={e => setHistDesde(e.target.value)} type="date" title="Desde" style={{ ...histFilterStyle, width: 132 }} />
+      <input value={histHasta} onChange={e => setHistHasta(e.target.value)} type="date" title="Hasta" style={{ ...histFilterStyle, width: 132 }} />
+      <select value={histTipoVenta} onChange={e => setHistTipoVenta(e.target.value)} style={histFilterStyle}>
+        <option value="">Todos los tipos venta</option>
+        {TIPOS_VENTA.slice(1).map(t => <option key={t} value={t}>{t}</option>)}
+      </select>
+      <input value={histNDoc} onChange={e => setHistNDoc(e.target.value)} placeholder="N doc." style={{ ...histFilterStyle, width: 110 }} />
+      <select value={histEstado} onChange={e => setHistEstado(e.target.value)} style={histFilterStyle}>
+        <option value="activos">Activos</option>
+        <option value="anulados">Anulados</option>
+        <option value="todos">Todos</option>
+      </select>
+      <input value={nInterno} onChange={e => { setNInterno(e.target.value); if (!e.target.value) { urlParams.delete('nInterno'); setUrlParams(urlParams) } }} placeholder="N° Interno venta" type="number" style={{ ...histFilterStyle, width: 140 }} />
+      <SearchBar placeholder="Referencia, doc, usuario..." value={histSearch} onChange={setHistSearch} style={{ width: 200, height: 28 }} />
+    </div>
+  )
+
   return (
     <main className="page page-wide">
       <PageHeader
@@ -291,18 +320,11 @@ export default function CajaPage() {
 
       {tab === 'hoy' && (
         <div className="kpi-strip">
-          <KpiCard label="Ingresos operativos" value={fmt(ingresos)} icon="trendingUp" tone="neutral" sublabel="Excluye movimientos referenciales" />
-          <KpiCard label="Egresos operativos" value={fmt(egresos)} icon="trendingDown" tone="amber" sublabel="Excluye movimientos referenciales" />
-          <KpiCard label="Saldo operativo" value={fmt(saldo)} icon="dollarSign" tone={saldo >= 0 ? 'neutral' : 'red'} sublabel="Base para el arqueo físico" />
-          <KpiCard label="Movimientos" value={movimientos.length} icon="refreshCw" sublabel="Incluye referencias no contables" />
+          <KpiCard label="Ingresos turno" value={fmt(ingresos)} icon="trendingUp" tone="neutral" sublabel="Total entradas" />
+          <KpiCard label="Egresos turno" value={fmt(egresos)} icon="trendingDown" tone="amber" sublabel="Total salidas" />
+          <KpiCard label="Saldo del día" value={fmt(saldo)} icon="dollarSign" tone={saldo >= 0 ? 'neutral' : 'red'} sublabel="Resultado neto" />
+          <KpiCard label="Movimientos" value={movimientos.length} icon="refreshCw" sublabel="Transacciones hoy" />
         </div>
-      )}
-
-      {tab === 'hoy' && turnoRequiereRevision && (
-        <section role="status" aria-live="polite" style={{ marginBottom: 16, padding: '12px 16px', border: '1px solid var(--amber-300, #f2c66d)', borderRadius: 8, background: 'var(--amber-50, #fff9eb)', color: 'var(--text-1)' }}>
-          <strong>Turno abierto hace {horasTurnoAbierto} horas.</strong>{' '}
-          Revisa y realiza el arqueo antes de seguir registrando movimientos. El sistema conserva el turno abierto para no cerrar caja sin conteo físico.
-        </section>
       )}
 
       {tab === 'historico' && (
@@ -315,39 +337,8 @@ export default function CajaPage() {
       )}
 
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ padding: '14px 16px 0', borderBottom: '1px solid var(--border)' }}>
           <Tabs tabs={TABS} active={tab} onChange={setTab} />
-          {tab === 'historico' && (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-              <select value={histYear} onChange={e => setHistYear(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
-                <option value="">Todos los años</option>
-                {years.map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-              <select value={histTipo} onChange={e => setHistTipo(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
-                <option value="">Ingreso + Egreso</option>
-                <option value="ingreso">Solo Ingresos</option>
-                <option value="egreso">Solo Egresos</option>
-              </select>
-              <select value={histMedio} onChange={e => setHistMedio(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
-                <option value="">Todos los medios</option>
-                {MEDIOS_PAGO.slice(1).map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <input value={histDesde} onChange={e => setHistDesde(e.target.value)} type="date" title="Desde" style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', width: 132 }} />
-              <input value={histHasta} onChange={e => setHistHasta(e.target.value)} type="date" title="Hasta" style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', width: 132 }} />
-              <select value={histTipoVenta} onChange={e => setHistTipoVenta(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
-                <option value="">Todos los tipos venta</option>
-                {TIPOS_VENTA.slice(1).map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-              <input value={histNDoc} onChange={e => setHistNDoc(e.target.value)} placeholder="N doc." style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', width: 110 }} />
-              <select value={histEstado} onChange={e => setHistEstado(e.target.value)} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }}>
-                <option value="activos">Activos</option>
-                <option value="anulados">Anulados</option>
-                <option value="todos">Todos</option>
-              </select>
-              <input value={nInterno} onChange={e => { setNInterno(e.target.value); if (!e.target.value) { urlParams.delete('nInterno'); setUrlParams(urlParams) } }} placeholder="N° Interno venta" type="number" style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', width: 140 }} />
-              <SearchBar placeholder="Referencia, doc, usuario..." value={histSearch} onChange={setHistSearch} style={{ width: 200 }} />
-            </div>
-          )}
         </div>
 
         {tab === 'hoy' ? (
@@ -377,7 +368,7 @@ export default function CajaPage() {
             ) : histLoading ? (
               <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)' }}>Cargando…</div>
             ) : (
-              <Table columns={colsHist} rows={histResult.items} emptyMessage="Sin registros para este filtro" keyboard ariaLabel="Historico de caja" getRowKey={(row, index) => row.id || index} />
+              <Table columns={colsHist} rows={histResult.items} emptyMessage="Sin registros para este filtro" keyboard ariaLabel="Historico de caja" getRowKey={(row, index) => row.id || index} toolbarExtra={histToolbarExtra} />
             )}
           </>
         )}

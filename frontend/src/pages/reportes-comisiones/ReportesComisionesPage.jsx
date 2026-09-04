@@ -6,7 +6,7 @@ import { useReporteComisiones } from '../../api/reportesGerenciales'
 import { downloadFromBackend } from '../../utils/csv'
 import BotonExportar from '../../components/BotonExportar'
 
-const DEFAULT_TIPOS = ['Todos', 'Normal', 'Licitaci\u00f3n', 'Compra \u00c1gil', 'Convenio Marco', 'Trato Directo', 'Venta Web', 'Venta Sala', 'Marketplace']
+const DEFAULT_TIPOS = ['Todos', 'Venta sala', 'Venta directa', 'Normal', 'Venta Web', 'Convenio Marco', 'Licitaci\u00f3n']
 const money = value => Number(value || 0).toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })
 const num = value => Number(value || 0).toLocaleString('es-CL')
 const pct = value => value === null || value === undefined ? '-' : `${Number(value || 0).toLocaleString('es-CL', { maximumFractionDigits: 2 })}%`
@@ -91,86 +91,75 @@ export default function ReportesComisionesPage() {
     { key: 'reglaNombre', label: 'Regla', render: v => v || <span style={muted}>Sin regla</span> },
     { key: 'reglaScope', label: 'Alcance', render: v => scopeBadge(v) },
     { key: 'estadoPago', label: 'Pago', render: v => <Badge tone={v === 'Pagada' ? 'green' : v === 'Parcial' ? 'amber' : 'gray'}>{v || '-'}</Badge> },
-    { key: 'estadoEntrega', label: 'Entrega', render: v => <Badge tone={v === 'Entregada' ? 'green' : v === 'Parcial' ? 'amber' : 'gray'}>{v || '-'}</Badge> },
-    { key: 'estadoFactura', label: 'Factura', render: v => <Badge tone={v === 'DTE vigente' || v === 'Facturación legacy' ? 'green' : 'gray'}>{v || '-'}</Badge> },
-    { key: 'isEligible', label: 'Devengable', required: true, render: (v, row) => <span title={row.motivoNoElegible || 'Venta lista para calcular comisión'}><Badge tone={v ? 'green' : 'amber'}>{v ? 'Sí' : row.motivoNoElegible || 'No'}</Badge></span> },
   ]
+
+  const toolbarExtra = (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <FilterLabel label="Venta desde"><input type="date" value={filters.desde} onChange={event => updateFilter('desde', event.target.value)} style={compactControlStyle} /></FilterLabel>
+      <FilterLabel label="Venta hasta"><input type="date" value={filters.hasta} onChange={event => updateFilter('hasta', event.target.value)} style={compactControlStyle} /></FilterLabel>
+      <FilterLabel label="Cobro desde"><input type="date" value={filters.cobroDesde} onChange={event => updateFilter('cobroDesde', event.target.value)} style={compactControlStyle} /></FilterLabel>
+      <FilterLabel label="Cobro hasta"><input type="date" value={filters.cobroHasta} onChange={event => updateFilter('cobroHasta', event.target.value)} style={compactControlStyle} /></FilterLabel>
+      <FilterLabel label="Tipo venta">
+        <select value={filters.tipoVenta} onChange={event => updateFilter('tipoVenta', event.target.value)} style={compactControlStyle}>
+          <option value="">Todos</option>
+          {tiposVenta.filter(item => item !== 'Todos').map(item => <option key={item} value={item}>{item}</option>)}
+        </select>
+      </FilterLabel>
+      <FilterLabel label="Vendedor">
+        <select value={filters.vendedorId} onChange={event => updateFilter('vendedorId', event.target.value)} style={compactControlStyle}>
+          <option value="">Todos</option>
+          {vendedores.map(vendedor => <option key={vendedor.id} value={vendedor.id}>{vendedor.nombre || vendedor.email}</option>)}
+        </select>
+      </FilterLabel>
+      <FilterLabel label="Estado pago">
+        <select value={filters.estadoPago} onChange={event => updateFilter('estadoPago', event.target.value)} style={compactControlStyle}>
+          <option value="">Todos</option>
+          <option value="No pagada">No pagada</option>
+          <option value="Parcial">Parcial</option>
+          <option value="Pagada">Pagada</option>
+        </select>
+      </FilterLabel>
+      <SearchBar placeholder="Buscar vendedor por nombre" value={filters.vendedor} onChange={value => updateFilter('vendedor', value)} style={{ width: 220, height: 28 }} />
+      <Btn variant="secondary" icon="refreshCw" size="xs" onClick={resetFilters}>Limpiar filtros</Btn>
+      {reportQuery.isFetching && <Badge tone="blue">Actualizando</Badge>}
+      {reportQuery.isError && <Badge tone="red">Reporte no disponible</Badge>}
+    </div>
+  )
 
   return (
     <main className="page page-wide">
       <PageHeader
         title="Comisiones"
-        subtitle="Comisión estimada por venta elegible, con regla, DTE, pago y entrega trazables."
+        subtitle="Ventas y comision estimada por vendedor"
         breadcrumb={['Inicio', 'Reportes', 'Comisiones']}
-        actions={
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <BotonExportar onExportar={exportCsv} />
-            <Btn variant="secondary" icon="refreshCw" size="sm" onClick={resetFilters}>Limpiar filtros</Btn>
-          </div>
-        }
+        actions={<BotonExportar onExportar={exportCsv} />}
       />
 
-      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 10, marginBottom: 18 }}>
-        <FilterLabel label="Venta desde"><input type="date" value={filters.desde} onChange={event => updateFilter('desde', event.target.value)} style={controlStyle} /></FilterLabel>
-        <FilterLabel label="Venta hasta"><input type="date" value={filters.hasta} onChange={event => updateFilter('hasta', event.target.value)} style={controlStyle} /></FilterLabel>
-        <FilterLabel label="Cobro desde"><input type="date" value={filters.cobroDesde} onChange={event => updateFilter('cobroDesde', event.target.value)} style={controlStyle} /></FilterLabel>
-        <FilterLabel label="Cobro hasta"><input type="date" value={filters.cobroHasta} onChange={event => updateFilter('cobroHasta', event.target.value)} style={controlStyle} /></FilterLabel>
-        <FilterLabel label="Tipo venta">
-          <select value={filters.tipoVenta} onChange={event => updateFilter('tipoVenta', event.target.value)} style={controlStyle}>
-            <option value="">Todos</option>
-            {tiposVenta.filter(item => item !== 'Todos').map(item => <option key={item} value={item}>{item}</option>)}
-          </select>
-        </FilterLabel>
-        <FilterLabel label="Vendedor">
-          <select value={filters.vendedorId} onChange={event => updateFilter('vendedorId', event.target.value)} style={controlStyle}>
-            <option value="">Todos</option>
-            {vendedores.map(vendedor => <option key={vendedor.id} value={vendedor.id}>{(vendedor.nombre || vendedor.email) + (vendedor.codigoVendedor ? ' · cód. ' + vendedor.codigoVendedor : '')}</option>)}
-          </select>
-        </FilterLabel>
-        <FilterLabel label="Estado pago">
-          <select value={filters.estadoPago} onChange={event => updateFilter('estadoPago', event.target.value)} style={controlStyle}>
-            <option value="">Todos</option>
-            <option value="No pagada">No pagada</option>
-            <option value="Parcial">Parcial</option>
-            <option value="Pagada">Pagada</option>
-          </select>
-        </FilterLabel>
-      </section>
-
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
-        <SearchBar placeholder="Buscar vendedor por nombre" value={filters.vendedor} onChange={value => updateFilter('vendedor', value)} style={{ width: 320 }} />
-        {reportQuery.isFetching && <Badge tone="blue">Actualizando</Badge>}
-        {reportQuery.isError && <Badge tone="red">Reporte no disponible</Badge>}
-      </div>
-      <div role="status" style={{ marginTop: -8, marginBottom: 18, padding: '10px 12px', border: '1px solid #bae6fd', borderRadius: 8, background: '#f0f9ff', color: '#075985', fontSize: 12, lineHeight: 1.45 }}>
-        <strong>Lectura del reporte:</strong> los totales y los resúmenes laterales corresponden a la <strong>página visible</strong> para no recalcular miles de ventas al navegar. La exportación entrega el filtro completo hasta 10.000 ventas; si lo supera, se debe acotar el período.
-      </div>
-
       <div className="kpi-strip">
-        <KpiCard label="Ventas en página" value={num(data.totales?.count || 0)} icon="shoppingCart" sublabel={`${num(total)} registros filtrados`} />
-        <KpiCard label="Vendido en página" value={money(data.totales?.totalVendido)} icon="dollarSign" tone="blue" sublabel="Base venta" />
-        <KpiCard label="Cobrado en página" value={money(data.totales?.totalCobrado)} icon="creditCard" tone="amber" sublabel="Caja real no referencial" />
-        <KpiCard label="Comisión en página" value={money(data.totales?.totalComision)} icon="barChart2" tone="neutral" sublabel="Según reglas activas y elegibilidad" />
-        <KpiCard label="Sin asignación" value={num(data.totales?.sinVendedorComisionable)} icon="alertTriangle" tone={data.totales?.sinVendedorComisionable ? 'amber' : 'green'} sublabel="ventas sin vendedor comisionable" />
+        <KpiCard label="Ventas" value={num(data.totales?.count || 0)} icon="shoppingCart" sublabel={`${num(total)} registros filtrados`} />
+        <KpiCard label="Total vendido" value={money(data.totales?.totalVendido)} icon="dollarSign" tone="blue" sublabel="Base venta" />
+        <KpiCard label="Total cobrado" value={money(data.totales?.totalCobrado)} icon="creditCard" tone="amber" sublabel="Caja real no referencial" />
+        <KpiCard label="Comision estimada" value={money(data.totales?.totalComision)} icon="barChart2" tone="neutral" sublabel="Segun reglas activas" />
       </div>
 
       <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(260px, 0.6fr)', gap: 16, alignItems: 'start' }}>
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-          {reportQuery.isLoading ? (
-            <div style={emptyState}>Cargando comisiones...</div>
-          ) : reportQuery.isError ? (
-            <div style={emptyState}>No fue posible cargar el reporte</div>
-          ) : (
-            <>
-              <Table columns={columns} rows={rows} emptyMessage="Sin ventas con los filtros aplicados" stickyHeader keyboard ariaLabel="Reporte de comisiones" getRowKey={row => row.ordenId} />
-              <Pager page={page} pages={pages} total={total} limit={limit} shown={rows.length} onChange={setPage} disabled={reportQuery.isFetching} />
-            </>
-          )}
+          <Table
+            columns={columns}
+            rows={reportQuery.isLoading || reportQuery.isError ? [] : rows}
+            emptyMessage={reportQuery.isLoading ? 'Cargando comisiones...' : reportQuery.isError ? 'No fue posible cargar el reporte' : 'Sin ventas con los filtros aplicados'}
+            stickyHeader
+            keyboard
+            ariaLabel="Reporte de comisiones"
+            getRowKey={row => row.ordenId}
+            toolbarExtra={toolbarExtra}
+          />
+          <Pager page={page} pages={pages} total={total} limit={limit} shown={rows.length} onChange={setPage} disabled={reportQuery.isFetching} />
         </div>
 
         <aside style={{ display: 'grid', gap: 14 }}>
-          <SummaryPanel title="Por vendedor · página" rows={byVendedor} />
-          <SummaryPanel title="Por tipo de venta · página" rows={byTipo} />
+          <SummaryPanel title="Por vendedor" rows={byVendedor} />
+          <SummaryPanel title="Por tipo de venta" rows={byTipo} />
         </aside>
       </section>
     </main>
@@ -221,19 +210,13 @@ function scopeBadge(scope) {
 
 const mono = { fontFamily: "'DM Mono', monospace", fontSize: 12 }
 const muted = { color: 'var(--text-3)', fontSize: 12 }
-const controlStyle = {
-  minHeight: 38,
+const compactControlStyle = {
+  height: 28,
   border: '1px solid var(--border)',
-  borderRadius: 8,
+  borderRadius: 6,
   background: '#fff',
   color: 'var(--text-1)',
   fontFamily: 'inherit',
-  fontSize: 13,
-  padding: '0 10px',
-}
-const emptyState = {
-  padding: 48,
-  textAlign: 'center',
-  color: 'var(--text-3)',
-  fontSize: 13,
+  fontSize: 12,
+  padding: '0 8px',
 }

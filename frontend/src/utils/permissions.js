@@ -7,6 +7,7 @@ export const ROLE_PERMISSIONS = {
     catalogo: ['read'],
     despacho: ['read'],
     taller: ['read'],
+    'taller.excepciones': ['read', 'write'],
   },
   // Coordina la fuerza de venta: ademas de vender, responde por el avance
   // del equipo. Ya tenia visibilidad ampliada del CRM de todos los vendedores
@@ -26,6 +27,7 @@ export const ROLE_PERMISSIONS = {
     despacho: ['read'],
     taller: ['read'],
     equipo_comercial: ['read'],
+    'taller.excepciones': ['read', 'write'],
   },
   bodeguero: {
     reportes: ['read'],

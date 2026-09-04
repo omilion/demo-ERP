@@ -76,6 +76,7 @@ import ImportacionesPage from './pages/importaciones/ImportacionesPage'
 import OrdenesCompraProveedoresPage from './pages/ordenes-compra-proveedores/OrdenesCompraProveedoresPage'
 import ExcepcionesPage from './pages/admin/ExcepcionesPage'
 import PilotFeedbackPage from './pages/admin/PilotFeedbackPage'
+import AyudaPage from './pages/ayuda/AyudaPage'
 
 
 // Tienen que estar TODOS los roles del rbac. Falta uno y ese rol queda en un
@@ -99,6 +100,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
       { path: 'dashboard/operativo', element: <DashboardOperativoPage /> },
+      { path: 'ayuda', element: protect(<AyudaPage />, { allowedRoles: ALL }) },
       { path: 'ventas', element: protect(<MatrizVentasPage />, { module: 'ventas' }) },
       { path: 'ventas/:id', element: protect(<VentaDetallePage />, { module: 'ventas' }) },
       { path: 'ventas/nueva', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },

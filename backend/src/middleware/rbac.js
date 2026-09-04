@@ -9,6 +9,9 @@ const PERMISSIONS = {
     catalogo:     ['read'],
     despacho:     ['read'],
     taller:       ['read'],
+    // Puede resolver sus propias ventas trabadas en taller sin heredar taller:write
+    // completo (que le daria cerrar/anular OTs de cualquiera).
+    'taller.excepciones': ['read', 'write'],
   },
   // Coordina la fuerza de venta: ademas de vender, responde por el avance
   // del equipo. Ya tenia visibilidad ampliada del CRM de todos los vendedores
@@ -28,6 +31,7 @@ const PERMISSIONS = {
     despacho:     ['read'],
     taller:       ['read'],
     equipo_comercial: ['read'],
+    'taller.excepciones': ['read', 'write'],
   },
   bodeguero:    {
     reportes:    ['read'],

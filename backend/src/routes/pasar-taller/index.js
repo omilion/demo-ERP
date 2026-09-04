@@ -23,6 +23,7 @@ import {
 
 function canPasarTallerWrite(user) {
   return can(user?.role, 'taller', 'write', user?.permisosExtra) ||
+    can(user?.role, 'taller.excepciones', 'write', user?.permisosExtra) ||
     can(user?.role, 'ventas', 'write', user?.permisosExtra)
 }
 

@@ -343,70 +343,6 @@ export default function ImportacionesPage({ embedded = false }) {
         border: '1px solid var(--border)',
         overflow: 'hidden',
       }}>
-        <div style={{
-          padding: '12px 16px',
-          borderBottom: '1px solid var(--border)',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 10,
-          alignItems: 'center',
-          background: '#fafafa',
-        }}>
-          <div style={{ flex: '1 1 240px', minWidth: 200 }}>
-            <SearchBar
-              value={search}
-              onChange={setSearch}
-              placeholder="Buscar por contenedor, naviera, proveedor, producto..."
-            />
-          </div>
-
-          <select
-            value={estado}
-            onChange={(e) => setEstado(e.target.value)}
-            style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, background: '#fff', cursor: 'pointer' }}
-          >
-            <option value="all">Todos los estados</option>
-            <option value="En tránsito">En tránsito</option>
-            <option value="En aduana">En aduana</option>
-            <option value="Recepcionado">Recepcionado</option>
-            <option value="Cancelado">Cancelado</option>
-          </select>
-
-          <select
-            value={tipoTransporte}
-            onChange={(e) => setTipoTransporte(e.target.value)}
-            style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, background: '#fff', cursor: 'pointer' }}
-          >
-            <option value="all">Todo transporte</option>
-            <option value="Marítimo">Marítimo</option>
-            <option value="Aéreo">Aéreo</option>
-            <option value="Terrestre">Terrestre</option>
-          </select>
-
-          <select
-            value={proveedorId}
-            onChange={(e) => setProveedorId(e.target.value)}
-            style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, background: '#fff', cursor: 'pointer', maxWidth: 180 }}
-          >
-            <option value="">Todos los proveedores</option>
-            {proveedoresList.map((p) => (
-              <option key={p.id} value={p.id}>{p.nombre}</option>
-            ))}
-          </select>
-
-          {embedded && canWriteBodega && (
-            <Btn
-              variant="primary"
-              icon="plusCircle"
-              size="sm"
-              onClick={() => { setEditingItem(null); setModalFormOpen(true) }}
-            >
-              Nuevo Contenedor
-            </Btn>
-          )}
-        </div>
-
-        {/* Tabla */}
         <Table
           columns={columns}
           rows={data.items || []}
@@ -414,6 +350,61 @@ export default function ImportacionesPage({ embedded = false }) {
           onRowDoubleClick={(row) => setDetailItem(row)}
           getRowKey={(row) => row.id}
           stickyHeader
+          toolbarExtra={
+            <>
+              <SearchBar
+                value={search}
+                onChange={setSearch}
+                placeholder="Buscar por contenedor, naviera, proveedor, producto..."
+                style={{ width: 260, height: 28 }}
+              />
+
+              <select
+                value={estado}
+                onChange={(e) => setEstado(e.target.value)}
+                style={{ height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, background: '#fff', cursor: 'pointer' }}
+              >
+                <option value="all">Todos los estados</option>
+                <option value="En tránsito">En tránsito</option>
+                <option value="En aduana">En aduana</option>
+                <option value="Recepcionado">Recepcionado</option>
+                <option value="Cancelado">Cancelado</option>
+              </select>
+
+              <select
+                value={tipoTransporte}
+                onChange={(e) => setTipoTransporte(e.target.value)}
+                style={{ height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, background: '#fff', cursor: 'pointer' }}
+              >
+                <option value="all">Todo transporte</option>
+                <option value="Marítimo">Marítimo</option>
+                <option value="Aéreo">Aéreo</option>
+                <option value="Terrestre">Terrestre</option>
+              </select>
+
+              <select
+                value={proveedorId}
+                onChange={(e) => setProveedorId(e.target.value)}
+                style={{ height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, background: '#fff', cursor: 'pointer', maxWidth: 180 }}
+              >
+                <option value="">Todos los proveedores</option>
+                {proveedoresList.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                ))}
+              </select>
+
+              {embedded && canWriteBodega && (
+                <Btn
+                  variant="primary"
+                  icon="plusCircle"
+                  size="sm"
+                  onClick={() => { setEditingItem(null); setModalFormOpen(true) }}
+                >
+                  Nuevo Contenedor
+                </Btn>
+              )}
+            </>
+          }
         />
       </div>
 

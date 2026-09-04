@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table } from '../../components/shared'
-import { FormField, Input } from '../../components/forms'
 import { useHistoricoCorte, useHistoricoOrdenes } from '../../api/admin'
 
 const fmtDate = value => value ? new Date(value).toLocaleDateString('es-CL') : '-'
@@ -71,14 +70,6 @@ export default function HistoricoPage() {
       </div>
 
       <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(5, minmax(140px, 1fr)) auto', gap: 8, alignItems: 'end' }}>
-          <FormField label="Desde"><Input type="date" value={desde} onChange={v => { setDesde(v); setPage(1) }} /></FormField>
-          <FormField label="Hasta"><Input type="date" value={hasta} onChange={v => { setHasta(v); setPage(1) }} /></FormField>
-          <FormField label="RUT"><Input value={rut} onChange={v => { setRut(v); setPage(1) }} placeholder="11.111.111-1" /></FormField>
-          <FormField label="N interno"><Input type="number" value={nInterno} onChange={v => { setNInterno(v); setPage(1) }} /></FormField>
-          <div style={{ marginBottom: 18 }}><SearchBar placeholder="Buscar historico" value={search} onChange={v => { setSearch(v); setPage(1) }} /></div>
-          <div style={{ marginBottom: 18 }}><Btn variant="secondary" size="sm" onClick={limpiar}>Limpiar</Btn></div>
-        </div>
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 12, color: 'var(--text-2)' }}>
             {total.toLocaleString('es-CL')} registros historicos por regla: primer n interno valido por fecha de creacion.
@@ -89,10 +80,30 @@ export default function HistoricoPage() {
             <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} style={pagerBtn(page >= pages)}>Siguiente</button>
           </div>
         </div>
-        {isLoading
-          ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={data.items} emptyMessage="Sin registros historicos para este filtro" keyboard ariaLabel="Registros historicos" getRowKey={row => row.id} />
-        }
+        <Table
+          columns={cols}
+          rows={isLoading ? [] : data.items}
+          emptyMessage="Sin registros historicos para este filtro"
+          keyboard
+          ariaLabel="Registros historicos"
+          getRowKey={row => row.id}
+          toolbarExtra={
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)' }}>Desde</span>
+                <input type="date" value={desde} onChange={e => { setDesde(e.target.value); setPage(1) }} style={{ ...inputFilter, height: 28, width: 130 }} />
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)' }}>Hasta</span>
+                <input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setPage(1) }} style={{ ...inputFilter, height: 28, width: 130 }} />
+              </div>
+              <input value={rut} onChange={e => { setRut(e.target.value); setPage(1) }} placeholder="RUT" style={{ ...inputFilter, height: 28, width: 120 }} />
+              <input type="number" value={nInterno} onChange={e => { setNInterno(e.target.value); setPage(1) }} placeholder="N interno" style={{ ...inputFilter, height: 28, width: 100 }} />
+              <SearchBar placeholder="Buscar historico" value={search} onChange={v => { setSearch(v); setPage(1) }} style={{ width: 220, height: 28 }} />
+              <Btn variant="secondary" size="sm" onClick={limpiar}>Limpiar</Btn>
+            </div>
+          }
+        />
       </section>
     </main>
   )
@@ -100,6 +111,7 @@ export default function HistoricoPage() {
 
 const mono = { fontFamily: "'DM Mono', monospace" }
 const monoStrong = { ...mono, fontWeight: 600 }
+const inputFilter = { boxSizing: 'border-box', padding: '0 9px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff' }
 const pagerBtn = disabled => ({
   padding: '5px 10px',
   fontSize: 12,

@@ -1,7 +1,6 @@
 import { toast, confirmDialog } from '../../store/notif'
 import { useState } from 'react'
 import { Badge, Btn, KpiCard, PageHeader, Pager, Table } from '../../components/shared'
-import { FormField, Input, Select } from '../../components/forms'
 import { useDeleteHistorialMaterial, useDeleteManyHistorialMaterial, useHistorialMateriales } from '../../api/historialMateriales'
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
@@ -150,22 +149,6 @@ export default function HistorialMaterialesPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
-          <FormField label="Desde"><Input type="date" value={desde} onChange={setFilter(setDesde)} /></FormField>
-          <FormField label="Hasta"><Input type="date" value={hasta} onChange={setFilter(setHasta)} /></FormField>
-          <FormField label="Operario"><Input value={operario} onChange={setFilter(setOperario)} /></FormField>
-          <FormField label="Taller"><Input value={taller} onChange={setFilter(setTaller)} /></FormField>
-          <FormField label="Codigo interno"><Input value={codigo} onChange={setFilter(setCodigo)} /></FormField>
-          <FormField label="Material"><Input value={nombre} onChange={setFilter(setNombre)} /></FormField>
-          <FormField label="OT"><Input type="number" value={odtId} onChange={setFilter(setOdtId)} /></FormField>
-          <FormField label="Movimiento">
-            <Select value={tipoMovimiento} onChange={setFilter(setTipoMovimiento)} options={[
-              { value: '', label: 'Todos' },
-              { value: 'egreso', label: 'Egreso' },
-              { value: 'ingreso', label: 'Ingreso' },
-            ]} />
-          </FormField>
-        </div>
         {canDelete && rows.length > 0 && (
           <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--text-2)' }}>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
@@ -175,10 +158,30 @@ export default function HistorialMaterialesPage() {
             {selectedIds.length > 0 && <span style={mono}>{selectedIds.length} seleccionados</span>}
           </div>
         )}
-        {isLoading
-          ? <div style={{ padding: 48, textAlign: 'center' }}>Cargando...</div>
-          : <Table columns={cols} rows={rows} emptyMessage="Sin movimientos" keyboard ariaLabel="Historial de materiales" getRowKey={(row, index) => row.id || index} />
-        }
+        <Table
+          columns={cols}
+          rows={isLoading ? [] : rows}
+          emptyMessage={isLoading ? 'Cargando...' : 'Sin movimientos'}
+          keyboard
+          ariaLabel="Historial de materiales"
+          getRowKey={(row, index) => row.id || index}
+          toolbarExtra={
+            <>
+              <input type="date" value={desde} onChange={e => setFilter(setDesde)(e.target.value)} style={filterInput} />
+              <input type="date" value={hasta} onChange={e => setFilter(setHasta)(e.target.value)} style={filterInput} />
+              <input value={operario} onChange={e => setFilter(setOperario)(e.target.value)} placeholder="Operario" style={{ ...filterInput, width: 110 }} />
+              <input value={taller} onChange={e => setFilter(setTaller)(e.target.value)} placeholder="Taller" style={{ ...filterInput, width: 100 }} />
+              <input value={codigo} onChange={e => setFilter(setCodigo)(e.target.value)} placeholder="Codigo interno" style={{ ...filterInput, width: 120 }} />
+              <input value={nombre} onChange={e => setFilter(setNombre)(e.target.value)} placeholder="Material" style={{ ...filterInput, width: 120 }} />
+              <input type="number" value={odtId} onChange={e => setFilter(setOdtId)(e.target.value)} placeholder="OT" style={{ ...filterInput, width: 80 }} />
+              <select value={tipoMovimiento} onChange={e => setFilter(setTipoMovimiento)(e.target.value)} style={filterInput}>
+                <option value="">Todos</option>
+                <option value="egreso">Egreso</option>
+                <option value="ingreso">Ingreso</option>
+              </select>
+            </>
+          }
+        />
         <Pager
           page={data.page || page}
           pages={data.pages || 1}
@@ -192,3 +195,5 @@ export default function HistorialMaterialesPage() {
     </main>
   )
 }
+
+const filterInput = { height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'inherit', background: '#fff' }

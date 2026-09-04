@@ -21,6 +21,12 @@ function emptyForm() {
   }
 }
 
+// Modulos que en este sistema dependen de una API externa real (no solo
+// mencionan el termino): facturacion llama al SII y manda correo via mailer.js;
+// licitaciones/CRM opera sobre el canal Mercado Publico. Es una pre-marca, no
+// una verdad absoluta -- el usuario puede corregirla si el mapeo no aplica.
+const EXTERNAL_API_MODULES = new Set(['facturacion', 'licitaciones'])
+
 function contextFromLocation(location) {
   const path = location.pathname || '/'
   const [moduleName = 'general', submodule = null] = path.split('/').filter(Boolean)
@@ -31,12 +37,14 @@ function contextFromLocation(location) {
     caja: 'caja', cobranza: 'cobranza', facturacion: 'facturacion', crm: 'ventas', licitaciones: 'licitaciones',
     proveedores: 'proveedores', usuarios: 'admin', accesos: 'admin', config: 'admin', admin: 'admin', reportes: 'reportes',
   }
+  const resolvedModule = moduleMap[moduleName] || moduleName
   return {
-    module: moduleMap[moduleName] || moduleName,
+    module: resolvedModule,
     submodule,
     route: `${path}${location.search || ''}`,
     entityType: id ? moduleName.replace(/s$/, '') : null,
     entityId: id,
+    likelyExternalApi: EXTERNAL_API_MODULES.has(resolvedModule) || EXTERNAL_API_MODULES.has(moduleName),
   }
 }
 
@@ -80,6 +88,7 @@ export function PilotFeedbackWidget() {
   const [screenshot, setScreenshot] = useState(null)
   const [annotation, setAnnotation] = useState(null)
   const [marking, setMarking] = useState(false)
+  const [drag, setDrag] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const typeSelectorRef = useRef(null)
   const context = useMemo(() => contextFromLocation(location), [location])
@@ -91,12 +100,14 @@ export function PilotFeedbackWidget() {
     setScreenshot(null)
     setAnnotation(null)
     setMarking(false)
+    setDrag(null)
     setForm(emptyForm())
   }
 
   const begin = async () => {
     if (capturing || createFeedback.isPending) return
     setCapturing(true)
+    setForm({ ...emptyForm(), externalApi: context.likelyExternalApi })
     try {
       const capture = await captureEvidence()
       setScreenshot(capture)
@@ -152,14 +163,45 @@ export function PilotFeedbackWidget() {
     }
   }
 
-  const mark = event => {
+  // Arrastrar dibuja el rectangulo real en vez de plantar un cuadro de tamano
+  // fijo donde se hizo clic; un clic sin arrastre (o Enter por teclado) cae al
+  // recuadro por defecto de antes, centrado en ese punto.
+  const relativePoint = (event, rect) => ({
+    x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+    y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
+  })
+  const rectFromPoints = (a, b) => ({
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    width: Math.abs(b.x - a.x),
+    height: Math.abs(b.y - a.y),
+  })
+
+  const startMark = event => {
     if (!marking) return
     const rect = event.currentTarget.getBoundingClientRect()
-    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
-    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
-    setAnnotation({ x: Math.max(0, x - 0.09), y: Math.max(0, y - 0.06), width: 0.18, height: 0.12 })
+    setDrag({ rect, start: relativePoint(event, rect) })
+  }
+  const moveMark = event => {
+    if (!marking || !drag) return
+    setAnnotation(rectFromPoints(drag.start, relativePoint(event, drag.rect)))
+  }
+  const endMark = event => {
+    if (!marking || !drag) return
+    const point = relativePoint(event, drag.rect)
+    const dragged = rectFromPoints(drag.start, point)
+    setAnnotation(dragged.width > 0.02 || dragged.height > 0.02
+      ? dragged
+      : { x: Math.max(0, point.x - 0.09), y: Math.max(0, point.y - 0.06), width: 0.18, height: 0.12 })
+    setDrag(null)
     setMarking(false)
   }
+  const markByKeyboard = event => {
+    if (event.key !== 'Enter' || !marking) return
+    setAnnotation({ x: 0.41, y: 0.44, width: 0.18, height: 0.12 })
+    setMarking(false)
+  }
+  const clearAnnotation = () => setAnnotation(null)
 
   if (!enabled) return null
 
@@ -176,7 +218,7 @@ export function PilotFeedbackWidget() {
       disabled={capturing}
       aria-label="Reportar observación de marcha blanca"
       title="Reportar observación (Alt + Shift + F)"
-      style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 9998, minHeight: 46, display: 'inline-flex', alignItems: 'center', gap: 9, padding: '0 16px', borderRadius: 10, color: '#fff', background: capturing ? 'var(--green-700)' : 'var(--green-900)', boxShadow: '0 10px 25px rgba(10, 70, 45, 0.26)', fontWeight: 700, fontSize: 12, cursor: capturing ? 'wait' : 'pointer' }}>
+      style={{ position: 'fixed', left: 20, bottom: 20, zIndex: 9998, minHeight: 46, display: 'inline-flex', alignItems: 'center', gap: 9, padding: '0 16px', borderRadius: 10, color: '#fff', background: capturing ? '#b91c1c' : '#dc2626', boxShadow: '0 10px 25px rgba(153, 27, 27, 0.32)', fontWeight: 700, fontSize: 12, cursor: capturing ? 'wait' : 'pointer' }}>
       <Icon name="messageSquare" size={17} />
       {capturing ? 'Capturando…' : 'Reportar observación'}
     </button>
@@ -224,15 +266,24 @@ export function PilotFeedbackWidget() {
             </>}
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '9px 10px', background: 'var(--bg)', borderRadius: 8, fontSize: 12, color: 'var(--text-2)', cursor: 'pointer' }}>
               <input type="checkbox" checked={form.externalApi} onChange={e => setForm(v => ({ ...v, externalApi: e.target.checked }))} style={{ marginTop: 2 }} />
-              Este caso depende de una integración externa (SII, Mercado Público, correo u otra API).
+              <span>Este caso depende de una integración externa (SII, Mercado Público, correo u otra API).
+                {context.likelyExternalApi && <> <em style={{ fontStyle: 'normal', color: 'var(--text-3)' }}>Pre-marcado porque estás en {context.module}; desmarca si no aplica.</em></>}
+              </span>
             </label>
             {screenshot && <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '14px 0 7px' }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)' }}>Evidencia capturada</span>
-                <Btn size="xs" variant={marking ? 'primary' : 'secondary'} onClick={() => setMarking(v => !v)}>{marking ? 'Haz clic en el área' : annotation ? 'Cambiar marca' : 'Marcar área'}</Btn>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {annotation && !marking && <Btn size="xs" variant="ghost" onClick={clearAnnotation}>Quitar marca</Btn>}
+                  <Btn size="xs" variant={marking ? 'primary' : 'secondary'} onClick={() => setMarking(v => !v)}>{marking ? 'Arrastra sobre el área' : annotation ? 'Cambiar marca' : 'Marcar área'}</Btn>
+                </div>
               </div>
-              <div onClick={mark} role="button" tabIndex={0} onKeyDown={event => event.key === 'Enter' && mark(event)} aria-label="Captura de evidencia; marca el área relevante" style={{ position: 'relative', border: marking ? '2px solid var(--green-600)' : '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', cursor: marking ? 'crosshair' : 'default', maxHeight: 210, background: '#eef2f0' }}>
-                <img src={screenshot} alt="Captura con campos de entrada enmascarados" style={{ width: '100%', display: 'block', maxHeight: 208, objectFit: 'contain' }} />
+              <div
+                onMouseDown={startMark} onMouseMove={moveMark} onMouseUp={endMark} onMouseLeave={event => drag && endMark(event)}
+                role="button" tabIndex={0} onKeyDown={markByKeyboard}
+                aria-label="Captura de evidencia; arrastra para marcar el área relevante"
+                style={{ position: 'relative', border: marking ? '2px solid var(--green-600)' : '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', cursor: marking ? 'crosshair' : 'default', maxHeight: 210, background: '#eef2f0', userSelect: 'none' }}>
+                <img src={screenshot} alt="Captura con campos de entrada enmascarados" draggable={false} style={{ width: '100%', display: 'block', maxHeight: 208, objectFit: 'contain' }} />
                 {annotation && <span aria-label="Área marcada" style={{ position: 'absolute', left: `${annotation.x * 100}%`, top: `${annotation.y * 100}%`, width: `${annotation.width * 100}%`, height: `${annotation.height * 100}%`, border: '2px solid #dc2626', background: 'rgba(220,38,38,0.08)', pointerEvents: 'none' }} />}
               </div>
             </div>}

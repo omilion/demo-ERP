@@ -445,77 +445,81 @@ export default function DespachosPage({ defaultTab }) {
       {/* KPI Cards por Tab */}
       {tab === 'salidas' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, margin: '20px 0' }}>
-          <KpiCard title="Salidas Listas" value={colaSalidas.data?.items?.length || 0} subtitle="Packing 100% o parcial listo" tone="green" />
-          <KpiCard title="Total Unidades Listas" value={(colaSalidas.data?.items || []).reduce((sum, r) => sum + Number(r.packing?.preparados || 0), 0)} subtitle="Listas para entrega física" tone="blue" />
+          <KpiCard label="Salidas Listas" value={colaSalidas.data?.items?.length || 0} sublabel="Packing 100% o parcial listo" tone="green" />
+          <KpiCard label="Total Unidades Listas" value={(colaSalidas.data?.items || []).reduce((sum, r) => sum + Number(r.packing?.preparados || 0), 0)} sublabel="Listas para entrega física" tone="blue" />
         </div>
       )}
 
       {tab === 'admin' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, margin: '20px 0' }}>
-          <KpiCard title="En Fabricación Taller" value={(colaAdmin.data?.items || []).reduce((sum, r) => sum + Number(r.preparacion?.pendienteTaller || 0), 0)} subtitle="Unidades en curso" tone="amber" />
-          <KpiCard title="Listas para Picking" value={(colaAdmin.data?.items || []).reduce((sum, r) => sum + Number(r.preparacion?.disponiblePicking || 0), 0)} subtitle="Stock disponible" tone="blue" />
-          <KpiCard title="En Preparación Packing" value={colaAdmin.data?.stats?.enPacking || 0} subtitle="Pedidos en preparación" tone="teal" />
-          <KpiCard title="Total Salidas Hoy" value={registrosQuery.data?.total || 0} subtitle="Despachos registrados" tone="green" />
+          <KpiCard label="En Fabricación Taller" value={(colaAdmin.data?.items || []).reduce((sum, r) => sum + Number(r.preparacion?.pendienteTaller || 0), 0)} sublabel="Unidades en curso" tone="amber" />
+          <KpiCard label="Listas para Picking" value={(colaAdmin.data?.items || []).reduce((sum, r) => sum + Number(r.preparacion?.disponiblePicking || 0), 0)} sublabel="Stock disponible" tone="blue" />
+          <KpiCard label="En Preparación Packing" value={colaAdmin.data?.stats?.enPacking || 0} sublabel="Pedidos en preparación" tone="teal" />
+          <KpiCard label="Total Salidas Hoy" value={registrosQuery.data?.total || 0} sublabel="Despachos registrados" tone="green" />
         </div>
       )}
 
-      <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 16, margin: '20px 0' }}>
-        <SearchBar value={search} onChange={setSearch} placeholder="Buscar por venta, interno, destinatario, RUT o transporte..." />
+      <div style={{ background: '#fff', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', overflow: 'hidden', margin: '20px 0' }}>
+        {tab === 'salidas' && (
+          <Table
+            columns={colsSalidas}
+            rows={colaSalidas.data?.items || []}
+            loading={colaSalidas.isLoading}
+            emptyMessage="No hay pedidos listos para salida en este momento."
+            toolbarExtra={<SearchBar value={search} onChange={setSearch} placeholder="Buscar por venta, interno, destinatario, RUT o transporte..." style={{ height: 28, width: 320 }} />}
+          />
+        )}
+
+        {tab === 'aislados' && (
+          <Table
+            columns={colsAislados}
+            rows={despachosAisladosQuery.data?.items || []}
+            loading={despachosAisladosQuery.isLoading}
+            emptyMessage="No hay despachos aislados registrados."
+            toolbarExtra={<SearchBar value={search} onChange={setSearch} placeholder="Buscar por venta, interno, destinatario, RUT o transporte..." style={{ height: 28, width: 320 }} />}
+          />
+        )}
+
+        {tab === 'guias' && (
+          <Table
+            columns={colsGuias}
+            rows={guiasQuery.data?.items || []}
+            loading={guiasQuery.isLoading}
+            emptyMessage="No hay guías de despacho registradas."
+            toolbarExtra={<SearchBar value={search} onChange={setSearch} placeholder="Buscar por venta, interno, destinatario, RUT o transporte..." style={{ height: 28, width: 320 }} />}
+          />
+        )}
+
+        {tab === 'registros' && (
+          <Table
+            columns={colsRegistros}
+            rows={registrosQuery.data?.items || []}
+            loading={registrosQuery.isLoading}
+            emptyMessage="No hay registros históricos de despacho."
+            toolbarExtra={<SearchBar value={search} onChange={setSearch} placeholder="Buscar por venta, interno, destinatario, RUT o transporte..." style={{ height: 28, width: 320 }} />}
+          />
+        )}
+
+        {tab === 'taller' && (
+          <Table
+            columns={colsTaller}
+            rows={tallerQuery.data?.items || []}
+            loading={tallerQuery.isLoading}
+            emptyMessage="No hay carga consolidada de taller."
+            toolbarExtra={<SearchBar value={search} onChange={setSearch} placeholder="Buscar por venta, interno, destinatario, RUT o transporte..." style={{ height: 28, width: 320 }} />}
+          />
+        )}
+
+        {tab === 'admin' && (
+          <Table
+            columns={colsAdmin}
+            rows={colaAdmin.data?.items || []}
+            loading={colaAdmin.isLoading}
+            emptyMessage="No hay ventas activas en el embudo logístico."
+            toolbarExtra={<SearchBar value={search} onChange={setSearch} placeholder="Buscar por venta, interno, destinatario, RUT o transporte..." style={{ height: 28, width: 320 }} />}
+          />
+        )}
       </div>
-
-      {tab === 'salidas' && (
-        <Table
-          columns={colsSalidas}
-          rows={colaSalidas.data?.items || []}
-          loading={colaSalidas.isLoading}
-          emptyMessage="No hay pedidos listos para salida en este momento."
-        />
-      )}
-
-      {tab === 'aislados' && (
-        <Table
-          columns={colsAislados}
-          rows={despachosAisladosQuery.data?.items || []}
-          loading={despachosAisladosQuery.isLoading}
-          emptyMessage="No hay despachos aislados registrados."
-        />
-      )}
-
-      {tab === 'guias' && (
-        <Table
-          columns={colsGuias}
-          rows={guiasQuery.data?.items || []}
-          loading={guiasQuery.isLoading}
-          emptyMessage="No hay guías de despacho registradas."
-        />
-      )}
-
-      {tab === 'registros' && (
-        <Table
-          columns={colsRegistros}
-          rows={registrosQuery.data?.items || []}
-          loading={registrosQuery.isLoading}
-          emptyMessage="No hay registros históricos de despacho."
-        />
-      )}
-
-      {tab === 'taller' && (
-        <Table
-          columns={colsTaller}
-          rows={tallerQuery.data?.items || []}
-          loading={tallerQuery.isLoading}
-          emptyMessage="No hay carga consolidada de taller."
-        />
-      )}
-
-      {tab === 'admin' && (
-        <Table
-          columns={colsAdmin}
-          rows={colaAdmin.data?.items || []}
-          loading={colaAdmin.isLoading}
-          emptyMessage="No hay ventas activas en el embudo logístico."
-        />
-      )}
     </main>
   )
 }
