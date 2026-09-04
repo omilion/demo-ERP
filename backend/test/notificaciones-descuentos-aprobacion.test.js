@@ -22,13 +22,15 @@ const describeDb = hasUsableDatabaseUrl() ? describe : describe.skip
 describeDb('notificacion: descuentos esperando aprobacion', () => {
   let app
   const marca = `DCTO-NOTIF-${Date.now()}`
-  const creado = {}
+  const creado = { userIds: [] }
   let tokenAdmin
   let tokenAprobador
   let tokenVendedor
 
-  const tokenPara = (id, role, extras = {}) => app.jwt.sign({
-    id, role, nombre: `${marca} ${role}`, permisosExtra: null,
+  const tokenPara = (user, extras = {}) => app.jwt.sign({
+    id: user.id, role: user.role, nombre: user.nombre, permisosExtra: null,
+    permisoAprobarDescuentos: extras.permisoAprobarDescuentos ?? user.permisoAprobarDescuentos ?? false,
+    authVersion: user.authVersion ?? 0,
     scope: 'erp', aud: 'plastimar:erp', tokenType: 'access', ...extras,
   })
 
@@ -36,11 +38,47 @@ describeDb('notificacion: descuentos esperando aprobacion', () => {
     app = buildApp({ logger: false })
     await app.ready()
 
-    tokenAdmin = tokenPara(9001, 'admin')
-    // Vendedora con el permiso explicito de aprobar descuentos.
-    tokenAprobador = tokenPara(9002, 'vendedor', { permisoAprobarDescuentos: true })
-    // Vendedora sin ese permiso: no puede resolverlas, no debe recibirlas.
-    tokenVendedor = tokenPara(9003, 'vendedor', { permisoAprobarDescuentos: false })
+    const adminUser = await app.prisma.user.create({
+      data: {
+        email: `${marca}-admin@plastimar.test`.toLowerCase(),
+        nombre: `${marca} admin`,
+        passwordHash: 'dummy-hash',
+        role: 'admin',
+        activo: true,
+        authVersion: 0,
+      },
+    })
+    creado.userIds.push(adminUser.id)
+
+    const aprobadorUser = await app.prisma.user.create({
+      data: {
+        email: `${marca}-aprobador@plastimar.test`.toLowerCase(),
+        nombre: `${marca} aprobador`,
+        passwordHash: 'dummy-hash',
+        role: 'vendedor',
+        activo: true,
+        authVersion: 0,
+        permisoAprobarDescuentos: true,
+      },
+    })
+    creado.userIds.push(aprobadorUser.id)
+
+    const vendedorUser = await app.prisma.user.create({
+      data: {
+        email: `${marca}-vendedor@plastimar.test`.toLowerCase(),
+        nombre: `${marca} vendedor`,
+        passwordHash: 'dummy-hash',
+        role: 'vendedor',
+        activo: true,
+        authVersion: 0,
+        permisoAprobarDescuentos: false,
+      },
+    })
+    creado.userIds.push(vendedorUser.id)
+
+    tokenAdmin = tokenPara(adminUser)
+    tokenAprobador = tokenPara(aprobadorUser, { permisoAprobarDescuentos: true })
+    tokenVendedor = tokenPara(vendedorUser, { permisoAprobarDescuentos: false })
 
     const regla = await app.prisma.descuentoRegla.create({
       data: {
@@ -59,7 +97,7 @@ describeDb('notificacion: descuentos esperando aprobacion', () => {
         reglaId: regla.id,
         estado: 'PENDIENTE',
         origenTipo: 'venta',
-        solicitanteId: 9003,
+        solicitanteId: vendedorUser.id,
         solicitanteNombre: `${marca} Vendedora`,
         descuentoPctSolicitado: 15,
         descuentoMontoSolicitado: 15000,
@@ -86,11 +124,14 @@ describeDb('notificacion: descuentos esperando aprobacion', () => {
   afterAll(async () => {
     await app.prisma.descuentoSolicitud.deleteMany({ where: { reglaId: creado.reglaId } }).catch(() => {})
     await app.prisma.descuentoRegla.deleteMany({ where: { id: creado.reglaId } }).catch(() => {})
+    if (creado.userIds?.length) {
+      await app.prisma.user.deleteMany({ where: { id: { in: creado.userIds } } }).catch(() => {})
+    }
     await app.close()
   })
 
   const notificaciones = token => app.inject({
-    method: 'GET', url: '/api/notificaciones', headers: { authorization: `Bearer ${token}` },
+    method: 'GET', url: '/api/notificaciones?limite=1000', headers: { authorization: `Bearer ${token}` },
   }).then(res => {
     expect(res.statusCode).toBe(200)
     const cuerpo = res.json()
