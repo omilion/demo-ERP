@@ -353,12 +353,18 @@ export default async function usuariosRoutes(fastify) {
     if (password.error) return reply.code(400).send({ error: password.error })
 
     try {
-      const u = await fastify.prisma.user.update({
-        where: { id },
-        data: { passwordHash: await bcrypt.hash(password.value, 10) },
-        select: userSelect,
-      })
-      await fastify.prisma.session.deleteMany({ where: { userId: id } })
+      const hash = await bcrypt.hash(password.value, 10)
+      const [u] = await fastify.prisma.$transaction([
+        fastify.prisma.user.update({
+          where: { id },
+          data: {
+            passwordHash: hash,
+            authVersion: { increment: 1 },
+          },
+          select: userSelect,
+        }),
+        fastify.prisma.session.deleteMany({ where: { userId: id } }),
+      ])
       return u
     } catch (e) {
       if (e.code === 'P2025') return reply.code(404).send({ error: 'no encontrado' })

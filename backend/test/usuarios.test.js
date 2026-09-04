@@ -164,13 +164,23 @@ describe('usuarios legacy parity and safety', () => {
     expect(createRes.statusCode).toBe(201)
     const user = JSON.parse(createRes.body)
 
-    // Initial login works
+    // Initial login works and issues active bearer token
     const login1 = await app.inject({
       method: 'POST',
       url: '/api/auth/login',
       payload: { email: userEmail, password: 'initialPass123' },
     })
     expect(login1.statusCode).toBe(200)
+    const tokenBeforePasswordChange = JSON.parse(login1.body).accessToken
+    expect(tokenBeforePasswordChange).toBeTruthy()
+
+    // Active token works before password change
+    const preChangeCheck = await app.inject({
+      method: 'GET',
+      url: '/api/notificaciones',
+      headers: { authorization: `Bearer ${tokenBeforePasswordChange}` },
+    })
+    expect(preChangeCheck.statusCode).toBe(200)
 
     // Reject short password
     const shortRes = await app.inject({
@@ -189,6 +199,15 @@ describe('usuarios legacy parity and safety', () => {
       payload: { password: 'secondPass456' },
     })
     expect(updatePwdRes.statusCode).toBe(200)
+
+    // Old bearer token must now be immediately rejected (401 Session revoked)
+    const postChangeTokenCheck = await app.inject({
+      method: 'GET',
+      url: '/api/notificaciones',
+      headers: { authorization: `Bearer ${tokenBeforePasswordChange}` },
+    })
+    expect(postChangeTokenCheck.statusCode).toBe(401)
+    expect(JSON.parse(postChangeTokenCheck.body).error).toBe('Session revoked')
 
     // Old password fails
     const loginOld = await app.inject({
