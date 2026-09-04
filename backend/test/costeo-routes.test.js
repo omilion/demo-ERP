@@ -378,4 +378,107 @@ describe('costeo rutas (integracion con base real)', () => {
     expect(body.limit).toBe(1);
     expect(body.totalPages).toBe(1);
   });
+
+  it('POST /calcular devuelve exactamente lo mismo que el calculo del producto', async () => {
+    // Es la garantia de todo el cambio: el desglose que ve el editor y el que se
+    // graba salen del mismo motor. Cuando el navegador calculaba por su cuenta,
+    // podian diferir sin que nada lo indicara.
+    await app.inject({
+      method: 'PUT',
+      url: `/api/costeo/recetas/${producto.id}`,
+      headers: auth(adminToken),
+      payload: recetaPayload(),
+    });
+
+    const delProducto = await app.inject({
+      method: 'POST',
+      url: `/api/costeo/recetas/${producto.id}/calcular`,
+      headers: auth(adminToken),
+    });
+    const delBorrador = await app.inject({
+      method: 'POST',
+      url: '/api/costeo/calcular',
+      headers: auth(adminToken),
+      payload: recetaPayload(),
+    });
+
+    expect(delBorrador.statusCode).toBe(200);
+    const a = JSON.parse(delProducto.body);
+    const b = JSON.parse(delBorrador.body);
+    expect(b.costoMateriales).toBe(a.costoMateriales);
+    expect(b.costoManoObra).toBe(a.costoManoObra);
+    expect(b.costoFabricacion).toBe(a.costoFabricacion);
+    expect(b.costoTransferencia).toBe(a.costoTransferencia);
+  });
+
+  it('POST /calcular avisa cuando el proceso no tiene tarifa vigente', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/costeo/calcular',
+      headers: auth(adminToken),
+      payload: {
+        ...recetaPayload(),
+        procesos: [{ tallerId: taller.id, proceso: 'tapizado', horas: 5 }],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.costoManoObra).toBe(0);
+    expect(body.avisos.some(a => a.tipo === 'proceso_sin_tarifa')).toBe(true);
+  });
+
+  it('GET /procesos sirve el catalogo y POST /tarifas rechaza uno fuera de el', async () => {
+    const catalogo = await app.inject({
+      method: 'GET',
+      url: '/api/costeo/procesos',
+      headers: auth(adminToken),
+    });
+    expect(catalogo.statusCode).toBe(200);
+    expect(JSON.parse(catalogo.body).some(p => p.id === 'confeccion')).toBe(true);
+
+    const invalida = await app.inject({
+      method: 'POST',
+      url: '/api/costeo/tarifas',
+      headers: auth(adminToken),
+      payload: { tallerId: taller.id, proceso: 'pegado a mano', valorHora: 5000 },
+    });
+    expect(invalida.statusCode).toBe(400);
+
+    // Con tilde y mayusculas resuelve al mismo proceso del catalogo.
+    const conTilde = await app.inject({
+      method: 'POST',
+      url: '/api/costeo/tarifas',
+      headers: auth(adminToken),
+      payload: { tallerId: taller.id, proceso: 'CONFECCIÓN', valorHora: 5000 },
+    });
+    expect(conTilde.statusCode).toBe(201);
+    expect(JSON.parse(conTilde.body).proceso).toBe('confeccion');
+  });
+
+  it('la ficha de materia prima se lee con permiso costeo, sin taller', async () => {
+    // La pestaña de materias primas de Costeo consume /bodega-taller: con el
+    // permiso atado solo a `taller` se veia vacia.
+    const lista = await app.inject({
+      method: 'GET',
+      url: '/api/bodega-taller?page=1',
+      headers: auth(vendedorReadToken),
+    });
+    expect(lista.statusCode).toBe(200);
+
+    const ficha = await app.inject({
+      method: 'GET',
+      url: `/api/bodega-taller/${material.id}`,
+      headers: auth(vendedorReadToken),
+    });
+    expect(ficha.statusCode).toBe(200);
+    expect(JSON.parse(ficha.body).id).toBe(material.id);
+
+    // Sin costeo ni taller sigue negado.
+    const sinPermiso = await app.inject({
+      method: 'GET',
+      url: '/api/bodega-taller?page=1',
+      headers: auth(tokenFor(app, 'cajero')),
+    });
+    expect(sinPermiso.statusCode).toBe(403);
+  });
 });
