@@ -35,7 +35,7 @@ describe('ODT operation helpers', () => {
       current: { estado: 'Control calidad' },
       pendientes: 2,
       controlCalidad: { aprobada: true, observacion: 'Revision final correcta' },
-    })).toMatch(/2 tarea/)
+    })).toMatch(/2 etapa/i)
 
     expect(getOdtClosureBlocker({
       current: { estado: 'Control calidad' },
