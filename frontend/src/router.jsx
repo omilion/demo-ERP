@@ -74,7 +74,11 @@ import OrdenesCompraProveedoresPage from './pages/ordenes-compra-proveedores/Ord
 import ExcepcionesPage from './pages/admin/ExcepcionesPage'
 
 
-const ALL = ['admin', 'vendedor', 'coordinador_comercial', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
+// Tienen que estar TODOS los roles del rbac. Falta uno y ese rol queda en un
+// bucle cerrado: entra a '/', falla el guardia, lo mandan a '/dashboard' -que
+// cuelga de '/'- y vuelve a fallar. La pantalla queda en blanco, sin error.
+// Asi quedo taller_operario cuando se creo el rol.
+const ALL = ['admin', 'vendedor', 'coordinador_comercial', 'bodeguero', 'cajero', 'taller', 'taller_operario', 'rrhh', 'solo_lectura']
 
 const protect = (element, props) => <ProtectedRoute {...props}>{element}</ProtectedRoute>
 
