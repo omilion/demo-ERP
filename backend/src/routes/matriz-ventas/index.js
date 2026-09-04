@@ -707,6 +707,49 @@ async function aggOrdenMonto(fastify, where) {
   return { count: ordenes.length, total }
 }
 
+// Ventas del periodo abiertas por vendedor, para que quien coordina vea el
+// avance de cada uno y no solo el total.
+//
+// Reusa computeVentaFinancialState y el mismo `where` que getTotalsForPeriod:
+// si el ranking sumara distinto que el KPI del mes que tiene al lado, el
+// coordinador tendria dos numeros en pantalla que no cuadran entre si.
+export async function getVentasPorVendedor(fastify, start, end, user, { hoyDesde = null } = {}) {
+  const ordenes = await fastify.prisma.orden.findMany({
+    where: {
+      eliminada: false,
+      createdAt: { gte: start, lte: end },
+      tipo: { in: [...TIPOS_VENTA_MOSTRADOR, ...GRAFIAS_CONVENIO_MARCO, 'Normal'] },
+      ...userSucursalWhere(user),
+    },
+    select: {
+      creadorNombre: true,
+      createdAt: true,
+      abono: true,
+      descuentoPct: true,
+      descuentoMonto: true,
+      items: { where: { eliminado: false }, select: { cantidad: true, precioUnitario: true, cargoTransporte: true } },
+      cargos: { select: { valor: true } },
+    },
+  })
+
+  const porVendedor = new Map()
+  for (const orden of ordenes) {
+    const nombre = orden.creadorNombre?.trim() || 'Sin vendedor asignado'
+    const actual = porVendedor.get(nombre) || { vendedor: nombre, total: 0, ordenes: 0, hoy: 0, ordenesHoy: 0 }
+    const total = computeVentaFinancialState(orden, {}).total
+    actual.total += total
+    actual.ordenes += 1
+    // El acumulado del mes no dice si alguien esta parado hoy. Se calcula sobre
+    // las mismas ordenes ya cargadas, sin una segunda consulta.
+    if (hoyDesde && orden.createdAt >= hoyDesde) {
+      actual.hoy += total
+      actual.ordenesHoy += 1
+    }
+    porVendedor.set(nombre, actual)
+  }
+  return [...porVendedor.values()].sort((a, b) => b.total - a.total)
+}
+
 async function aggOcMonto(fastify, where) {
   const [agg, count] = await Promise.all([
     fastify.prisma.ordenCompraOnline.aggregate({ where, _sum: { total: true } }),

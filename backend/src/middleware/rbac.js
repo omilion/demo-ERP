@@ -10,8 +10,16 @@ const PERMISSIONS = {
     despacho:     ['read'],
     taller:       ['read'],
   },
-  // Igual que vendedor: unico extra es visibilidad ampliada del CRM de todos
-  // los vendedores (backend/src/routes/crm/index.js), no un modulo/permiso nuevo aqui.
+  // Coordina la fuerza de venta: ademas de vender, responde por el avance
+  // del equipo. Ya tenia visibilidad ampliada del CRM de todos los vendedores
+  // (backend/src/routes/crm/index.js); `equipo_comercial` es la otra mitad: el
+  // desempeno por vendedor.
+  //
+  // Es un modulo propio y no un permiso por funcion ('ventas.equipo') a
+  // proposito: los permisos por funcion caen al modulo cuando el rol no tiene
+  // entrada propia, asi que 'ventas.equipo' se lo habria regalado a todo el que
+  // tiene ventas:read -vendedor, bodega, caja, solo_lectura- salvo negandolo
+  // explicitamente en cada uno. Un modulo aparte no lo hereda nadie.
   coordinador_comercial: {
     reportes:     ['read'],
     ventas:       ['read', 'write'],    licitaciones: ['read', 'write'],
@@ -19,6 +27,7 @@ const PERMISSIONS = {
     catalogo:     ['read'],
     despacho:     ['read'],
     taller:       ['read'],
+    equipo_comercial: ['read'],
   },
   bodeguero:    {
     reportes:    ['read'],

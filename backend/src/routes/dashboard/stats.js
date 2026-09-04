@@ -2,7 +2,7 @@ import { can } from '../../middleware/rbac.js'
 import { buildOrdenScopeWhere, getPrimerRegistroInterno, mergeWhere } from '../historico/corte.js'
 import { getUserSucursalId } from '../caja/scope.js'
 import { buildCobranzaHistoricoScopeWhere } from '../cobranza/scope.js'
-import { getMatrizTotales } from '../matriz-ventas/index.js'
+import { getMatrizTotales, getVentasPorVendedor } from '../matriz-ventas/index.js'
 
 // El taller real vive en los items (items.talleres.taller.nombre); Odt.tipo es
 // "Legacy" en los datos migrados, asi que contar por `tipo` daba siempre 0.
@@ -28,6 +28,8 @@ export default async function dashboardStats(fastify) {
     const sucursalId = getUserSucursalId(request.user)
     const ahora = new Date()
     const en30dias = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1, 0, 0, 0, 0)
+    const inicioHoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), 0, 0, 0, 0)
     // El KPI y la pantalla de Taller deben usar el mismo alcance. Antes el
     // dashboard contaba OTs globales, pero /api/odts filtraba por sucursal:
     // al hacer clic el usuario pasaba de miles de pendientes a una lista vacía.
@@ -63,6 +65,9 @@ export default async function dashboardStats(fastify) {
       dotacionPorEmpresa,
       contratosPorVencer,
       licenciasActivas,
+      ventasPorVendedor,
+      odtsComprometidas,
+      entregasPendientes,
     ] = await Promise.all([
       p.orden.count({ where: mergeWhere({ estadoPago: 'No pagada', eliminada: false, estado: 'Activa' }, ordenOperacionalWhere) }),
       p.orden.count({ where: mergeWhere({ estadoEntrega: 'Pendiente entrega', eliminada: false, estado: 'Activa' }, ordenOperacionalWhere) }),
@@ -114,6 +119,38 @@ export default async function dashboardStats(fastify) {
       p.trabajador.groupBy({ by: ['empresa'], where: { estado: true }, _count: { _all: true } }).catch(() => []),
       p.contrato.count({ where: { estado: true, termino: { gte: ahora, lte: en30dias } } }).catch(() => 0),
       p.licencia.count({ where: { estado: true, inicio: { lte: ahora }, termino: { gte: ahora } } }).catch(() => 0),
+      // Solo se consulta a quien coordina: para el resto es una lectura de
+      // todas las ordenes del mes que se descartaria igual.
+      can(request.user?.role, 'equipo_comercial', 'read', request.user?.permisosExtra)
+        ? getVentasPorVendedor(fastify, inicioMes, ahora, request.user, { hoyDesde: inicioHoy }).catch(() => [])
+        : [],
+      // Que trabajar primero. Se filtro por fecha de compromiso, pero HOY
+      // ninguna OT la tiene cargada -ni `fechaEntregaCompromiso` ni `plazo`- y
+      // la lista salia siempre vacia: el taller habria leido "al dia" con 45 OT
+      // en cola. Se usa el mismo criterio que el listado de OT
+      // (routes/odts/list.js): compromiso si existe, si no la antiguedad.
+      // Postgres ordena los nulos al final, asi que lo comprometido sube solo.
+      p.odt.findMany({
+        where: {
+          ...odtScope,
+          eliminado: false,
+          estado: { in: ['Pendiente', 'En proceso'] },
+        },
+        orderBy: [{ fechaEntregaCompromiso: 'asc' }, { plazo: 'asc' }, { createdAt: 'asc' }],
+        take: 8,
+        select: {
+          id: true, tipo: true, clienteNombre: true, estado: true, prioridad: true,
+          fechaEntregaCompromiso: true, plazo: true, legacyNInterno: true, createdAt: true,
+        },
+      }).catch(() => []),
+      // Lo que bodega tiene que sacar: lo mas antiguo primero, que es lo que
+      // lleva mas tiempo esperando al cliente.
+      p.orden.findMany({
+        where: mergeWhere({ estadoEntrega: 'Pendiente entrega', eliminada: false, estado: 'Activa' }, ordenOperacionalWhere),
+        orderBy: { createdAt: 'asc' },
+        take: 8,
+        select: { id: true, nInterno: true, rutCliente: true, createdAt: true, estadoPago: true },
+      }).catch(() => []),
     ])
 
     const stockByBodega = {}
@@ -166,6 +203,9 @@ export default async function dashboardStats(fastify) {
         { tipo: 'Externo',      activas: externoPendientes,      urgentes: externoUrgentes },
       ]),
       stock: soloSi(ve('bodega'), stockByBodega),
+      // Listas cortas y accionables, cada una detras del permiso de su modulo.
+      tallerAgenda: soloSi(ve('taller'), odtsComprometidas),
+      entregasAgenda: soloSi(ve('despacho'), entregasPendientes),
       crm: soloSi(ve('ventas'), {
         pendientes: crmPendientes,
         enGestion: crmEnGestion,
@@ -177,6 +217,14 @@ export default async function dashboardStats(fastify) {
       cobranzaHistorico: soloSi(ve('cobranza'), {
         cobrado: Number(cobranzaByEstado.CANCELADA?._sum.monto || 0),
         pendientes: cobranzaByEstado.PENDIENTE?._count._all || 0,
+      }),
+      // Quien coordina responde por el avance del equipo, no solo por el suyo.
+      // Son montos por vendedor del mes en curso, sin datos personales.
+      equipoComercial: soloSi(ve('equipo_comercial'), {
+        desde: inicioMes,
+        vendedores: ventasPorVendedor,
+        totalHoy: ventasPorVendedor.reduce((suma, v) => suma + v.hoy, 0),
+        total: ventasPorVendedor.reduce((suma, v) => suma + v.total, 0),
       }),
       rrhh: soloSi(ve('rrhh'), {
         dotacionActiva: dotacionPorEmpresa.reduce((total, g) => total + g._count._all, 0),
