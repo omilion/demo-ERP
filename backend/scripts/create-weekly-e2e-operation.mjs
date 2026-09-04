@@ -298,7 +298,6 @@ try {
     orderBy: { id: 'desc' },
   })
   let notaCreditoSii = null
-  let bloqueoEmision = null
   if (dteReferencia) {
     notaCreditoSii = expectStatus('Crear borrador Nota de Crédito SII', await app.inject({
       method: 'POST', url: '/api/facturacion/documentos', headers: auth('Facturador'),
@@ -309,16 +308,16 @@ try {
         referencias: [{ docLocalId: dteReferencia.id, tipoDocRef: dteReferencia.tipoDte, folioRef: dteReferencia.folio, codRef: 3, razon: `${marker}: corrección de monto controlada` }],
       },
     }), [201])
-    const intento = await app.inject({ method: 'POST', url: `/api/facturacion/documentos/${notaCreditoSii.id}/emitir`, headers: auth('Facturador') })
-    if (intento.statusCode === 200) throw new Error('La emisión SII no debía completarse sin certificado local')
-    if (intento.statusCode !== 422) fail('Bloqueo de emisión SII sin certificado', intento)
-    bloqueoEmision = intento.json().error
+    // Esta simulación comprueba la preparación y referencia de la NC, pero no
+    // invoca emisión. Un entorno local puede contener un certificado/CAF de
+    // certificación y llamar al endpoint consumiría un folio de prueba o
+    // intentaría contactar al SII, contradiciendo el propósito del recorrido.
   }
 
   const guiaDte = await app.prisma.factDocumento.findFirst({ where: { guiaDespachoId: guia.guia.id }, select: { id: true, estado: true, folio: true, trackId: true } })
-  const intentoGuia = await app.inject({ method: 'POST', url: `/api/despachos/guias/${guia.guia.id}/emitir-sii`, headers: auth('Facturador') })
-  if (intentoGuia.statusCode === 200) throw new Error('La guía SII no debía emitirse sin certificado local')
-  if (intentoGuia.statusCode !== 422) fail('Bloqueo de guía SII sin certificado', intentoGuia)
+  if (!guiaDte || guiaDte.estado !== 'borrador' || guiaDte.folio !== null || guiaDte.trackId !== null) {
+    throw new Error('La guía DTE 52 de la simulación debe quedar como borrador sin folio ni tracking SII')
+  }
 
   // Pendiente intencional: oportunidad que sigue en seguimiento para la agenda semanal.
   const pendiente = expectStatus('Crear pendiente CRM semanal', await app.inject({
@@ -369,7 +368,7 @@ try {
     bodega: { despachoId: despacho.id, numeroSeguimiento: despachoFinal.numeroSeguimiento, guiaId: guiaFinal.id, guiaNumero: guiaFinal.nGuia, guiaDte: guiaDte, despachoAisladoId: despachoAislado.id, guiaAisladaId: guiaAislada.guia.id, tracking: tracking.eventos.map(evento => evento.estado) },
     caja: { turnoId: turno.id, documentoId: documentoCaja.movimiento?.id ?? documentoCaja.id, pagoId: pagoCaja.movimiento?.id ?? pagoCaja.id, cierreId: cierreCaja?.id ?? null },
     notas: { internaId: notaInterna.nota.id, internaEstado: notaInternaFinal.estado, siiBorradorId: notaCreditoSii?.id ?? null, siiReferenciaId: dteReferencia?.id ?? null },
-    sii: { ambiente: 'certificacion', emitido: false, bloqueo: bloqueoEmision || intentoGuia.json().error, razon: 'El certificado digital no existe en el entorno local; ningún folio CAF fue consumido.' },
+    sii: { ambiente: 'no invocado', emitido: false, razon: 'La simulación crea borradores DTE 52 y NC SII, pero no llama endpoints de emisión ni envío; no consume CAF ni contacta al SII.' },
     vistas: { productividadTotalOdts: productividad.totalOdts, crmTotal: metricasCrm.total, documentosVisibles: facturacion.documentos?.length ?? 0, matrizFilas: matrix.items?.length ?? matrix.rows?.length ?? null },
     usuarios: Object.fromEntries(Object.entries(users).map(([label, user]) => [label, { id: user.id, role: user.role }])),
   }
