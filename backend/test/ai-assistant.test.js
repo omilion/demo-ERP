@@ -235,15 +235,15 @@ describe('AI assistant — product rentabilidad & times', () => {
 describe('AI assistant — prompts y tools por rol', () => {
   it('system prompt de no-admin es restringido', () => {
     const prompt = buildSystemPrompt({ role: 'vendedor', nombre: 'Juan' })
-    expect(prompt).toContain('asistente de ayuda de Plastimar')
+    expect(prompt).toContain('copiloto de ayuda de Plastimar')
     expect(prompt).toContain('consultar_documentacion')
-    expect(prompt).not.toContain('Asistente Gerencial de Plastimar')
+    expect(prompt).not.toContain('Copiloto Gerencial de Plastimar')
   })
 
   it('system prompt de admin es completo', () => {
     const prompt = buildSystemPrompt({ role: 'admin', nombre: 'Pedro' })
-    expect(prompt).toContain('Asistente Gerencial de Plastimar')
-    expect(prompt).toContain('Plastimar es una empresa de espumas')
+    expect(prompt).toContain('Copiloto Gerencial de Plastimar')
+    expect(prompt).toContain('Plastimar opera ventas, taller, caja, CRM, inventario, despacho, facturación y RRHH')
   })
 
   it('no-admin solo tiene acceso a herramientas de documentacion y ajuste de pantalla en executeTool', async () => {

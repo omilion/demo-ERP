@@ -390,12 +390,18 @@ register({
   },
 }, async (prisma, input) => {
   const abiertas = { estado: { in: ODT_ESTADOS_ABIERTOS }, eliminado: false }
-  const [porEstado, abiertasList] = await Promise.all([
+  const [porEstado, totalAbiertas, abiertasList] = await Promise.all([
     prisma.odt.groupBy({ by: ['estado'], where: { eliminado: false }, _count: { _all: true } }),
+    prisma.odt.count({ where: abiertas }),
+    // take:2000 acota el calculo de atrasadas, no el conteo reportado (abajo va
+    // totalAbiertas real). Si hay mas ODT abiertas que el limite, "atrasadas"
+    // puede estar subestimado: se marca con "truncado" para que quien consuma
+    // esto no lo presente como cifra exacta.
     prisma.odt.findMany({ where: abiertas, select: { id: true, estado: true, plazo: true, fechaInicio: true, fechaTermino: true, createdAt: true }, take: 2000 }),
   ])
   const conMetricas = abiertasList.map(o => ({ ...o, tiempos: buildOdtTiempoMetrics(o) }))
   const atrasadas = conMetricas.filter(o => o.tiempos.enAtraso).length
+  const truncado = totalAbiertas > abiertasList.length
   // Conteo por taller real desde los items
   const tallerNombre = input.taller && input.taller !== 'todos' ? input.taller : null
   let porTaller = {}
@@ -412,8 +418,9 @@ register({
   }
   return {
     porEstado: Object.fromEntries(porEstado.map(g => [g.estado, g._count._all])),
-    abiertas: abiertasList.length,
+    abiertas: totalAbiertas,
     atrasadas,
+    atrasadasTruncado: truncado,
     porTaller,
   }
 })
@@ -649,14 +656,14 @@ register({
 
   let files = []
   try {
-    files = await fs.readdir(docsDir)
+    files = await fs.readdir(docsDir, { recursive: true })
   } catch (e) {
     return { encontrado: false, error: 'No se pudo leer la carpeta de documentación' }
   }
 
   // _index.md es el catálogo de módulos: hace match con casi todo y ensucia el
   // ranking. Se excluye de la búsqueda (sirve solo como referencia interna).
-  const mdFiles = files.filter(f => f.endsWith('.md') && f !== '_index.md')
+  const mdFiles = files.filter(f => f.endsWith('.md') && path.basename(f) !== '_index.md')
   const matches = []
 
   for (const file of mdFiles) {
@@ -664,7 +671,7 @@ register({
     const content = await fs.readFile(filePath, 'utf-8')
     const normContent = normalizeText(content)
 
-    const fileBase = normalizeText(file).replace(/\.md$/, '')
+    const fileBase = normalizeText(path.basename(file)).replace(/\.md$/, '')
     let score = 0
     for (const word of queryWords) {
       const regex = new RegExp(word, 'g')
@@ -678,16 +685,31 @@ register({
     }
 
     if (score > 0) {
+      const sections = content.split(/(?=^##\s+)/m)
+      const rankedSections = sections.map(section => ({
+        section,
+        score: queryWords.reduce((sum, word) => sum + (normalizeText(section).match(new RegExp(word, 'g')) || []).length, 0),
+      })).sort((a, b) => b.score - a.score)
+      const excerpt = rankedSections.slice(0, 4).map(item => item.section).join('\n').slice(0, 14_000)
+      const relative = file.replace(/\\/g, '/')
+      const helpRelative = relative.startsWith('marcha-blanca/') ? relative.slice('marcha-blanca/'.length) : null
+      const sourceUrl = helpRelative
+        ? (path.posix.basename(helpRelative) === 'FICHA_RAPIDA_OPERARIO.md'
+            ? `/ayuda/${helpRelative.replace(/\.md$/, '.html')}`
+            : `/ayuda/${path.posix.dirname(helpRelative)}/index.html`)
+        : '/ayuda'
       matches.push({
-        modulo: file.replace('.md', ''),
-        contenido: content,
+        modulo: relative.replace(/\.md$/, ''),
+        titulo: content.match(/^#\s+(.+)$/m)?.[1] || fileBase,
+        contenido: excerpt,
+        fuente: sourceUrl,
         score
       })
     }
   }
 
   matches.sort((a, b) => b.score - a.score)
-  const topMatches = matches.slice(0, 2)
+  const topMatches = matches.slice(0, 3)
 
   if (topMatches.length === 0) {
     return { encontrado: false }
@@ -695,7 +717,7 @@ register({
 
   return {
     encontrado: true,
-    documentos: topMatches.map(m => ({ modulo: m.modulo, contenido: m.contenido }))
+    documentos: topMatches.map(m => ({ modulo: m.modulo, titulo: m.titulo, contenido: m.contenido, fuente: m.fuente }))
   }
 })
 

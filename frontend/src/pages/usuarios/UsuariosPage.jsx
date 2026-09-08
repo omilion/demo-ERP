@@ -25,7 +25,11 @@ export default function UsuariosPage() {
   const deleteU = useDeleteUsuario()
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
-  const [estadoFilter, setEstadoFilter] = useState('all')
+  // Arranca en "Activos": el listado real de personal es una fraccion del
+  // total -- el resto son cuentas legacy migradas y desactivadas a proposito
+  // (configurar-usuarios-plastimar.mjs), que nadie puede usar para ingresar.
+  // "Todos los estados" sigue disponible para ver ese historico.
+  const [estadoFilter, setEstadoFilter] = useState('activo')
 
   const filtered = usuarios.filter(user => {
     const haystack = [user.nombre, user.email, user.rut, user.codigoVendedor, user.cargo, user.sucursalNombre, user.role]

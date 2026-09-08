@@ -1,7 +1,10 @@
 import { can } from '../../middleware/rbac.js'
 import { permisoDeHerramienta } from './tools/index.js'
 import { randomUUID } from 'node:crypto'
-import { getAnthropic, isAiConfigured, buildSystemPrompt, AI_MODEL, AI_MAX_TOKENS, AI_EFFORT, AI_REQUEST_TIMEOUT_MS } from './llm.js'
+import {
+  isAiConfigured, buildSystemPrompt, AI_MODELS, selectAiMode, modelForMode,
+  generateGeminiTurn, appendGeminiToolResults,
+} from './llm.js'
 import { getToolDefinitions, runTool } from './tools/index.js'
 import { documentToolDefinitions, runDocumentTool, DOCUMENT_TOOL_NAMES } from './documents.js'
 import { uiToolDefinitions, runUiTool, UI_TOOL_NAMES } from './ui-tools.js'
@@ -10,25 +13,6 @@ import { createAiRequestLimiter, getAiLimitConfig } from './limits.js'
 const MAX_ITERATIONS = 4
 const aiLimitConfig = getAiLimitConfig()
 const aiRequestLimiter = createAiRequestLimiter(aiLimitConfig)
-
-async function finalMessageWithTimeout(stream) {
-  let timeoutId
-  try {
-    return await Promise.race([
-      stream.finalMessage(),
-      new Promise((_, reject) => {
-        timeoutId = setTimeout(() => {
-          stream.abort?.()
-          const error = new Error('La consulta IA excedió el tiempo máximo de espera.')
-          error.code = 'AI_TIMEOUT'
-          reject(error)
-        }, AI_REQUEST_TIMEOUT_MS)
-      }),
-    ])
-  } finally {
-    clearTimeout(timeoutId)
-  }
-}
 
 // Todas las definiciones de herramientas (consulta + documentos + UI) que ve el LLM.
 export function allToolDefinitions() {
@@ -69,7 +53,7 @@ export default async function aiChatRoute(fastify) {
   // Estado de configuración (para que el frontend sepa si mostrar el chat).
   fastify.get('/status', {
     preHandler: [fastify.authenticate],
-  }, async () => ({ configured: isAiConfigured(), model: AI_MODEL }))
+  }, async () => ({ configured: isAiConfigured(), provider: 'google', model: AI_MODELS.gerencial, models: AI_MODELS }))
 
   // Chat principal — SSE. El loop de tool-use corre server-side; al cliente se
   // le envían eventos: tool (consultando), text (delta), done, error.
@@ -80,11 +64,14 @@ export default async function aiChatRoute(fastify) {
     const startedAt = Date.now()
     const messages = normalizeMessages(request.body?.messages)
     const lastUser = [...messages].reverse().find(m => m.role === 'user')?.content || ''
+    const context = request.body?.context && typeof request.body.context === 'object' ? request.body.context : null
+    const mode = selectAiMode({ user: request.user, requestedMode: request.body?.mode, context, messages })
+    const selectedModel = modelForMode(mode)
 
     if (!isAiConfigured()) {
       reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
       const send = (event, data) => reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-      send('error', { message: 'El asistente IA no está configurado (falta ANTHROPIC_API_KEY).' })
+      send('error', { message: 'El asistente IA no está configurado (falta GEMINI_API_KEY).' })
       reply.raw.end()
       return reply
     }
@@ -131,8 +118,7 @@ export default async function aiChatRoute(fastify) {
     let errorMsg = null
 
     try {
-      const client = getAnthropic()
-      const system = [{ type: 'text', text: buildSystemPrompt(request.user), cache_control: { type: 'ephemeral' } }]
+      const system = buildSystemPrompt(request.user, context, mode)
       // Dos filtros distintos: 'ai' habilita el asistente, y cada herramienta
       // exige ademas el permiso del modulo cuyos datos consulta. Ofrecerle al
       // modelo una que el usuario no puede usar solo produce un rechazo a mitad
@@ -145,48 +131,36 @@ export default async function aiChatRoute(fastify) {
           })
         : allToolDefinitions().filter(t => t.name === 'consultar_documentacion' || t.name === 'ajustar_pantalla')
       const convo = [...messages]
+      send('meta', { provider: 'google', model: selectedModel, mode })
 
       for (let i = 0; i < MAX_ITERATIONS; i++) {
-        // Streaming de cada paso del loop. Acumulamos el mensaje final con el helper.
-        const stream = client.messages.stream({
-          model: AI_MODEL,
-          max_tokens: AI_MAX_TOKENS,
-          system,
-          tools,
-          thinking: { type: 'adaptive' },
-          output_config: { effort: AI_EFFORT },
-          messages: convo,
-        })
-
-        stream.on('text', delta => { answerText += delta; send('text', { delta }) })
-
-        const msg = await finalMessageWithTimeout(stream)
-        if (msg.usage) {
-          totalUsage.input_tokens += msg.usage.input_tokens || 0
-          totalUsage.output_tokens += msg.usage.output_tokens || 0
+        const turn = await generateGeminiTurn({ model: selectedModel, system, messages: convo, tools })
+        totalUsage.input_tokens += turn.usage.input_tokens || 0
+        totalUsage.output_tokens += turn.usage.output_tokens || 0
+        if (turn.text) {
+          answerText += turn.text
+          send('text', { delta: turn.text })
         }
 
-        if (msg.stop_reason !== 'tool_use') break
+        if (!turn.functionCalls.length) break
 
-        // Ejecutar todas las tool_use del turno.
-        const toolUses = msg.content.filter(b => b.type === 'tool_use')
-        convo.push({ role: 'assistant', content: msg.content })
         const results = []
-        for (const tu of toolUses) {
-          send('tool', { name: tu.name })
-          usedTools.push(tu.name)
-          const result = await executeTool(tu.name, tu.input, ctx)
+        for (const call of turn.functionCalls) {
+          send('tool', { name: call.name })
+          usedTools.push(call.name)
+          const result = await executeTool(call.name, call.args, ctx)
           // Si es un documento generado, avisar al cliente del link.
-          if (DOCUMENT_TOOL_NAMES.has(tu.name) && result?.url) {
-            send('document', { name: tu.name, url: result.url, tipo: result.tipo })
+          if (DOCUMENT_TOOL_NAMES.has(call.name) && result?.url) {
+            send('document', { name: call.name, url: result.url, tipo: result.tipo })
           }
           // Si es una orden de UI, avisar al cliente para que ajuste el panel.
-          if (UI_TOOL_NAMES.has(tu.name) && result?.modo) {
+          if (UI_TOOL_NAMES.has(call.name) && result?.modo) {
             send('ui', { action: 'display_mode', modo: result.modo })
           }
-          results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(result) })
+          if (result?.actionProposal) send('action', result.actionProposal)
+          results.push({ name: call.name, result })
         }
-        convo.push({ role: 'user', content: results })
+        appendGeminiToolResults(convo, turn.modelContent, results)
 
         if (i === MAX_ITERATIONS - 1) {
           send('text', { delta: '\n\n(Se alcanzó el límite de pasos de consulta.)' })
@@ -213,7 +187,7 @@ export default async function aiChatRoute(fastify) {
           usedTools: usedTools.length ? usedTools : undefined,
           status,
           answerPreview: answerText ? answerText.slice(0, 500) : null,
-          model: AI_MODEL,
+          model: selectedModel,
           tokenUsage: totalUsage,
           latencyMs: Date.now() - startedAt,
           error: errorMsg,

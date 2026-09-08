@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from '../../components/shared'
 import { Markdown } from '../../components/Markdown'
 import { useAuthStore } from '../../store/auth'
 import { confirmDialog } from '../../store/notif'
 import {
-  streamChat, useConversaciones, useConversacion,
+  auditAiActionDecision, streamChat, useConversaciones, useConversacion,
   useCrearConversacion, useGuardarMensajes, useEliminarConversacion,
 } from '../../api/ai'
+import { captureAiContext } from '../../utils/aiContext'
 
 const getWelcomeMessage = (user) => {
   const isConfigAdmin = user?.role === 'admin'
@@ -38,12 +39,15 @@ const TOOL_LABELS = {
 
 export default function AsistentePage() {
   const { user } = useAuthStore()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeId, setActiveId] = useState(null)
   const [messages, setMessages] = useState(() => [getWelcomeMessage(user)])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [toolStatus, setToolStatus] = useState(null)
+  const [modelInfo, setModelInfo] = useState(null)
   const scrollRef = useRef()
   const abortRef = useRef(null)
 
@@ -124,10 +128,13 @@ export default function AsistentePage() {
 
     streamChat({
       messages: [...history, { role: 'user', content: q }],
+      context: location.state?.aiContext || captureAiContext(location),
       signal: controller.signal,
       onText: (delta) => { setToolStatus(null); updateLast(a => ({ ...a, content: a.content + delta })) },
       onTool: ({ name }) => setToolStatus(TOOL_LABELS[name] || 'Consultando datos…'),
       onDocument: ({ url, tipo }) => updateLast(a => ({ ...a, documents: [...(a.documents || []), { url, tipo }] })),
+      onMeta: setModelInfo,
+      onAction: proposal => updateLast(a => ({ ...a, actionProposal: proposal })),
       onDone: () => {
         setLoading(false); setToolStatus(null); abortRef.current = null
         // Persistir el turno completo (pregunta + respuesta) en la conversación.
@@ -145,6 +152,14 @@ export default function AsistentePage() {
         updateLast(a => ({ ...a, content: a.content || `⚠️ ${msg}`, error: !a.content }))
       },
     })
+  }
+
+  const executeProposal = async proposal => {
+    const accepted = await confirmDialog({ title: 'Confirmar acción del copiloto', detail: proposal.titulo })
+    await auditAiActionDecision(accepted ? 'accepted' : 'rejected', proposal).catch(() => null)
+    if (!accepted) return
+    if (proposal.tipo === 'navegar') navigate(proposal.ruta)
+    else if (proposal.contenido) await navigator.clipboard?.writeText(proposal.contenido)
   }
 
   return (
@@ -191,8 +206,8 @@ export default function AsistentePage() {
             <Icon name="messageSquare" size={14} color="#fff" />
           </div>
           <div>
-            <div style={{ color: '#fff', fontWeight: 600, fontSize: 14 }}>{user?.role === 'admin' ? "Asistente Gerencial IA" : "Asistente de Ayuda IA"}</div>
-            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>{user?.role === 'admin' ? "Datos en vivo del ERP" : "Guía de uso y documentación"}</div>
+            <div style={{ color: '#fff', fontWeight: 600, fontSize: 14 }}>{user?.role === 'admin' ? 'Copiloto Gerencial IA' : 'Copiloto de Ayuda IA'}</div>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>{modelInfo ? `${modelInfo.mode} · ${modelInfo.model}` : 'Gemini · permisos del ERP'}</div>
           </div>
         </div>
 
@@ -223,6 +238,11 @@ export default function AsistentePage() {
                       </a>
                     ))}
                   </div>
+                )}
+                {m.actionProposal && (
+                  <button onClick={() => executeProposal(m.actionProposal)} style={{ marginTop: 8, padding: '7px 11px', borderRadius: 8, border: '1px solid var(--green-600)', background: '#fff', color: 'var(--green-700)', fontWeight: 600, cursor: 'pointer' }}>
+                    Revisar y confirmar: {m.actionProposal.titulo}
+                  </button>
                 )}
               </div>
             </div>

@@ -3,12 +3,13 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { DndContext, DragOverlay, PointerSensor, pointerWithin, rectIntersection, useSensor, useSensors } from '@dnd-kit/core'
 import { useDroppable, useDraggable } from '@dnd-kit/core'
 import { Badge, PageHeader, Btn, SearchBar, Table, Icon } from '../../components/shared'
-import { useCrm, useCrmEjecutivas, useCrmPatch, useCrmOrdenLink, useCrmConvertirCliente, useCrmPendientesHoy, useCrmMetricas, useCrmCreate, useCrmAsignarPendientes, useCrmCatalogos, useCrmDetalle, useCrmTransicion, useCrmGestionCreate } from '../../api/crm'
+import { useCrm, useCrmEjecutivas, useCrmPatch, useCrmConvertirCliente, useCrmPendientesHoy, useCrmMetricas, useCrmCreate, useCrmAsignarPendientes, useCrmCatalogos, useCrmDetalle, useCrmTransicion, useCrmGestionCreate } from '../../api/crm'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/auth'
 import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
 import { hasRole } from '../../utils/permissions'
+import { CrmOrdenBanner } from './CrmOrdenBanner'
 
 // Coordinador comercial ve el CRM de todos los vendedores igual que admin
 // (backend/src/routes/crm/index.js), sin ganar sus poderes de escritura/reasignacion.
@@ -359,7 +360,6 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
   }))
   const [gestion, setGestion] = useState({ tipo: 'LLAMADA', resultado: '', siguienteAccion: '', fechaProximo: '' })
   const patch = useCrmPatch()
-  const { data: ordenLink } = useCrmOrdenLink(item.id, true)
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
 
@@ -446,17 +446,7 @@ function CrmDetailModal({ item, ejecutivas, onClose, onSaved }) {
           </div>
         </div>
 
-        {ordenLink?.orden && (
-          <div style={{ padding: '10px 20px', background: 'var(--green-50, #f0fdf4)', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
-            <span style={{ color: 'var(--text-2)' }}>Cotización vinculada a orden: </span>
-            <Link to={`/ventas/${ordenLink.orden.id}/editar`} style={{ color: 'var(--green-700)', fontWeight: 600, fontFamily: "'DM Mono', monospace" }}>
-              #{ordenLink.orden.nInterno} → ver orden
-            </Link>
-            <span style={{ marginLeft: 10, fontSize: 11, color: 'var(--text-3)' }}>
-              {ordenLink.orden.estado} · pago: {ordenLink.orden.estadoPago} · entrega: {ordenLink.orden.estadoEntrega}
-            </span>
-          </div>
-        )}
+        <CrmOrdenBanner item={item} detalle={detalle} />
 
         <CrmSummary item={item} detalle={detalle} onEdit={() => navigate(`/crm/${item.id}/gestion`)} />
         {detailTab === 'editar' && <div style={{ padding: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>

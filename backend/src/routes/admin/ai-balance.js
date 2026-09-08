@@ -9,7 +9,16 @@ export function estimateCost(modelName, tokenUsage) {
   let inputRate = 3.00 // default Sonnet 3.5
   let outputRate = 15.00
   
-  if (m.includes('opus')) {
+  if (m.includes('gemini-3.5-flash-lite')) {
+    inputRate = 0.30
+    outputRate = 2.50
+  } else if (m.includes('gemini-3.5-flash')) {
+    inputRate = 1.50
+    outputRate = 9.00
+  } else if (m.includes('gemini-3.6-flash')) {
+    inputRate = 0.75
+    outputRate = 3.75
+  } else if (m.includes('opus')) {
     inputRate = 15.00
     outputRate = 75.00
   } else if (m.includes('haiku')) {

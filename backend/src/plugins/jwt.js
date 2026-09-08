@@ -19,6 +19,7 @@ export const TOKEN_TYPES = Object.freeze({
 export function createErpAccessTokenPayload(user) {
   return {
     id: user.id,
+    email: user.email,
     role: user.role,
     nombre: user.nombre,
     sucursalId: user.sucursalId ?? null,

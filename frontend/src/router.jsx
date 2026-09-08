@@ -9,6 +9,7 @@ import VentaDetallePage from './pages/ventas/VentaDetallePage'
 import VentasFormPage from './pages/ventas/VentasFormPage'
 import VentaPrintPage from './pages/ventas/VentaPrintPage'
 import AsistentePage from './pages/asistente/AsistentePage'
+import AiInsightsPage from './pages/asistente/AiInsightsPage'
 import BodegaPage from './pages/bodega/BodegaPage'
 import BodegaFormPage from './pages/bodega/BodegaFormPage'
 import PanelPickingPage from './pages/bodega/PanelPickingPage'
@@ -107,6 +108,7 @@ export const router = createBrowserRouter([
       { path: 'ventas/:id/editar', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
       { path: 'ventas/:id/imprimir', element: protect(<VentaPrintPage />, { module: 'ventas' }) },
       { path: 'asistente', element: protect(<AsistentePage />, { allowedRoles: ALL }) },
+      { path: 'asistente/alertas', element: protect(<AiInsightsPage />, { allowedRoles: ALL }) },
       { path: 'bodega', element: protect(<BodegaPage />, { module: 'bodega' }) },
       { path: 'bodega/picking', element: protect(<PanelPickingPage />, { module: 'bodega' }) },
       { path: 'bodega/packing', element: protect(<PanelPackingPage />, { module: 'bodega' }) },

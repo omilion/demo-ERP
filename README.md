@@ -122,7 +122,10 @@ DATABASE_URL="postgresql://plastimar:plastimar@localhost:55432/plastimar_dev?sch
 JWT_ACCESS_SECRET="clave_para_el_access_token"
 JWT_REFRESH_SECRET="clave_para_el_refresh_token"
 UPLOADS_DIR="./uploads"
-# ANTHROPIC_API_KEY=...   # solo si vas a usar el asistente IA
+GEMINI_API_KEY="clave_de_Google_AI_Studio"
+GEMINI_MODEL_DOCUMENTAL="gemini-3.5-flash-lite"
+GEMINI_MODEL_CONTEXTUAL="gemini-3.5-flash"
+GEMINI_MODEL_GERENCIAL="gemini-3.6-flash"
 ```
 
 ```bash

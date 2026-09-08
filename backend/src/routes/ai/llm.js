@@ -1,74 +1,190 @@
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenAI } from '@google/genai'
 
-// Config desde entorno (ver .env / ecosystem.config.cjs en el VPS).
-export const AI_MODEL = process.env.RAG_LLM_MODEL || 'claude-opus-4-8'
-// Un turno operativo no necesita 8k tokens. Este máximo también protege de
-// configuraciones de entorno sobredimensionadas.
-export const AI_MAX_TOKENS = Math.min(Math.max(Number(process.env.RAG_LLM_MAX_TOKENS || 4096), 256), 4096)
-export const AI_EFFORT = process.env.RAG_LLM_EFFORT || 'high'
+export const AI_MODELS = Object.freeze({
+  documental: process.env.GEMINI_MODEL_DOCUMENTAL || 'gemini-3.5-flash-lite',
+  contextual: process.env.GEMINI_MODEL_CONTEXTUAL || 'gemini-3.5-flash',
+  gerencial: process.env.GEMINI_MODEL_GERENCIAL || 'gemini-3.6-flash',
+})
+
+// Compatibilidad con métricas y consumidores anteriores: representa el modelo
+// de mayor capacidad, pero cada consulta registra el modelo realmente usado.
+export const AI_MODEL = AI_MODELS.gerencial
+export const AI_MAX_TOKENS = Math.min(Math.max(Number(process.env.GEMINI_MAX_OUTPUT_TOKENS || 4096), 256), 8192)
 export const AI_REQUEST_TIMEOUT_MS = Math.min(Math.max(Number(process.env.AI_REQUEST_TIMEOUT_MS || 120_000), 10_000), 300_000)
 
 let client = null
 
-// Cliente Anthropic perezoso: no se instancia (ni se exige la key) hasta el
-// primer uso, para que el resto del backend arranque aunque la key falte.
-export function getAnthropic() {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    const err = new Error('ANTHROPIC_API_KEY no configurada')
-    err.code = 'AI_NOT_CONFIGURED'
-    throw err
+export function getGemini() {
+  if (!process.env.GEMINI_API_KEY) {
+    const error = new Error('GEMINI_API_KEY no configurada')
+    error.code = 'AI_NOT_CONFIGURED'
+    throw error
   }
-  if (!client) {
-    client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  }
+  if (!client) client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
   return client
 }
 
 export function isAiConfigured() {
-  return Boolean(process.env.ANTHROPIC_API_KEY)
+  return Boolean(process.env.GEMINI_API_KEY)
 }
 
-// System prompt: analista gerencial de Plastimar. La regla central es que SOLO
-// puede afirmar cifras devueltas por las herramientas — nunca inventarlas.
-export function buildSystemPromptDocs(user) {
+const ANALYTICAL_TERMS = /\b(informe|gerencial|directorio|tendencia|comparar|comparativa|margen|rentabilidad|proyecci[oó]n|resumen diario|kpi|indicador|causa|riesgo|an[aá]lisis)\b/i
+
+export function selectAiMode({ user, requestedMode, context, messages = [] } = {}) {
+  const lastQuestion = [...messages].reverse().find(message => message?.role === 'user')?.content || ''
+  if (user?.role === 'admin' && (requestedMode === 'gerencial' || ANALYTICAL_TERMS.test(lastQuestion))) return 'gerencial'
+  if (requestedMode === 'contextual' || context?.route || context?.entity?.type) return 'contextual'
+  return 'documental'
+}
+
+export function modelForMode(mode) {
+  return AI_MODELS[mode] || AI_MODELS.documental
+}
+
+function safeContext(context) {
+  if (!context || typeof context !== 'object') return null
+  const allowed = {
+    route: String(context.route || '').slice(0, 240),
+    title: String(context.title || '').slice(0, 160),
+    module: String(context.module || '').slice(0, 80),
+  }
+  if (context.entity && typeof context.entity === 'object') {
+    allowed.entity = {
+      type: String(context.entity.type || '').slice(0, 80),
+      id: String(context.entity.id || '').slice(0, 100),
+      label: String(context.entity.label || '').slice(0, 200),
+      status: String(context.entity.status || '').slice(0, 100),
+    }
+  }
+  return allowed
+}
+
+function contextInstruction(context) {
+  const safe = safeContext(context)
+  if (!safe?.route) return ''
+  return `\n\nCONTEXTO DE PANTALLA PROPORCIONADO POR EL ERP:\n${JSON.stringify(safe)}\nUsa este contexto solo para orientar la respuesta. No asumas datos que no estén presentes ni intentes ampliar permisos.`
+}
+
+export function buildSystemPromptDocs(user, context) {
   const hoy = new Date().toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   const nombre = user?.nombre || 'Usuario'
-  return `Eres el asistente de ayuda de Plastimar. Hoy es ${hoy}. Conversas con ${nombre}.
-Tu función principal es ayudar a los usuarios a entender cómo usar el sistema ERP de Plastimar.
+  return `Eres el copiloto de ayuda de Plastimar. Hoy es ${hoy}. Conversas con ${nombre}.
+Tu función es enseñar a usar el ERP y orientar el siguiente paso de trabajo.
 
 REGLAS FUNDAMENTALES:
-1. SOLO respondes preguntas sobre cómo usar el sistema, dónde se encuentran las pantallas, o qué significan ciertos flujos, utilizando la herramienta "consultar_documentacion".
-2. NO tienes acceso a datos reales de negocio ni de ERP (como ventas, clientes, sueldos, comisiones, stock de productos, etc.), y tampoco posees herramientas para consultarlos.
-3. Si el usuario te pregunta por cualquier dato de negocio, cifras, reportes o estadísticas, debes responder de manera amable que esa información está disponible únicamente para gerencia y ofrecerte a explicar cómo o dónde pueden encontrar dicha información en las pantallas del sistema usando la documentación.
-4. Responde en español, con tono servicial, claro, profesional y directo.
-5. Controla el espacio del panel: si tu respuesta es extensa o contiene tablas explicativas, llama a "ajustar_pantalla" con modo "expandido" al INICIO (antes de escribir). Para respuestas cortas usa "compacto".
-6. Si la documentación no cubre un tema consultado, indícalo explícitamente ("eso no está documentado todavía") — NUNCA inventes pasos, rutas de navegación, ni funcionalidades.`
+1. Para explicar pantallas, pasos o flujos usa "consultar_documentacion" antes de responder.
+2. No afirmes datos del negocio sin una herramienta autorizada. Cada herramienta respeta los permisos reales del usuario.
+3. Entrega instrucciones breves, numeradas y adaptadas a la pantalla actual.
+4. Cuando la documentación incluya una fuente o URL, cítala al final bajo "Fuente".
+5. Si el tema no está documentado, dilo explícitamente. Nunca inventes rutas, botones ni estados.
+6. Distingue siempre entre dato confirmado, interpretación y recomendación.
+7. Responde en español, con tono claro, profesional y directo.
+8. Nunca solicites contraseñas, claves API, tokens, datos bancarios ni información personal innecesaria.
+9. Puedes proponer navegación o un borrador mediante "proponer_accion_segura". Nunca ejecutes ni propongas emitir DTE, anular documentos, cambiar stock, registrar pagos, aprobar descuentos, modificar remuneraciones o eliminar datos.` + contextInstruction(context)
 }
 
-// System prompt: analista gerencial de Plastimar. La regla central es que SOLO
-// puede afirmar cifras devueltas por las herramientas — nunca inventarlas.
-export function buildSystemPrompt(user) {
-  if (user?.role !== 'admin') {
-    return buildSystemPromptDocs(user)
-  }
+export function buildSystemPrompt(user, context, mode = 'documental') {
+  if (user?.role !== 'admin') return buildSystemPromptDocs(user, context)
   const hoy = new Date().toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   const nombre = user?.nombre || 'Gerencia'
-  return `Eres el Asistente Gerencial de Plastimar, un analista de datos experto que apoya a la gerencia en la toma de decisiones. Hoy es ${hoy}. Conversas con ${nombre}.
+  return `Eres el Copiloto Gerencial de Plastimar. Hoy es ${hoy}. Conversas con ${nombre}. Modo activo: ${mode}.
 
-Plastimar es una empresa de espumas, colchones, telas y maderas con un ERP que cubre ventas, taller (órdenes de trabajo / ODT), caja, CRM, inventario/bodega y RRHH.
+Plastimar opera ventas, taller, caja, CRM, inventario, despacho, facturación y RRHH.
 
 REGLAS FUNDAMENTALES:
-1. SOLO afirmas cifras, fechas, nombres o estados que provengan del resultado de una herramienta. NUNCA inventes ni estimes datos. Si no tienes el dato, dilo y ofrece consultarlo.
-2. Cuando una pregunta requiere datos del ERP, llama a la herramienta adecuada ANTES de responder. Encadena varias herramientas si hace falta.
-3. Responde en español, con tono profesional y directo. Lidera con la conclusión, luego el detalle.
-4. Formatea montos en pesos chilenos (ej: $1.234.567). Sé claro con los períodos consultados.
-5. Para análisis y recommendations: interpreta los datos (tendencias, alertas, comparativas) pero deja claro qué es dato y qué es tu interpretación.
-6. Si el usuario pide un Excel o PowerPoint, primero reúne los datos con las herramientas de consulta y luego usa la herramienta de generación de documentos. Entrega el link de descarga.
-7. Si una herramienta devuelve vacío o cero, repórtalo tal cual — no rellenes con suposiciones.
-7b. Para "lo más vendido" (producto o categoría) usa "ranking_ventas". Devuelve monto Y unidades: si la respuesta difiere según la métrica (ej. una categoría lidera en monto pero otra en unidades), acláralo en vez de elegir una sola.
-8. Controla el espacio del panel: si tu respuesta incluirá una tabla, una comparativa, un listado largo o un documento, llama a "ajustar_pantalla" con modo "expandido" al INICIO (antes de escribir). Para respuestas cortas conversacionales no la llames (o usa "compacto" si venías expandido).
-9. Para preguntas sobre CÓMO usar el sistema o DÓNDE está una función, usa "consultar_documentacion". Si la documentación no cubre el tema, dilo claramente ('eso no está documentado todavía') — NUNCA inventes pasos ni rutas de navegación.
-10. Para analizar UN producto (margen, rentabilidad, tiempos de taller) usa "ficha_producto". Para rankings de productos por rentabilidad usa "ranking_ventas" con ordenar_por="margen".
-11. El costo de compra es un PROMEDIO histórico sin fecha de registro: NUNCA afirmes cuándo o en qué fecha un producto fue más o menos rentable, ni muestres evoluciones temporales de margen, ya que ese dato no existe. Si te lo preguntan, aclara esta limitación.
-12. Los tiempos de producción en taller tienen una cobertura muy baja (pocos registros con fecha de inicio y fin registradas): SIEMPRE comunica explícitamente esta limitación al reportar promedios de tiempo y aclara que los promedios pueden no ser representativos.`
+1. Solo afirmas cifras, fechas, nombres o estados devueltos por herramientas. Nunca inventes ni completes vacíos.
+2. Consulta las herramientas antes de analizar datos del ERP y señala el período utilizado.
+3. Lidera con la conclusión; luego separa "Datos confirmados", "Interpretación" y "Acciones recomendadas".
+4. Informa cobertura y limitaciones cuando falten fechas, costos o trazabilidad.
+5. Formatea montos en pesos chilenos y evita falsa precisión.
+6. Para ayuda de uso consulta la documentación y cita su fuente o enlace.
+7. Para documentos reúne primero los datos y después genera el archivo.
+8. Puedes proponer navegación o borradores con "proponer_accion_segura". Toda acción se presenta para confirmación humana.
+9. Nunca ejecutes ni propongas como acción automática: emitir o anular DTE, cambiar stock, registrar pagos, aprobar descuentos, modificar remuneraciones o eliminar datos.
+10. Si una herramienta no entrega información, repórtalo tal cual.
+11. El costo de compra es promedio histórico sin fecha: no construyas evolución temporal de margen con ese dato.
+12. Los tiempos de taller pueden tener baja cobertura; debes indicarlo junto al resultado.` + contextInstruction(context)
+}
+
+function geminiContents(messages = []) {
+  return messages.map(message => {
+    if (message._geminiParts) return { role: 'model', parts: message._geminiParts }
+    if (message._geminiFunctionResponses) return { role: 'user', parts: message._geminiFunctionResponses }
+    return {
+      role: message.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: message.content }],
+    }
+  })
+}
+
+function geminiTools(tools = []) {
+  if (!tools.length) return undefined
+  return [{
+    functionDeclarations: tools.map(tool => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.input_schema,
+    })),
+  }]
+}
+
+function withTimeout(promise, timeoutMs = AI_REQUEST_TIMEOUT_MS) {
+  let timeoutId
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        const error = new Error('La consulta IA excedió el tiempo máximo de espera.')
+        error.code = 'AI_TIMEOUT'
+        reject(error)
+      }, timeoutMs)
+    }),
+  ]).finally(() => clearTimeout(timeoutId))
+}
+
+export async function generateGeminiTurn({ model, system, messages, tools }) {
+  const ai = getGemini()
+  const response = await withTimeout(ai.models.generateContent({
+    model,
+    contents: geminiContents(messages),
+    config: {
+      systemInstruction: system,
+      maxOutputTokens: AI_MAX_TOKENS,
+      temperature: 0.2,
+      tools: geminiTools(tools),
+    },
+  }))
+
+  const parts = response?.candidates?.[0]?.content?.parts || []
+  const text = parts.filter(part => typeof part.text === 'string').map(part => part.text).join('')
+  const functionCalls = parts
+    .filter(part => part.functionCall?.name)
+    .map(part => ({ name: part.functionCall.name, args: part.functionCall.args || {} }))
+  const usage = response?.usageMetadata || {}
+
+  return {
+    text,
+    functionCalls,
+    modelContent: response?.candidates?.[0]?.content || { role: 'model', parts: text ? [{ text }] : [] },
+    usage: {
+      input_tokens: usage.promptTokenCount || 0,
+      output_tokens: usage.candidatesTokenCount || 0,
+      total_tokens: usage.totalTokenCount || 0,
+    },
+  }
+}
+
+export function appendGeminiToolResults(messages, modelContent, callsWithResults) {
+  messages.push({
+    role: 'assistant',
+    content: '',
+    _geminiParts: modelContent?.parts || [],
+  })
+  messages.push({
+    role: 'user',
+    content: '',
+    _geminiFunctionResponses: callsWithResults.map(item => ({
+      functionResponse: { name: item.name, response: item.result },
+    })),
+  })
 }

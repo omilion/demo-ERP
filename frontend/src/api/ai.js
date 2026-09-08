@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/auth'
 // soporta POST). Llama a los callbacks por cada evento del backend:
 // onText(delta), onTool({name}), onDocument({name,url,tipo}), onUi({action,modo}),
 // onDone(), onError(msg).
-export async function streamChat({ messages, signal, onText, onTool, onDocument, onUi, onDone, onError }) {
+export async function streamChat({ messages, context, mode, signal, onText, onTool, onDocument, onUi, onAction, onMeta, onDone, onError }) {
   const token = useAuthStore.getState().token
   let res
   try {
@@ -14,7 +14,7 @@ export async function streamChat({ messages, signal, onText, onTool, onDocument,
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify({ messages, context, mode }),
       signal,
     })
   } catch (e) {
@@ -26,7 +26,7 @@ export async function streamChat({ messages, signal, onText, onTool, onDocument,
     if (res.status === 403) onError?.('No tienes acceso al asistente IA.')
     else if (res.status === 429) {
       let detail = null
-      try { detail = await res.json() } catch {}
+      try { detail = await res.json() } catch { /* respuesta 429 sin JSON */ }
       onError?.(detail?.error || 'Alcanzaste el límite de consultas IA. Espera un momento e inténtalo de nuevo.')
     }
     else onError?.('El asistente no está disponible en este momento.')
@@ -60,6 +60,8 @@ export async function streamChat({ messages, signal, onText, onTool, onDocument,
         else if (event === 'tool') onTool?.(data)
         else if (event === 'document') onDocument?.(data)
         else if (event === 'ui') onUi?.(data)
+        else if (event === 'action') onAction?.(data)
+        else if (event === 'meta') onMeta?.(data)
         else if (event === 'done') onDone?.(data)
         else if (event === 'error') onError?.(data.message)
       }
@@ -80,6 +82,10 @@ export async function fetchAiStatus() {
   }
 }
 
+export async function auditAiActionDecision(decision, proposal) {
+  return api.post('/ai/actions/decision', { decision, proposal }).then(response => response.data)
+}
+
 // ── Conversaciones persistentes (historial del RAG) ──────────────────────────
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from './client'
@@ -89,6 +95,14 @@ export const useConversaciones = () =>
     queryKey: ['ai-conversaciones'],
     queryFn: () => api.get('/ai/conversaciones').then(r => r.data),
     staleTime: 10_000,
+  })
+
+export const useAiInsights = () =>
+  useQuery({
+    queryKey: ['ai-insights'],
+    queryFn: () => api.get('/ai/insights').then(r => r.data),
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
   })
 
 export const useConversacion = (id) =>

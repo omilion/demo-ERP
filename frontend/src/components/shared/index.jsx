@@ -206,13 +206,26 @@ export const ActionRow = ({ icon, label, badge, badgeTone = 'neutral', onClick }
 }
 
 // ── PageHeader ────────────────────────────────────────────────────────────────
-export const PageHeader = ({ title, actions }) => (
+// `action` (singular) se acepta ademas de `actions`: algunas paginas lo pasan
+// asi por error y silenciosamente se perdia sin dar ninguna señal.
+export const PageHeader = ({ title, subtitle, breadcrumb, actions, action }) => (
   <div style={{ marginBottom: 16 }}>
+    {breadcrumb?.length > 0 && (
+      <nav aria-label="Miga de pan" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>
+        {breadcrumb.map((crumb, index) => (
+          <span key={crumb + index} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            {index > 0 && <Icon name="chevronRight" size={11} />}
+            {crumb}
+          </span>
+        ))}
+      </nav>
+    )}
     <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16 }}>
       <div>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-1)', letterSpacing: -0.5 }}>{title}</h1>
+        {subtitle && <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-3)' }}>{subtitle}</p>}
       </div>
-      {actions && <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>{actions}</div>}
+      {(actions || action) && <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>{actions || action}</div>}
     </div>
   </div>
 )

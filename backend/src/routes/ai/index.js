@@ -1,5 +1,6 @@
 import aiChatRoute from './chat.js'
 import aiConversacionesRoute from './conversaciones.js'
+import aiInsightsRoutes from './insights.js'
 
 // Asistente Gerencial IA — endpoints bajo /api/ai.
 //
@@ -13,4 +14,5 @@ import aiConversacionesRoute from './conversaciones.js'
 export default async function aiRoutes(fastify) {
   fastify.register(aiChatRoute)
   fastify.register(aiConversacionesRoute)
+  fastify.register(aiInsightsRoutes)
 }

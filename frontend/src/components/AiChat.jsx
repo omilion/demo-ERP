@@ -1,13 +1,16 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Icon } from './shared'
 import { Markdown } from './Markdown'
 import { useAuthStore } from '../store/auth'
-import { streamChat, useCrearConversacion, useGuardarMensajes } from '../api/ai'
+import { auditAiActionDecision, streamChat, useCrearConversacion, useGuardarMensajes } from '../api/ai'
+import { captureAiContext, suggestedAiQuestions } from '../utils/aiContext'
+import { confirmDialog } from '../store/notif'
 
 export function AiChat() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
   const [open, setOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
 
@@ -19,23 +22,12 @@ export function AiChat() {
       : 'Hola. Puedo ayudarte a usar el sistema: pregúntame cómo hacer algo o dónde encontrar una función.'
   }
 
-  const suggestions = isConfigAdmin
-    ? [
-        '¿Cuántas OT de taller pendientes hay y cuántas atrasadas?',
-        'Resumen de ventas del mes actual',
-        'Genera un Excel con el stock crítico',
-      ]
-    : [
-        '¿Cómo creo una venta?',
-        '¿Dónde veo mis despachos pendientes?',
-        '¿Cómo registrar un pago de cobranza?',
-      ]
-
   const [messages, setMessages] = useState([welcomeMessage])
   const [activeId, setActiveId] = useState(null) // conversación persistida actual
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [toolStatus, setToolStatus] = useState(null)
+  const [modelInfo, setModelInfo] = useState(null)
   const scrollRef = useRef()
   const abortRef = useRef(null)
   const crearConv = useCrearConversacion()
@@ -91,14 +83,19 @@ export function AiChat() {
     const controller = new AbortController()
     abortRef.current = controller
 
+    const context = captureAiContext(location)
     streamChat({
       messages: [...history, { role: 'user', content: q }],
+      context,
+      mode: context.route === '/asistente' ? undefined : 'contextual',
       signal: controller.signal,
       onText: (delta) => { setToolStatus(null); updateLast(a => ({ ...a, content: a.content + delta })) },
       onTool: ({ name }) => setToolStatus(TOOL_LABELS[name] || 'Consultando datos…'),
       onDocument: ({ url, tipo }) => updateLast(a => ({ ...a, documents: [...(a.documents || []), { url, tipo }] })),
       // El asistente decide cuándo conviene más espacio (respuestas extensas/tablas/documentos).
       onUi: ({ action, modo }) => { if (action === 'display_mode') setExpanded(modo === 'expandido') },
+      onMeta: setModelInfo,
+      onAction: proposal => updateLast(a => ({ ...a, actionProposal: proposal })),
       onDone: () => {
         setLoading(false); setToolStatus(null); abortRef.current = null
         // Persistir el turno (pregunta + respuesta) para que aparezca en el historial.
@@ -115,6 +112,18 @@ export function AiChat() {
         updateLast(a => ({ ...a, content: a.content || `⚠️ ${msg}`, error: !a.content }))
       },
     })
+  }
+
+  const executeProposal = async proposal => {
+    const accepted = await confirmDialog({ title: 'Confirmar acción del copiloto', detail: proposal.titulo })
+    await auditAiActionDecision(accepted ? 'accepted' : 'rejected', proposal).catch(() => null)
+    if (!accepted) return
+    if (proposal.tipo === 'navegar') {
+      setOpen(false)
+      navigate(proposal.ruta)
+    } else if (proposal.contenido) {
+      await navigator.clipboard?.writeText(proposal.contenido)
+    }
   }
 
   const panelStyle = expanded
@@ -151,14 +160,14 @@ export function AiChat() {
               <Icon name="messageSquare" size={14} color="#fff" />
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ color: '#fff', fontWeight: 600, fontSize: 13 }}>Asistente Gerencial IA</div>
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Datos en vivo del ERP</div>
+              <div style={{ color: '#fff', fontWeight: 600, fontSize: 13 }}>{isConfigAdmin ? 'Copiloto Gerencial IA' : 'Copiloto de Ayuda IA'}</div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>{modelInfo ? `${modelInfo.mode} · ${modelInfo.model}` : 'Contexto de la pantalla actual'}</div>
             </div>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, marginRight: 4 }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green-400, #4ade80)', display: 'inline-block' }} />
               <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11 }}>Conectado</span>
             </span>
-            <button onClick={() => { setOpen(false); navigate(activeId ? `/asistente?conv=${activeId}` : '/asistente') }} title="Abrir en pantalla completa"
+            <button onClick={() => { setOpen(false); navigate(activeId ? `/asistente?conv=${activeId}` : '/asistente', { state: { aiContext: captureAiContext(location) } }) }} title="Abrir en pantalla completa"
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, background: 'rgba(255,255,255,0.12)', border: 'none', cursor: 'pointer' }}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.22)'}
               onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}>
@@ -194,6 +203,11 @@ export function AiChat() {
                       ))}
                     </div>
                   )}
+                  {m.actionProposal && (
+                    <button onClick={() => executeProposal(m.actionProposal)} style={{ marginTop: 8, padding: '7px 11px', borderRadius: 8, border: '1px solid var(--green-600)', background: '#fff', color: 'var(--green-700)', fontWeight: 600, cursor: 'pointer' }}>
+                      Revisar y confirmar: {m.actionProposal.titulo}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -206,7 +220,7 @@ export function AiChat() {
             {messages.length === 1 && !loading && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
                 <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase' }}>Sugerencias</span>
-                {suggestions.map(s => (
+                {suggestedAiQuestions(captureAiContext(location)).map(s => (
                   <button key={s} onClick={() => send(s)} style={{
                     textAlign: 'left', fontSize: 13, padding: '9px 13px', borderRadius: 10,
                     border: '1px solid var(--border)', background: '#fff', color: 'var(--text-2)', cursor: 'pointer', transition: 'all 0.13s',
