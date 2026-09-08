@@ -28,17 +28,27 @@ api.interceptors.response.use(
 
     if (!refreshPromise) {
       refreshPromise = api.post('/auth/refresh')
-        .then(({ data }) => { useAuthStore.getState().setToken(data.accessToken) })
-        .catch(() => { useAuthStore.getState().logout() })
-        .finally(() => { refreshPromise = null })
+        .then(({ data }) => {
+          const newToken = data.accessToken
+          useAuthStore.getState().setToken(newToken)
+          return newToken
+        })
+        .catch((err) => {
+          useAuthStore.getState().logout()
+          throw err
+        })
+        .finally(() => {
+          refreshPromise = null
+        })
     }
 
     try {
-      await refreshPromise
-      original.headers.Authorization = `Bearer ${useAuthStore.getState().token}`
+      const newToken = await refreshPromise
+      if (!newToken) return Promise.reject(error)
+      original.headers.Authorization = `Bearer ${newToken}`
       return api(original)
-    } catch {
-      return Promise.reject(error)
+    } catch (refreshErr) {
+      return Promise.reject(refreshErr || error)
     }
   }
 )

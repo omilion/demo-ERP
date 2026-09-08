@@ -6,7 +6,15 @@
 import crypto from 'node:crypto';
 import { tag, tags, formatMonto, formatTimestamp, sanitizeLatin1 } from './xmlUtil.js';
 
-const truncate = (value, max) => sanitizeLatin1(value).slice(0, max);
+const sanitizeTedField = (value, max) => {
+  if (value === undefined || value === null) return '';
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Eliminar acentos y diacríticos (á -> a, ñ -> n)
+    .replace(/[^\x20-\x7E]/g, '')    // Restringir a ASCII imprimible
+    .trim()
+    .slice(0, max);
+};
 
 export const buildTed = ({ rutEmisor, tipoDte, folio, fechaEmision, rutReceptor, razonReceptor, montoTotal, primerItem }, caf, timestamp = new Date()) => {
   const dd = tag('DD', [
@@ -16,9 +24,9 @@ export const buildTed = ({ rutEmisor, tipoDte, folio, fechaEmision, rutReceptor,
       ['F', folio],
       ['FE', fechaEmision],
       ['RR', rutReceptor],
-      ['RSR', truncate(razonReceptor, 40)],
+      ['RSR', sanitizeTedField(razonReceptor, 40)],
       ['MNT', formatMonto(montoTotal)],
-      ['IT1', truncate(primerItem, 40)]
+      ['IT1', sanitizeTedField(primerItem, 40)]
     ]),
     caf.cafXml,
     tag('TSTED', formatTimestamp(timestamp))

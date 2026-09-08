@@ -288,7 +288,7 @@ export const uploadEnvioBoleta = async ({ ambiente, token, rutEnvia, rutEmisor, 
   }, parts);
 
   let json = null;
-  try { json = JSON.parse(res.body); } catch { /* respuesta no JSON */ }
+  try { json = JSON.parse(res.body); } catch { /* noop */ }
   const trackId = json?.trackid ?? json?.trackId ?? extractTag(res.body, 'TRACKID');
   if (!trackId) throw new Error(`El SII no aceptó el envío de boletas (HTTP ${res.status}): ${res.body.slice(0, 400)}`);
   return { trackId: String(trackId), respuesta: res.body };
@@ -304,9 +304,37 @@ export const consultarEstadoBoleta = async ({ ambiente, token, rutEmisor, trackI
   });
   let json = null;
   try { json = JSON.parse(res.body); } catch { /* texto plano */ }
+
+  const estadistica = Array.isArray(json?.estadistica) && json.estadistica[0] ? json.estadistica[0] : null;
+  const repRech = Array.isArray(json?.detalle_rep_rech) && json.detalle_rep_rech[0] ? json.detalle_rep_rech[0] : null;
+
+  const estadoDte = repRech?.estado || null;
+  const descripcionDte = repRech?.descripcion || null;
+  const erroresDte = Array.isArray(repRech?.error)
+    ? repRech.error.map(e => e.descripcion || e.detalle).filter(Boolean).join('; ')
+    : null;
+
+  const glosa = [
+    descripcionDte,
+    erroresDte,
+    json?.glosa
+  ].filter(Boolean).join(' — ') || (json?.estado === 'EPR' ? 'Envío Procesado por el SII' : json?.estado);
+
   return {
     estado: json?.estado ?? null,
-    glosa: json?.detalle_rev ? JSON.stringify(json.detalle_rev) : (json?.glosa ?? null),
+    glosa,
+    resumen: estadistica ? {
+      tipoDte: estadistica.tipo,
+      informados: estadistica.informados,
+      aceptados: estadistica.aceptados,
+      rechazados: estadistica.rechazados,
+      reparos: estadistica.reparos
+    } : null,
+    detalleDte: repRech ? {
+      estado: repRech.estado,
+      glosa: descripcionDte,
+      errorGlosa: erroresDte
+    } : null,
     respuesta: res.body
   };
 };

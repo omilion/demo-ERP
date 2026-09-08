@@ -293,6 +293,14 @@ export default function UsuarioFormPage() {
           return
         }
 
+        if (Number(currentUser?.id) === userId) {
+          useAuthStore.getState().updateUser({
+            nombre: payload.nombre,
+            cargo: payload.cargo,
+            rut: payload.rut,
+          })
+        }
+
         toast.success(passwordCambiada ? 'Usuario y contraseña actualizados correctamente' : 'Usuario actualizado correctamente')
         if (location.pathname.endsWith('/editar')) {
           navigate(`/usuarios/${userId}`, { replace: true })

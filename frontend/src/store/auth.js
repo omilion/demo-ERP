@@ -7,6 +7,7 @@ export const useAuthStore = create(
       user: null,
       token: null,
       login: (user, token) => set({ user, token }),
+      updateUser: (patch) => set((s) => ({ user: s.user ? { ...s.user, ...patch } : s.user })),
       setToken: (token) => set({ token }),
       logout: () => set({ user: null, token: null }),
     }),

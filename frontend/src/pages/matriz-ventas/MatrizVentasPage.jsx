@@ -560,7 +560,8 @@ export default function MatrizVentasPage() {
           </>
         )}
       />
-      <div className="kpi-strip-inline">
+      {/* Fila 1: Control Operacional & Balance Anual (4 tarjetas equilibradas) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 12 }}>
         {/* 1: Entregadas no pagadas */}
         <KpiCard
           label="Entregadas no pagadas"
@@ -591,37 +592,7 @@ export default function MatrizVentasPage() {
           active={quick === 'pendienteEntrega'}
           onClick={() => aplicarQuick('pendienteEntrega')}
         />
-        {/* 4: Ventas web (Hoy) */}
-        <KpiCard
-          label="Ventas web (Hoy)"
-          value={fmt(tot?.kpis?.hoy?.ocOnline?.total || 0)}
-          sublabel={`Mes: ${fmt(tot?.kpis?.mes?.ocOnline?.total || 0)} (${tot?.kpis?.mes?.ocOnline?.count || 0} vts)`}
-          icon="cloud"
-          tone="blue"
-          active={tab === 'venta-web' && quick === 'ventasHoy'}
-          onClick={() => aplicarCanal('venta-web', 'ventasHoy')}
-        />
-        {/* 5: Ventas sala/marco (Hoy) */}
-        <KpiCard
-          label="Ventas sala/marco (Hoy)"
-          value={fmt(tot?.kpis?.hoy?.ordenes?.total || 0)}
-          sublabel={`Mes: ${fmt(tot?.kpis?.mes?.ordenes?.total || 0)} (${tot?.kpis?.mes?.ordenes?.count || 0} vts)`}
-          icon="package"
-          tone="neutral"
-          active={tab === 'venta-sala' && quick === 'ventasHoy'}
-          onClick={() => aplicarCanal('venta-sala', 'ventasHoy')}
-        />
-        {/* 6: Licitaciones (Hoy) */}
-        <KpiCard
-          label="Licitaciones (Hoy)"
-          value={fmt(tot?.kpis?.hoy?.licitaciones?.total || 0)}
-          sublabel={`Mes: ${fmt(tot?.kpis?.mes?.licitaciones?.total || 0)} (${tot?.kpis?.mes?.licitaciones?.count || 0} vts)`}
-          icon="briefcase"
-          tone="purple"
-          active={tab === 'licitacion' && quick === 'ventasHoy'}
-          onClick={() => aplicarCanal('licitacion', 'ventasHoy')}
-        />
-        {/* 7: YTD (Acumulado año) */}
+        {/* 4: YTD (Acumulado año) - Ahora con posición destacada y ancho óptimo */}
         <KpiCard
           label="YTD (Acumulado año)"
           value={fmt(tot?.kpis?.ytd?.total || 0)}
@@ -632,6 +603,40 @@ export default function MatrizVentasPage() {
           trendTone="green-good"
           active={Boolean(desde && desde === `${new Date().getFullYear()}-01-01` && hasta === todayIso())}
           onClick={aplicarYtd}
+        />
+      </div>
+
+      {/* Fila 2: Ventas del Día por Canal (3 tarjetas) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
+        {/* 5: Ventas web (Hoy) */}
+        <KpiCard
+          label="Ventas web (Hoy)"
+          value={fmt(tot?.kpis?.hoy?.ocOnline?.total || 0)}
+          sublabel={`Mes: ${fmt(tot?.kpis?.mes?.ocOnline?.total || 0)} (${tot?.kpis?.mes?.ocOnline?.count || 0} vts)`}
+          icon="cloud"
+          tone="blue"
+          active={tab === 'venta-web' && quick === 'ventasHoy'}
+          onClick={() => aplicarCanal('venta-web', 'ventasHoy')}
+        />
+        {/* 6: Ventas sala/marco (Hoy) */}
+        <KpiCard
+          label="Ventas sala/marco (Hoy)"
+          value={fmt(tot?.kpis?.hoy?.ordenes?.total || 0)}
+          sublabel={`Mes: ${fmt(tot?.kpis?.mes?.ordenes?.total || 0)} (${tot?.kpis?.mes?.ordenes?.count || 0} vts)`}
+          icon="package"
+          tone="neutral"
+          active={tab === 'venta-sala' && quick === 'ventasHoy'}
+          onClick={() => aplicarCanal('venta-sala', 'ventasHoy')}
+        />
+        {/* 7: Licitaciones (Hoy) */}
+        <KpiCard
+          label="Licitaciones (Hoy)"
+          value={fmt(tot?.kpis?.hoy?.licitaciones?.total || 0)}
+          sublabel={`Mes: ${fmt(tot?.kpis?.mes?.licitaciones?.total || 0)} (${tot?.kpis?.mes?.licitaciones?.count || 0} vts)`}
+          icon="briefcase"
+          tone="purple"
+          active={tab === 'licitacion' && quick === 'ventasHoy'}
+          onClick={() => aplicarCanal('licitacion', 'ventasHoy')}
         />
       </div>
 

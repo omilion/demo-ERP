@@ -251,6 +251,27 @@ describe('facturacion/documento', () => {
     expect(result.documentoXml).toContain('<MntNeto>1000</MntNeto>')
     expect(result.documentoXml).toContain('<IVA>190</IVA>')
     expect(result.documentoXml).toContain('<MntTotal>1190</MntTotal>')
+    expect(result.documentoXml).toContain('<MontoItem>1190</MontoItem>')
+  })
+
+  it('boleta (39) con múltiples ítems netos calcula MontoItem bruto con IVA para cuadrar suma de detalles con MntTotal (reparo 260 SII)', () => {
+    const result = buildDocumento({
+      empresa: PLASTIMAR_EMPRESA,
+      receptor: { rut: '5771267-8', razonSocial: 'Oriana Brain', direccion: 'Villuco', comuna: 'Chiguayante' },
+      doc: {
+        tipoDte: 39,
+        folio: 21,
+        items: [
+          { nombre: 'Pelota de goma', cantidad: 1, precio: 4300, exento: false }
+        ]
+      },
+      caf: fakeCaf(),
+      timestamp: new Date('2026-08-07T11:32:55')
+    })
+
+    expect(result.documentoXml).toContain('<MntTotal>5117</MntTotal>')
+    expect(result.documentoXml).toContain('<MontoItem>5117</MontoItem>')
+    expect(result.documentoXml).toContain('<PrcItem>5117</PrcItem>')
   })
 
   it('factura (33) SI incluye TasaIVA en Totales (DTE_v10.xsd lo exige para facturas)', () => {

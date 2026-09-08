@@ -1,11 +1,21 @@
 import { normalizeRut } from './xmlUtil.js'
+import { computeTotales } from './documento.js'
 
 export const ESTADOS_DTE_REFERENCIABLES = new Set(['emitido', 'enviado', 'aceptado'])
 
 const TIPOS_REFERENCIA_NC = new Set([33, 39, 46, 56])
 const TIPOS_REFERENCIA_ND = new Set([33, 39, 46, 61])
 
-const montoDocumento = documento => Math.max(0, Math.round(Number(documento?.totales?.total) || 0))
+const montoDocumento = documento => {
+  if (documento?.totales?.total !== undefined && documento?.totales?.total !== null && Number(documento.totales.total) > 0) {
+    return Math.max(0, Math.round(Number(documento.totales.total) || 0))
+  }
+  if (Array.isArray(documento?.items) && documento.items.length) {
+    const tot = computeTotales(documento.items, Number(documento.tipoDte) || 61)
+    return Math.max(0, Math.round(Number(tot?.total) || 0))
+  }
+  return 0
+}
 const referenciaLocal = (referencia, documento) => (
   Number(referencia?.docLocalId) === Number(documento?.id)
   || (

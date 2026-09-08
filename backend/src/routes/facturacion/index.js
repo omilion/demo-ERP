@@ -177,9 +177,11 @@ export default async function facturacionRoutes(fastify) {
     if (reintentando) return
     reintentando = true
     try {
+      const empresa = await db.getEmpresa()
       const pendientes = await db.documentos.list({ estado: 'emitido' })
-      if (!pendientes.length) return
-      const { resultados } = await enviarLotePorTipo({ ids: pendientes.map(d => d.id), db, engine })
+      const delAmbiente = pendientes.filter(d => !d.ambiente || d.ambiente === (empresa?.ambiente || 'certificacion'))
+      if (!delAmbiente.length) return
+      const { resultados } = await enviarLotePorTipo({ ids: delAmbiente.map(d => d.id), db, engine })
       for (const r of resultados) {
         if (r.ok) fastify.log.info({ docId: r.id, folio: r.folio, trackId: r.trackId }, 'Reintento automatico de envio SII exitoso')
         else fastify.log.warn({ docId: r.id, folio: r.folio, err: r.error }, 'Reintento automatico de envio SII fallo, se reintenta en el proximo barrido')

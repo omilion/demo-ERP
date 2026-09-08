@@ -176,28 +176,87 @@ const buildTotales = (totales, boleta) => tag('Totales', tags([
   ['MntTotal', formatMonto(totales.total)]
 ]), null, { raw: true });
 
-const buildDetalle = (items, tipoDte) => items.map((item, index) => {
-  const cantidad = Number(item.cantidad) || 1;
-  const precio = Number(item.precio) || 0;
-  const bruto = Math.round(cantidad * precio);
-  const descuento = Math.round(Number(item.descuentoMonto) || 0);
-  const exentoEnDocAfecto = (item.exento && tipoDte !== 34 && tipoDte !== 41) || isExportacion(tipoDte);
-  return tag('Detalle', tags([
-    ['NroLinDet', index + 1],
-    ['CdgItem', item.codigo ? tags([['TpoCodigo', 'INT1'], ['VlrCodigo', siiText(item.codigo, 35)]]) : null, null, { raw: true }],
-    // IndExe=1 marca la línea como exenta (sólo válido en documentos afectos;
-    // en 34/41 el documento completo es exento y el indicador no se informa)
-    ['IndExe', exentoEnDocAfecto ? 1 : null],
-    ['NmbItem', siiText(item.nombre, 80)],
-    ['DscItem', siiText(item.descripcion, 1000)],
-    ['QtyItem', formatQty(cantidad)],
-    // UnmdItem tiene maxLength=4 en el schema del SII; recortar evita rechazos.
-    ['UnmdItem', siiText(item.unidad, 4)],
-    ['PrcItem', precio > 0 ? formatQty(precio) : null],
-    ['DescuentoMonto', descuento > 0 ? formatMonto(descuento) : null],
-    ['MontoItem', formatMonto(bruto - descuento)]
-  ]), null, { raw: true });
-}).join('');
+const buildDetalle = (items, tipoDte, totales = null) => {
+  // En Boletas Electrónicas afectas (DTE 39), según el schema BOLETA_v11.xsd del SII,
+  // los montos de las líneas de detalle deben informarse con IVA incluido (valores brutos),
+  // y la suma de MontoItem de todos los detalles DEBE ser idéntica a MntTotal.
+  // Si los ítems vienen netos (por ej. desde una orden o cotización), se ajustan
+  // proporcionalmente con su IVA para que la suma cuadre al peso con totales.total.
+  const esBoletaAfecta = tipoDte === 39 && totales && totales.iva > 0;
+  let montosBoletaAfecta = null;
+
+  if (esBoletaAfecta) {
+    const sumaNetos = items.reduce((sum, it) => {
+      if (it.exento) return sum;
+      const cant = Number(it.cantidad) || 1;
+      const prc = Number(it.precio) || 0;
+      const desc = Math.round(Number(it.descuentoMonto) || 0);
+      return sum + Math.round(cant * prc) - desc;
+    }, 0);
+
+    const totalAfecto = totales.total - (totales.exento || 0);
+    if (sumaNetos > 0 && sumaNetos !== totalAfecto) {
+      montosBoletaAfecta = [];
+      let acumulado = 0;
+      const lineasAfectas = items.filter(it => !it.exento);
+      let afectasProcesadas = 0;
+
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.exento) {
+          montosBoletaAfecta.push(null);
+        } else {
+          afectasProcesadas++;
+          const cant = Number(it.cantidad) || 1;
+          const prc = Number(it.precio) || 0;
+          const desc = Math.round(Number(it.descuentoMonto) || 0);
+          const netoLinea = Math.round(cant * prc) - desc;
+
+          let montoBruto;
+          if (afectasProcesadas === lineasAfectas.length) {
+            montoBruto = totalAfecto - acumulado;
+          } else {
+            montoBruto = Math.round(netoLinea * (1 + IVA_RATE / 100));
+            acumulado += montoBruto;
+          }
+          const prcBruto = Math.round(montoBruto / cant);
+          montosBoletaAfecta.push({ monto: montoBruto, precio: prcBruto });
+        }
+      }
+    }
+  }
+
+  return items.map((item, index) => {
+    const cantidad = Number(item.cantidad) || 1;
+    let precio = Number(item.precio) || 0;
+    let bruto = Math.round(cantidad * precio);
+    let descuento = Math.round(Number(item.descuentoMonto) || 0);
+    let montoItem = bruto - descuento;
+
+    if (montosBoletaAfecta && montosBoletaAfecta[index]) {
+      montoItem = montosBoletaAfecta[index].monto;
+      precio = montosBoletaAfecta[index].precio;
+      descuento = 0;
+    }
+
+    const exentoEnDocAfecto = (item.exento && tipoDte !== 34 && tipoDte !== 41) || isExportacion(tipoDte);
+    return tag('Detalle', tags([
+      ['NroLinDet', index + 1],
+      ['CdgItem', item.codigo ? tags([['TpoCodigo', 'INT1'], ['VlrCodigo', siiText(item.codigo, 35)]]) : null, null, { raw: true }],
+      // IndExe=1 marca la línea como exenta (sólo válido en documentos afectos;
+      // en 34/41 el documento completo es exento y el indicador no se informa)
+      ['IndExe', exentoEnDocAfecto ? 1 : null],
+      ['NmbItem', siiText(item.nombre, 80)],
+      ['DscItem', siiText(item.descripcion, 1000)],
+      ['QtyItem', formatQty(cantidad)],
+      // UnmdItem tiene maxLength=4 en el schema del SII; recortar evita rechazos.
+      ['UnmdItem', siiText(item.unidad, 4)],
+      ['PrcItem', precio > 0 ? formatQty(precio) : null],
+      ['DescuentoMonto', descuento > 0 ? formatMonto(descuento) : null],
+      ['MontoItem', formatMonto(montoItem)]
+    ]), null, { raw: true });
+  }).join('');
+};
 
 const buildReferencias = (referencias, boleta) => (referencias || []).map((ref, index) => {
   if (boleta) {
@@ -384,7 +443,7 @@ export const buildDocumento = ({ empresa, receptor, doc, caf, timestamp = new Da
       buildReceptor(receptor, boleta),
       buildTotales(totales, boleta)
     ].join(''), null, { raw: true }),
-    buildDetalle(items, doc.tipoDte),
+    buildDetalle(items, doc.tipoDte, totales),
     buildReferencias(doc.referencias, boleta),
     ted,
     tag('TmstFirma', formatTimestamp(timestamp))

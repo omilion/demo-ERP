@@ -17,7 +17,7 @@ import { toLatin1Buffer, XML_DECL, normalizeRut, isValidRut, formatDate } from '
 import * as sii from './siiClient.js';
 import { assertNotaDteInput } from './notas.js';
 
-const ESTADOS_ACEPTADO = new Set(['DOK', 'EOK']);
+const ESTADOS_ACEPTADO = new Set(['DOK', 'EOK', 'RPR']);
 const ESTADOS_RECHAZADO = new Set(['RCH', 'RFR', 'RSC', 'RCT', 'FAU', 'FNA']);
 const ESTADOS_DOCUMENTO_VIGENTE = new Set(['emitido', 'enviado', 'aceptado']);
 const TIPOS_VENTA_TRIBUTARIA = new Set([33, 39]);
@@ -77,10 +77,16 @@ export const estadoDesdeRespuestaSii = (estadoActual, resultado = {}) => {
   const codigo = String(resultado.estado || '').toUpperCase();
   const resumen = resultado.resumen || {};
   if (codigo === 'EPR') {
-    if (Number(resumen.informados) > 0
-      && Number(resumen.aceptados) === Number(resumen.informados)
-      && Number(resumen.rechazados) === 0) return 'aceptado';
-    if (Number(resumen.rechazados) > 0 && Number(resumen.aceptados) === 0) return 'rechazado';
+    const informados = Number(resumen.informados || 0);
+    const aceptados = Number(resumen.aceptados || 0);
+    const reparos = Number(resumen.reparos || 0);
+    const rechazados = Number(resumen.rechazados || 0);
+
+    // En normativa SII, los documentos aceptados con reparos (reparos) son legalmente válidos y aceptados
+    if (informados > 0 && (aceptados + reparos) === informados && rechazados === 0) {
+      return 'aceptado';
+    }
+    if (rechazados > 0 && aceptados === 0 && reparos === 0) return 'rechazado';
     return estadoActual;
   }
   if (ESTADOS_ACEPTADO.has(codigo)) return 'aceptado';
@@ -445,7 +451,8 @@ export const createFacturacionEngine = ({ db, dataDir }) => {
         resultado.detalleDte.errorGlosa
       ].filter(Boolean).join(' — ')
       : resultado.detalleDteError;
-    const detalle = [codigo, resultado.glosa, detalleResumen, detalleIndividual].filter(Boolean).join(' — ');
+    const detallePartes = [codigo, resultado.glosa, detalleResumen, detalleIndividual].filter(Boolean);
+    const detalle = [...new Set(detallePartes.flatMap(p => String(p).split(' — ')))].join(' — ');
     const actualizado = await db.documentos.update(docId, {
       estado,
       estadoDetalle: detalle || doc.estadoDetalle

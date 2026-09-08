@@ -63,7 +63,13 @@ export default function PilotFeedbackPage() {
             <td style={tdStyle}><ItemSignal item={item} /></td>
             <td style={{ ...tdStyle, maxWidth: 180 }}><strong>{item.module}</strong><br /><span style={{ color: 'var(--text-3)' }}>{item.route}</span></td>
             <td style={tdStyle}>{item.reporter?.nombre || item.reporterName || 'Usuario'}<br /><span style={{ color: 'var(--text-3)' }}>{item.reporterRole || '—'}</span></td>
-            <td style={{ ...tdStyle, maxWidth: 350, whiteSpace: 'normal', lineHeight: 1.4 }}>{item.note}</td>
+            <td style={{ ...tdStyle, maxWidth: 380, whiteSpace: 'normal', lineHeight: 1.4 }}>
+              <div style={{ fontWeight: 600, color: 'var(--text-1)' }}>{item.note}</div>
+              {item.queFalta && <div style={{ fontSize: 11, color: 'var(--amber-700, #b45309)', marginTop: 3 }}><strong>Falta:</strong> {item.queFalta}</div>}
+              {item.queSePropone && <div style={{ fontSize: 11, color: 'var(--blue-700, #1d4ed8)', marginTop: 3 }}><strong>Propuesta:</strong> {item.queSePropone}</div>}
+              {item.comportamientoEsperado && <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 3 }}><strong>Esperado:</strong> {item.comportamientoEsperado}</div>}
+              {item.resolutionNote && <div style={{ fontSize: 11, color: 'var(--green-700, #15803d)', marginTop: 3 }}><strong>Resolución:</strong> {item.resolutionNote}</div>}
+            </td>
             <td style={{ ...tdStyle, textAlign: 'right' }}><Btn size="xs" variant="secondary" onClick={() => setSelected(item)}>Revisar</Btn></td>
           </tr>)}</tbody>
         </table>
@@ -108,6 +114,10 @@ function FeedbackDetail({ item, onClose }) {
             <Info label="Rol" value={item.reporterRole || item.reporter?.role || '—'} />
             <Info label="Entidad" value={item.entityType && item.entityId ? `${item.entityType} #${item.entityId}` : 'Sin documento asociado'} />
             <Info label="Ruta" value={item.route} />
+            {item.browser && <Info label="Navegador" value={item.browser} />}
+            {item.viewport && <Info label="Resolución" value={item.viewport} />}
+            {item.appVersion && <Info label="Versión App" value={item.appVersion} />}
+            {item.sanitizedError && <Info label="Error API" value={`${item.sanitizedError.endpoint || ''} (HTTP ${item.sanitizedError.status || 'desconocido'}${item.sanitizedError.durationMs ? ` - ${item.sanitizedError.durationMs}ms` : ''})`} />}
           </div>
           <div style={noteStyle}><Badge tone={CATEGORY_TONES[item.category] || 'gray'}>{CATEGORY_LABELS[item.category] || item.category}</Badge><p style={{ margin: '9px 0 0', whiteSpace: 'pre-wrap' }}>{item.note}</p><FeedbackSpecificDetails item={item} /></div>
           {item.externalApi && <div style={apiFlagStyle}><Icon name="cloud" size={15} />Depende de integración externa</div>}

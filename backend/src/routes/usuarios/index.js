@@ -324,10 +324,23 @@ export default async function usuariosRoutes(fastify) {
     if (safetyError) return reply.code(409).send({ error: safetyError })
 
     try {
-      const revocaSesion = data.passwordHash || data.role !== undefined || data.activo !== undefined
-        || data.permisosExtra !== undefined || data.tiposVentaPermitidos !== undefined
-        || data.permisoDescuentos !== undefined || data.permisoAprobarDescuentos !== undefined
-        || data.sucursalId !== undefined
+      const cambioPassword = Boolean(data.passwordHash)
+      const cambioRole = data.role !== undefined && data.role !== current.role
+      const cambioActivo = data.activo !== undefined && data.activo !== current.activo
+      const cambioPermisos = data.permisosExtra !== undefined && JSON.stringify(data.permisosExtra) !== JSON.stringify(current.permisosExtra)
+      const cambioTiposVenta = data.tiposVentaPermitidos !== undefined && JSON.stringify(data.tiposVentaPermitidos) !== JSON.stringify(current.tiposVentaPermitidos)
+      const cambioDescuentos = (data.permisoDescuentos !== undefined && Boolean(data.permisoDescuentos) !== Boolean(current.permisoDescuentos))
+        || (data.permisoAprobarDescuentos !== undefined && Boolean(data.permisoAprobarDescuentos) !== Boolean(current.permisoAprobarDescuentos))
+      const cambioSucursal = data.sucursalId !== undefined && data.sucursalId !== current.sucursalId
+
+      // Solo revocar sesión si hay un cambio real en credenciales, rol, permisos o si se da de baja la cuenta
+      const cambioSensible = cambioPassword || cambioRole || cambioPermisos || cambioTiposVenta || cambioDescuentos || cambioSucursal || (cambioActivo && data.activo === false)
+
+      // Si el usuario editado es el mismo que está ejecutando la acción, no revocar su propia sesión activa
+      // salvo que haya cambiado expresamente su contraseña o se haya desactivado su cuenta.
+      const esElMismoUsuario = Number(request.user.id) === id
+      const revocaSesion = cambioSensible && (!esElMismoUsuario || cambioPassword || data.activo === false)
+
       const [u] = await fastify.prisma.$transaction([
         fastify.prisma.user.update({
           where: { id },
