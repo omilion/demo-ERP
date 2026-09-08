@@ -6,7 +6,7 @@ import 'dotenv/config'
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
 const prisma = new PrismaClient({ adapter })
 
-const ROLES = ['admin', 'vendedor', 'bodeguero', 'cajero', 'taller', 'rrhh', 'solo_lectura']
+const ROLES = ['admin', 'vendedor', 'coordinador_comercial', 'bodeguero', 'cajero', 'taller', 'taller_operario', 'rrhh', 'solo_lectura']
 
 const PRODUCTOS_SEED = [
   { codigoInterno: 'ESP-001', nombre: 'Espuma Alta Densidad 15cm 2x1', categoria: 'Espumas', bodega: 'Inventario', stock: 12, stockCritico: 50, precioLista: 48990, precioMarco: 0 },

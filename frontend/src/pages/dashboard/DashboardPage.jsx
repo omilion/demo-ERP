@@ -103,52 +103,119 @@ function HeaderUtilityCluster() {
 // contadores, una lista corta donde cada fila abre su ficha, y un pie que lleva
 // al listado completo. Se comparte la estructura para que un cambio de forma no
 // haya que repetirlo en cada rol.
-function AgendaCard({ titulo, badges = [], filas, vacio, cargando, pie, onPie }) {
+function AgendaCard({ titulo, badges = [], filas, vacio, cargando, pie, onPie, storageKey, defaultOpen = false }) {
+  const [open, setOpen] = useState(() => {
+    if (storageKey) {
+      try {
+        const saved = localStorage.getItem(`plastimar:dashboard:${storageKey}:open`)
+        if (saved !== null) return saved === 'true'
+      } catch {}
+    }
+    return defaultOpen
+  })
+
+  const toggle = () => {
+    setOpen(prev => {
+      const next = !prev
+      if (storageKey) {
+        try { localStorage.setItem(`plastimar:dashboard:${storageKey}:open`, String(next)) } catch {}
+      }
+      return next
+    })
+  }
+
   return (
-    <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 22, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--text-1)' }}>{titulo}</h2>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {badges.map(b => <Badge key={b.texto} tone={b.tone}>{b.texto}</Badge>)}
+    <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', transition: 'box-shadow 0.15s ease' }}>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        style={{
+          width: '100%',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap',
+          padding: '12px 16px',
+          border: 0,
+          borderBottom: open ? '1px solid var(--border)' : 'none',
+          background: '#fff',
+          cursor: 'pointer',
+          textAlign: 'left',
+          font: 'inherit',
+          transition: 'background 0.15s ease',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--green-50)'}
+        onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h2 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--text-1)' }}>{titulo}</h2>
         </div>
-      </div>
-
-      {cargando && <div style={{ padding: '18px 16px', fontSize: 13, color: 'var(--text-3)' }}>Cargando…</div>}
-      {!cargando && filas.length === 0 && (
-        <div style={{ padding: '18px 16px', fontSize: 13, color: 'var(--text-3)' }}>{vacio}</div>
-      )}
-
-      {filas.map(fila => (
-        <button
-          key={fila.key}
-          type="button"
-          onClick={fila.onClick}
-          style={{
-            width: '100%', display: 'grid', gridTemplateColumns: '4px minmax(0, 1fr) auto',
-            alignItems: 'center', gap: 12, padding: '10px 16px', border: 0,
-            borderBottom: '1px solid var(--border)', background: 'transparent',
-            cursor: 'pointer', textAlign: 'left', font: 'inherit',
-          }}
-          onMouseEnter={e => e.currentTarget.style.background = 'var(--green-50)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-        >
-          <span style={{ alignSelf: 'stretch', borderRadius: 99, background: fila.urgente ? 'var(--red)' : 'var(--amber)' }} />
-          <span style={{ minWidth: 0 }}>
-            <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-1)', overflowWrap: 'anywhere' }}>{fila.titulo}</span>
-            <span style={{ display: 'block', fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{fila.detalle}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {badges.map(b => <Badge key={b.texto} tone={b.tone}>{b.texto}</Badge>)}
+          </div>
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 12,
+            fontWeight: 600,
+            color: 'var(--green-600)',
+          }}>
+            <span>{open ? 'Plegar' : 'Desplegar'}</span>
+            <span style={{
+              display: 'inline-flex',
+              transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s ease',
+            }}>
+              <Icon name="chevronDown" size={15} />
+            </span>
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            {fila.badge && <Badge tone={fila.badgeTone || 'red'}>{fila.badge}</Badge>}
-            <span style={{ color: 'var(--green-600)' }}><Icon name={fila.icon || 'chevronRight'} size={15} /></span>
-          </span>
-        </button>
-      ))}
+        </div>
+      </button>
 
-      {pie && (
-        <div style={{ padding: '8px 16px 12px' }}>
-          <button type="button" onClick={onPie} style={{ fontSize: 12, color: 'var(--green-600)', fontWeight: 600, background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>
-            {pie}
-          </button>
+      {open && (
+        <div>
+          {cargando && <div style={{ padding: '18px 16px', fontSize: 13, color: 'var(--text-3)' }}>Cargando…</div>}
+          {!cargando && filas.length === 0 && (
+            <div style={{ padding: '18px 16px', fontSize: 13, color: 'var(--text-3)' }}>{vacio}</div>
+          )}
+
+          {filas.map(fila => (
+            <button
+              key={fila.key}
+              type="button"
+              onClick={fila.onClick}
+              style={{
+                width: '100%', display: 'grid', gridTemplateColumns: '4px minmax(0, 1fr) auto',
+                alignItems: 'center', gap: 12, padding: '10px 16px', border: 0,
+                borderBottom: '1px solid var(--border)', background: 'transparent',
+                cursor: 'pointer', textAlign: 'left', font: 'inherit',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--green-50)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <span style={{ alignSelf: 'stretch', borderRadius: 99, background: fila.urgente ? 'var(--red)' : 'var(--amber)' }} />
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-1)', overflowWrap: 'anywhere' }}>{fila.titulo}</span>
+                <span style={{ display: 'block', fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{fila.detalle}</span>
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                {fila.badge && <Badge tone={fila.badgeTone || 'red'}>{fila.badge}</Badge>}
+                <span style={{ color: 'var(--green-600)' }}><Icon name={fila.icon || 'chevronRight'} size={15} /></span>
+              </span>
+            </button>
+          ))}
+
+          {pie && (
+            <div style={{ padding: '8px 16px 12px' }}>
+              <button type="button" onClick={onPie} style={{ fontSize: 12, color: 'var(--green-600)', fontWeight: 600, background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>
+                {pie}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -165,7 +232,23 @@ function diasDesde(fecha, ahora) {
 // Un contador de "12 pendientes" no dice a quien llamar. Esta agenda lista los
 // leads con nombre y telefono, vencidos primero, y cada fila abre su gestion:
 // el vendedor entra al dia sabiendo su primera llamada.
-function AgendaCrmCard({ pendientes, isLoading, onAbrirLead, onVerTodo }) {
+function AgendaCrmCard({ pendientes, isLoading, onAbrirLead, onVerTodo, defaultOpen = false }) {
+  const [open, setOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem('plastimar:dashboard:crm-agenda:open')
+      if (saved !== null) return saved === 'true'
+    } catch {}
+    return defaultOpen
+  })
+
+  const toggle = () => {
+    setOpen(prev => {
+      const next = !prev
+      try { localStorage.setItem('plastimar:dashboard:crm-agenda:open', String(next)) } catch {}
+      return next
+    })
+  }
+
   const vencidas = pendientes?.vencidas ?? []
   const hoy = pendientes?.hoy ?? []
   const resumen = pendientes?.resumen ?? { vencidas: 0, hoy: 0, total: 0 }
@@ -184,64 +267,114 @@ function AgendaCrmCard({ pendientes, isLoading, onAbrirLead, onVerTodo }) {
   }
 
   return (
-    <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 22, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--text-1)' }}>A quién contactar hoy</h2>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {resumen.vencidas > 0 && <Badge tone="red">{resumen.vencidas} atrasada{resumen.vencidas !== 1 ? 's' : ''}</Badge>}
-          {resumen.hoy > 0 && <Badge tone="amber">{resumen.hoy} para hoy</Badge>}
-          {!isLoading && resumen.total === 0 && <Badge tone="neutral">Al día</Badge>}
+    <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', transition: 'box-shadow 0.15s ease' }}>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        style={{
+          width: '100%',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap',
+          padding: '12px 16px',
+          border: 0,
+          borderBottom: open ? '1px solid var(--border)' : 'none',
+          background: '#fff',
+          cursor: 'pointer',
+          textAlign: 'left',
+          font: 'inherit',
+          transition: 'background 0.15s ease',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--green-50)'}
+        onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ color: 'var(--green-600)', display: 'inline-flex' }}>
+            <Icon name="phone" size={16} />
+          </span>
+          <h2 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--text-1)' }}>A quién contactar hoy</h2>
         </div>
-      </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {resumen.vencidas > 0 && <Badge tone="red">{resumen.vencidas} atrasada{resumen.vencidas !== 1 ? 's' : ''}</Badge>}
+            {resumen.hoy > 0 && <Badge tone="amber">{resumen.hoy} para hoy</Badge>}
+            {!isLoading && resumen.total === 0 && <Badge tone="neutral">Al día</Badge>}
+          </div>
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 12,
+            fontWeight: 600,
+            color: 'var(--green-600)',
+          }}>
+            <span>{open ? 'Plegar' : 'Desplegar'}</span>
+            <span style={{
+              display: 'inline-flex',
+              transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s ease',
+            }}>
+              <Icon name="chevronDown" size={15} />
+            </span>
+          </span>
+        </div>
+      </button>
 
-      {isLoading && <div style={{ padding: '18px 16px', fontSize: 13, color: 'var(--text-3)' }}>Cargando tu agenda…</div>}
+      {open && (
+        <div>
+          {isLoading && <div style={{ padding: '18px 16px', fontSize: 13, color: 'var(--text-3)' }}>Cargando tu agenda…</div>}
 
-      {!isLoading && filas.length === 0 && (
-        <div style={{ padding: '18px 16px', fontSize: 13, color: 'var(--text-3)' }}>
-          No tienes gestiones pendientes. Buen momento para prospectar.
+          {!isLoading && filas.length === 0 && (
+            <div style={{ padding: '18px 16px', fontSize: 13, color: 'var(--text-3)' }}>
+              No tienes gestiones pendientes. Buen momento para prospectar.
+            </div>
+          )}
+
+          {filas.map(({ lead, atrasada }) => {
+            const dias = diasDeAtraso(lead.fechaProximo)
+            return (
+              <button
+                key={lead.id}
+                type="button"
+                onClick={() => onAbrirLead(lead.id)}
+                style={{
+                  width: '100%', display: 'grid', gridTemplateColumns: '4px minmax(0, 1fr) auto',
+                  alignItems: 'center', gap: 12, padding: '10px 16px', border: 0,
+                  borderBottom: '1px solid var(--border)', background: 'transparent',
+                  cursor: 'pointer', textAlign: 'left', font: 'inherit',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--green-50)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <span style={{ alignSelf: 'stretch', borderRadius: 99, background: atrasada ? 'var(--red)' : 'var(--amber)' }} />
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-1)', overflowWrap: 'anywhere' }}>
+                    {lead.rsocial || lead.nombre || lead.rut || 'Cliente sin nombre'}
+                  </span>
+                  <span style={{ display: 'block', fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+                    {lead.telefono || 'Sin teléfono'}
+                    {lead.ncotizacion ? ` · Cot. ${lead.ncotizacion}` : ''}
+                    {atrasada && dias > 0 ? ` · ${dias} día${dias !== 1 ? 's' : ''} de atraso` : ''}
+                  </span>
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  {String(lead.prioridad || '').toLowerCase() === 'alta' && <Badge tone="red">Alta</Badge>}
+                  <span style={{ color: 'var(--green-600)' }}><Icon name="phone" size={15} /></span>
+                </span>
+              </button>
+            )
+          })}
+
+          <div style={{ padding: '8px 16px 12px' }}>
+            <button type="button" onClick={onVerTodo} style={{ fontSize: 12, color: 'var(--green-600)', fontWeight: 600, background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>
+              Ver todo el CRM →
+            </button>
+          </div>
         </div>
       )}
-
-      {filas.map(({ lead, atrasada }) => {
-        const dias = diasDeAtraso(lead.fechaProximo)
-        return (
-          <button
-            key={lead.id}
-            type="button"
-            onClick={() => onAbrirLead(lead.id)}
-            style={{
-              width: '100%', display: 'grid', gridTemplateColumns: '4px minmax(0, 1fr) auto',
-              alignItems: 'center', gap: 12, padding: '10px 16px', border: 0,
-              borderBottom: '1px solid var(--border)', background: 'transparent',
-              cursor: 'pointer', textAlign: 'left', font: 'inherit',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--green-50)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-          >
-            <span style={{ alignSelf: 'stretch', borderRadius: 99, background: atrasada ? 'var(--red)' : 'var(--amber)' }} />
-            <span style={{ minWidth: 0 }}>
-              <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-1)', overflowWrap: 'anywhere' }}>
-                {lead.rsocial || lead.nombre || lead.rut || 'Cliente sin nombre'}
-              </span>
-              <span style={{ display: 'block', fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
-                {lead.telefono || 'Sin teléfono'}
-                {lead.ncotizacion ? ` · Cot. ${lead.ncotizacion}` : ''}
-                {atrasada && dias > 0 ? ` · ${dias} día${dias !== 1 ? 's' : ''} de atraso` : ''}
-              </span>
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              {String(lead.prioridad || '').toLowerCase() === 'alta' && <Badge tone="red">Alta</Badge>}
-              <span style={{ color: 'var(--green-600)' }}><Icon name="phone" size={15} /></span>
-            </span>
-          </button>
-        )
-      })}
-
-      <div style={{ padding: '8px 16px 12px' }}>
-        <button type="button" onClick={onVerTodo} style={{ fontSize: 12, color: 'var(--green-600)', fontWeight: 600, background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>
-          Ver todo el CRM →
-        </button>
-      </div>
     </section>
   )
 }
@@ -279,6 +412,7 @@ function TallerAgendaCard({ odts, isLoading, onAbrir, onVerTodo }) {
   return (
     <AgendaCard
       titulo="Qué trabajar primero"
+      storageKey="taller"
       badges={[
         ...(atrasadas > 0 ? [{ texto: `${atrasadas} atrasada${atrasadas !== 1 ? 's' : ''}`, tone: 'red' }] : []),
         ...(!isLoading && odts.length === 0 ? [{ texto: 'Sin OT en cola', tone: 'neutral' }] : []),
@@ -311,6 +445,7 @@ function EntregasAgendaCard({ entregas, isLoading, onAbrir, onVerTodo }) {
   return (
     <AgendaCard
       titulo="Qué despachar primero"
+      storageKey="entregas"
       badges={filas.length ? [{ texto: 'Las más antiguas', tone: 'neutral' }] : []}
       filas={filas}
       vacio="No hay entregas pendientes."
@@ -357,6 +492,7 @@ function RrhhAgendaCard({ operativo, isLoading, onAbrir, onVerTodo }) {
   return (
     <AgendaCard
       titulo="Personal que requiere gestión"
+      storageKey="rrhh"
       badges={[
         ...(contratos.length ? [{ texto: `${contratos.length} por vencer`, tone: 'amber' }] : []),
         ...(licencias.length ? [{ texto: `${licencias.length} con licencia`, tone: 'neutral' }] : []),
@@ -375,7 +511,23 @@ function RrhhAgendaCard({ operativo, isLoading, onAbrir, onVerTodo }) {
 // backend entrega este bloque unicamente a quien tiene `equipo_comercial`
 // (backend/src/routes/dashboard/stats.js), asi que aqui no hay que volver a
 // decidir quien lo ve: si llega, se muestra.
-function EquipoComercialCard({ equipo, isLoading, onVerDetalle }) {
+function EquipoComercialCard({ equipo, isLoading, onVerDetalle, defaultOpen = false }) {
+  const [open, setOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem('plastimar:dashboard:equipo-comercial:open')
+      if (saved !== null) return saved === 'true'
+    } catch {}
+    return defaultOpen
+  })
+
+  const toggle = () => {
+    setOpen(prev => {
+      const next = !prev
+      try { localStorage.setItem('plastimar:dashboard:equipo-comercial:open', String(next)) } catch {}
+      return next
+    })
+  }
+
   const vendedores = equipo?.vendedores ?? []
   const total = equipo?.total ?? 0
   const fmt = monto => monto.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })
@@ -383,57 +535,105 @@ function EquipoComercialCard({ equipo, isLoading, onVerDetalle }) {
   const mes = new Date().toLocaleDateString('es-CL', { month: 'long' })
 
   return (
-    <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 22, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--text-1)' }}>
-          Equipo comercial · {mes}
-        </h2>
-        <span style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
-            hoy {isLoading ? '…' : fmt(equipo?.totalHoy ?? 0)}
+    <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', transition: 'box-shadow 0.15s ease' }}>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        style={{
+          width: '100%',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          gap: 12,
+          flexWrap: 'wrap',
+          padding: '12px 16px',
+          border: 0,
+          borderBottom: open ? '1px solid var(--border)' : 'none',
+          background: '#fff',
+          cursor: 'pointer',
+          textAlign: 'left',
+          font: 'inherit',
+          transition: 'background 0.15s ease',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--green-50)'}
+        onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ color: 'var(--green-600)', display: 'inline-flex' }}>
+            <Icon name="users" size={16} />
           </span>
-          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 14, fontWeight: 700, color: 'var(--green-600)' }}>
-            {isLoading ? '…' : fmt(total)}
+          <h2 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--text-1)' }}>
+            Equipo comercial · {mes}
+          </h2>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+              hoy {isLoading ? '…' : fmt(equipo?.totalHoy ?? 0)}
+            </span>
+            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 14, fontWeight: 700, color: 'var(--green-600)' }}>
+              {isLoading ? '…' : fmt(total)}
+            </span>
           </span>
-        </span>
-      </div>
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 12,
+            fontWeight: 600,
+            color: 'var(--green-600)',
+          }}>
+            <span>{open ? 'Plegar' : 'Desplegar'}</span>
+            <span style={{
+              display: 'inline-flex',
+              transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s ease',
+            }}>
+              <Icon name="chevronDown" size={15} />
+            </span>
+          </span>
+        </div>
+      </button>
 
-      {!isLoading && vendedores.length === 0 && (
-        <div style={{ padding: '18px 16px', fontSize: 13, color: 'var(--text-3)' }}>
-          Todavía no hay ventas registradas este mes.
+      {open && (
+        <div>
+          {!isLoading && vendedores.length === 0 && (
+            <div style={{ padding: '18px 16px', fontSize: 13, color: 'var(--text-3)' }}>
+              Todavía no hay ventas registradas este mes.
+            </div>
+          )}
+
+          <div style={{ padding: '6px 8px' }}>
+            {vendedores.map(v => {
+              const pct = lider > 0 ? Math.round((v.total / lider) * 100) : 0
+              return (
+                <div key={v.vendedor} style={{ padding: '8px 8px 10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, marginBottom: 5 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', overflowWrap: 'anywhere' }}>{v.vendedor}</span>
+                    <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexShrink: 0 }}>
+                      {v.ordenesHoy > 0
+                        ? <Badge tone="green">hoy {fmt(v.hoy)}</Badge>
+                        : <Badge tone="neutral">sin venta hoy</Badge>}
+                      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{v.ordenes.toLocaleString('es-CL')} {v.ordenes === 1 ? 'venta' : 'ventas'}</span>
+                      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>{fmt(v.total)}</span>
+                    </span>
+                  </div>
+                  <div style={{ height: 6, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: pct + '%', background: 'var(--green-600)', borderRadius: 99, transition: 'width 0.4s ease' }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div style={{ padding: '8px 16px 12px' }}>
+            <button type="button" onClick={onVerDetalle} style={{ fontSize: 12, color: 'var(--green-600)', fontWeight: 600, background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>
+              Ver reporte comercial completo →
+            </button>
+          </div>
         </div>
       )}
-
-      <div style={{ padding: '6px 8px' }}>
-        {vendedores.map(v => {
-          const pct = lider > 0 ? Math.round((v.total / lider) * 100) : 0
-          return (
-            <div key={v.vendedor} style={{ padding: '8px 8px 10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, marginBottom: 5 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', overflowWrap: 'anywhere' }}>{v.vendedor}</span>
-                <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexShrink: 0 }}>
-                  {/* Lo que interesa al coordinador es quien esta parado hoy,
-                      no solo quien acumula mas en el mes. */}
-                  {v.ordenesHoy > 0
-                    ? <Badge tone="green">hoy {fmt(v.hoy)}</Badge>
-                    : <Badge tone="neutral">sin venta hoy</Badge>}
-                  <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{v.ordenes.toLocaleString('es-CL')} {v.ordenes === 1 ? 'venta' : 'ventas'}</span>
-                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>{fmt(v.total)}</span>
-                </span>
-              </div>
-              <div style={{ height: 6, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: pct + '%', background: 'var(--green-600)', borderRadius: 99, transition: 'width 0.4s ease' }} />
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      <div style={{ padding: '8px 16px 12px' }}>
-        <button type="button" onClick={onVerDetalle} style={{ fontSize: 12, color: 'var(--green-600)', fontWeight: 600, background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>
-          Ver reporte comercial completo →
-        </button>
-      </div>
     </section>
   )
 }
@@ -900,56 +1100,7 @@ export default function DashboardPage() {
           actions={<HeaderUtilityCluster />}
         />
 
-        {/* Solo para quien gestiona su propia cartera. El admin ve los leads de
-            TODA la empresa (applyScopeByRole en routes/crm), asi que titularlo
-            "a quien contactar hoy" le prometia una agenda personal que no es
-            suya; su vista del CRM es el KPI de pendientes. */}
-        {isComercial && (
-          <AgendaCrmCard
-            pendientes={pendientesCrm}
-            isLoading={!pendientesCrm}
-            onAbrirLead={id => navigate(`/crm/${id}/gestion`)}
-            onVerTodo={() => navigate('/crm')}
-          />
-        )}
-
-        {isTallerOperativo && stats?.tallerAgenda && (
-          <TallerAgendaCard
-            odts={stats.tallerAgenda}
-            isLoading={isLoading}
-            onAbrir={id => navigate(canWriteTaller ? `/taller/${id}/editar` : `/taller/${id}`)}
-            onVerTodo={() => navigate('/taller?pendiente=si')}
-          />
-        )}
-
-        {isBodegaOperativa && stats?.entregasAgenda && (
-          <EntregasAgendaCard
-            entregas={stats.entregasAgenda}
-            isLoading={isLoading}
-            onAbrir={id => navigate(`/ventas/${id}`)}
-            onVerTodo={() => navigate('/ventas?pendienteEntrega=1')}
-          />
-        )}
-
-        {isRrhhOperativo && (
-          <RrhhAgendaCard
-            operativo={rrhhOperativo}
-            isLoading={cargandoRrhh}
-            onAbrir={id => navigate(id ? `/rrhh/${id}` : '/rrhh')}
-            onVerTodo={() => navigate('/rrhh')}
-          />
-        )}
-
-        {show.equipoComercial && stats?.equipoComercial && (
-          <EquipoComercialCard
-            equipo={stats.equipoComercial}
-            isLoading={isLoading}
-            onVerDetalle={() => navigate('/reportes/gerenciales')}
-          />
-        )}
-
-        {/* Los numeros primero: son el estado del dia. Los modulos vienen
-            despues, porque son la respuesta a lo que esos numeros muestran. */}
+        {/* Los numeros primero: son el estado del dia. */}
         {kpis.length > 0 && (
           <section className="kpi-strip" style={{ margin: '16px 0 22px' }}>
             {kpis.map(kpi => (
@@ -966,7 +1117,7 @@ export default function DashboardPage() {
           </section>
         )}
 
-        {/* Cada modulo con lo que mas se abre dentro de el, en su misma columna. */}
+        {/* Cada modulo con lo que mas se abre dentro de el, en su misma columna (Botonera principal) */}
         <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(168px, 1fr))', gap: 12, alignItems: 'start' }}>
           {columnas.map(modulo => (
             <div key={modulo.route} style={{ display: 'grid', gap: 7, minWidth: 0 }}>
@@ -990,6 +1141,55 @@ export default function DashboardPage() {
             </div>
           ))}
         </section>
+
+        {/* Agendas y colas operativas de trabajo: situadas DEBAJO de los botones y desplegables */}
+        {(isComercial || (show.equipoComercial && stats?.equipoComercial) || (isTallerOperativo && stats?.tallerAgenda) || (isBodegaOperativa && stats?.entregasAgenda) || isRrhhOperativo) && (
+          <section style={{ marginTop: 26, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {isComercial && (
+              <AgendaCrmCard
+                pendientes={pendientesCrm}
+                isLoading={!pendientesCrm}
+                onAbrirLead={id => navigate(`/crm/${id}/gestion`)}
+                onVerTodo={() => navigate('/crm')}
+              />
+            )}
+
+            {show.equipoComercial && stats?.equipoComercial && (
+              <EquipoComercialCard
+                equipo={stats.equipoComercial}
+                isLoading={isLoading}
+                onVerDetalle={() => navigate('/reportes/gerenciales')}
+              />
+            )}
+
+            {isTallerOperativo && stats?.tallerAgenda && (
+              <TallerAgendaCard
+                odts={stats.tallerAgenda}
+                isLoading={isLoading}
+                onAbrir={id => navigate(canWriteTaller ? `/taller/${id}/editar` : `/taller/${id}`)}
+                onVerTodo={() => navigate('/taller?pendiente=si')}
+              />
+            )}
+
+            {isBodegaOperativa && stats?.entregasAgenda && (
+              <EntregasAgendaCard
+                entregas={stats.entregasAgenda}
+                isLoading={isLoading}
+                onAbrir={id => navigate(`/ventas/${id}`)}
+                onVerTodo={() => navigate('/ventas?pendienteEntrega=1')}
+              />
+            )}
+
+            {isRrhhOperativo && (
+              <RrhhAgendaCard
+                operativo={rrhhOperativo}
+                isLoading={cargandoRrhh}
+                onAbrir={id => navigate(id ? `/rrhh/${id}` : '/rrhh')}
+                onVerTodo={() => navigate('/rrhh')}
+              />
+            )}
+          </section>
+        )}
 
         <div style={{ marginTop: 28, paddingTop: 14, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Plastimar ERP · Sucursal 5 Oriente</span>
