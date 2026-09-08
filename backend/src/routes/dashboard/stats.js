@@ -25,7 +25,7 @@ export default async function dashboardStats(fastify) {
     const p = fastify.prisma
     const corte = await getPrimerRegistroInterno(p)
     const ordenOperacionalWhere = buildOrdenScopeWhere('operacional', corte)
-    const sucursalId = getUserSucursalId(request.user)
+    const sucursalId = request.user?.role === 'admin' || request.user?.role === 'coordinador_comercial' ? null : getUserSucursalId(request.user)
     const ahora = new Date()
     const en30dias = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1, 0, 0, 0, 0)
@@ -101,6 +101,9 @@ export default async function dashboardStats(fastify) {
         where: cobranzaScopeWhere,
         _sum: { monto: true },
         _count: { _all: true },
+      }).catch(err => {
+        fastify.log.warn({ err }, 'Error al calcular cobranzaStats en dashboard')
+        return []
       }),
       p.ordenCompraOnline.count({ where: { estadoCompra: { in: ['Pendiente', 'Activa', 'Nueva'] } } }).catch(() => 0),
       p.pagoProveedor.count({ where: { ...pagoProveedorScope, documento: 'Factura', estado: { in: ['Pendiente', 'No pagada', 'No pagado'] } } }).catch(() => 0),
