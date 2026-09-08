@@ -998,7 +998,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   }
 
   if (variant === 'page') {
-    const pageTitle = <span>Venta <span style={{ fontFamily: "'DM Mono',monospace", color: 'var(--green-700)' }}>#{v.id}</span></span>
+    const pageTitle = <span>Venta <span style={{ fontFamily: "'DM Mono',monospace", color: 'var(--green-700)' }}>#{v.nInterno || v.id}</span></span>
     const items = v.items || []
     const total = v.total || 0
     const abono = v.abono || 0
@@ -1307,7 +1307,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
     )
   }
 
-  const title = <span>Venta <span style={{ fontFamily: "'DM Mono',monospace", color: 'var(--green-700)' }}>#{v.id}</span></span>
+  const title = <span>Venta <span style={{ fontFamily: "'DM Mono',monospace", color: 'var(--green-700)' }}>#{v.nInterno || v.id}</span></span>
   const subtitle = `${fecha} Â· ${v.creadorNombre || 'Sin vendedor'}`
 
   return (
@@ -1354,7 +1354,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
       {confirmDelete && canDelete && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'oklch(0 0 0/0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#fff', borderRadius: 14, padding: '24px 28px', maxWidth: 360, width: '90%', boxShadow: '0 16px 48px oklch(0 0 0/0.2)' }}>
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, color: 'var(--text-1)' }}>¿Eliminar Venta #{v.id}?</div>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, color: 'var(--text-1)' }}>¿Eliminar Venta #{v.nInterno || v.id}?</div>
             <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 20 }}>
               Esta acción eliminará la venta y todos sus ítems asociados. No se puede deshacer.
             </div>

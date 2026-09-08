@@ -1142,7 +1142,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   const activarVenta = useActivarVenta()
 
   async function handleAnular() {
-    if (!await confirmDialog({ title: 'Confirmar', detail: `¿Anular venta #${id}? Quedará marcada como Nula y eliminada.`, tone: 'danger' })) return
+    if (!await confirmDialog({ title: 'Confirmar', detail: `¿Anular venta #${found?.nInterno || id}? Quedará marcada como Nula y eliminada.`, tone: 'danger' })) return
     anularVenta.mutate(Number(id), { onSuccess: () => navigate('/ventas'), onError: e => toast.error(e.response?.data?.error || 'Error') })
   }
   function handleActivar() {
@@ -1502,8 +1502,8 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       contentClassName={isLicitacionOrCompraAgil ? 'venta-workspace-public-flow' : 'venta-workspace-standard-flow'}
       stateLabel={isEdit ? 'Edicion en curso: se mantienen las reglas de trazabilidad de la venta.' : crmMode ? 'Cotizacion CRM: no crea una venta en Matriz hasta su aprobacion.' : 'Borrador sin guardar'}
       title={isEdit ? 'Editar Venta' : crmMode ? (isSimpleCrmQuote ? 'Cotización simple CRM' : `Cotización CRM · ${forceTipo}`) : 'Nueva Venta'}
-      subtitle={isEdit ? `Editando venta #${id}` : crmMode ? (isSimpleCrmQuote ? 'Prospección directa: se crea una venta solo al aprobarla.' : 'Ficha comercial completa vinculada al CRM.') : 'Crear nueva orden de venta'}
-      breadcrumb={['Inicio', 'Ventas', isEdit ? 'Editar Venta' : 'Nueva Venta']}
+      subtitle={isEdit ? `Editando venta #${found?.nInterno || id}` : crmMode ? (isSimpleCrmQuote ? 'Prospección directa: se crea una venta solo al aprobarla.' : 'Ficha comercial completa vinculada al CRM.') : 'Crear nueva orden de venta'}
+      breadcrumb={['Inicio', 'Ventas', isEdit ? `Venta #${found?.nInterno || id}` : 'Nueva Venta']}
       onSave={handleSave}
       saving={saving}
       total={totalCalculado}
