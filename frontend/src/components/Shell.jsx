@@ -3,6 +3,7 @@ import { TopBar } from './TopBar'
 import { AiChat } from './AiChat'
 import { Toaster, DialogHost } from './Feedback'
 import { PilotFeedbackWidget } from './PilotFeedbackWidget'
+import { HelpDrawer } from './ayuda/HelpDrawer'
 
 export function Shell() {
   // El inicio ocultaba la barra porque era una portada: se entraba a un modulo
@@ -14,6 +15,7 @@ export function Shell() {
       <main style={{ flex: 1, overflow: 'auto' }}>
         <Outlet />
       </main>
+      <HelpDrawer />
       <AiChat />
       <PilotFeedbackWidget />
       <Toaster />
