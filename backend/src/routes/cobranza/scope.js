@@ -8,9 +8,6 @@ export function mergeCobranzaWhere(...clauses) {
 }
 
 export async function buildCobranzaHistoricoScopeWhere(prisma, user) {
-  // Admin y coordinador comercial tienen visibilidad global de cobranza en toda la empresa.
-  if (!user || user.role === 'admin' || user.role === 'coordinador_comercial') return {}
-
   const sucursalId = getUserSucursalId(user)
   if (!sucursalId) return {}
 
@@ -37,6 +34,16 @@ export async function buildCobranzaHistoricoScopeWhere(prisma, user) {
     }
     return { id: { in: ids.slice(0, 10000) } }
   } catch {
-    return {}
+    const ordenes = await prisma.orden.findMany({
+      where: { sucursalId },
+      select: { id: true, nInterno: true },
+      take: 5000,
+    })
+    const ordenIds = ordenes.map(o => o.id).filter(Boolean)
+    const internos = [...new Set(ordenes.map(o => o.nInterno).filter(Boolean))]
+    const OR = []
+    if (ordenIds.length) OR.push({ ordenId: { in: ordenIds } })
+    if (internos.length) OR.push({ ordenId: null, interno: { in: internos } })
+    return OR.length ? { OR } : { id: -1 }
   }
 }
