@@ -30,14 +30,24 @@ function canonicalEnum(values, normalize) {
   return z.preprocess(value => (value === undefined ? value : normalize(value) ?? value), z.enum(values))
 }
 
+// Linea libre: productoId 0 es un item sin producto de catalogo. El sistema
+// anterior no tenia vinculo a producto (la linea guardaba solo codigo y nombre),
+// asi que 4.266 ordenes historicas traen lineas de envio, ajustes de total y
+// productos sin resolver. Se aceptan para no bloquear la edicion de esas ventas;
+// a cambio la linea debe traer su propio nombre, porque no hay producto de donde
+// heredarlo. El selector de la interfaz siempre asigna un producto real, de modo
+// que un 0 solo puede venir de una orden ya existente.
 const ItemSchema = z.object({
-  productoId: z.number().int(),
+  productoId: z.number().int().min(0),
   cantidad: z.number().int().min(1),
   precioUnitario: z.number().min(0),
   // Overrides a nivel de item (p. ej. licitacion): no modifican el producto base.
   nombre: z.string().optional().nullable(),
   descripcion: z.string().optional().nullable(),
   codigoInterno: z.string().optional().nullable(),
+}).refine(item => item.productoId > 0 || Boolean(item.nombre && item.nombre.trim()), {
+  message: 'Una linea sin producto de catalogo debe tener nombre',
+  path: ['nombre'],
 })
 
 const Schema = z.object({
@@ -53,7 +63,12 @@ const Schema = z.object({
   observaciones: z.string().optional(),
   descuentoPct: z.number().min(0).max(100).optional(),
   descuentoAutorizacionId: z.number().int().positive().optional(),
-  items: z.array(ItemSchema).min(1).refine(items => new Set(items.map(i => i.productoId)).size === items.length, {
+  // El control de duplicados aplica solo a productos de catalogo: varias lineas
+  // libres (envio, ajuste) comparten el 0 sin ser duplicados entre si.
+  items: z.array(ItemSchema).min(1).refine(items => {
+    const deCatalogo = items.map(i => i.productoId).filter(id => id > 0)
+    return new Set(deCatalogo).size === deCatalogo.length
+  }, {
     message: 'No se permiten productos duplicados en la venta',
   }).optional(),
   licitacionFecha: z.string().optional().nullable(),
@@ -262,7 +277,9 @@ export default async function updateVenta(fastify) {
         if (Number(current.abono || 0) > 0 || current.estadoPago !== 'No pagada' || activeCajaMovements > 0) {
           return reply.code(409).send({ error: 'No se pueden reemplazar items con pagos o documentos de caja registrados' })
         }
-        const productoIds = [...new Set(items.map(item => item.productoId))]
+        // Las lineas libres (productoId 0) no se validan contra el catalogo:
+        // no apuntan a ningun producto y su nombre ya viene en el propio item.
+        const productoIds = [...new Set(items.map(item => item.productoId).filter(id => id > 0))]
         const productos = await fastify.prisma.producto.findMany({
           where: { id: { in: productoIds } },
           select: { id: true, nombre: true, codigoInterno: true, activo: true },

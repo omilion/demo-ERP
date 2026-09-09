@@ -19,7 +19,7 @@
     "test:docker": "node --env-file=.env.test.docker ./node_modules/vitest/vitest.mjs run",
     "test:e2e:docker": "node scripts/run-e2e-sequential.mjs",
     "test:full": "vitest run",
-    "test:ci": "vitest run staging-smoke.test.js app.test.js rrhh-helpers.test.js despachos-traceability.test.js bitacora-taller.test.js cobranza-pagos-proveedores.test.js cobranza-cliente.test.js odts.test.js lifecycle-route-permissions.test.js odt-consumos.test.js odt-item-workflow.test.js odt-operations.test.js pasar-taller.test.js stock-critico-job.test.js descuentos.test.js gastos.test.js cargo-transporte.test.js ordenes-compra-web.test.js web-public.test.js uploads.test.js costeo-engine.test.js costeo-service.test.js costeo-routes.test.js costeo-excel-import.test.js cotizaciones-flow.test.js ventas.test.js",
+    "test:ci": "vitest run staging-smoke.test.js app.test.js rrhh-helpers.test.js despachos-traceability.test.js bitacora-taller.test.js cobranza-pagos-proveedores.test.js cobranza-cliente.test.js odts.test.js lifecycle-route-permissions.test.js odt-consumos.test.js odt-item-workflow.test.js odt-operations.test.js pasar-taller.test.js stock-critico-job.test.js descuentos.test.js gastos.test.js cargo-transporte.test.js ordenes-compra-web.test.js web-public.test.js uploads.test.js costeo-engine.test.js costeo-service.test.js costeo-routes.test.js costeo-excel-import.test.js cotizaciones-flow.test.js ventas.test.js rutas-500-regresion.test.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:docker": "node --env-file=.env.docker ./node_modules/prisma/build/index.js migrate deploy",
