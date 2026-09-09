@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { can } from '../../middleware/rbac.js'
 import { createFacturacionDb } from '../../facturacion/db.js'
 import { createFacturacionEngine } from '../../facturacion/engine.js'
 import { assertDteLineLimits, TIPOS_DTE, computeTotales, computeTotalesExportacion, IND_TRASLADO, TIPO_DESPACHO, isBoleta } from '../../facturacion/documento.js'

@@ -114,7 +114,9 @@ export default async function historialMaterialesRoutes(fastify) {
     const [itemsRaw, total, agg] = await Promise.all([
       fastify.prisma.tallerHistorialMaterial.findMany({
         where,
-        orderBy: [{ fecha: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
+        // `fecha` es obligatoria en el modelo, asi que Prisma 7 rechaza el
+        // ordenamiento de nulos aca ("Expected SortOrder, provided Object").
+        orderBy: [{ fecha: 'desc' }, { id: 'desc' }],
         take: pagination.limit,
         skip: pagination.skip,
       }),

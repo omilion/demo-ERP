@@ -378,12 +378,21 @@ function normalizeItems(items, { withOverrides = false } = {}) {
   }))
 }
 
+// Una linea puede no tener producto de catalogo (productoId 0). Viene asi desde
+// el sistema anterior, que guardaba la linea como texto: envios, ajustes de total
+// y productos que nunca se resolvieron. Bloquear el guardado por eso dejaba sin
+// editar ventas historicas completas. Se acepta la linea si trae nombre propio;
+// el selector de productos siempre asigna un id real, de modo que un 0 solo
+// aparece al abrir una venta que ya lo tenia.
 function validateItems(items) {
   if (items.length === 0) return 'Agrega al menos un producto a la venta'
 
   const normalized = normalizeItems(items)
-  const invalidIndex = normalized.findIndex(i =>
-    !Number.isInteger(i.productoId) || i.productoId <= 0 ||
+  const invalidIndex = normalized.findIndex((i, idx) =>
+    !Number.isInteger(i.productoId) || i.productoId < 0 ||
+    // El nombre se lee del item original: normalizeItems solo lo incluye cuando
+    // se piden overrides, y aca necesitamos saberlo siempre.
+    (i.productoId === 0 && !String(items[idx]?.nombre || '').trim()) ||
     !Number.isInteger(i.cantidad) || i.cantidad <= 0 ||
     !Number.isFinite(i.precioUnitario) || i.precioUnitario < 0
   )
@@ -1387,7 +1396,13 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       return
     }
 
-    const normalizedItems = shouldSendItems ? normalizeItems(items, { withOverrides: data.tipo === 'Licitación' }) : null
+    // Las lineas sin producto de catalogo necesitan enviar su nombre siempre:
+    // no hay producto del cual heredarlo. Por eso los overrides tambien viajan
+    // cuando la venta arrastra alguna linea libre, no solo en licitaciones.
+    const tieneLineaLibre = items.some(i => Number(i.productoId) === 0)
+    const normalizedItems = shouldSendItems
+      ? normalizeItems(items, { withOverrides: data.tipo === 'Licitación' || tieneLineaLibre })
+      : null
     const payload = {
       tipo: data.tipo, estado: data.estado,
       estadoEntrega: data.estadoEntrega,
