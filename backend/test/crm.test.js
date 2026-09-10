@@ -132,6 +132,26 @@ describe('CRM estado routes', () => {
     expect(response.ordenCompraOnline.items[0].producto).toEqual({ codigoInterno: 'SKU-1', fotoUrl: '/uploads/fotos_chicas/sku-1.jpg' })
   })
 
+  it('enriches commercial quote items and exposes the assigned executive for printing', async () => {
+    const prisma = {
+      crmRegistro: {
+        findFirst: vi.fn().mockResolvedValue({ id: 10 }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: 10, vendedorId: 9, ejecutiva: 'María Pérez',
+          cotizacionComercial: { vendedorId: 9, items: [{ id: 1, codigoInterno: 'SKU-1', cantidad: 2, precioUnitario: 1000 }] },
+          gestiones: [], estadosHistorial: [],
+        }),
+      },
+      producto: { findMany: vi.fn().mockResolvedValue([{ codigoInterno: 'SKU-1', fotoUrl: '/uploads/fotos_chicas/sku-1.jpg' }]) },
+      user: { findUnique: vi.fn().mockResolvedValue({ nombre: 'María Pérez', email: 'maria@plastimar.cl', cargo: 'Ejecutiva comercial', codigoVendedor: 'VP-09' }) },
+    }
+    const handlers = await buildCrmHandlers(prisma)
+    const response = await handlers['GET /:id']({ params: { id: '10' }, user: { role: 'admin' } }, replyStub())
+
+    expect(response.cotizacionComercial.items[0].producto).toEqual({ codigoInterno: 'SKU-1', fotoUrl: '/uploads/fotos_chicas/sku-1.jpg' })
+    expect(response.ejecutivo).toEqual({ nombre: 'María Pérez', email: 'maria@plastimar.cl', cargo: 'Ejecutiva comercial', codigoVendedor: 'VP-09' })
+  })
+
   it('updates estado as text instead of number', async () => {
     const updated = { id: 10, estado: '2' }
     const prisma = {

@@ -844,10 +844,17 @@ export default async function crmRoutes(fastify) {
       })
       const ocItems = item?.ordenCompraOnline?.items || []
       const licitacionItems = item?.cotizacionLicitacion?.items || []
-      const codes = [...new Set([...ocItems, ...licitacionItems].map(row => String(row.codigoInterno || '').trim()).filter(Boolean))]
-      const products = codes.length
-        ? await f.prisma.producto.findMany({ where: { codigoInterno: { in: codes } }, select: { codigoInterno: true, fotoUrl: true } })
-        : []
+      const commercialItems = item?.cotizacionComercial?.items || []
+      const codes = [...new Set([...ocItems, ...licitacionItems, ...commercialItems].map(row => String(row.codigoInterno || '').trim()).filter(Boolean))]
+      const ejecutivoId = Number(item?.cotizacionComercial?.vendedorId || item?.vendedorId) || null
+      const [products, ejecutivo] = await Promise.all([
+        codes.length
+          ? f.prisma.producto.findMany({ where: { codigoInterno: { in: codes } }, select: { codigoInterno: true, fotoUrl: true } })
+          : Promise.resolve([]),
+        ejecutivoId && f.prisma.user
+          ? f.prisma.user.findUnique({ where: { id: ejecutivoId }, select: { nombre: true, email: true, cargo: true, codigoVendedor: true } })
+          : Promise.resolve(null),
+      ])
       const productByCode = new Map(products.map(product => [product.codigoInterno, product]))
       const ordenCompraOnline = item?.ordenCompraOnline
         ? { ...item.ordenCompraOnline, totalCalculado: totalCotizado(item.ordenCompraOnline), items: ocItems.map(row => ({ ...row, producto: productByCode.get(row.codigoInterno) || null })) }
@@ -855,7 +862,18 @@ export default async function crmRoutes(fastify) {
       const cotizacionLicitacion = item?.cotizacionLicitacion
         ? { ...item.cotizacionLicitacion, items: licitacionItems.map(row => ({ ...row, producto: productByCode.get(row.codigoInterno) || null })) }
         : null
-      return { ...item, ...addSemaforo([item])[0], montoCotizado: montoCotizado(item), ordenCompraOnline, cotizacionLicitacion }
+      const cotizacionComercial = item?.cotizacionComercial
+        ? { ...item.cotizacionComercial, items: commercialItems.map(row => ({ ...row, producto: productByCode.get(row.codigoInterno) || null })) }
+        : null
+      return {
+        ...item,
+        ...addSemaforo([item])[0],
+        montoCotizado: montoCotizado(item),
+        ordenCompraOnline,
+        cotizacionLicitacion,
+        cotizacionComercial,
+        ejecutivo: ejecutivo || (item?.ejecutiva ? { nombre: item.ejecutiva } : null),
+      }
     })
 
     // PATCH /api/crm/:id
