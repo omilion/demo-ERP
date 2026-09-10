@@ -1128,7 +1128,7 @@ function SearchableSelect({ value, onChange, options, disabled, placeholder }) {
 export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQuoteMode = null }) {
   const navigate = useNavigate()
   const { id } = useParams()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [savingCrmQuote, setSavingCrmQuote] = useState(false)
   const isEdit = !!id
   const isSimpleCrmQuote = crmMode && crmQuoteMode === 'PROSPECCION_DIRECTA'
@@ -1167,6 +1167,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
 
   const tipoSolicitado = forceTipo || searchParams.get('tipo') || TIPO_DEFAULT
   const tipoInicial = !crmMode && !isEdit && ['Licitación', 'Compra Ágil'].includes(tipoSolicitado) ? TIPO_DEFAULT : tipoSolicitado
+  const tipoSolicitadoNormalizado = normalizeTipoVenta(searchParams.get('tipo')) || searchParams.get('tipo')
   const { data, set } = useForm({
     clienteId: '', clienteSucursalId: '', tipo: tipoInicial, estado: 'Activa',
     estadoPago: 'No pagada', estadoEntrega: 'Pendiente entrega',
@@ -1177,6 +1178,19 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
     marketplaceCanal: '', marketplaceComisionPct: '', marketplaceComisionMonto: '',
     regionDespacho: '', comunaDespacho: '', vendedorId: '',
   })
+
+  // Los enlaces antiguos de Nueva Venta que apuntaban a una licitación no
+  // deben abrir un borrador de orden. La licitación es una cotización CRM y
+  // necesita pasar por sus etapas comerciales antes de crear una venta.
+  useEffect(() => {
+    if (isEdit || crmMode) return
+    const crmPath = tipoSolicitadoNormalizado === 'Licitación'
+      ? '/crm/nueva/licitacion'
+      : tipoSolicitadoNormalizado === 'Compra Ágil'
+        ? '/crm/nueva/compra-agil'
+        : null
+    if (crmPath) navigate(crmPath, { replace: true })
+  }, [isEdit, crmMode, navigate, tipoSolicitadoNormalizado])
   const selectedClienteId = data.clienteId ? Number(data.clienteId) : null
   const { data: sucursalesCliente = [] } = useClienteSucursales(selectedClienteId)
 
