@@ -75,6 +75,10 @@ async function captureEvidence() {
     filter: node => !(node instanceof Element && node.dataset?.feedbackIgnore !== undefined),
     onclone: redactClone,
     preserveScroll: true,
+    // Las hojas de Google Fonts son cross-origin: la librería ya omite esas
+    // reglas de forma segura, pero sin esta opción deja un falso error en la
+    // consola en cada captura. La evidencia sigue siendo utilizable.
+    ignoreCSSRuleErrors: true,
   })
 }
 

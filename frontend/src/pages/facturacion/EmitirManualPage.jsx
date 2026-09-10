@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PageHeader, Btn } from '../../components/shared'
 import { FormField, Input } from '../../components/forms'
 import { EmitirDteModal } from '../../components/facturacion/DteModals'
@@ -80,9 +80,14 @@ function VentaBloqueada({ venta, onClear, guia }) {
 
 export default function EmitirManualPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const contextualTipoDte = Number(searchParams.get('tipoDte'))
+  const contextualOrdenId = Number(searchParams.get('ordenId'))
+  const contextualDocumentoId = Number(searchParams.get('documentoId'))
+  const hasContextualNote = [56, 61].includes(contextualTipoDte) && Number.isInteger(contextualOrdenId) && contextualOrdenId > 0
   const createVenta = useCreateVenta()
   const crearVentaDesdeLicitacion = useCrearVentaDesdeLicitacion()
-  const [tipoDte, setTipoDte] = useState(33)
+  const [tipoDte, setTipoDte] = useState(hasContextualNote ? contextualTipoDte : 33)
   const [ventaId, setVentaId] = useState(null)
   const [ventaCreada, setVentaCreada] = useState(null)
   const [sinVenta, setSinVenta] = useState(false)
@@ -155,11 +160,16 @@ export default function EmitirManualPage() {
       <div role="group" aria-label="Tipo de documento" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: 8 }}>
         {TIPOS_EMISION.map(tipo => <button key={tipo.id} type="button" onClick={() => seleccionarTipo(tipo.id)} aria-pressed={tipo.id === tipoDte} style={{ padding: '11px 12px', borderRadius: 8, textAlign: 'left', cursor: 'pointer', border: tipo.id === tipoDte ? '2px solid var(--blue)' : '1px solid var(--border)', background: tipo.id === tipoDte ? 'var(--blue-50)' : '#fff', color: 'var(--text)' }}><span style={{ display: 'block', fontWeight: 700, fontSize: 13 }}>{tipo.id} · {TIPOS_DTE[tipo.id]}</span><span style={{ display: 'block', marginTop: 3, color: 'var(--text-2)', fontSize: 11 }}>{tipo.ayuda}</span></button>)}
       </div>
-      {esNota && <div style={infoStyle}><strong>Nota de crédito o débito:</strong> busca el DTE original por RUT o documento, revisa las operaciones permitidas y previsualiza la nota antes de emitirla al SII.</div>}
+      {esNota && <div style={infoStyle}><strong>Nota de crédito o débito:</strong> {hasContextualNote ? `la venta #${contextualOrdenId} y su documento tributario válido se cargaron como referencia.` : 'busca el DTE original por RUT o documento, revisa las operaciones permitidas y previsualiza la nota antes de emitirla al SII.'}</div>}
       {esGuia && <div style={infoStyle}><strong>Guía de despacho:</strong> una venta encontrada se prepara desde Despachos, donde ya existe el control de cantidades por enviar.</div>}
     </section>
 
-    {esNota && <NotaDteFlow tipoDte={tipoDte} onSuccess={({ emitido, documento }) => { toast.success(`DTE emitido${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`); navigate('/facturacion/documentos') }} />}
+    {esNota && <NotaDteFlow
+      tipoDte={tipoDte}
+      ordenId={hasContextualNote ? contextualOrdenId : null}
+      preselectedDocumentId={hasContextualNote && tipoDte === contextualTipoDte && Number.isInteger(contextualDocumentoId) && contextualDocumentoId > 0 ? contextualDocumentoId : null}
+      onSuccess={({ emitido, documento }) => { toast.success(`DTE emitido${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`); navigate('/facturacion/documentos') }}
+    />}
 
     {permiteVenta && !ventaVinculada && !sinVenta && <section style={cardStyle}>
       <div style={stepTitle}>2. Buscar venta</div>

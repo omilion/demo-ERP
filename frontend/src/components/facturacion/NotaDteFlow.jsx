@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Badge, Btn } from '../shared'
 import { useDocumentosReferenciables } from '../../api/facturacion'
 import { TIPOS_DTE } from '../../utils/facturacion'
@@ -7,23 +7,35 @@ import { NotaDteModal } from './DteModals'
 const money = value => '$' + Math.round(Number(value) || 0).toLocaleString('es-CL')
 const dateFmt = value => value ? new Date(value).toLocaleDateString('es-CL') : '—'
 
-export function NotaDteFlow({ tipoDte, onSuccess }) {
+export function NotaDteFlow({ tipoDte, ordenId = null, preselectedDocumentId = null, onSuccess }) {
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
   const [selected, setSelected] = useState(null)
+  const appliedPreselection = useRef(null)
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(search.trim()), 300)
     return () => clearTimeout(timer)
   }, [search])
-  const { data, isLoading, isFetching, error } = useDocumentosReferenciables({ tipoNota: tipoDte, search: debounced })
+  const { data, isLoading, isFetching, error } = useDocumentosReferenciables({ tipoNota: tipoDte, search: debounced, ordenId })
   const documentos = data?.documentos || []
   const nombreNota = tipoDte === 61 ? 'Nota de Crédito' : 'Nota de Débito'
+
+  useEffect(() => {
+    const marker = `${tipoDte}:${preselectedDocumentId || ''}`
+    if (!preselectedDocumentId || appliedPreselection.current === marker) return
+    const documento = documentos.find(item => Number(item.id) === Number(preselectedDocumentId))
+    if (!documento) return
+    appliedPreselection.current = marker
+    setSelected(documento)
+  }, [documentos, preselectedDocumentId, tipoDte])
 
   return <section style={cardStyle}>
     <div style={stepTitle}>2. Buscar el documento original</div>
     <div style={{ marginBottom: 6, fontWeight: 700 }}>{nombreNota}: documentos disponibles</div>
     <div style={{ color: 'var(--text-2)', fontSize: 13, marginBottom: 14 }}>
-      Busca directamente por RUT, razón social, folio, ID del DTE o N° de venta. Sólo se muestran documentos emitidos que todavía admiten esta operación.
+      {ordenId
+        ? <>Venta #{ordenId} preseleccionada. Sólo se muestran sus documentos emitidos que todavía admiten esta operación.</>
+        : <>Busca directamente por RUT, razón social, folio, ID del DTE o N° de venta. Sólo se muestran documentos emitidos que todavía admiten esta operación.</>}
     </div>
     <div style={{ position: 'relative', marginBottom: 14 }}>
       <input autoFocus value={search} onChange={event => setSearch(event.target.value)} placeholder="Ej: 76.354.051-0, folio 128 o venta 450" aria-label="Buscar documento por RUT o folio" style={inputStyle} />

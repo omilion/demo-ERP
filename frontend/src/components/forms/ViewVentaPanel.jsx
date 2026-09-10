@@ -5,7 +5,7 @@ import { Badge, Btn, Icon } from '../shared'
 import { ViewPanel, FormDivider } from './index'
 import { useVenta, useDeleteVenta, useForzarTaller, useUpdateVenta, useAnularVenta, useActivarVenta, useUpdateItemEntregados, useVentaDespachoHistorial } from '../../api/ventas'
 import { useProductos } from '../../api/productos'
-import { useDocumentos, useReenviarDocumento } from '../../api/facturacion'
+import { useDocumentos, useDocumentosReferenciables, useReenviarDocumento } from '../../api/facturacion'
 import { EmitirDteModal, NotaDteModal } from '../facturacion/DteModals'
 import { hasActiveSalesDte, TIPOS_DTE } from '../../utils/facturacion'
 import { downloadDteXml, openDtePdf } from '../../utils/dteDocuments'
@@ -781,7 +781,7 @@ function opBtnStyle(color) {
   }
 }
 
-function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, canEmitirDte, onEmitirDte, canDelete, canManageInternalCreditNotes, internalCreditNoteBlocked, onCreateInternalCreditNote, canRegistrarPago, canCobrar, saldo, onCobrar }) {
+function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, canEmitirDte, onEmitirDte, canEmitirNotaFiscal, onEmitirNotaFiscal, canDelete, canManageInternalCreditNotes, internalCreditNoteBlocked, onCreateInternalCreditNote, canRegistrarPago, canCobrar, saldo, onCobrar }) {
   const navigate = useNavigate()
   const anularVenta = useAnularVenta()
   const activarVenta = useActivarVenta()
@@ -861,6 +861,11 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, ca
       <button onClick={abrirNotaVenta} style={opBtnStyle('var(--blue)')}>
         <Icon name="printer" size={14} /> Nota de Venta
       </button>
+      {canEmitirNotaFiscal && (
+        <button onClick={onEmitirNotaFiscal} style={opBtnStyle('var(--amber)')}>
+          <Icon name="fileText" size={14} /> Emitir NC/ND
+        </button>
+      )}
       {canManageInternalCreditNotes && (
         <button
           onClick={onCreateInternalCreditNote}
@@ -969,12 +974,30 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const documentosCount = pagos.filter(isReferencialPago).length
   const dtes = documentosDteQuery.data?.documentos || []
   const canWriteFacturacion = can(user, 'facturacion', 'write')
+  const notasCreditoQuery = useDocumentosReferenciables(
+    { tipoNota: 61, ordenId: venta.id },
+    { enabled: canWriteFacturacion && Boolean(venta?.id) },
+  )
   const canWriteDespacho = can(user, 'despacho', 'write')
   const canRegistrarPago = can(user, 'cobranza', 'write') && can(user, 'caja', 'read') && can(user, 'caja', 'write')
   const canCobrar = collectibleDocuments({ pagos }).length > 0
   const ventaYaEmitida = hasActiveSalesDte(dtes)
+  // Sólo un DTE tributario vigente (factura/boleta) habilita esta acción. El
+  // backend vuelve a evaluar la elegibilidad, incluyendo saldo y NC previas.
+  const documentoParaNota = (notasCreditoQuery.data?.documentos || [])
+    .find(documento => [33, 39].includes(Number(documento.tipoDte))) || null
+  const puedeEmitirNotaFiscal = canWriteFacturacion && !v.eliminada && Boolean(documentoParaNota)
   const canManageInternalCreditNotes = canWrite || canWriteFacturacion
   const onCobrar = () => navigate(`/cobranza?ventaId=${v.id}`)
+  const onEmitirNotaFiscal = () => {
+    if (!documentoParaNota) return
+    const params = new URLSearchParams({
+      tipoDte: '61',
+      ordenId: String(v.id),
+      documentoId: String(documentoParaNota.id),
+    })
+    navigate(`/facturacion/emitir?${params.toString()}`)
+  }
   const fecha = v.createdAt
     ? new Date(v.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—'
@@ -1081,6 +1104,8 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                 canWriteDespacho={canWriteDespacho}
                 canEmitirDte={canWriteFacturacion && !ventaYaEmitida}
                 onEmitirDte={() => setEmitirDte(true)}
+                canEmitirNotaFiscal={puedeEmitirNotaFiscal}
+                onEmitirNotaFiscal={onEmitirNotaFiscal}
                 canDelete={canDelete}
                 canManageInternalCreditNotes={canManageInternalCreditNotes}
                 internalCreditNoteBlocked={ventaYaEmitida}

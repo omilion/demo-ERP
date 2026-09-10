@@ -465,6 +465,11 @@ export default async function facturacionRoutes(fastify) {
   fastify.get('/documentos-referenciables', readAuth, async (request, reply) => {
     const tipoNota = Number(request.query?.tipoNota)
     if (![56, 61].includes(tipoNota)) return reply.code(400).send({ error: 'Indica tipoNota 56 o 61.' })
+    const rawOrdenId = request.query?.ordenId
+    const ordenId = rawOrdenId === undefined || rawOrdenId === '' ? null : Number(rawOrdenId)
+    if (ordenId !== null && (!Number.isInteger(ordenId) || ordenId <= 0)) {
+      return reply.code(400).send({ error: 'ordenId debe ser un entero positivo.' })
+    }
     const search = String(request.query?.search || '').trim().toLowerCase()
     const compactSearch = search.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^0-9a-z]/g, '')
     const todos = await db.documentos.list()
@@ -472,6 +477,7 @@ export default async function facturacionRoutes(fastify) {
       .map(documento => ({ documento, evaluacion: evaluarDocumentoParaNota({ documento, tipoNota, notas: todos }) }))
       .filter(({ evaluacion }) => evaluacion.elegible)
       .filter(({ documento }) => {
+        if (ordenId !== null && Number(documento.ordenId) !== ordenId) return false
         if (!compactSearch) return true
         const tipoNombre = TIPOS_DTE[documento.tipoDte] || ''
         const receptor = documento.receptor || {}

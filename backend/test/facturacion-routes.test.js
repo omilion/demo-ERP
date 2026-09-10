@@ -287,4 +287,42 @@ describe('routes /api/facturacion', () => {
       headers: { authorization: `Bearer ${token}` }
     })
   })
+
+  it('GET /api/facturacion/documentos-referenciables limita una nota a su venta', async () => {
+    const orderId = 987654322
+    const created = await app.inject({
+      method: 'POST', url: '/api/facturacion/documentos',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        tipoDte: 33,
+        ordenId: orderId,
+        receptor: { rut: '11111111-1', razonSocial: 'Cliente Prueba' },
+        items: [{ nombre: 'Tela acabada', cantidad: 1, precio: 1000 }],
+        extra: { qaMarker: true },
+      },
+    })
+    expect(created.statusCode).toBe(201)
+    const document = JSON.parse(created.body)
+    await app.prisma.factDocumento.update({
+      where: { id: document.id },
+      data: { estado: 'emitido', folio: 910001 },
+    })
+
+    const filtered = await app.inject({
+      method: 'GET',
+      url: `/api/facturacion/documentos-referenciables?tipoNota=61&ordenId=${orderId}`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(filtered.statusCode, filtered.body).toBe(200)
+    const { documentos } = JSON.parse(filtered.body)
+    expect(documentos.some(item => item.id === document.id)).toBe(true)
+    expect(documentos.every(item => item.ordenId === orderId)).toBe(true)
+
+    const invalid = await app.inject({
+      method: 'GET',
+      url: '/api/facturacion/documentos-referenciables?tipoNota=61&ordenId=no-es-id',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(invalid.statusCode).toBe(400)
+  })
 })
