@@ -21,12 +21,12 @@ import api from '../../api/client'
 
 const DOCUMENTOS_VENTA = ['Factura Plast', 'Factura Laura', 'Boleta Electronica', 'NC Plast', 'NC Laura', 'NC Inter Plast', 'ND Plast', 'ND Laura']
 
-// Trato Directo es venta directa como Convenio Marco: llega la OC sin pasar por
-// el CRM, asi que se puede crear desde aca.
+// Trato Directo es una venta directa. Convenio Marco, igual que Licitación y
+// Compra Ágil, se cotiza y gestiona primero desde CRM.
 const TIPOS = ['Licitación', 'Compra Ágil', 'Convenio Marco', 'Trato Directo', 'Marketplace', 'Venta Web', 'Venta Sala']
 // Las cotizaciones de licitación se originan en CRM. Matriz conserva sólo
 // tipos de venta directa para impedir crear registros paralelos al flujo CRM.
-const TIPOS_VENTA_DIRECTA = TIPOS.filter(tipo => !['Licitación', 'Compra Ágil'].includes(tipo))
+const TIPOS_VENTA_DIRECTA = TIPOS.filter(tipo => !['Licitación', 'Compra Ágil', 'Convenio Marco'].includes(tipo))
 const MARKETPLACE_CANALES = ['París', 'Mercado Libre', 'Falabella']
 const TIPO_DEFAULT = 'Venta Sala'
 
@@ -1166,7 +1166,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   }
 
   const tipoSolicitado = forceTipo || searchParams.get('tipo') || TIPO_DEFAULT
-  const tipoInicial = !crmMode && !isEdit && ['Licitación', 'Compra Ágil'].includes(tipoSolicitado) ? TIPO_DEFAULT : tipoSolicitado
+  const tipoInicial = !crmMode && !isEdit && ['Licitación', 'Compra Ágil', 'Convenio Marco'].includes(tipoSolicitado) ? TIPO_DEFAULT : tipoSolicitado
   const tipoSolicitadoNormalizado = normalizeTipoVenta(searchParams.get('tipo')) || searchParams.get('tipo')
   const { data, set } = useForm({
     clienteId: '', clienteSucursalId: '', tipo: tipoInicial, estado: 'Activa',
@@ -1188,6 +1188,8 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       ? '/crm/nueva/licitacion'
       : tipoSolicitadoNormalizado === 'Compra Ágil'
         ? '/crm/nueva/compra-agil'
+        : tipoSolicitadoNormalizado === 'Convenio Marco'
+          ? '/crm/nueva/convenio-marco'
         : null
     if (crmPath) navigate(crmPath, { replace: true })
   }, [isEdit, crmMode, navigate, tipoSolicitadoNormalizado])
@@ -1329,6 +1331,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
     { value: 'Cotización simple CRM', label: 'Cotización simple CRM' },
     { value: 'Licitación', label: 'Licitación' },
     { value: 'Compra Ágil', label: 'Compra Ágil' },
+    { value: 'Convenio Marco', label: 'Convenio Marco' },
   ].filter(option => puedeUsarTipo(option.value === 'Cotización simple CRM' ? 'Normal' : option.value))
   const currentCrmValue = isSimpleCrmQuote
     ? 'Cotización simple CRM'
@@ -1344,6 +1347,8 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         if (forceTipo !== 'Licitación') navigate(`/crm/nueva/licitacion${query}`)
       } else if (nextTipo === 'Compra Ágil') {
         if (forceTipo !== 'Compra Ágil') navigate(`/crm/nueva/compra-agil${query}`)
+      } else if (nextTipo === 'Convenio Marco') {
+        if (forceTipo !== 'Convenio Marco') navigate(`/crm/nueva/convenio-marco${query}`)
       }
       return
     }
@@ -1370,9 +1375,9 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   const saving = createVenta.isPending || updateVenta.isPending || savingCrmQuote
 
   function handleSave() {
-    if (!crmMode && !isEdit && ['Licitación', 'Compra Ágil'].includes(data.tipo)) {
-      toast.warning('Las licitaciones y compras ágiles se crean desde CRM')
-      navigate(data.tipo === 'Compra Ágil' ? '/crm/nueva/compra-agil' : '/crm/nueva/licitacion')
+    if (!crmMode && !isEdit && ['Licitación', 'Compra Ágil', 'Convenio Marco'].includes(data.tipo)) {
+      toast.warning('Licitaciones, compras ágiles y convenios marco se crean desde CRM')
+      navigate(data.tipo === 'Compra Ágil' ? '/crm/nueva/compra-agil' : data.tipo === 'Convenio Marco' ? '/crm/nueva/convenio-marco' : '/crm/nueva/licitacion')
       return
     }
     const shouldSendItems = !isEdit || !itemsLocked
@@ -1382,7 +1387,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       toast.warning('Selecciona un cliente')
       return
     }
-    if (isConvenioMarco(data.tipo) && !String(data.licitacion || '').replace(/\s+/g, '').trim()) {
+    if (!crmMode && isConvenioMarco(data.tipo) && !String(data.licitacion || '').replace(/\s+/g, '').trim()) {
       toast.warning('Ingresa la OC de Convenio Marco')
       return
     }
@@ -1663,7 +1668,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
 
       {isConvenioMarco(data.tipo) && (
         <VentaWorkspaceSection className="venta-workspace-special-details" title="Detalles del Convenio Marco">
-          <FormField label="N OC Convenio Marco (Requerido)" hint="Obligatorio y no duplicable">
+          <FormField label={`N° OC Convenio Marco${crmMode ? ' (opcional)' : ' (requerido)'}`} hint={crmMode ? 'Puedes registrarla al recibir la adjudicación.' : 'Obligatorio y no duplicable'}>
             <Input value={data.licitacion || ''} onChange={v => set('licitacion', sanitizeOrdenCompra(v, { live: true }))} placeholder="Numero OC" />
           </FormField>
         </VentaWorkspaceSection>

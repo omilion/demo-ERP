@@ -96,6 +96,7 @@ const ORIGENES_CRM = Object.freeze({
   OC_ONLINE: ['OC_ONLINE_LEGACY'],
   LICITACION: ['LICITACION_LEGACY', 'CRM_LICITACION'],
   COMPRA_AGIL: ['COMPRA_AGIL', 'CRM_COMPRA_AGIL'],
+  CONVENIO_MARCO: ['CRM_CONVENIO_MARCO'],
   COTIZACION_SIMPLE: ['CRM_COTIZACION_SIMPLE'],
 })
 
@@ -169,8 +170,9 @@ export default async function crmRoutes(fastify) {
       const tipo = String(b.tipo || '').trim()
       const esCotizacionSimple = String(b.crmQuoteMode || '').toUpperCase() === 'PROSPECCION_DIRECTA'
       const esCompraAgil = String(b.crmQuoteMode || '').toUpperCase() === 'COMPRA_AGIL' || tipo === 'Compra Ágil'
-      const canalVenta = esCotizacionSimple ? 'PROSPECCION_DIRECTA' : esCompraAgil ? 'COMPRA_AGIL' : tipo === 'Licitación' ? 'LICITACION' : null
-      const tipoVenta = esCotizacionSimple ? 'COTIZACION_SIMPLE' : esCompraAgil ? 'COMPRA_AGIL' : canalVenta === 'LICITACION' ? 'LICITACION' : null
+      const esConvenioMarco = String(b.crmQuoteMode || '').toUpperCase() === 'CONVENIO_MARCO' || tipo === 'Convenio Marco'
+      const canalVenta = esCotizacionSimple ? 'PROSPECCION_DIRECTA' : esCompraAgil ? 'COMPRA_AGIL' : esConvenioMarco ? 'CONVENIO_MARCO' : tipo === 'Licitación' ? 'LICITACION' : null
+      const tipoVenta = esCotizacionSimple ? 'COTIZACION_SIMPLE' : esCompraAgil ? 'COMPRA_AGIL' : esConvenioMarco ? 'CONVENIO_MARCO' : canalVenta === 'LICITACION' ? 'LICITACION' : null
       const clienteId = Number(b.clienteId)
       const crmId = b.crmId === undefined || b.crmId === null || b.crmId === '' ? null : Number(b.crmId)
       const descuentoPct = Number(b.descuentoPct || 0)
@@ -258,7 +260,7 @@ export default async function crmRoutes(fastify) {
               etapaComercial: CRM_ETAPAS.COTIZACION_ENVIADA,
               canalVenta,
               tipoVenta,
-              origenDato: esCotizacionSimple ? 'CRM_COTIZACION_SIMPLE' : 'CRM_LICITACION',
+              origenDato: esCotizacionSimple ? 'CRM_COTIZACION_SIMPLE' : esConvenioMarco ? 'CRM_CONVENIO_MARCO' : 'CRM_LICITACION',
               estadoCambiadoAt: now,
               ultimaGestionAt: now,
               clienteId: cliente.id,
@@ -281,7 +283,7 @@ export default async function crmRoutes(fastify) {
             etapaComercial: CRM_ETAPAS.COTIZACION_ENVIADA,
             canalVenta,
             tipoVenta,
-            origenDato: esCotizacionSimple ? 'CRM_COTIZACION_SIMPLE' : 'CRM_LICITACION',
+            origenDato: esCotizacionSimple ? 'CRM_COTIZACION_SIMPLE' : esConvenioMarco ? 'CRM_CONVENIO_MARCO' : 'CRM_LICITACION',
             estadoCambiadoAt: now,
             ultimaGestionAt: now,
             clienteId: cliente.id,

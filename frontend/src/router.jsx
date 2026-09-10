@@ -159,6 +159,7 @@ export const router = createBrowserRouter([
       { path: 'crm/nueva', element: <Navigate to="/crm" replace /> },
       { path: 'crm/nueva/licitacion', element: protect(<VentasFormPage crmMode forceTipo="Licitación" />, { module: 'ventas', permission: 'write' }) },
       { path: 'crm/nueva/compra-agil', element: protect(<VentasFormPage crmMode forceTipo="Compra Ágil" crmQuoteMode="COMPRA_AGIL" />, { module: 'ventas', permission: 'write' }) },
+      { path: 'crm/nueva/convenio-marco', element: protect(<VentasFormPage crmMode forceTipo="Convenio Marco" crmQuoteMode="CONVENIO_MARCO" />, { module: 'ventas', permission: 'write' }) },
       { path: 'crm/nueva/cotizacion-simple', element: protect(<VentasFormPage crmMode forceTipo="Venta Web" crmQuoteMode="PROSPECCION_DIRECTA" />, { module: 'ventas', permission: 'write' }) },
       { path: 'crm/:id/gestion', element: protect(<CrmGestionDetallePage />, { module: 'ventas' }) },
       { path: 'crm/:id/cotizacion/imprimir', element: protect(<CrmCotizacionPrintPage />, { module: 'ventas' }) },

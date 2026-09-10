@@ -14,12 +14,13 @@ export const CRM_RESULTADOS = Object.freeze({
 
 // Contrato para oportunidades nuevas. Sala y Marketplace son ventas operativas
 // directas: se conservan al leer datos antiguos, pero no forman parte del CRM.
-export const CRM_CANALES = Object.freeze(['WEB', 'LICITACION', 'COMPRA_AGIL', 'PROSPECCION_DIRECTA'])
-export const CRM_TIPOS_VENTA = Object.freeze(['VENTA_WEB', 'LICITACION', 'COMPRA_AGIL', 'COTIZACION_SIMPLE'])
+export const CRM_CANALES = Object.freeze(['WEB', 'LICITACION', 'COMPRA_AGIL', 'CONVENIO_MARCO', 'PROSPECCION_DIRECTA'])
+export const CRM_TIPOS_VENTA = Object.freeze(['VENTA_WEB', 'LICITACION', 'COMPRA_AGIL', 'CONVENIO_MARCO', 'COTIZACION_SIMPLE'])
 export const CRM_FLUJOS_COMERCIALES = Object.freeze([
   { canal: 'WEB', tipoVenta: 'VENTA_WEB', etiqueta: 'Venta Web', origen: 'OC_ONLINE' },
   { canal: 'LICITACION', tipoVenta: 'LICITACION', etiqueta: 'Licitación', origen: 'LICITACIONES' },
   { canal: 'COMPRA_AGIL', tipoVenta: 'COMPRA_AGIL', etiqueta: 'Compra Ágil', origen: 'MERCADO_PUBLICO' },
+  { canal: 'CONVENIO_MARCO', tipoVenta: 'CONVENIO_MARCO', etiqueta: 'Convenio Marco', origen: 'CRM' },
   { canal: 'PROSPECCION_DIRECTA', tipoVenta: 'COTIZACION_SIMPLE', etiqueta: 'Cotización simple', origen: 'CRM' },
 ])
 
@@ -30,6 +31,7 @@ export const CRM_ORIGENES = Object.freeze([
   { id: 'OC_ONLINE', label: 'OC Online' },
   { id: 'LICITACION', label: 'Licitación' },
   { id: 'COMPRA_AGIL', label: 'Compra Ágil' },
+  { id: 'CONVENIO_MARCO', label: 'Convenio Marco' },
   { id: 'COTIZACION_SIMPLE', label: 'Cotización simple' },
 ])
 

@@ -148,14 +148,13 @@ export default async function createVenta(fastify) {
       if (crm.esHistorico) return reply.code(409).send({ error: 'No se puede crear una venta ERP desde un registro CRM historico' })
       if (crm.ordenId) return reply.code(409).send({ error: 'La oportunidad CRM ya tiene una orden vinculada' })
       if (request.user.role !== 'admin' && crm.vendedorId !== request.user.id) return reply.code(403).send({ error: 'No tienes acceso a esta oportunidad CRM' })
-      // Inverso de CANAL_TO_TIPO_ORDEN. Tenia una entrada muerta -CONVENIO_MARCO
-      // no es un canal del CRM, ver CRM_CANALES- y le faltaban COMPRA_AGIL y
-      // PROSPECCION_DIRECTA, que si lo son: con eso, crear la venta desde una
-      // oportunidad de compra agil respondia siempre 400.
+      // Inverso de CANAL_TO_TIPO_ORDEN: cada tipo comercial creado desde CRM
+      // debe corresponder al canal de la oportunidad para no mezclar flujos.
       const expectedChannel = {
         'Venta Web': 'WEB',
         'Licitación': 'LICITACION',
         'Compra Ágil': 'COMPRA_AGIL',
+        'Convenio Marco': 'CONVENIO_MARCO',
         Normal: 'PROSPECCION_DIRECTA',
       }[rest.tipo]
       if (!expectedChannel || crm.canalVenta !== expectedChannel) return reply.code(400).send({ error: 'El tipo de venta no corresponde al canal de la oportunidad CRM' })

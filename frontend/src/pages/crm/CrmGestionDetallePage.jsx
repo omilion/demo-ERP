@@ -152,7 +152,10 @@ export default function CrmGestionDetallePage() {
     if (!printWindow) toast.warning('Habilita las ventanas emergentes para abrir la cotización en PDF.')
   }
   const quoteAction = !crm.esHistorico && !crm.ordenId && !crm.cotizacionComercial
-    ? ({ LICITACION: { label: 'Crear cotizacion de Licitacion', path: `/crm/nueva/licitacion?crmId=${crm.id}` } }[crm.canalVenta] || null)
+    ? ({
+        LICITACION: { label: 'Crear cotizacion de Licitacion', path: `/crm/nueva/licitacion?crmId=${crm.id}` },
+        CONVENIO_MARCO: { label: 'Crear cotizacion de Convenio Marco', path: `/crm/nueva/convenio-marco?crmId=${crm.id}` },
+      }[crm.canalVenta] || null)
     : null
   const save = async () => { try { await patch.mutateAsync({ id: crm.id, ...form }); toast.success('Datos CRM guardados') } catch (error) { toast.error(error.response?.data?.error || 'No se pudo guardar') } }
   const saveGestion = async () => { if (!gestion.resultado.trim()) return toast.warning('Indica el resultado de la gestión'); try { await createGestion.mutateAsync({ id: crm.id, ...gestion }); setGestion({ tipo: 'LLAMADA', resultado: '', siguienteAccion: '', fechaProximo: '' }); toast.success('Gestión registrada') } catch (error) { toast.error(error.response?.data?.error || 'No se pudo registrar la gestión') } }

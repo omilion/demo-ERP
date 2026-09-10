@@ -24,7 +24,6 @@ const NAV_GROUPS = [
       highlight: 'amber',
       children: [
         { label: 'Sala / Mostrador', route: '/ventas/nueva?tipo=Venta+Sala' },
-        { label: 'Convenio Marco (con OC)', route: '/ventas/nueva?tipo=Convenio+Marco' },
         { label: 'Trato Directo', route: '/ventas/nueva?tipo=Trato+Directo' },
         { label: 'Marketplace', route: '/ventas/nueva?tipo=Marketplace' },
         { label: 'Web', route: '/ventas/nueva?tipo=Venta+Web' },
@@ -40,6 +39,7 @@ const NAV_GROUPS = [
         { label: 'Simple', route: '/crm/nueva/cotizacion-simple' },
         { label: 'Licitación (CRM)', route: '/crm/nueva/licitacion' },
         { label: 'Compra Ágil', route: '/crm/nueva/compra-agil' },
+        { label: 'Convenio Marco', route: '/crm/nueva/convenio-marco' },
       ],
     },
     { label: 'Matriz Ventas', route: '/ventas', module: 'ventas' },

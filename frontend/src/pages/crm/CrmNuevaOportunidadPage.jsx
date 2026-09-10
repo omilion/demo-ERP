@@ -8,6 +8,7 @@ const input = { width: '100%', padding: '9px 11px', border: '1px solid var(--bor
 const fallbackFlows = [
   { canal: 'WEB', tipoVenta: 'VENTA_WEB', etiqueta: 'Venta Web' },
   { canal: 'LICITACION', tipoVenta: 'LICITACION', etiqueta: 'Licitacion' },
+  { canal: 'CONVENIO_MARCO', tipoVenta: 'CONVENIO_MARCO', etiqueta: 'Convenio Marco' },
 ]
 
 export default function CrmNuevaOportunidadPage() {
@@ -29,6 +30,7 @@ export default function CrmNuevaOportunidadPage() {
       const paths = {
         WEB: `/ventas/nueva?tipo=Venta%20Web&crmId=${crm.id}`,
         LICITACION: `/crm/nueva/licitacion?crmId=${crm.id}`,
+        CONVENIO_MARCO: `/crm/nueva/convenio-marco?crmId=${crm.id}`,
       }
       navigate(paths[selected.canal])
     } catch (error) { toast.error(error.response?.data?.error || 'No se pudo crear la oportunidad') }

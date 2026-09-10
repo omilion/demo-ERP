@@ -83,6 +83,7 @@ const CANAL_TO_TIPO_ORDEN = {
   SALA: 'Venta Sala',
   LICITACION: 'Licitación',
   COMPRA_AGIL: 'Compra Ágil',
+  CONVENIO_MARCO: 'Convenio Marco',
   // La prospeccion directa termina en una venta comun: lo que la distingue es
   // el origen de la oportunidad, que queda registrado en el CRM, no el tipo.
   PROSPECCION_DIRECTA: 'Normal',
@@ -130,7 +131,7 @@ export async function ensureOrdenForGanado(tx, crm, actor = {}, now = new Date()
 
 // Convierte una cotizacion CRM en Orden solo al aprobarla. La cotizacion y sus
 // items existen antes, pero la Matriz de Ventas solo ve la Orden resultante.
-async function createOrdenFromCrmCotizacion(tx, crm, actor = {}) {
+async function createOrdenFromCrmCotizacion(tx, crm, actor = {}, confirmationReference = '') {
   const cotizacion = await tx.crmCotizacion.findUnique({ where: { crmId: crm.id }, include: { items: true } })
   if (!cotizacion) return null
   if (crm.ordenId) return { id: crm.ordenId, clienteId: crm.clienteId }
@@ -152,8 +153,10 @@ async function createOrdenFromCrmCotizacion(tx, crm, actor = {}) {
   }))
   if (!items.length) throw validationError('Ninguna linea de la cotizacion fue adjudicada: no hay venta que crear')
   const tipo = cotizacion.tipo
-  if (!['Licitación', 'Venta Directa'].includes(tipo)) throw validationError('Tipo de cotizacion CRM no soportado')
+  if (!['Licitación', 'Venta Directa', 'Convenio Marco'].includes(tipo)) throw validationError('Tipo de cotizacion CRM no soportado')
   if (tipo === 'Licitación' && (!cotizacion.licitacion || !cotizacion.licitacionFecha)) throw validationError('La licitacion requiere ID y fecha para aprobarla')
+  const referenciaComercial = cotizacion.licitacion || String(confirmationReference || '').trim()
+  if (tipo === 'Convenio Marco' && !referenciaComercial) throw validationError('El Convenio Marco requiere una OC para aprobar la venta')
 
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('ventas.orden.n_interno'))`
   const max = await tx.orden.aggregate({ _max: { nInterno: true } })
@@ -169,7 +172,7 @@ async function createOrdenFromCrmCotizacion(tx, crm, actor = {}) {
       userId: vendedorId,
       sucursalId: actor.sucursalId || null,
       creadorNombre: actor.nombre || actor.email || crm.ejecutiva || 'CRM',
-      licitacion: cotizacion.licitacion || null,
+      licitacion: referenciaComercial || null,
       observaciones: cotizacion.observaciones || null,
       descuentoPct: cotizacion.descuentoPct || 0,
       enviosParciales: cotizacion.enviosParciales,
@@ -285,7 +288,7 @@ export async function transitionCrm(prisma, crmId, payload, actor = {}, options 
       estadoCambiadoAt: now,
     }
     if (validation.targetStage === CRM_ETAPAS.VENTA_APROBADA) {
-      const orden = await createOrdenFromCrmCotizacion(tx, current, actor)
+      const orden = await createOrdenFromCrmCotizacion(tx, current, actor, payload.confirmacionReferencia)
       if (orden) {
         data.ordenId = orden.id
         data.clienteId = orden.clienteId
