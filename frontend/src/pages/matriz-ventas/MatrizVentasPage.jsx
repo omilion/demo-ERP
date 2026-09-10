@@ -135,7 +135,7 @@ export default function MatrizVentasPage() {
   const totalParams = { ...params }
   delete totalParams.page
 
-  const { data = { items: [], total: 0, limit: 100, totalMonto: 0 }, isLoading } = useMatrizVentas(params)
+  const { data = { items: [], total: 0, limit: 100, totalMonto: 0 }, isLoading, isPlaceholderData } = useMatrizVentas(params)
   const { data: tot } = useMatrizTotales(totalParams)
 
   const total = data.total ?? 0
@@ -661,10 +661,16 @@ export default function MatrizVentasPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
-        {isLoading
-          ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}>Cargando...</div>
-          : <Table columns={cols} rows={data.items} emptyMessage={customEmptyMessage} onRowDoubleClick={openVenta} ariaLabel="Matriz de ventas" getRowKey={row => row.id} toolbarExtra={toolbarExtra} />
-        }
+        <Table
+          columns={cols}
+          rows={data.items}
+          loading={isLoading || isPlaceholderData}
+          emptyMessage={customEmptyMessage}
+          onRowDoubleClick={openVenta}
+          ariaLabel="Matriz de ventas"
+          getRowKey={row => row.id}
+          toolbarExtra={toolbarExtra}
+        />
       </div>
     </main>
   )

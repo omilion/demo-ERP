@@ -153,6 +153,35 @@ a { text-decoration: none; color: inherit; }
   max-width: 100%;
 }
 
+@keyframes tableSkeletonPulse {
+  0%, 100% { opacity: 0.48; }
+  50% { opacity: 0.95; }
+}
+
+.table-loading-skeleton {
+  min-height: 260px;
+  padding: 8px 14px 18px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.table-loading-skeleton-row {
+  display: grid;
+  gap: 18px;
+  align-items: center;
+  min-width: 760px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.table-loading-skeleton-cell {
+  display: block;
+  height: 12px;
+  border-radius: 999px;
+  background: oklch(0.91 0.008 220);
+  animation: tableSkeletonPulse 1.15s ease-in-out infinite;
+}
+
 .table-shell-fullscreen {
   position: fixed;
   inset: 0;

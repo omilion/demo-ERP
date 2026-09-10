@@ -568,6 +568,8 @@ export const Table = ({
   toolbarExtra,
   pager,
   getRowStyle,
+  loading = false,
+  loadingRows = 6,
 }) => {
   const user = useAuthStore(s => s.user)
   const [hovRow, setHovRow] = useState(null)
@@ -747,7 +749,31 @@ export const Table = ({
           <Icon name={isFullscreen ? 'minimize' : 'maximize'} size={13} />
         </button>
       </div>
-      {!rows.length ? (
+      {loading ? (
+        <div
+          className="table-loading-skeleton"
+          role="status"
+          aria-live="polite"
+          aria-label="Cargando datos"
+          aria-busy="true"
+        >
+          {Array.from({ length: loadingRows }, (_, rowIndex) => (
+            <div
+              className="table-loading-skeleton-row"
+              key={rowIndex}
+              style={{ gridTemplateColumns: `repeat(${Math.max(3, Math.min(effectiveColumns.length, 8))}, minmax(70px, 1fr))` }}
+            >
+              {Array.from({ length: Math.max(3, Math.min(effectiveColumns.length, 8)) }, (_, cellIndex) => (
+                <span
+                  className="table-loading-skeleton-cell"
+                  key={cellIndex}
+                  style={{ width: `${55 + ((rowIndex + cellIndex) % 4) * 10}%` }}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : !rows.length ? (
         <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
           <Icon name="info" size={24} color="var(--border)" />
           <p style={{ marginTop: 12 }}>{emptyMessage}</p>
