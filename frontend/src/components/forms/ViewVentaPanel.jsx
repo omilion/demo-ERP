@@ -12,6 +12,7 @@ import { downloadDteXml, openDtePdf } from '../../utils/dteDocuments'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 import { InternalCreditNoteModal, InternalCreditNotes } from '../facturacion/InternalCreditNotes'
+import { collectibleDocuments, isReferencialPago } from '../../utils/cobranza'
 
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
@@ -34,10 +35,6 @@ function normalizeText(value) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-}
-
-function isReferencialPago(pago) {
-  return normalizeText(pago?.medioPago) === 'referencial'
 }
 
 function sameDocumento(a, b) {
@@ -90,7 +87,7 @@ function TabBtn({ active, onClick, children, badge }) {
 }
 
 // ── Tab: Detalle ───────────────────────────────────────────────────────────────
-function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespacho, canEmitirDte, onEmitirDte, canRegistrarPago, onCobrar }) {
+function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespacho, canEmitirDte, onEmitirDte, canRegistrarPago, canCobrar, onCobrar }) {
   const items = v.items || []
   const total = v.total || 0
   const abono = v.abono || 0
@@ -256,17 +253,21 @@ function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespac
       <FormDivider label="Acciones rápidas" />
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         {canRegistrarPago && saldo > 0 && !v.eliminada && (
-          <button
-            onClick={onCobrar}
-            style={{
-              flex: '1 1 140px', padding: '10px 12px', fontSize: 12, fontWeight: 600,
-              color: '#fff', background: 'var(--green-700)', border: 'none', borderRadius: 8,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            }}
-          >
-            <Icon name="dollarSign" size={14} />
-            Cobrar (saldo {fmt(saldo)})
-          </button>
+          <div style={{ flex: '1 1 180px', display: 'grid', gap: 4 }} title={canCobrar ? 'Registrar abono' : 'Emite o registra una factura o boleta activa antes de cobrar'}>
+            <button
+              onClick={onCobrar}
+              disabled={!canCobrar}
+              style={{
+                padding: '10px 12px', fontSize: 12, fontWeight: 600,
+                color: canCobrar ? '#fff' : 'var(--text-3)', background: canCobrar ? 'var(--green-700)' : 'var(--bg)', border: canCobrar ? 'none' : '1px solid var(--border)', borderRadius: 8,
+                cursor: canCobrar ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}
+            >
+              <Icon name="dollarSign" size={14} />
+              Cobrar (saldo {fmt(saldo)})
+            </button>
+            {!canCobrar && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Primero emite o registra una factura o boleta.</span>}
+          </div>
         )}
         <button
           onClick={handleCreateDespacho}
@@ -780,7 +781,7 @@ function opBtnStyle(color) {
   }
 }
 
-function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, canEmitirDte, onEmitirDte, canDelete, canManageInternalCreditNotes, internalCreditNoteBlocked, onCreateInternalCreditNote, canRegistrarPago, saldo, onCobrar }) {
+function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, canEmitirDte, onEmitirDte, canDelete, canManageInternalCreditNotes, internalCreditNoteBlocked, onCreateInternalCreditNote, canRegistrarPago, canCobrar, saldo, onCobrar }) {
   const navigate = useNavigate()
   const anularVenta = useAnularVenta()
   const activarVenta = useActivarVenta()
@@ -821,9 +822,17 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, ca
     <div style={{ marginBottom: 14 }}>
       <FormDivider label="Operaciones disponibles" />
       {canRegistrarPago && saldo > 0 && !v.eliminada && (
-        <button onClick={onCobrar} style={opBtnStyle('var(--green-700)')}>
-          <Icon name="dollarSign" size={14} /> Cobrar (saldo {fmt(saldo)})
-        </button>
+        <>
+          <button
+            onClick={onCobrar}
+            disabled={!canCobrar}
+            title={canCobrar ? 'Registrar abono' : 'Emite o registra una factura o boleta activa antes de cobrar'}
+            style={{ ...opBtnStyle(canCobrar ? 'var(--green-700)' : 'var(--bg)'), color: canCobrar ? '#fff' : 'var(--text-3)', border: canCobrar ? 'none' : '1px solid var(--border)', cursor: canCobrar ? 'pointer' : 'not-allowed' }}
+          >
+            <Icon name="dollarSign" size={14} /> Cobrar (saldo {fmt(saldo)})
+          </button>
+          {!canCobrar && <div style={{ margin: '-3px 0 10px', fontSize: 11, color: 'var(--text-3)' }}>Primero emite o registra una factura o boleta.</div>}
+        </>
       )}
       <button onClick={() => navigate(`/taller?search=${v.nInterno || v.id}`)} style={opBtnStyle('var(--blue)')}>
         <Icon name="tool" size={14} /> Órdenes de Trabajo ({odtsCount})
@@ -962,6 +971,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
   const canWriteFacturacion = can(user, 'facturacion', 'write')
   const canWriteDespacho = can(user, 'despacho', 'write')
   const canRegistrarPago = can(user, 'cobranza', 'write') && can(user, 'caja', 'read') && can(user, 'caja', 'write')
+  const canCobrar = collectibleDocuments({ pagos }).length > 0
   const ventaYaEmitida = hasActiveSalesDte(dtes)
   const canManageInternalCreditNotes = canWrite || canWriteFacturacion
   const onCobrar = () => navigate(`/cobranza?ventaId=${v.id}`)
@@ -1076,6 +1086,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                 internalCreditNoteBlocked={ventaYaEmitida}
                 onCreateInternalCreditNote={() => setNotaInterna(true)}
                 canRegistrarPago={canRegistrarPago}
+                canCobrar={canCobrar}
                 saldo={saldo}
                 onCobrar={onCobrar}
               />
@@ -1343,6 +1354,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
           canEmitirDte={canWriteFacturacion && !ventaYaEmitida}
           onEmitirDte={() => setEmitirDte(true)}
           canRegistrarPago={canRegistrarPago}
+          canCobrar={canCobrar}
           onCobrar={onCobrar}
         />
       )}

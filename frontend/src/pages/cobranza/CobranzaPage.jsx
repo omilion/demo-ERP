@@ -10,6 +10,7 @@ import { useAuthStore } from '../../store/auth'
 import { can, ventaPath } from '../../utils/permissions'
 import CobranzaGestionPanel from './CobranzaGestionPanel'
 import BotonExportar from '../../components/BotonExportar'
+import { collectibleDocuments, docSaldo } from '../../utils/cobranza'
 
 const MEDIOS_PAGO = ['Efectivo', 'Debito', 'Credito', 'Transferencia', 'Cheque dia', 'Cheque fecha', 'Webpay', 'Transbank']
 
@@ -43,32 +44,6 @@ function estadoCobTone(estado) {
   if (s === 'PENDIENTE') return 'amber'
   if (s === 'NULA') return 'red'
   return 'gray'
-}
-
-function normalizeText(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-}
-
-function isReferencialPago(pago) {
-  return normalizeText(pago?.medioPago) === 'referencial'
-}
-
-function activeReferentialDocs(venta) {
-  return (venta?.pagos || []).filter(p => isReferencialPago(p) && p.documento && p.nDoc && p.estadoDoc !== 'Nula')
-}
-
-function docPaidAmount(venta, doc) {
-  return (venta?.pagos || [])
-    .filter(p => !isReferencialPago(p) && p.tipo === 'Ingreso' && p.documento === doc.documento && p.nDoc === doc.nDoc)
-    .reduce((sum, p) => sum + Math.abs(Number(p.monto || 0)), 0)
-}
-
-function docSaldo(venta, doc) {
-  return Math.max(0, Math.abs(Number(doc?.monto || 0)) - docPaidAmount(venta, doc))
 }
 
 export default function CobranzaPage() {
@@ -136,7 +111,8 @@ export default function CobranzaPage() {
   }, [histSearch])
 
   useEffect(() => {
-    setActivePage(1)
+    const resetTimer = window.setTimeout(() => setActivePage(1), 0)
+    return () => window.clearTimeout(resetTimer)
   }, [estadoTab, cobranzaFiltro, debounced, fechaDesde, fechaHasta, fechaDocDesde, fechaDocHasta, documento, nDoc, creador])
 
   // Active cobranza
@@ -190,7 +166,7 @@ export default function CobranzaPage() {
   const fmt = n => '$' + Math.abs(n || 0).toLocaleString('es-CL')
   const fmtM = n => '$' + (Math.abs(n || 0) / 1_000_000).toFixed(1) + 'M'
   const paymentSaldo = paymentRow ? Math.max(0, (paymentRow.total || 0) - (paymentRow.abono || 0)) : 0
-  const paymentDocs = paymentRow ? activeReferentialDocs(paymentRow).filter(doc => docSaldo(paymentRow, doc) > 0) : []
+  const paymentDocs = paymentRow ? collectibleDocuments(paymentRow) : []
   const selectedPaymentDocKey = paymentForm.documento && paymentForm.nDoc ? `${paymentForm.documento}|||${paymentForm.nDoc}` : ''
   const selectedPaymentDoc = paymentDocs.find(doc => `${doc.documento}|||${doc.nDoc}` === selectedPaymentDocKey) || null
   const paymentAmount = Number(paymentForm.monto)
@@ -207,7 +183,11 @@ export default function CobranzaPage() {
 
   const openPayment = (row) => {
     const saldo = Math.max(0, (row.total || 0) - (row.abono || 0))
-    const doc = activeReferentialDocs(row).find(d => docSaldo(row, d) > 0) || activeReferentialDocs(row)[0]
+    const doc = collectibleDocuments(row)[0]
+    if (!doc) {
+      toast.warning('Emite o registra una factura o boleta activa antes de registrar cobros.')
+      return
+    }
     const saldoDoc = doc ? docSaldo(row, doc) : saldo
     setPaymentRow(row)
     setPaymentForm({
@@ -232,6 +212,10 @@ export default function CobranzaPage() {
     const saldo = Math.max(0, (ventaDeepLink.total || 0) - (ventaDeepLink.abono || 0))
     if (saldo <= 0) {
       toast.warning('Esa venta no tiene saldo pendiente')
+      return
+    }
+    if (!collectibleDocuments(ventaDeepLink).length) {
+      toast.warning('Esta venta no tiene una factura o boleta activa con saldo. Emite o registra el documento antes de cobrar.')
       return
     }
     const t = setTimeout(() => openPayment(ventaDeepLink), 0)
@@ -330,19 +314,31 @@ export default function CobranzaPage() {
       key: '_acc', label: '',
       render: (_, row) => {
         const saldo = (row.total || 0) - (row.abono || 0)
+        const hasCollectibleDocument = collectibleDocuments(row).length > 0
+        const paymentDisabled = registrarPagoMut.isPending || !turno || saldo <= 0 || !hasCollectibleDocument
+        const paymentTitle = saldo <= 0
+          ? 'La venta no tiene saldo pendiente'
+          : !hasCollectibleDocument
+            ? 'Emite o registra una factura o boleta activa antes de cobrar'
+            : !turno
+              ? 'Requiere turno de caja abierto'
+              : 'Registrar abono contra la factura o boleta'
         return (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {canRegisterPayment && (
-            <button
-              onClick={e => {
-                e.stopPropagation()
-                if (saldo <= 0) return toast.warning('La venta no tiene saldo pendiente')
-                openPayment(row)
-              }}
-              disabled={registrarPagoMut.isPending || !turno}
-              style={{ minHeight: 40, padding: '7px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--green-700)', background: 'var(--green-700)', cursor: 'pointer', color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}
-              title={turno ? 'Registrar abono' : 'Requiere turno de caja abierto'}
-            >Pagar</button>
+              <div style={{ display: 'grid', gap: 3 }} title={paymentTitle}>
+                <button
+                  onClick={e => {
+                    e.stopPropagation()
+                    openPayment(row)
+                  }}
+                  disabled={paymentDisabled}
+                  style={{ minHeight: 40, padding: '7px 10px', fontSize: 12, borderRadius: 6, border: `1px solid ${paymentDisabled ? 'var(--border)' : 'var(--green-700)'}`, background: paymentDisabled ? 'var(--bg)' : 'var(--green-700)', cursor: paymentDisabled ? 'not-allowed' : 'pointer', color: paymentDisabled ? 'var(--text-3)' : '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}
+                >Pagar</button>
+                {!hasCollectibleDocument && saldo > 0 && (
+                  <span style={{ maxWidth: 112, fontSize: 10, lineHeight: 1.2, color: 'var(--text-3)' }}>Requiere factura o boleta</span>
+                )}
+              </div>
             )}
             <button
               onClick={e => { e.stopPropagation(); navigate(ventaPath(row.id, user)) }}
@@ -674,7 +670,7 @@ export default function CobranzaPage() {
           <section ref={paymentDialogRef} role="dialog" aria-modal="true" aria-labelledby="payment-dialog-title" tabIndex={-1} style={{ width: 'min(760px, 100%)', background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
               <h2 id="payment-dialog-title" style={{ margin: 0, fontSize: 18 }}>Registrar pago venta #{paymentRow.id}</h2>
-              <p style={{ margin: '4px 0 0', color: 'var(--text-3)', fontSize: 13 }}>Saldo pendiente: {fmt(paymentSaldo)}</p>
+              <p style={{ margin: '4px 0 0', color: 'var(--text-3)', fontSize: 13 }}>El pago se imputará a la factura o boleta seleccionada. Saldo de la venta: {fmt(paymentSaldo)}</p>
             </div>
             <div style={{ padding: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
               <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
@@ -703,7 +699,7 @@ export default function CobranzaPage() {
                   }}
                   style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, background: '#fff' }}
                 >
-                  <option value="">Sin documento activo</option>
+                  <option value="">Selecciona una factura o boleta</option>
                   {paymentDocs.map(doc => (
                     <option key={doc.id} value={`${doc.documento}|||${doc.nDoc}`}>
                       {doc.documento} #{doc.nDoc} - saldo {fmt(docSaldo(paymentRow, doc))}
