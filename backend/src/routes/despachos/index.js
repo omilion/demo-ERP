@@ -21,6 +21,7 @@ const LIST_LIMIT = 100
 const optionalId = z.union([z.number().int(), z.string()]).optional().nullable()
 
 const ItemDespachoSchema = z.object({
+  ordenItemId: optionalId,
   nombre: z.string().min(1, 'Nombre de item requerido'),
   descripcion: z.string().optional().nullable(),
   cantidad: z.union([z.number(), z.string()]).transform(v => Math.max(0, Number(v) || 0)),
@@ -840,8 +841,91 @@ const PACKING_EVENT_SELECT = {
   },
 }
 
+function normalizeGuideItemName(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+export function buildGuideAvailability(orderItems = [], activeGuides = []) {
+  const itemById = new Map(orderItems.map(item => [Number(item.id), item]))
+  const itemsByName = new Map()
+  for (const item of orderItems) {
+    const name = normalizeGuideItemName(item.nombre)
+    if (!name) continue
+    const matches = itemsByName.get(name) || []
+    matches.push(item)
+    itemsByName.set(name, matches)
+  }
+
+  const allocatedByItem = new Map()
+  for (const guide of activeGuides) {
+    for (const line of Array.isArray(guide?.items) ? guide.items : []) {
+      let item = itemById.get(Number(line?.ordenItemId))
+      if (!item) {
+        const nameMatches = itemsByName.get(normalizeGuideItemName(line?.nombre)) || []
+        if (nameMatches.length === 1) item = nameMatches[0]
+      }
+      if (!item) continue
+      const quantity = Math.max(0, Number(line?.cantidad || 0))
+      allocatedByItem.set(item.id, (allocatedByItem.get(item.id) || 0) + quantity)
+    }
+  }
+
+  return orderItems.map(item => {
+    const ordered = Math.max(0, Number(item.cantidad || 0))
+    const prepared = Math.min(ordered, Math.max(0, Number(item.nEntregados || 0)))
+    const allocated = Math.min(prepared, allocatedByItem.get(item.id) || 0)
+    return {
+      ...item,
+      cantidadPreparada: prepared,
+      pendientePreparar: Math.max(0, ordered - prepared),
+      cantidadGuiada: allocated,
+      disponibleGuia: Math.max(0, prepared - allocated),
+    }
+  })
+}
+
+export function resolveGuideAllocation(orderItems = [], activeGuides = [], requestedItems = []) {
+  const availability = buildGuideAvailability(orderItems, activeGuides)
+  const byId = new Map(availability.map(item => [Number(item.id), item]))
+  const byName = new Map()
+  for (const item of availability) {
+    const name = normalizeGuideItemName(item.nombre)
+    if (!name) continue
+    const matches = byName.get(name) || []
+    matches.push(item)
+    byName.set(name, matches)
+  }
+
+  const normalizedItems = []
+  const requestedByItem = new Map()
+  for (const line of requestedItems) {
+    let item = byId.get(Number(line?.ordenItemId))
+    if (!item) {
+      const nameMatches = byName.get(normalizeGuideItemName(line?.nombre)) || []
+      if (nameMatches.length === 1) item = nameMatches[0]
+    }
+    if (!item) return { error: 'Uno de los productos no pertenece a la venta o no se puede identificar.' }
+
+    const quantity = Math.max(0, Number(line?.cantidad || 0))
+    const accumulated = (requestedByItem.get(item.id) || 0) + quantity
+    if (accumulated > item.disponibleGuia) {
+      return {
+        error: `${item.nombre || `Item #${item.id}`} solo tiene ${item.disponibleGuia} unidad(es) preparada(s) disponibles para una nueva guía.`,
+      }
+    }
+    requestedByItem.set(item.id, accumulated)
+    normalizedItems.push({ ...line, ordenItemId: item.id, cantidad: quantity })
+  }
+
+  return { items: normalizedItems, availability }
+}
+
 async function buildPackingTrace(prisma, ordenId, despachoId = null, guiaDespachoId = null) {
-  const [items, bultos, eventos, packedDespacho, packedGuia] = await Promise.all([
+  const [items, bultos, eventos, packedDespacho, packedGuia, activeGuides] = await Promise.all([
     prisma.ordenItem.findMany({
       where: { ordenId, eliminado: false },
       select: {
@@ -881,13 +965,22 @@ async function buildPackingTrace(prisma, ordenId, despachoId = null, guiaDespach
         _sum: { delta: true },
       })
       : Promise.resolve(null),
+    prisma.guiaDespacho.findMany({
+      where: {
+        ordenId,
+        eliminado: false,
+        ...(guiaDespachoId ? { id: { not: guiaDespachoId } } : {}),
+      },
+      select: { id: true, items: true },
+    }),
   ])
   const productoIds = [...new Set(items.map(item => item.productoId).filter(Boolean))]
   const productos = productoIds.length
     ? await prisma.producto.findMany({ where: { id: { in: productoIds } }, select: { id: true, codigoBarra: true } })
     : []
   const barcodeByProductoId = new Map(productos.map(producto => [producto.id, producto.codigoBarra]))
-  const result = { items: items.map(item => ({ ...item, codigoBarra: barcodeByProductoId.get(item.productoId) || null })), bultos, eventos }
+  const availableItems = buildGuideAvailability(items, activeGuides)
+  const result = { items: availableItems.map(item => ({ ...item, codigoBarra: barcodeByProductoId.get(item.productoId) || null })), bultos, eventos }
   if (packedDespacho) {
     result.packedDespacho = packedDespacho.map(row => ({
       ordenItemId: row.ordenItemId,
@@ -1109,7 +1202,7 @@ export default async function despachosRoutes(fastify) {
         cliente: { select: { id: true, nombre: true, razonSocial: true, rut: true, email: true, telefono: true } },
         clienteSucursal: { select: { nombre: true, direccion: true, region: true, comuna: true, ciudad: true, contacto: true, email: true, telefono: true } },
         despachos: { where: { eliminado: false }, select: { id: true, eliminado: true, tipoDespacho: true, transporte: true, numeroSeguimiento: true, fechaEntrega: true, parcial: true, tieneMulta: true, createdAt: true }, orderBy: { createdAt: 'desc' } },
-        guiasDespacho: { where: { eliminado: false }, select: { id: true, nGuia: true, fechaGuia: true, despachoId: true }, orderBy: { createdAt: 'desc' } },
+        guiasDespacho: { where: { eliminado: false }, select: { id: true, nGuia: true, fechaGuia: true, despachoId: true, items: true }, orderBy: { createdAt: 'desc' } },
         packingBultos: { select: { id: true, numero: true, estado: true, dimensiones: true, peso: true }, orderBy: { createdAt: 'asc' } },
       },
     })
@@ -1180,6 +1273,8 @@ export default async function despachosRoutes(fastify) {
       const cliente = orden.cliente || {}
       const guias = orden.guiasDespacho.map(guia => ({ ...guia, dteEstado: dteByGuia.get(guia.id)?.estado || null, dteFolio: dteByGuia.get(guia.id)?.folio || null }))
       const items = orden.items.map(item => ({ ...item, estadoInventario: estadoInventarioByProducto.get(item.productoId) || 'inventariado' }))
+      const itemsConDisponibilidadGuia = buildGuideAvailability(items, guias)
+      const disponibleGuia = itemsConDisponibilidadGuia.reduce((sum, item) => sum + item.disponibleGuia, 0)
       const packing = resumenPacking(items)
       const preparacion = resumenPreparacion(items, odtsByOrden.get(orden.id) || [])
       const estadoLogistico = deriveEstadoLogistico({ items, despachos: orden.despachos, guias, tracking: trackingByOrden.get(orden.id), preparacion })
@@ -1217,7 +1312,8 @@ export default async function despachosRoutes(fastify) {
         despachos: orden.despachos,
         guias,
         tracking: trackingByOrden.get(orden.id) || null,
-        items,
+        items: itemsConDisponibilidadGuia,
+        disponibleGuia,
         bultos: orden.packingBultos,
         pickingAjustes: items.filter(item => item.pickingObservacion).map(item => ({ itemId: item.id, nombre: item.nombre, observacion: item.pickingObservacion })),
       }
@@ -1242,7 +1338,7 @@ export default async function despachosRoutes(fastify) {
 
     let filtered = allMapped
     if (candidatasDespacho || etapa === 'despacho') {
-      filtered = allMapped.filter(i => i.estadoLogistico.codigo === 'LISTA_DESPACHO' || (i.packing.preparados > 0 && (i.enviosParciales || i.despachos.some(d => d.parcial))))
+      filtered = allMapped.filter(i => i.disponibleGuia > 0 && (i.estadoLogistico.codigo === 'LISTA_DESPACHO' || (i.packing.preparados > 0 && (i.enviosParciales || i.despachos.some(d => d.parcial)))))
     } else if (etapa === 'picking') {
       filtered = allMapped.filter(i => i.preparacion.disponiblePicking > 0 && !i.packing.completo)
     } else if (etapa === 'packing') {
@@ -2014,7 +2110,22 @@ export default async function despachosRoutes(fastify) {
       if (duplicate) return reply.code(duplicate.status).send({ error: duplicate.error })
     }
 
-    const items = (Array.isArray(inputItems) && inputItems.length) ? inputItems : ((despacho?.items && Array.isArray(despacho.items)) ? despacho.items : [])
+    let items = (Array.isArray(inputItems) && inputItems.length) ? inputItems : ((despacho?.items && Array.isArray(despacho.items)) ? despacho.items : [])
+    if (!esManual && resolved.orden?.id && items.length) {
+      const [orderItems, activeGuides] = await Promise.all([
+        fastify.prisma.ordenItem.findMany({
+          where: { ordenId: resolved.orden.id, eliminado: false },
+          select: { id: true, nombre: true, cantidad: true, nEntregados: true },
+        }),
+        fastify.prisma.guiaDespacho.findMany({
+          where: { ordenId: resolved.orden.id, eliminado: false },
+          select: { id: true, items: true },
+        }),
+      ])
+      const allocation = resolveGuideAllocation(orderItems, activeGuides, items)
+      if (allocation.error) return reply.code(409).send({ error: allocation.error })
+      items = allocation.items
+    }
     const autoNGuia = !cleanNGuia
     const data = {
       ordenId: resolved.orden?.id ?? null,
@@ -2228,7 +2339,27 @@ export default async function despachosRoutes(fastify) {
       data.fechaGuia = fechaGuia || new Date()
     }
     if (b.origen !== undefined) data.origen = b.origen || null
-    if (b.items !== undefined) data.items = b.items
+    if (b.items !== undefined) {
+      const targetOrdenId = data.ordenId !== undefined ? data.ordenId : existing.ordenId
+      const targetOrigenTipo = data.origenTipo !== undefined ? data.origenTipo : existing.origenTipo
+      if (targetOrdenId && targetOrigenTipo !== 'manual' && b.items.length) {
+        const [orderItems, activeGuides] = await Promise.all([
+          fastify.prisma.ordenItem.findMany({
+            where: { ordenId: targetOrdenId, eliminado: false },
+            select: { id: true, nombre: true, cantidad: true, nEntregados: true },
+          }),
+          fastify.prisma.guiaDespacho.findMany({
+            where: { ordenId: targetOrdenId, eliminado: false, id: { not: id } },
+            select: { id: true, items: true },
+          }),
+        ])
+        const allocation = resolveGuideAllocation(orderItems, activeGuides, b.items)
+        if (allocation.error) return reply.code(409).send({ error: allocation.error })
+        data.items = allocation.items
+      } else {
+        data.items = b.items
+      }
+    }
     if (b.despachoId !== undefined) {
       const despachoRef = parsePackingReferenceId(b.despachoId, 'despachoId')
       if (despachoRef.error) return reply.code(400).send({ error: despachoRef.error })

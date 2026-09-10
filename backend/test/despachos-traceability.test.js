@@ -5,6 +5,7 @@ import {
   buildDespachoTiempoMetrics,
   buildOrdenEntregaSyncFromDespacho,
   buildOrdenEntregaSyncFromGuia,
+  buildGuideAvailability,
   buildGuideWhereForDespacho,
   buildPackingEventRows,
   buildTrackingEventData,
@@ -13,6 +14,7 @@ import {
   buildPackingUpdatePlan,
   resolveDespachoOrderBy,
   resolveDispatchTraceability,
+  resolveGuideAllocation,
   validateTrackingTransition,
   validateDispatchFilterCoherence,
 } from '../src/routes/despachos/index.js'
@@ -112,6 +114,35 @@ describe('buildOrdenEntregaSyncFromGuia', () => {
       ordenId: 0,
       currentEstadoEntrega: 'Pendiente entrega',
     })).toBeNull()
+  })
+})
+
+describe('disponibilidad para guías', () => {
+  const items = [
+    { id: 10, nombre: 'Producto A', cantidad: 2, nEntregados: 2 },
+    { id: 20, nombre: 'Producto B', cantidad: 3, nEntregados: 1 },
+  ]
+
+  it('distingue lo pendiente de packing de lo preparado para enviar', () => {
+    const result = buildGuideAvailability(items, [])
+
+    expect(result[0]).toMatchObject({ pendientePreparar: 0, cantidadPreparada: 2, disponibleGuia: 2 })
+    expect(result[1]).toMatchObject({ pendientePreparar: 2, cantidadPreparada: 1, disponibleGuia: 1 })
+  })
+
+  it('descuenta lo ya incluido en guías activas', () => {
+    const result = buildGuideAvailability(items, [{ items: [{ ordenItemId: 10, nombre: 'Producto A', cantidad: 1 }] }])
+    expect(result[0]).toMatchObject({ cantidadGuiada: 1, disponibleGuia: 1 })
+  })
+
+  it('rechaza una guía que supera las unidades preparadas disponibles', () => {
+    const result = resolveGuideAllocation(items, [], [{ ordenItemId: 20, nombre: 'Producto B', cantidad: 2 }])
+    expect(result.error).toMatch(/solo tiene 1 unidad/i)
+  })
+
+  it('normaliza la línea válida con el identificador de la venta', () => {
+    const result = resolveGuideAllocation(items, [], [{ nombre: 'Producto B', cantidad: 1, unidad: 'UN' }])
+    expect(result.items).toEqual([{ ordenItemId: 20, nombre: 'Producto B', cantidad: 1, unidad: 'UN' }])
   })
 })
 

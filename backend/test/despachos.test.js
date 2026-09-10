@@ -19,7 +19,10 @@ function tokenFor(app, role = 'admin') {
 let seq = 1
 
 async function getProducto(app) {
-  const existing = await app.prisma.producto.findFirst({ select: { id: true, codigoInterno: true, nombre: true } })
+  const existing = await app.prisma.producto.findFirst({
+    where: { estadoInventario: 'inventariado' },
+    select: { id: true, codigoInterno: true, nombre: true },
+  })
   if (existing) return existing
   return app.prisma.producto.create({
     data: {
@@ -27,6 +30,7 @@ async function getProducto(app) {
       nombre: 'Producto despacho test',
       precioLista: 1000,
       stock: 10,
+      estadoInventario: 'inventariado',
     },
     select: { id: true, codigoInterno: true, nombre: true },
   })
@@ -110,6 +114,70 @@ describe('despachos legacy matrix parity', () => {
 
   afterAll(async () => {
     await app.close()
+  })
+
+  it('ofrece solo unidades preparadas no incluidas en otras guias', async () => {
+    const fixture = await createFixture(app)
+    try {
+      const item = await app.prisma.ordenItem.findFirst({ where: { ordenId: fixture.orden.id } })
+      await app.prisma.ordenItem.update({ where: { id: item.id }, data: { nEntregados: 2 } })
+
+      const initial = await app.inject({
+        method: 'GET',
+        url: `/api/despachos/ordenes/${fixture.orden.id}/packing`,
+        headers: { authorization: `Bearer ${adminToken}` },
+      })
+      expect(initial.statusCode).toBe(200)
+      expect(JSON.parse(initial.body).items[0]).toMatchObject({
+        pendientePreparar: 0,
+        cantidadPreparada: 2,
+        disponibleGuia: 2,
+      })
+
+      const firstGuide = await app.inject({
+        method: 'POST',
+        url: '/api/despachos/guias',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          ordenId: fixture.orden.id,
+          items: [{ ordenItemId: item.id, nombre: item.nombre, cantidad: 1, unidad: 'UN' }],
+        },
+      })
+      expect(firstGuide.statusCode).toBe(200)
+
+      const afterGuide = await app.inject({
+        method: 'GET',
+        url: `/api/despachos/ordenes/${fixture.orden.id}/packing`,
+        headers: { authorization: `Bearer ${adminToken}` },
+      })
+      expect(afterGuide.statusCode).toBe(200)
+      expect(JSON.parse(afterGuide.body).items[0].disponibleGuia).toBe(1)
+
+      const firstGuideBody = JSON.parse(firstGuide.body)
+      const editedGuide = await app.inject({
+        method: 'PUT',
+        url: `/api/despachos/guias/${firstGuideBody.id}`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          items: [{ ordenItemId: item.id, nombre: item.nombre, cantidad: 2, unidad: 'UN' }],
+        },
+      })
+      expect(editedGuide.statusCode).toBe(200)
+
+      const excessiveGuide = await app.inject({
+        method: 'POST',
+        url: '/api/despachos/guias',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          ordenId: fixture.orden.id,
+          items: [{ ordenItemId: item.id, nombre: item.nombre, cantidad: 1, unidad: 'UN' }],
+        },
+      })
+      expect(excessiveGuide.statusCode).toBe(409)
+      expect(JSON.parse(excessiveGuide.body).error).toContain('solo tiene 0 unidad')
+    } finally {
+      await cleanupFixture(app, fixture)
+    }
   })
 
   it('lists pending sales even when no despacho record exists', async () => {

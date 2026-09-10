@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from '../../store/notif'
 import { PageHeader, Btn, Badge } from '../../components/shared'
-import { useCreateGuia, useUpdateGuia, useUpdateDespachoPacking, useDespachos, useDespachoPacking, useGuiaDetalle } from '../../api/despachos'
+import { useCreateGuia, useUpdateGuia, useDespachos, useDespachoPacking, useGuiaDetalle } from '../../api/despachos'
 import { useVenta } from '../../api/ventas'
 import { IND_TRASLADO, TIPO_DESPACHO, normalizeRut, isValidRut } from '../../utils/facturacion'
 import { cardStyle, input, grid } from './shared'
@@ -131,7 +131,11 @@ function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCa
   const [tipoDespacho, setTipoDespacho] = useState(existingDoc?.extra?.tipoDespacho ? String(existingDoc.extra.tipoDespacho) : '2')
 
   // Items
-  const packing = useDespachoPacking(form.ordenId || undefined, undefined, !isEdit && !esManual && !!form.ordenId)
+  const packing = useDespachoPacking(
+    form.ordenId || undefined,
+    { guiaDespachoId: isEdit ? initial.id : undefined },
+    !esManual && !!form.ordenId,
+  )
   const [envios, setEnvios] = useState({})
 
   // Manual items for isolated dispatch
@@ -144,17 +148,26 @@ function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCa
   const [nuevoItemCant, setNuevoItemCant] = useState('1')
   const [nuevoItemUnidad, setNuevoItemUnidad] = useState('UN')
 
+  const currentGuideItems = Array.isArray(initial.items) ? initial.items : []
   const itemsVenta = (packing.data?.items || []).map(item => {
-    const pendiente = Math.max(0, Number(item.cantidad || 0) - Number(item.nEntregados || 0))
-    const envio = isEdit ? Number(item.enviado || item.cantidad || 0) : Math.min(pendiente, Math.max(0, Number.parseInt(envios[item.id] || '0', 10) || 0))
-    return { ...item, pendiente, envio }
+    const preparado = Number(item.cantidadPreparada ?? item.nEntregados ?? 0)
+    const pendientePreparar = Number(item.pendientePreparar ?? Math.max(0, Number(item.cantidad || 0) - preparado))
+    const disponibleGuia = Number(item.disponibleGuia ?? preparado)
+    const currentLine = currentGuideItems.find(line => Number(line.ordenItemId) === Number(item.id))
+      || currentGuideItems.find(line => line.nombre === item.nombre)
+    const defaultEnvio = isEdit ? Number(currentLine?.cantidad || 0) : disponibleGuia
+    const requested = Math.max(0, Number.parseInt(envios[item.id] ?? String(defaultEnvio), 10) || 0)
+    const envio = Math.min(disponibleGuia, requested)
+    return { ...item, preparado, pendientePreparar, disponibleGuia, envio }
   })
 
   const itemsFinales = useMemo(() => {
     if (esManual) return itemsManuales
-    if (isEdit) return itemsVenta.filter(i => (i.envio > 0 || i.cantidad > 0))
     return itemsVenta.filter(i => i.envio > 0)
-  }, [esManual, isEdit, itemsManuales, itemsVenta])
+  }, [esManual, itemsManuales, itemsVenta])
+
+  const disponibleGuiaTotal = itemsVenta.reduce((sum, item) => sum + item.disponibleGuia, 0)
+  const sinUnidadesDisponibles = !esManual && !packing.isLoading && !packing.isPlaceholderData && disponibleGuiaTotal <= 0
 
   // Validation
   const validacion = useMemo(() => {
@@ -181,9 +194,8 @@ function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCa
 
   const createGuiaMut = useCreateGuia()
   const updateGuiaMut = useUpdateGuia()
-  const updatePackingMut = useUpdateDespachoPacking()
   const [emitidoResult, setEmitidoResult] = useState(null)
-  const saving = createGuiaMut.isPending || updateGuiaMut.isPending || updatePackingMut.isPending
+  const saving = createGuiaMut.isPending || updateGuiaMut.isPending
 
   const agregarItemManual = () => {
     if (!nuevoItemDesc.trim()) return
@@ -198,6 +210,10 @@ function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCa
   }
 
   const guardar = async (emitirSii = false) => {
+    if (!esManual && itemsFinales.length === 0) {
+      toast.error('Esta venta no tiene unidades preparadas disponibles para incluir en una nueva guía.')
+      return
+    }
     if (emitirSii && !validacion.valido) {
       toast.error(`No se puede emitir al SII: faltan ${validacion.faltantes.length} campos obligatorios.`)
       return
@@ -218,7 +234,7 @@ function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCa
         indTraslado: Number(indTraslado),
         tipoDespacho: Number(tipoDespacho),
         receptor,
-        items: itemsFinales.map(i => ({ nombre: i.nombre || i.descripcion, cantidad: i.envio || i.cantidad, unidad: i.unidad || 'UN' })),
+        items: itemsFinales.map(i => ({ ordenItemId: i.id, nombre: i.nombre || i.descripcion, cantidad: i.envio || i.cantidad, unidad: i.unidad || 'UN' })),
         borrador: !emitirSii,
         emitirSii,
       }
@@ -292,6 +308,12 @@ function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCa
       )}
 
       {/* Checklist de validacion DTE 52 */}
+      {sinUnidadesDisponibles && (
+        <div role="alert" style={{ padding: 14, borderRadius: 8, background: 'var(--amber-50, #fffbeb)', border: '1px solid var(--amber-200, #fde68a)', marginBottom: 20, color: 'var(--amber-900, #78350f)', fontSize: 13 }}>
+          <strong>No hay unidades disponibles para una nueva guía.</strong>
+          <div style={{ marginTop: 4 }}>Todas las unidades preparadas ya están incluidas en otras guías, o todavía falta completar el packing.</div>
+        </div>
+      )}
       {!validacion.valido && (
         <div style={{ padding: 14, borderRadius: 8, background: 'var(--amber-50, #fffbeb)', border: '1px solid var(--amber-200, #fde68a)', marginBottom: 20 }}>
           <strong style={{ fontSize: 13, color: 'var(--amber-800, #92400e)' }}>
@@ -383,8 +405,10 @@ function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCa
               <thead>
                 <tr style={{ background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
                   <th style={{ padding: '8px 10px', textAlign: 'left' }}>Producto</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'right', width: 90 }}>Pedido</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'right', width: 90 }}>Pendiente</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right', width: 80 }}>Pedido</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right', width: 90 }}>Preparado</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right', width: 110 }}>Pendiente de packing</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right', width: 110 }}>Disponible para guía</th>
                   <th style={{ padding: '8px 10px', textAlign: 'right', width: 110 }}>A Enviar</th>
                 </tr>
               </thead>
@@ -393,15 +417,18 @@ function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCa
                   <tr key={it.id} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '8px 10px' }}>{it.nombre}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right' }}>{it.cantidad}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>{it.pendiente}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>{it.preparado}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>{it.pendientePreparar}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: it.disponibleGuia > 0 ? 'var(--green-700)' : 'var(--text-3)' }}>{it.disponibleGuia}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right' }}>
                       <input
                         type="number"
                         min="0"
-                        max={it.pendiente}
-                        value={envios[it.id] ?? (isEdit ? it.enviado : it.pendiente)}
+                        max={it.disponibleGuia}
+                        value={it.envio}
+                        disabled={it.disponibleGuia <= 0}
                         onChange={e => setEnvios({ ...envios, [it.id]: e.target.value })}
-                        style={{ ...input, width: 80, textAlign: 'right', padding: '4px 8px' }}
+                        style={{ ...input, width: 80, textAlign: 'right', padding: '4px 8px', opacity: it.disponibleGuia > 0 ? 1 : 0.55 }}
                       />
                     </td>
                   </tr>
@@ -459,11 +486,11 @@ function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCa
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 16, borderTop: '1px solid var(--border)' }}>
         <Btn variant="ghost" onClick={onCancel}>Cancelar</Btn>
         <div style={{ display: 'flex', gap: 10 }}>
-          <Btn variant="secondary" onClick={() => guardar(false)} disabled={saving}>
+          <Btn variant="secondary" onClick={() => guardar(false)} disabled={saving || sinUnidadesDisponibles}>
             Guardar Borrador / Preparada
           </Btn>
           {canEmitir && (
-            <Btn variant="primary" onClick={() => guardar(true)} disabled={saving || !validacion.valido}>
+            <Btn variant="primary" onClick={() => guardar(true)} disabled={saving || !validacion.valido || sinUnidadesDisponibles}>
               Guardar y Emitir al SII
             </Btn>
           )}
