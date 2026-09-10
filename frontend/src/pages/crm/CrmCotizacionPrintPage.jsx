@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { useCrmDetalle } from '../../api/crm'
-import plastimarLogo from '../../assets/plastimar-logo.webp'
+import plastimarLogo from '../../assets/plastimar-cotizacion-logo.svg'
 import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
 
 const money = value => Number(value || 0).toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })
@@ -54,17 +54,39 @@ function normalizeItem(item) {
   }
 }
 
+function waitForPrintImages() {
+  const images = Array.from(document.images)
+  return Promise.all(images.map(image => {
+    if (image.complete) return Promise.resolve()
+    return new Promise(resolve => {
+      const done = () => {
+        image.removeEventListener('load', done)
+        image.removeEventListener('error', done)
+        resolve()
+      }
+      image.addEventListener('load', done, { once: true })
+      image.addEventListener('error', done, { once: true })
+      window.setTimeout(done, 1800)
+    })
+  }))
+}
+
 export default function CrmCotizacionPrintPage() {
   const { id } = useParams()
   const { data: crm, isLoading } = useCrmDetalle(Number(id))
   const quote = crm ? quoteFrom(crm) : null
 
   useEffect(() => {
-    if (quote && !isLoading) {
-      const timer = window.setTimeout(() => window.print(), 300)
-      return () => window.clearTimeout(timer)
+    if (!quote || isLoading) return undefined
+    let cancelled = false
+    let timer
+    waitForPrintImages().then(() => {
+      if (!cancelled) timer = window.setTimeout(() => window.print(), 150)
+    })
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
     }
-    return undefined
   }, [quote, isLoading])
 
   if (isLoading) return <div style={{ padding: 40, textAlign: 'center' }}>Cargando cotización…</div>
@@ -83,7 +105,7 @@ export default function CrmCotizacionPrintPage() {
     <style>{`@media print { @page { size: A4; margin: 12mm } body { -webkit-print-color-adjust: exact; print-color-adjust: exact } .no-print { display: none !important } }`}</style>
 
     <header style={{ display: 'flex', justifyContent: 'space-between', gap: 24, alignItems: 'flex-start', paddingBottom: 18, borderBottom: '3px solid #07552b' }}>
-      <div><img src={plastimarLogo} alt="Plastimar" style={{ display: 'block', width: 160, height: 'auto', maxHeight: 54, objectFit: 'contain', objectPosition: 'left center' }} /><div style={{ marginTop: 5, color: '#4b5563', fontSize: 12 }}>Cotización comercial</div></div>
+      <div><img src={plastimarLogo} alt="Plastimar" style={{ display: 'block', width: 220, height: 'auto' }} /><div style={{ marginTop: 5, color: '#4b5563', fontSize: 12 }}>Cotización comercial</div></div>
       <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, color: '#4b5563', textTransform: 'uppercase', fontWeight: 700 }}>Cotización</div><div style={{ fontSize: 20, fontFamily: 'monospace', fontWeight: 800 }}>{crm.ncotizacion || `CRM-${crm.id}`}</div><div style={{ marginTop: 4, fontSize: 12 }}>{date(quote.createdAt)}</div></div>
     </header>
 
