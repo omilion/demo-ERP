@@ -92,7 +92,7 @@ function getInitialQuick(searchParams) {
     searchParams.get('search')
   ) return ''
 
-  return 'ventasHoy'
+  return ''
 }
 
 export default function MatrizVentasPage() {
@@ -154,6 +154,7 @@ export default function MatrizVentasPage() {
   const estaSemanaRange = getEstaSemanaRange()
   const isAyerActive = Boolean(desde && desde === ayerIso && hasta === ayerIso)
   const isEstaSemanaActive = Boolean(desde && desde === estaSemanaRange.desde && hasta === estaSemanaRange.hasta)
+  const isVentaHoyActive = quick === 'ventasHoy' && !desde && !hasta
 
   function aplicarAyer() {
     if (isAyerActive) {
@@ -181,7 +182,19 @@ export default function MatrizVentasPage() {
     setPage(1)
   }
 
-  let badgeTitle = 'Venta Total Hoy'
+  function aplicarVentaHoy() {
+    if (isVentaHoyActive) {
+      setQuick('')
+    } else {
+      setTab('all')
+      setDesde('')
+      setHasta('')
+      setQuick('ventasHoy')
+    }
+    setPage(1)
+  }
+
+  let badgeTitle = quick === 'ventasHoy' ? 'Venta Total Hoy' : 'Venta Total'
   if (isAyerActive) {
     badgeTitle = 'Ventas Cierre Ayer'
   } else if (isEstaSemanaActive) {
@@ -203,8 +216,8 @@ export default function MatrizVentasPage() {
   const ventasCountText = `${total.toLocaleString('es-CL')} ${countWord}`
   const totalAmountText = fmt(totalMontoSum)
 
-  let customEmptyMessage = 'Sin ventas para los filtros aplicados'
-  if (quick === 'ventasHoy' || (!desde && !hasta && !search && !estadoPago && !estadoEntrega && (quick === '' || quick === 'ventasHoy'))) {
+  let customEmptyMessage = hasUserFilters ? 'Sin ventas para los filtros aplicados' : 'No hay ventas registradas'
+  if (quick === 'ventasHoy') {
     if (tab !== 'all') {
       const channelName = selectedTabObj ? selectedTabObj.label : tab
       customEmptyMessage = `No hay ventas del día para ${channelName}`
@@ -279,6 +292,13 @@ export default function MatrizVentasPage() {
             title="Filtrar ventas de esta semana (Lunes a Hoy)"
           >
             Esta semana
+          </button>
+          <button
+            onClick={aplicarVentaHoy}
+            style={quickDateBtnStyle(isVentaHoyActive)}
+            title="Filtrar las ventas de hoy"
+          >
+            Venta hoy
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -541,7 +561,7 @@ export default function MatrizVentasPage() {
     <main className="page page-wide">
       <PageHeader
         title="Matriz de Ventas"
-        subtitle={`${data.defaultVentasHoy ? 'Ventas hoy - ' : ''}${total.toLocaleString('es-CL')} registros (${fmt(tot?.gran || 0)})`}
+        subtitle={`${quick === 'ventasHoy' ? 'Ventas hoy - ' : ''}${total.toLocaleString('es-CL')} registros (${fmt(tot?.gran || 0)})`}
         breadcrumb={['Inicio', 'Ventas', 'Matriz']}
         actions={(
           <>
