@@ -1449,7 +1449,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       setSavingCrmQuote(true)
       api.post('/crm/cotizaciones', { ...payload, crmQuoteMode, items: normalizedItems })
         .then(({ data: created }) => {
-          toast.success('Cotizacion guardada en CRM. Aun no existe una venta en Matriz.')
+          toast.success('Cotización guardada en CRM. Ya puedes descargar o imprimir su PDF desde Gestión y detalle.')
           navigate(`/crm/${created.lead.id}/gestion`)
         })
         .catch(err => toast.error(err.response?.data?.error || 'Error al guardar la cotizacion CRM'))

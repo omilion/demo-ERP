@@ -38,6 +38,7 @@ import ProveedoresPage from './pages/proveedores/ProveedoresPage'
 import ProveedorDetallePage from './pages/proveedores/ProveedorDetallePage'
 import CrmPage from './pages/crm/CrmPage'
 import CrmGestionDetallePage from './pages/crm/CrmGestionDetallePage'
+import CrmCotizacionPrintPage from './pages/crm/CrmCotizacionPrintPage'
 import ConfigPage from './pages/config/ConfigPage'
 import DespachosPage from './pages/despachos/DespachosPage'
 import GuiaPrintPage from './pages/despachos/GuiaPrintPage'
@@ -160,6 +161,7 @@ export const router = createBrowserRouter([
       { path: 'crm/nueva/compra-agil', element: protect(<VentasFormPage crmMode forceTipo="Compra Ágil" crmQuoteMode="COMPRA_AGIL" />, { module: 'ventas', permission: 'write' }) },
       { path: 'crm/nueva/cotizacion-simple', element: protect(<VentasFormPage crmMode forceTipo="Venta Web" crmQuoteMode="PROSPECCION_DIRECTA" />, { module: 'ventas', permission: 'write' }) },
       { path: 'crm/:id/gestion', element: protect(<CrmGestionDetallePage />, { module: 'ventas' }) },
+      { path: 'crm/:id/cotizacion/imprimir', element: protect(<CrmCotizacionPrintPage />, { module: 'ventas' }) },
       { path: 'config',        element: <ProtectedRoute allowedRoles={['admin']}><ConfigPage /></ProtectedRoute> },
       { path: 'matriz-ventas', element: <Navigate to="/ventas" replace /> },
       { path: 'despachos', element: protect(<DespachosPage />, { module: 'despacho' }) },
