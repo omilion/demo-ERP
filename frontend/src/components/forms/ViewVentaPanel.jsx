@@ -899,7 +899,7 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, ca
 }
 
 // ── Documentos + Pagos (columna izquierda) ───────────────────────────────────
-function DocumentosPagosList({ pagos, dtes }) {
+function DocumentosPagosList({ pagos, dtes, canWriteFacturacion, onNota }) {
   const pagosReales = (pagos || []).filter(p => !isReferencialPago(p))
   const totalPagado = pagosReales
     .filter(p => p.tipo === 'Ingreso')
@@ -934,6 +934,12 @@ function DocumentosPagosList({ pagos, dtes }) {
               <div style={{ marginTop: 2 }}>
                 <button onClick={() => runDteAction(openDtePdf)} style={dteLink('var(--blue)')}>Ver PDF</button>
                 <button onClick={() => runDteAction(downloadDteXml)} style={dteLink('var(--text-2)')}>Descargar XML</button>
+              </div>
+            )}
+            {canWriteFacturacion && [33, 39].includes(Number(doc.tipoDte)) && ['aceptado', 'enviado'].includes(doc.estado) && onNota && (
+              <div style={{ marginTop: 4, display: 'flex', gap: 8 }}>
+                <button onClick={() => onNota(doc, 61)} style={dteLink('var(--red)')}>Emitir NC</button>
+                <button onClick={() => onNota(doc, 56)} style={dteLink('var(--blue)')}>Emitir ND</button>
               </div>
             )}
           </div>
@@ -1115,7 +1121,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                 saldo={saldo}
                 onCobrar={onCobrar}
               />
-              <DocumentosPagosList pagos={pagos} dtes={dtes} />
+              <DocumentosPagosList pagos={pagos} dtes={dtes} canWriteFacturacion={canWriteFacturacion} onNota={(documento, tipoDte) => setNotaDte({ documento, tipoDte })} />
             </div>
 
             {/* Columna derecha */}
