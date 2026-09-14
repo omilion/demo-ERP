@@ -1,11 +1,11 @@
 import { toast, confirmDialog, promptDialog } from '../../store/notif'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { FormField, FormDivider, Input, RadioGroup, Select, Textarea, useForm } from '../../components/forms/index'
 import { Badge, Btn, Icon } from '../../components/shared'
 import { useVenta, useCreateVenta, useUpdateVenta, useAnularVenta, useActivarVenta, useVentaCargos, useAddCargo, useDeleteCargo, useUpdateItemEntregados } from '../../api/ventas'
 import { useAuthStore } from '../../store/auth'
-import { useClientes, useClienteSucursales } from '../../api/clientes'
+import { useClientes, useCliente, useClienteSucursales } from '../../api/clientes'
 import { FormCliente } from '../../components/forms/FormCliente'
 import { useProductos } from '../../api/productos'
 import { useRegiones, useComunas } from '../../api/locations'
@@ -301,7 +301,7 @@ function WorkspaceDataRow({ label, children, value }) {
   )
 }
 
-function VentaClienteWorkspaceCard({ cliente, sucursal, clienteOptions, sucursalOptions, clienteId, sucursalId, onClienteChange, onSucursalChange, onNewCliente, allowAnonymous = false, className = '' }) {
+function VentaClienteWorkspaceCard({ cliente, sucursal, clienteOptions, sucursalOptions, clienteId, sucursalId, onClienteChange, onSucursalChange, onNewCliente, allowAnonymous = false, className = '', onSearchClient, isSearchingClient = false }) {
   const direccion = sucursal?.direccion || cliente?.direccion
   const region = sucursal?.region || cliente?.region
   const comuna = sucursal?.comuna || cliente?.comuna
@@ -328,6 +328,8 @@ function VentaClienteWorkspaceCard({ cliente, sucursal, clienteOptions, sucursal
               onChange={value => onClienteChange(value)}
               options={clienteOptions}
               placeholder="Buscar cliente por nombre o RUT..."
+              onSearchChange={onSearchClient}
+              loading={isSearchingClient}
             />
           </WorkspaceDataRow>
           <WorkspaceDataRow label="RUT" value={cliente?.rut} />
@@ -1006,7 +1008,7 @@ function MultasSection({ ordenId }) {
   )
 }
 
-function SearchableSelect({ value, onChange, options, disabled, placeholder }) {
+function SearchableSelect({ value, onChange, options, disabled, placeholder, onSearchChange, loading = false }) {
   const [isOpen, setIsOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const ref = useRef()
@@ -1022,22 +1024,30 @@ function SearchableSelect({ value, onChange, options, disabled, placeholder }) {
         } else {
           setSearchTerm('')
         }
+        onSearchChange?.('')
       }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [selectedOption])
+  }, [selectedOption, onSearchChange])
 
   const filteredOptions = options.filter(o => {
     if (!o.value) return false
-    const term = searchTerm.toLowerCase()
-    return o.label.toLowerCase().includes(term) || (o.value && String(o.value).includes(term))
+    const term = searchTerm.trim().toLowerCase()
+    if (!term || (selectedOption && term === selectedOption.label.trim().toLowerCase())) return true
+    const termClean = term.replace(/[^0-9kK]/g, '')
+    const labelLower = o.label.toLowerCase()
+    const labelClean = labelLower.replace(/[^0-9kK]/g, '')
+    if (labelLower.includes(term)) return true
+    if (termClean.length >= 3 && labelClean.includes(termClean)) return true
+    return false
   })
 
   function select(opt) {
     onChange(opt.value)
     setSearchTerm(opt.label)
     setIsOpen(false)
+    onSearchChange?.('')
   }
 
   return (
@@ -1047,15 +1057,18 @@ function SearchableSelect({ value, onChange, options, disabled, placeholder }) {
         value={isOpen ? searchTerm : (selectedOption?.value ? selectedOption.label : '')}
         disabled={disabled}
         placeholder={placeholder || "Escribe para buscar cliente..."}
-        onFocus={() => {
+        onFocus={e => {
           if (disabled) return
           setSearchTerm(selectedOption?.value ? selectedOption.label : '')
           setIsOpen(true)
+          e.target.select()
         }}
         onChange={e => {
-          setSearchTerm(e.target.value)
+          const val = e.target.value
+          setSearchTerm(val)
           setIsOpen(true)
-          if (!e.target.value) {
+          onSearchChange?.(val)
+          if (!val) {
             onChange('')
           }
         }}
@@ -1090,7 +1103,11 @@ function SearchableSelect({ value, onChange, options, disabled, placeholder }) {
           maxHeight: 260,
           overflowY: 'auto'
         }}>
-          {filteredOptions.length === 0 ? (
+          {loading ? (
+            <div style={{ padding: '9px 12px', fontSize: 13, color: 'var(--text-3)' }}>
+              Buscando clientes...
+            </div>
+          ) : filteredOptions.length === 0 ? (
             <div style={{ padding: '9px 12px', fontSize: 13, color: 'var(--text-3)' }}>
               Sin resultados
             </div>
@@ -1143,6 +1160,22 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   const canPasarTaller = canAny(user, [['taller', 'write'], ['ventas', 'write']])
 
   const { data: found, isLoading } = useVenta(isEdit ? Number(id) : null)
+  const [createdCliente, setCreatedCliente] = useState(null)
+  const [clientSearchTerm, setClientSearchTerm] = useState('')
+  const [debouncedClientSearch, setDebouncedClientSearch] = useState('')
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedClientSearch(clientSearchTerm.trim())
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [clientSearchTerm])
+
+  const { data: searchResults, isFetching: isSearchingClients } = useClientes(
+    debouncedClientSearch.length >= 2 ? { search: debouncedClientSearch, limit: 50 } : {},
+    { enabled: debouncedClientSearch.length >= 2 }
+  )
+
   const { data: clientesResult } = useClientes()
   const clientesData = clientesResult?.items ?? []
   const createVenta = useCreateVenta()
@@ -1195,6 +1228,7 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
   }, [isEdit, crmMode, navigate, tipoSolicitadoNormalizado])
   const selectedClienteId = data.clienteId ? Number(data.clienteId) : null
   const { data: sucursalesCliente = [] } = useClienteSucursales(selectedClienteId)
+  const { data: directCliente } = useCliente(selectedClienteId)
 
   // Despacho: regiones y comunas encadenadas (la region elegida filtra las comunas).
   const { data: regiones = [] } = useRegiones()
@@ -1503,17 +1537,35 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
     }
   }
 
-  const clienteOptions = [
-    { value: '', label: '— Seleccionar cliente —' },
-    ...clientesData.map(c => ({ value: String(c.id), label: `${c.nombre} (${c.rut})` })),
-  ]
+  const dynamicClients = useMemo(() => {
+    if (debouncedClientSearch.length >= 2) return searchResults?.items || []
+    return clientesData
+  }, [debouncedClientSearch, searchResults, clientesData])
+
+  const selectedCliente = useMemo(() => {
+    if (createdCliente && String(createdCliente.id) === String(data.clienteId)) return createdCliente
+    if (directCliente && String(directCliente.id) === String(data.clienteId)) return directCliente
+    const fromList = dynamicClients.find(c => String(c.id) === String(data.clienteId)) || clientesData.find(c => String(c.id) === String(data.clienteId))
+    if (fromList) return fromList
+    return found?.cliente || null
+  }, [createdCliente, data.clienteId, directCliente, dynamicClients, clientesData, found?.cliente])
+
+  const clienteOptions = useMemo(() => {
+    const list = [...dynamicClients]
+    if (selectedCliente && !list.some(c => String(c.id) === String(selectedCliente.id))) {
+      list.unshift(selectedCliente)
+    }
+    return [
+      { value: '', label: '— Seleccionar cliente —' },
+      ...list.map(c => ({ value: String(c.id), label: `${c.nombre} (${c.rut || 'Sin RUT'})` })),
+    ]
+  }, [dynamicClients, selectedCliente])
 
   const sucursalOptions = [
     { value: '', label: sucursalesCliente.length ? 'Sin sucursal especifica' : 'Sin sucursales registradas' },
     ...sucursalesCliente.map(s => ({ value: String(s.id), label: `${s.nombre}${s.comuna ? ` - ${s.comuna}` : ''}` })),
   ]
   const selectedSucursal = sucursalesCliente.find(s => String(s.id) === data.clienteSucursalId)
-  const selectedCliente = clientesData.find(c => String(c.id) === String(data.clienteId)) || found?.cliente
   const fechaFicha = isEdit && (found?.fecha || found?.createdAt)
     ? new Date(found.fecha || found.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     : new Date().toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -1593,6 +1645,8 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         onSucursalChange={value => set('clienteSucursalId', value)}
         onNewCliente={() => setShowNewCliente(true)}
         allowAnonymous={!isEdit && data.tipo === 'Venta Sala'}
+        onSearchClient={setClientSearchTerm}
+        isSearchingClient={isSearchingClients}
       />
       <div className="venta-workspace-legacy-control">
         <FormDivider label="Tipo de Venta" />
@@ -1708,7 +1762,13 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
       <FormField label="Cliente / Organismo">
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <div style={{ flex: 1 }}>
-            <SearchableSelect value={data.clienteId} onChange={v => { set('clienteId', v); set('clienteSucursalId', '') }} options={clienteOptions} />
+            <SearchableSelect
+              value={data.clienteId}
+              onChange={v => { set('clienteId', v); set('clienteSucursalId', '') }}
+              options={clienteOptions}
+              onSearchChange={setClientSearchTerm}
+              loading={isSearchingClients}
+            />
           </div>
           <button 
             type="button" 
@@ -1968,8 +2028,10 @@ export default function VentasFormPage({ crmMode = false, forceTipo = null, crmQ
         <FormCliente 
           onClose={() => setShowNewCliente(false)}
           onSaved={(newCliente) => {
+            setCreatedCliente(newCliente)
             set('clienteId', String(newCliente.id))
             set('clienteSucursalId', '')
+            setShowNewCliente(false)
           }}
         />
       )}
