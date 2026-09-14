@@ -1,12 +1,15 @@
 import { toast, confirmDialog } from '../../store/notif'
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { Badge, Btn, Icon } from '../shared'
 import { ViewPanel, FormDivider } from './index'
 import { useVenta, useDeleteVenta, useForzarTaller, useUpdateVenta, useAnularVenta, useActivarVenta, useUpdateItemEntregados, useVentaDespachoHistorial } from '../../api/ventas'
 import { useProductos } from '../../api/productos'
 import { useDocumentos, useDocumentosReferenciables, useReenviarDocumento } from '../../api/facturacion'
 import { EmitirDteModal, NotaDteModal } from '../facturacion/DteModals'
+import { GuiaDespachoModal } from '../../pages/despachos/GuiaFormPage'
+import { DespachoModal } from '../../pages/despachos/DespachoFormPage'
 import { hasActiveSalesDte, TIPOS_DTE } from '../../utils/facturacion'
 import { downloadDteXml, openDtePdf } from '../../utils/dteDocuments'
 import { useAuthStore } from '../../store/auth'
@@ -781,22 +784,11 @@ function opBtnStyle(color) {
   }
 }
 
-function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, canEmitirDte, onEmitirDte, canEmitirNotaFiscal, onEmitirNotaFiscal, canDelete, canManageInternalCreditNotes, internalCreditNoteBlocked, onCreateInternalCreditNote, canRegistrarPago, canCobrar, saldo, onCobrar }) {
+function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, canEmitirDte, onEmitirDte, canEmitirNotaFiscal, onEmitirNotaFiscal, canDelete, canManageInternalCreditNotes, internalCreditNoteBlocked, onCreateInternalCreditNote, canRegistrarPago, canCobrar, saldo, onCobrar, onCreateDespacho, onPrepararGuia }) {
   const navigate = useNavigate()
   const anularVenta = useAnularVenta()
   const activarVenta = useActivarVenta()
   const despachosCount = (v.despachos || []).length
-
-  const handleCreateDespacho = () => {
-    const params = new URLSearchParams({
-      ordenId: String(v.id),
-      nInterno: String(v.nInterno || ''),
-      direccion: v.direccionDespacho || '',
-      region: v.regionDespacho || '',
-      comuna: v.comunaDespacho || ''
-    })
-    navigate(`/despachos/nuevo?${params.toString()}`)
-  }
 
   const abrirNotaVenta = () => {
     const w = window.open(`${window.location.origin}/ventas/${v.id}/imprimir`, '_blank')
@@ -851,11 +843,11 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, ca
         </button>
       )}
       {canWriteDespacho && v.estado === 'Activa' && v.estadoLogistico?.codigo === 'LISTA_DESPACHO' && (
-        <button onClick={() => navigate(`/despachos/guias/nueva?ordenId=${v.id}`)} style={opBtnStyle('#d97706')}>
+        <button onClick={onPrepararGuia} style={opBtnStyle('#d97706')}>
           <Icon name="fileText" size={14} /> Preparar Guía DTE 52
         </button>
       )}
-      <button onClick={handleCreateDespacho} style={opBtnStyle('var(--blue)')}>
+      <button onClick={onCreateDespacho} style={opBtnStyle('var(--blue)')}>
         <Icon name="truck" size={14} /> Crear Despacho ({despachosCount})
       </button>
       <button onClick={abrirNotaVenta} style={opBtnStyle('var(--blue)')}>
@@ -960,12 +952,15 @@ function DocumentosPagosList({ pagos, dtes, canWriteFacturacion, onNota }) {
 // ── Main panel ─────────────────────────────────────────────────────────────────
 export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDelete = false, variant = 'drawer' }) {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { user } = useAuthStore()
   const [tab, setTab] = useState('detalle')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [emitirDte, setEmitirDte] = useState(false)
   const [notaDte, setNotaDte] = useState(null)
   const [notaInterna, setNotaInterna] = useState(false)
+  const [showDespachoModal, setShowDespachoModal] = useState(false)
+  const [showGuiaDespacho, setShowGuiaDespacho] = useState(false)
 
   const { data: full, isLoading } = useVenta(venta.id)
   const deleteVenta = useDeleteVenta()
@@ -1019,16 +1014,10 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
     })
   }
 
-  const handleCreateDespacho = () => {
-    const params = new URLSearchParams({
-      ordenId: String(v.id),
-      nInterno: String(v.nInterno || ''),
-      direccion: v.direccionDespacho || '',
-      region: v.regionDespacho || '',
-      comuna: v.comunaDespacho || ''
-    })
-    navigate(`/despachos/nuevo?${params.toString()}`)
-  }
+  // Abre el registro de despacho como modal sobre la misma pantalla de venta
+  // en vez de navegar a /despachos/nuevo (feedback FB #6, 09-11: el flujo
+  // legado resolvia esto sin sacar al usuario de la venta).
+  const handleCreateDespacho = () => setShowDespachoModal(true)
 
   function handleDelete() {
     deleteVenta.mutate(venta.id, {
@@ -1120,6 +1109,8 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                 canCobrar={canCobrar}
                 saldo={saldo}
                 onCobrar={onCobrar}
+                onCreateDespacho={() => setShowDespachoModal(true)}
+                onPrepararGuia={() => setShowGuiaDespacho(true)}
               />
               <DocumentosPagosList pagos={pagos} dtes={dtes} canWriteFacturacion={canWriteFacturacion} onNota={(documento, tipoDte) => setNotaDte({ documento, tipoDte })} />
             </div>
@@ -1421,6 +1412,20 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
       )}
       {emitirDte && <EmitirDteModal venta={v} onClose={() => setEmitirDte(false)} onSuccess={({ emitido, documento }) => { setEmitirDte(false); toast.success(`DTE emitido${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`) }} />}
       {notaDte && <NotaDteModal documento={notaDte.documento} tipoDte={notaDte.tipoDte} onClose={() => setNotaDte(null)} onSuccess={({ emitido, documento }) => { setNotaDte(null); toast.success(`DTE emitido${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`) }} />}
+      {showDespachoModal && (
+        <DespachoModal
+          ordenId={v.id}
+          nInterno={v.nInterno}
+          onClose={() => { setShowDespachoModal(false); qc.invalidateQueries({ queryKey: ['ventas', v.id] }) }}
+        />
+      )}
+      {showGuiaDespacho && (
+        <GuiaDespachoModal
+          ordenId={v.id}
+          nInterno={v.nInterno}
+          onClose={() => { setShowGuiaDespacho(false); qc.invalidateQueries({ queryKey: ['ventas', v.id] }) }}
+        />
+      )}
     </ViewPanel>
   )
 }

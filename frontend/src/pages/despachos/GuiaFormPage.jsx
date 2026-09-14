@@ -68,7 +68,28 @@ export default function GuiaFormPage() {
   )
 }
 
-function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCancel }) {
+// Modal embebido para abrir el formulario de guia sin salir de la pantalla de
+// venta (feedback FB #6, 09-11: legado usaba un popup de 3 campos ahi mismo;
+// esto conserva la guia electronica DTE 52 completa, solo cambia donde vive).
+export function GuiaDespachoModal({ ordenId, nInterno, onClose }) {
+  const initial = { ordenId: String(ordenId), despachoId: '', odtId: '', nInterno: String(nInterno || ''), nGuia: '', fechaGuia: '', origen: '' }
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'oklch(0 0 0 / .45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div
+        role="dialog" aria-modal="true" aria-label="Preparar guía de despacho"
+        onClick={event => event.stopPropagation()}
+        style={{ width: 960, maxWidth: '100%', maxHeight: '92vh', overflowY: 'auto', borderRadius: 12, boxShadow: '0 16px 48px oklch(0 0 0 / .2)' }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 10px 0' }}>
+          <button onClick={onClose} aria-label="Cerrar diálogo" title="Cerrar" style={{ minWidth: 40, minHeight: 40, background: '#fff', borderRadius: 8, color: 'var(--text-3)' }}>✕</button>
+        </div>
+        <GuiaForm isEdit={false} initial={initial} onDone={onClose} onCancel={onClose} />
+      </div>
+    </div>
+  )
+}
+
+export function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCancel }) {
   const { user } = useAuthStore()
   const canEmitir = can(user, 'facturacion.emitir', 'write') || can(user, 'facturacion', 'write')
 
@@ -102,9 +123,13 @@ function GuiaForm({ isEdit, initial, existingDoc, existingDespacho, onDone, onCa
       rut: r.rut || selectedDespacho?.receptorRut || ventaData?.rutCliente || '',
       razonSocial: r.razonSocial || selectedDespacho?.receptorRazonSocial || ventaData?.cliente?.razonSocial || ventaData?.nombreCliente || '',
       giro: r.giro || selectedDespacho?.receptorGiro || ventaData?.cliente?.giro || '',
-      direccion: r.direccion || selectedDespacho?.direccion || ventaData?.direccionDespacho || ventaData?.clienteSucursal?.direccion || '',
-      comuna: r.comuna || selectedDespacho?.comuna || ventaData?.comunaDespacho || ventaData?.clienteSucursal?.comuna || '',
-      ciudad: r.ciudad || selectedDespacho?.ciudad || ventaData?.ciudadDespacho || ventaData?.clienteSucursal?.ciudad || '',
+      // Si la venta no tiene sucursal de entrega ni direccion propia registrada
+      // (ej: despacha a la casa matriz del cliente), cae al domicilio que el
+      // cliente ya entrego al crearse la ficha, en vez de pedirlo de nuevo
+      // (feedback FB #6, 09-11: la venta "ya solicito todos los datos al inicio").
+      direccion: r.direccion || selectedDespacho?.direccion || ventaData?.direccionDespacho || ventaData?.clienteSucursal?.direccion || ventaData?.cliente?.direccion || '',
+      comuna: r.comuna || selectedDespacho?.comuna || ventaData?.comunaDespacho || ventaData?.clienteSucursal?.comuna || ventaData?.cliente?.comuna || '',
+      ciudad: r.ciudad || selectedDespacho?.ciudad || ventaData?.ciudadDespacho || ventaData?.clienteSucursal?.ciudad || ventaData?.cliente?.ciudad || '',
       contacto: r.contacto || selectedDespacho?.contacto || ventaData?.contactoDespacho || '',
       email: r.email || selectedDespacho?.emailContacto || ventaData?.emailContactoDespacho || '',
     }

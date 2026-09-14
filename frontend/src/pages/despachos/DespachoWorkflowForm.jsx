@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn } from '../../components/shared'
 import { useCreateDespacho, useDespachoColaOperativa, useUpdateDespacho } from '../../api/despachos'
+import { useVenta } from '../../api/ventas'
 import { emptyDespacho, showError, checkLabel, input, grid } from './shared'
 import { DespachoCamposFields, Field, Footer, PackingProgress } from './shared-ui'
 
@@ -57,12 +58,39 @@ export default function DespachoWorkflowForm({ isEdit, initial, onDone, onCancel
     }))
   }, [esManual, isEdit, selected])
 
+  // Si la venta no aparece en la cola operativa (ej: Licitacion sin direccion
+  // de despacho propia ni sucursal asignada) el efecto de arriba nunca corre y
+  // el destino queda en blanco aunque el cliente ya tenga domicilio en ficha
+  // desde que se creo (feedback FB #6, 09-11: "esta venta ya solicito todos
+  // los datos necesarios al inicio"). Se completa con ese domicilio solo si
+  // nada (ni la cola, ni el usuario) ya cargo un destino.
+  const clienteFallbackApplied = useRef(false)
+  const ventaId = !esManual && form.ordenId ? Number(form.ordenId) : undefined
+  const { data: ventaData } = useVenta(!isEdit ? ventaId : undefined)
+  useEffect(() => {
+    if (isEdit || esManual || clienteFallbackApplied.current) return
+    if (cola.isLoading || !ventaData?.cliente) return
+    clienteFallbackApplied.current = true
+    const cliente = ventaData.cliente
+    // Seed unico del destino cuando la cola operativa no trajo uno (ver
+    // comentario arriba); no es estado derivable en render porque el usuario
+    // debe poder seguir editando estos campos despues.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setForm(prev => ({
+      ...prev,
+      direccion: prev.direccion || cliente.direccion || '',
+      region: prev.region || cliente.region || '',
+      comuna: prev.comuna || cliente.comuna || '',
+    }))
+  }, [isEdit, esManual, cola.isLoading, ventaData])
+
   const createMut = useCreateDespacho()
   const updateMut = useUpdateDespacho()
   const saving = createMut.isPending || updateMut.isPending
 
   const elegirModo = mode => {
     loadedOrder.current = null
+    clienteFallbackApplied.current = false
     if (mode === 'manual') {
       setForm(prev => ({
         ...emptyDespacho,
@@ -201,7 +229,7 @@ export default function DespachoWorkflowForm({ isEdit, initial, onDone, onCancel
           <Field label="Venta lista para despacho">
             <select
               value={form.ordenId || ''}
-              onChange={event => { loadedOrder.current = null; set('ordenId', event.target.value) }}
+              onChange={event => { loadedOrder.current = null; clienteFallbackApplied.current = false; set('ordenId', event.target.value) }}
               style={input}
               disabled={cola.isLoading}
             >
