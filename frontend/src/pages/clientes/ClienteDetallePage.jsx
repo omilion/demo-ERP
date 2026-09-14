@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/auth'
 import { can, getUserRole } from '../../utils/permissions'
 import { toast, confirmDialog } from '../../store/notif'
 import { clienteToForm, clienteFormToPayload, TIPOS_CLIENTE } from '../../components/forms/clienteFields'
+import { validateClienteData, formatRut } from '../../utils/rut'
 import { PAISES_LATAM, REGIONES_CHILE, COMUNAS_POR_REGION } from '../../data/geoLatam'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('es-CL')
@@ -106,8 +107,11 @@ export default function ClienteDetallePage() {
   }
 
   function handleSaveInline() {
-    if (!formData.nombre?.trim()) return toast.warning('El nombre del cliente es obligatorio')
-    if (!formData.rut?.trim()) return toast.warning('El RUT del cliente es obligatorio')
+    const { isValid, errors: valErrors } = validateClienteData(formData)
+    if (!isValid) {
+      const firstError = Object.values(valErrors)[0]
+      return toast.warning(firstError || 'Por favor completa los datos válidos del cliente')
+    }
 
     const joinedEmail = emailsList.map(e => e.trim()).filter(Boolean).join(', ')
     const payload = clienteFormToPayload({ ...formData, email: joinedEmail })
@@ -313,8 +317,12 @@ export default function ClienteDetallePage() {
                 <input
                   value={formData.rut || ''}
                   onChange={e => handleFormChange('rut', e.target.value)}
+                  onBlur={e => {
+                    const formatted = formatRut(e.target.value)
+                    if (formatted) handleFormChange('rut', formatted)
+                  }}
                   style={inlineInputStyle}
-                  placeholder="Ej: 76123456-7"
+                  placeholder="Ej: 76.123.456-7"
                 />
               }
               mono

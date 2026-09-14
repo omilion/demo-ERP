@@ -9,6 +9,7 @@
     "dev": "vite",
     "prebuild": "npm run sync:help",
     "build": "vite build",
+    "test": "vitest run",
     "lint": "eslint .",
     "preview": "vite preview"
   },

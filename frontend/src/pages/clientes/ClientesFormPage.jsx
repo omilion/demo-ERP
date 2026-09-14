@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { PageHeader, Btn, Icon } from '../../components/shared'
 import { clienteToForm, clienteFormToPayload, TIPOS_CLIENTE } from '../../components/forms/clienteFields'
+import { validateClienteData } from '../../utils/rut'
 import { SucursalesCliente, sucursalToPayload } from '../../components/forms/SucursalesCliente'
 import { PAISES_LATAM, REGIONES_CHILE, COMUNAS_POR_REGION } from '../../data/geoLatam'
 import { useCliente, useCreateCliente, useUpdateCliente, useCreateClienteSucursal } from '../../api/clientes'
@@ -77,13 +78,11 @@ export default function ClientesFormPage() {
   }
 
   const handleSave = () => {
-    const errs = {}
-    if (!data.nombre?.trim()) errs.nombre = 'El nombre es obligatorio'
-    if (!data.rut?.trim()) errs.rut = 'El RUT es obligatorio'
-
-    if (Object.keys(errs).length > 0) {
-      setErrors(errs)
-      toast.warning('Por favor completa los campos obligatorios (RUT y Nombre)')
+    const { isValid, errors: valErrors } = validateClienteData(data)
+    if (!isValid) {
+      setErrors(valErrors)
+      const firstError = Object.values(valErrors)[0]
+      toast.warning(firstError || 'Por favor completa los campos obligatorios (RUT y Nombre)')
       return
     }
 
