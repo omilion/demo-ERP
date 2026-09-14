@@ -95,9 +95,11 @@ export default async function proveedoresRoutes(fastify) {
       preHandler: [f.authenticate],
     }, async (request, reply) => {
       if (!canReadProveedorList(request.user)) return reply.code(403).send({ error: 'Forbidden' })
-      const { page = '1' } = request.query
-      const LIMIT = 100
-      const offset = (parseInt(page, 10) - 1) * LIMIT
+      const { page = '1', limit, all } = request.query
+      const isAll = all === 'true' || all === true
+      const parsedLimit = parseInt(limit, 10)
+      const LIMIT = isAll ? 5000 : (Number.isInteger(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 5000) : 100)
+      const offset = isAll ? 0 : (parseInt(page, 10) - 1) * LIMIT
       const includeSensitive = canReadProveedorSensitive(request.user)
       const where = buildProveedorWhere(request.query)
 

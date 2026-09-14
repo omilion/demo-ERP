@@ -65,8 +65,12 @@ export default function OrdenesCompraProveedoresPage({ embedded = false }) {
 
   const { data = { items: [], total: 0, kpis: {} } } = useOrdenesCompraProveedores(queryParams)
   const { data: tiemposBodega = {} } = useTiemposBodega()
-  const { data: proveedoresData = { items: [] } } = useProveedores()
-  const proveedoresList = proveedoresData.items || []
+  const { data: proveedoresData = { items: [] } } = useProveedores({ limit: 1000 })
+  const proveedoresList = useMemo(() => {
+    return (proveedoresData.items || []).slice().sort((a, b) =>
+      (a.nombre || a.razonSocial || '').localeCompare(b.nombre || b.razonSocial || '', 'es', { sensitivity: 'base' })
+    )
+  }, [proveedoresData.items])
 
   const aprobarMutation = useAprobarOCProveedor()
   const enviarMutation = useEnviarOCProveedor()
@@ -783,10 +787,21 @@ function OCRechazarModal({ oc, onClose }) {
 function OCManualModal({ proveedores = [], onClose }) {
   const createMutation = useCreateOCProveedor()
   const [proveedorId, setProveedorId] = useState('')
+  const [filtroProv, setFiltroProv] = useState('')
   const [fechaRequerida, setFechaRequerida] = useState('')
   const [condicionPago, setCondicionPago] = useState('')
   const [observaciones, setObservaciones] = useState('')
   const [items, setItems] = useState([{ productoId: null, codigoInterno: '', nombre: '', cantidadPedida: 10, costoUnitario: 0 }])
+
+  const filteredProveedores = useMemo(() => {
+    if (!filtroProv.trim()) return proveedores
+    const q = filtroProv.trim().toLowerCase()
+    return proveedores.filter(p =>
+      (p.nombre && p.nombre.toLowerCase().includes(q)) ||
+      (p.razonSocial && p.razonSocial.toLowerCase().includes(q)) ||
+      (p.rut && p.rut.toLowerCase().includes(q))
+    )
+  }, [proveedores, filtroProv])
 
   const [productSearch, setProductSearch] = useState('')
   const { data: searchResult = { items: [] } } = useProductos({ search: productSearch, limit: 10 })
@@ -874,19 +889,35 @@ function OCManualModal({ proveedores = [], onClose }) {
 
         <form onSubmit={handleSubmit}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Proveedor *</label>
-              <select
-                required
-                value={proveedorId}
-                onChange={(e) => setProveedorId(e.target.value)}
-                style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13 }}
-              >
-                <option value="">Seleccione proveedor...</option>
-                {proveedores.map((p) => (
-                  <option key={p.id} value={p.id}>{p.nombre}</option>
-                ))}
-              </select>
+            <div style={{ minWidth: 260 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Proveedor *</label>
+                {proveedores.length > 0 && (
+                  <span style={{ fontSize: 10.5, color: 'var(--text-3)' }}>
+                    {filteredProveedores.length} de {proveedores.length}
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  type="text"
+                  placeholder="Buscar proveedor..."
+                  value={filtroProv}
+                  onChange={(e) => setFiltroProv(e.target.value)}
+                  style={{ width: '42%', padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12 }}
+                />
+                <select
+                  required
+                  value={proveedorId}
+                  onChange={(e) => setProveedorId(e.target.value)}
+                  style={{ width: '58%', padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, background: '#fff' }}
+                >
+                  <option value="">Seleccione proveedor...</option>
+                  {filteredProveedores.map((p) => (
+                    <option key={p.id} value={p.id}>{p.nombre}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div>

@@ -32,8 +32,24 @@ export default function SugerenciaOCSection({ onCreatedOC }) {
   const [customCosts, setCustomCosts] = useState({})
   const [confirmModalOpen, setConfirmModalOpen] = useState(false)
 
-  const { data: proveedoresData = { items: [] } } = useProveedores()
-  const proveedoresList = proveedoresData.items || []
+  const [filtroProveedor, setFiltroProveedor] = useState('')
+  const { data: proveedoresData = { items: [] } } = useProveedores({ limit: 1000 })
+  const proveedoresList = useMemo(() => {
+    return (proveedoresData.items || []).slice().sort((a, b) =>
+      (a.nombre || a.razonSocial || '').localeCompare(b.nombre || b.razonSocial || '', 'es', { sensitivity: 'base' })
+    )
+  }, [proveedoresData.items])
+
+  const filteredProveedores = useMemo(() => {
+    if (!filtroProveedor.trim()) return proveedoresList
+    const q = filtroProveedor.trim().toLowerCase()
+    return proveedoresList.filter(p =>
+      (p.nombre && p.nombre.toLowerCase().includes(q)) ||
+      (p.razonSocial && p.razonSocial.toLowerCase().includes(q)) ||
+      (p.rut && p.rut.toLowerCase().includes(q))
+    )
+  }, [proveedoresList, filtroProveedor])
+
   const selectedProveedor = proveedoresList.find(p => String(p.id) === String(proveedorId))
 
   const queryParams = useMemo(() => ({
@@ -166,20 +182,36 @@ export default function SugerenciaOCSection({ onCreatedOC }) {
       }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', flex: '1 1 auto' }}>
-            <div style={{ minWidth: 200, flex: '1 1 200px' }}>
-              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--text-2)', marginBottom: 4 }}>
-                Proveedor Recurrente
-              </label>
-              <select
-                value={proveedorId}
-                onChange={(e) => setProveedorId(e.target.value)}
-                style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 13, background: '#fff' }}
-              >
-                <option value="">Todos los proveedores</option>
-                {proveedoresList.map((p) => (
-                  <option key={p.id} value={p.id}>{p.nombre} {p.pagoFactura ? `(${p.pagoFactura})` : ''}</option>
-                ))}
-              </select>
+            <div style={{ minWidth: 280, flex: '1 1 280px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-2)' }}>
+                  Proveedor Recurrente
+                </label>
+                {proveedoresList.length > 0 && (
+                  <span style={{ fontSize: 10.5, color: 'var(--text-3)' }}>
+                    {filteredProveedores.length} de {proveedoresList.length} proveedores
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  type="text"
+                  placeholder="Buscar proveedor..."
+                  value={filtroProveedor}
+                  onChange={(e) => setFiltroProveedor(e.target.value)}
+                  style={{ width: '42%', padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12 }}
+                />
+                <select
+                  value={proveedorId}
+                  onChange={(e) => setProveedorId(e.target.value)}
+                  style={{ width: '58%', padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', fontSize: 12, background: '#fff' }}
+                >
+                  <option value="">Todos los proveedores</option>
+                  {filteredProveedores.map((p) => (
+                    <option key={p.id} value={p.id}>{p.nombre} {p.pagoFactura ? `(${p.pagoFactura})` : ''}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div>
