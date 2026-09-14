@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useAuthStore } from '../../store/auth'
 
 const ICONS = {
@@ -11,10 +11,15 @@ const ICONS = {
   package:      <><path d="M16.5 9.4l-9-5.19"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27,6.96 12,12.01 20.73,6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></>,
   dollarSign:   <><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></>,
   truck:        <><rect x="1" y="3" width="15" height="13"/><polygon points="16,8 20,8 23,11 23,16 16,16 16,8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></>,
-  chevronDown:  <polyline points="6,9 12,15 18,9"/>,
-  chevronRight: <polyline points="9,18 15,12 9,6"/>,
-  chevronLeft:  <polyline points="15,18 9,12 15,6"/>,
-  bell:         <><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></>,
+  chevronDown:    <polyline points="6,9 12,15 18,9"/>,
+  chevronUp:      <polyline points="18,15 12,9 6,15"/>,
+  chevronRight:   <polyline points="9,18 15,12 9,6"/>,
+  chevronLeft:    <polyline points="15,18 9,12 15,6"/>,
+  chevronsUpDown: <><polyline points="7,15 12,20 17,15"/><polyline points="7,9 12,4 17,9"/></>,
+  gripVertical:   <><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></>,
+  arrowUp:        <><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5,12 12,5 19,12"/></>,
+  arrowDown:      <><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19,12 12,19 5,12"/></>,
+  bell:           <><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></>,
   user:         <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>,
   settings:     <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></>,
   logOut:       <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
@@ -481,8 +486,31 @@ const saveColumnPrefs = (key, user, selected) => {
 
 function TableColumnSelector({ columns, selected, onChange, onReset, required }) {
   const [open, setOpen] = useState(false)
+  const [draggedIdx, setDraggedIdx] = useState(null)
   const selectedSet = new Set(selected)
-  const configurable = columns.filter(col => col.label)
+
+  const columnMap = useMemo(() => new Map(columns.map(col => [col.key, col])), [columns])
+
+  // Lista ordenada de todas las columnas configurables (con label):
+  // Primero las seleccionadas en el orden personalizado actual del usuario,
+  // luego las columnas disponibles que están desmarcadas/ocultas.
+  const orderedKeys = useMemo(() => {
+    const keys = []
+    const seen = new Set()
+    for (const key of selected) {
+      if (columnMap.has(key) && columnMap.get(key)?.label) {
+        keys.push(key)
+        seen.add(key)
+      }
+    }
+    for (const col of columns) {
+      if (col.label && !seen.has(col.key)) {
+        keys.push(col.key)
+        seen.add(col.key)
+      }
+    }
+    return keys
+  }, [columns, selected, columnMap])
 
   const toggle = key => {
     if (required.has(key)) return
@@ -492,9 +520,20 @@ function TableColumnSelector({ columns, selected, onChange, onReset, required })
     onChange(next)
   }
 
+  const handleMove = (fromIdx, toIdx) => {
+    if (fromIdx === toIdx || fromIdx == null || toIdx == null) return
+    if (fromIdx < 0 || toIdx < 0 || fromIdx >= orderedKeys.length || toIdx >= orderedKeys.length) return
+    const nextKeys = [...orderedKeys]
+    const [moved] = nextKeys.splice(fromIdx, 1)
+    nextKeys.splice(toIdx, 0, moved)
+    // Conservamos las columnas que están seleccionadas o fijas, en su nuevo orden:
+    const nextSelected = nextKeys.filter(k => selectedSet.has(k) || required.has(k))
+    onChange(nextSelected)
+  }
+
   return (
     <div style={{ position: 'relative' }}>
-      <button type="button" className="table-tool-btn table-column-btn" onClick={() => setOpen(value => !value)} title="Columnas visibles">
+      <button type="button" className="table-tool-btn table-column-btn" onClick={() => setOpen(value => !value)} title="Columnas visibles y orden">
         <Icon name="list" size={13} />
         <span>Columnas</span>
       </button>
@@ -503,7 +542,7 @@ function TableColumnSelector({ columns, selected, onChange, onReset, required })
           position: 'absolute',
           top: 'calc(100% + 8px)',
           right: 0,
-          width: 320,
+          width: 330,
           maxWidth: '88vw',
           background: '#fff',
           border: '1px solid var(--border)',
@@ -514,37 +553,138 @@ function TableColumnSelector({ columns, selected, onChange, onReset, required })
         }}>
           <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 10 }}>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>Columnas visibles</div>
-              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>La vista queda guardada para este usuario.</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>Columnas & Orden</div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>Marca para ver, o arrastra / usa flechas para ordenar posición.</div>
             </div>
             <button type="button" onClick={() => setOpen(false)} style={{ color: 'var(--text-3)', padding: 4 }}>
               <Icon name="x" size={16} />
             </button>
           </div>
-          <div style={{ maxHeight: 360, overflowY: 'auto', padding: 8 }}>
-            {configurable.map(col => {
-              const locked = required.has(col.key)
+          <div style={{ maxHeight: 380, overflowY: 'auto', padding: '6px 8px' }}>
+            {orderedKeys.map((colKey, idx) => {
+              const col = columnMap.get(colKey)
+              if (!col) return null
+              const locked = required.has(colKey)
+              const isSelected = selectedSet.has(colKey)
+              const isDragging = draggedIdx === idx
+
               return (
-                <label key={col.key} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 9,
-                  padding: '8px 9px',
-                  borderRadius: 7,
-                  cursor: locked ? 'default' : 'pointer',
-                  color: locked ? 'var(--text-3)' : 'var(--text-1)',
-                  fontSize: 13,
-                }}>
-                  <input type="checkbox" checked={selectedSet.has(col.key)} disabled={locked} onChange={() => toggle(col.key)} />
-                  <span style={{ flex: 1 }}>{col.label}</span>
-                  {locked && <span style={{ fontSize: 10, color: 'var(--text-3)' }}>fija</span>}
-                </label>
+                <div
+                  key={colKey}
+                  draggable={!locked}
+                  onDragStart={e => {
+                    e.dataTransfer.setData('text/plain', String(idx))
+                    setDraggedIdx(idx)
+                  }}
+                  onDragOver={e => {
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = 'move'
+                  }}
+                  onDrop={e => {
+                    e.preventDefault()
+                    handleMove(draggedIdx, idx)
+                    setDraggedIdx(null)
+                  }}
+                  onDragEnd={() => setDraggedIdx(null)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 8px',
+                    borderRadius: 7,
+                    background: isDragging ? 'var(--green-50, #f0fdf4)' : 'transparent',
+                    border: isDragging ? '1px dashed var(--green-600, #16a34a)' : '1px solid transparent',
+                    opacity: isSelected ? 1 : 0.65,
+                    transition: 'background 0.1s, opacity 0.1s',
+                    marginBottom: 2,
+                  }}
+                >
+                  <span
+                    style={{
+                      color: locked ? 'var(--border)' : 'var(--text-3)',
+                      cursor: locked ? 'default' : 'grab',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      padding: '2px',
+                    }}
+                    title={locked ? 'Columna fija' : 'Arrastra para reordenar'}
+                    aria-label={`Reordenar ${col.label}`}
+                  >
+                    <Icon name="gripVertical" size={13} />
+                  </span>
+
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    flex: 1,
+                    minWidth: 0,
+                    cursor: locked ? 'default' : 'pointer',
+                    color: locked ? 'var(--text-3)' : 'var(--text-1)',
+                    fontSize: 13,
+                    userSelect: 'none',
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      disabled={locked}
+                      onChange={() => toggle(colKey)}
+                    />
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {col.label}
+                    </span>
+                    {locked && <span style={{ fontSize: 10, color: 'var(--text-3)', fontStyle: 'italic' }}>fija</span>}
+                  </label>
+
+                  {!locked && (
+                    <div style={{ display: 'inline-flex', gap: 2, alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        disabled={idx === 0}
+                        onClick={() => handleMove(idx, idx - 1)}
+                        style={{
+                          border: 'none',
+                          background: 'none',
+                          padding: '2px 4px',
+                          cursor: idx === 0 ? 'default' : 'pointer',
+                          color: idx === 0 ? 'var(--border)' : 'var(--text-3)',
+                          borderRadius: 4,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                        }}
+                        title="Mover arriba"
+                        aria-label={`Mover arriba ${col.label}`}
+                      >
+                        <Icon name="chevronUp" size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={idx === orderedKeys.length - 1}
+                        onClick={() => handleMove(idx, idx + 1)}
+                        style={{
+                          border: 'none',
+                          background: 'none',
+                          padding: '2px 4px',
+                          cursor: idx === orderedKeys.length - 1 ? 'default' : 'pointer',
+                          color: idx === orderedKeys.length - 1 ? 'var(--border)' : 'var(--text-3)',
+                          borderRadius: 4,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                        }}
+                        title="Mover abajo"
+                        aria-label={`Mover abajo ${col.label}`}
+                      >
+                        <Icon name="chevronDown" size={12} />
+                      </button>
+                    </div>
+                  )}
+                </div>
               )
             })}
           </div>
           <div style={{ padding: 10, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
             <button type="button" className="table-tool-btn" onClick={onReset}>Restaurar base</button>
-            <button type="button" className="table-tool-btn table-column-save" onClick={() => setOpen(false)}>Guardar</button>
+            <button type="button" className="table-tool-btn table-column-save" onClick={() => setOpen(false)}>Listo</button>
           </div>
         </div>
       )}
@@ -570,6 +710,9 @@ export const Table = ({
   getRowStyle,
   loading = false,
   loadingRows = 6,
+  defaultSort = null,
+  onSort = null,
+  sortConfig: externalSort = undefined,
 }) => {
   const user = useAuthStore(s => s.user)
   const [hovRow, setHovRow] = useState(null)
@@ -577,6 +720,9 @@ export const Table = ({
   const [hasKeyboardFocus, setHasKeyboardFocus] = useState(false)
   const [tableZoom, setTableZoomState] = useState(readTableZoom)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [internalSort, setInternalSort] = useState(defaultSort)
+  const sortConfig = externalSort !== undefined ? externalSort : internalSort
+
   const autoColumnPrefs = columnPrefs && columns.length >= 6
   const prefsKey = autoColumnPrefs ? (columnPrefsKey || ariaLabel) : null
   const defaultColumnKeys = columns.filter(col => !col.defaultHidden).map(col => col.key)
@@ -586,10 +732,85 @@ export const Table = ({
   const keyboardEnabled = keyboard ?? Boolean(onRowClick || onRowDoubleClick)
   const autoFocusEnabled = autoFocus ?? keyboardEnabled
   const stickyHeaderEnabled = stickyHeader ?? keyboardEnabled
-  const clampedActiveRow = Math.min(Math.max(activeRow, 0), Math.max(rows.length - 1, 0))
+
   const allowedColumnKeys = new Set(columns.map(col => col.key))
   const selectedColumnSet = new Set([...selectedColumns.filter(colKey => allowedColumnKeys.has(colKey)), ...requiredColumns])
-  const effectiveColumns = prefsKey ? columns.filter(col => selectedColumnSet.has(col.key)) : columns
+
+  const columnMap = useMemo(() => new Map(columns.map(col => [col.key, col])), [columns])
+  const effectiveColumns = useMemo(() => {
+    if (!prefsKey) return columns
+    const seen = new Set()
+    const result = []
+    // Add columns in the user's custom saved order:
+    for (const key of selectedColumns) {
+      if (selectedColumnSet.has(key) && columnMap.has(key) && !seen.has(key)) {
+        result.push(columnMap.get(key))
+        seen.add(key)
+      }
+    }
+    // Append any required columns not placed (e.g. actions at the end):
+    for (const col of columns) {
+      if (requiredColumns.has(col.key) && !seen.has(col.key)) {
+        result.push(col)
+        seen.add(col.key)
+      }
+    }
+    return result.length ? result : columns
+  }, [prefsKey, columns, selectedColumns, selectedColumnSet, requiredColumns, columnMap])
+
+  const handleSort = useCallback((col) => {
+    if (col.sortable === false || !col.label || col.key === '_actions' || col.key === '_acc') return
+    let nextSort = null
+    if (!sortConfig || sortConfig.key !== col.key) {
+      nextSort = { key: col.key, direction: 'asc' }
+    } else if (sortConfig.direction === 'asc') {
+      nextSort = { key: col.key, direction: 'desc' }
+    } else {
+      nextSort = null
+    }
+
+    if (onSort) onSort(nextSort)
+    if (externalSort === undefined) setInternalSort(nextSort)
+  }, [sortConfig, onSort, externalSort])
+
+  const sortedRows = useMemo(() => {
+    if (!sortConfig || !sortConfig.key) return rows
+    const col = columns.find(c => c.key === sortConfig.key)
+    const dir = sortConfig.direction === 'desc' ? -1 : 1
+
+    return [...rows].sort((a, b) => {
+      let valA = col?.sortValue ? col.sortValue(a) : a[sortConfig.key]
+      let valB = col?.sortValue ? col.sortValue(b) : b[sortConfig.key]
+
+      if (valA == null || valA === '') return 1
+      if (valB == null || valB === '') return -1
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return (valA - valB) * dir
+      }
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        const cleanA = valA.replace(/[\s$.]/g, '').replace(',', '.')
+        const cleanB = valB.replace(/[\s$.]/g, '').replace(',', '.')
+        const numA = Number(cleanA)
+        const numB = Number(cleanB)
+        if (!isNaN(numA) && !isNaN(numB) && /^\$?\s*\d/.test(valA) && /^\$?\s*\d/.test(valB)) {
+          return (numA - numB) * dir
+        }
+        return valA.localeCompare(valB, 'es', { sensitivity: 'base', numeric: true }) * dir
+      }
+
+      if (valA instanceof Date && valB instanceof Date) {
+        return (valA.getTime() - valB.getTime()) * dir
+      }
+
+      if (valA < valB) return -1 * dir
+      if (valA > valB) return 1 * dir
+      return 0
+    })
+  }, [rows, sortConfig, columns])
+
+  const clampedActiveRow = Math.min(Math.max(activeRow, 0), Math.max(sortedRows.length - 1, 0))
   const columnWidths = effectiveColumns.map(col => Math.round(getColumnBaseWidth(col) * tableZoom))
   const tableWidth = columnWidths.reduce((sum, width) => sum + width, 0)
   const zoomPercent = Math.round(tableZoom * 100)
@@ -602,9 +823,8 @@ export const Table = ({
   }
 
   const updateSelectedColumns = next => {
-    const clean = columns
-      .map(col => col.key)
-      .filter(colKey => next.includes(colKey) || requiredColumns.has(colKey))
+    const allowed = new Set(columns.map(col => col.key))
+    const clean = next.filter(colKey => allowed.has(colKey) || requiredColumns.has(colKey))
     setSelectedColumns(clean)
     saveColumnPrefs(prefsKey, user, clean)
   }
@@ -640,7 +860,7 @@ export const Table = ({
 
   const isInteractiveTarget = target => target?.closest?.('input, textarea, select, button, a, [contenteditable="true"], [role="button"]')
   const runRowAction = event => {
-    const row = rows[clampedActiveRow]
+    const row = sortedRows[clampedActiveRow]
     if (!row) return
     const action = (event.ctrlKey || event.metaKey) ? (onRowDoubleClick || onRowClick) : (onRowClick || onRowDoubleClick)
     if (action) action(row)
@@ -649,7 +869,7 @@ export const Table = ({
     if (!keyboardEnabled || isInteractiveTarget(event.target)) return
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      setActiveRow(Math.min(clampedActiveRow + 1, rows.length - 1))
+      setActiveRow(Math.min(clampedActiveRow + 1, sortedRows.length - 1))
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
       setActiveRow(Math.max(clampedActiveRow - 1, 0))
@@ -664,10 +884,10 @@ export const Table = ({
       setActiveRow(0)
     } else if (event.key === 'End') {
       event.preventDefault()
-      setActiveRow(rows.length - 1)
+      setActiveRow(sortedRows.length - 1)
     } else if (event.key === 'PageDown') {
       event.preventDefault()
-      setActiveRow(Math.min(clampedActiveRow + 10, rows.length - 1))
+      setActiveRow(Math.min(clampedActiveRow + 10, sortedRows.length - 1))
     } else if (event.key === 'PageUp') {
       event.preventDefault()
       setActiveRow(Math.max(clampedActiveRow - 10, 0))
@@ -802,19 +1022,67 @@ export const Table = ({
         </colgroup>
         <thead>
           <tr style={{ borderBottom: '2px solid var(--border)' }}>
-            {effectiveColumns.map((col, i) => (
-              <th key={i} title={col.label} style={{
-                padding: cellPadding, textAlign: col.align || 'left',
-                fontWeight: 600, fontSize: Math.max(10, 11 * tableZoom), textTransform: 'uppercase',
-                letterSpacing: 0, color: 'var(--text-3)', whiteSpace: 'nowrap',
-                background: 'oklch(0.985 0.004 155)', position: stickyHeaderEnabled ? 'sticky' : undefined,
-                top: stickyHeaderEnabled ? 0 : undefined, zIndex: stickyHeaderEnabled ? 2 : undefined,
-              }}><span className="table-cell-clip">{col.label}</span></th>
-            ))}
+            {effectiveColumns.map((col, i) => {
+              const isSortable = col.sortable !== false && Boolean(col.label) && col.key !== '_actions' && col.key !== '_acc'
+              const isCurrentSort = sortConfig?.key === col.key
+              const sortDirection = isCurrentSort ? sortConfig.direction : null
+              return (
+                <th
+                  key={i}
+                  title={isSortable ? `Ordenar por ${col.label}` : col.label}
+                  onClick={isSortable ? () => handleSort(col) : undefined}
+                  aria-sort={isCurrentSort ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined}
+                  style={{
+                    padding: cellPadding,
+                    textAlign: col.align || 'left',
+                    fontWeight: 600,
+                    fontSize: Math.max(10, 11 * tableZoom),
+                    textTransform: 'uppercase',
+                    letterSpacing: 0,
+                    color: isCurrentSort ? 'var(--green-900, #14532d)' : 'var(--text-3)',
+                    whiteSpace: 'nowrap',
+                    background: isCurrentSort ? 'oklch(0.96 0.02 150)' : 'oklch(0.985 0.004 155)',
+                    position: stickyHeaderEnabled ? 'sticky' : undefined,
+                    top: stickyHeaderEnabled ? 0 : undefined,
+                    zIndex: stickyHeaderEnabled ? 2 : undefined,
+                    cursor: isSortable ? 'pointer' : 'default',
+                    userSelect: 'none',
+                    transition: 'background 0.15s, color 0.15s',
+                  }}
+                >
+                  <div style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    justifyContent: col.align === 'right' ? 'flex-end' : col.align === 'center' ? 'center' : 'flex-start',
+                    maxWidth: '100%',
+                  }}>
+                    <span className="table-cell-clip">{col.label}</span>
+                    {isSortable && (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          color: isCurrentSort ? 'var(--green-700, #15803d)' : 'var(--text-3)',
+                          opacity: isCurrentSort ? 1 : 0.35,
+                          transition: 'opacity 0.15s, color 0.15s',
+                        }}
+                      >
+                        {isCurrentSort ? (
+                          sortDirection === 'asc' ? <Icon name="chevronUp" size={12} /> : <Icon name="chevronDown" size={12} />
+                        ) : (
+                          <Icon name="chevronsUpDown" size={11} />
+                        )}
+                      </span>
+                    )}
+                  </div>
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, ri) => (
+          {sortedRows.map((row, ri) => (
             <tr key={getRowKey ? getRowKey(row, ri) : ri} data-table-row={ri} onMouseEnter={() => setHovRow(ri)} onMouseLeave={() => setHovRow(null)}
               onClick={event => {
                 setActiveRow(ri)
