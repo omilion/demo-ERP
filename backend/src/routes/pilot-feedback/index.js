@@ -219,17 +219,29 @@ export default async function pilotFeedbackRoutes(fastify) {
     const severity = request.query?.severity ? String(request.query.severity) : null
     if (category && !CATEGORIES.includes(category)) return reply.code(400).send({ error: 'Tipo de feedback inválido.' })
     if (severity && !SEVERITIES.includes(severity)) return reply.code(400).send({ error: 'Severidad de falla inválida.' })
-    const limit = Math.max(1, Math.min(Number(request.query?.limit) || 100, 250))
+    const limit = Math.max(1, Math.min(Number(request.query?.limit) || 150, 300))
+    let statusFilter = undefined
+    if (request.query?.status) {
+      const s = String(request.query.status).trim()
+      if (s === 'pendientes') {
+        statusFilter = { notIn: ['resuelto', 'descartado'] }
+      } else if (s.includes(',')) {
+        statusFilter = { in: s.split(',').map(x => x.trim()).filter(Boolean) }
+      } else {
+        statusFilter = s
+      }
+    }
     const where = {
-      ...(request.query?.status ? { status: String(request.query.status) } : {}),
+      ...(statusFilter !== undefined ? { status: statusFilter } : {}),
       ...(request.query?.module ? { module: String(request.query.module) } : {}),
       ...(severity ? { severity } : {}),
       ...(category ? { category } : {}),
     }
+    const isResolvedView = request.query?.status === 'resuelto'
     const [items, total, byCategory, byModuleCategory] = await Promise.all([
       fastify.prisma.pilotFeedback.findMany({
         where,
-        orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+        orderBy: isResolvedView ? [{ updatedAt: 'desc' }, { createdAt: 'desc' }] : [{ status: 'asc' }, { createdAt: 'desc' }],
         take: limit,
         include: { reporter: { select: { id: true, nombre: true, email: true, role: true } } },
       }),

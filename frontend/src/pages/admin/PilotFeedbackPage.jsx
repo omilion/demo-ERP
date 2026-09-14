@@ -14,7 +14,8 @@ export default function PilotFeedbackPage() {
   const { data, isLoading, error } = usePilotFeedback(cleanFilters(filters))
   const items = data?.items || []
   const open = items.filter(item => !['resuelto', 'descartado'].includes(item.status))
-  const blocking = open.filter(item => item.severity === 'bloqueante' || (item.category === 'falta' && item.bloqueaFlujo))
+  const resolved = items.filter(item => item.status === 'resuelto')
+  const blocking = items.filter(item => item.severity === 'bloqueante' || (item.category === 'falta' && item.bloqueaFlujo))
   const modules = [...new Set(items.map(item => item.module).filter(Boolean))].sort()
   const categoryCounts = data?.byCategory || {}
   const moduleSignals = Object.values((data?.byModuleCategory || []).reduce((acc, row) => {
@@ -23,15 +24,60 @@ export default function PilotFeedbackPage() {
     return acc
   }, {})).sort((a, b) => a.module.localeCompare(b.module))
 
+  const handleMetricClick = kind => {
+    if (kind === 'pendientes') {
+      setFilters(f => ({ ...f, status: f.status === 'pendientes' ? '' : 'pendientes', severity: '' }))
+    } else if (kind === 'bloqueantes') {
+      setFilters(f => ({ ...f, severity: f.severity === 'bloqueante' ? '' : 'bloqueante', status: '' }))
+    } else if (kind === 'resueltos') {
+      setFilters(f => ({ ...f, status: f.status === 'resuelto' ? '' : 'resuelto', severity: '' }))
+    } else if (kind === 'todos') {
+      setFilters(f => ({ ...f, status: '', module: '', severity: '', category: '' }))
+    }
+  }
+
+  const isPendientesActive = filters.status === 'pendientes' || (!filters.status && !filters.severity && open.length > 0 && filters.category === '')
+  const isResueltosActive = filters.status === 'resuelto'
+  const isBloqueantesActive = filters.severity === 'bloqueante'
+  const isTodosActive = !filters.status && !filters.severity && !filters.module && !filters.category
+
   return <main className="page page-wide">
     <PageHeader title="Feedback de Marcha Blanca" actions={<span style={{ fontSize: 12, color: 'var(--text-3)', alignSelf: 'center' }}>Evidencia privada · sólo administración</span>} />
     <p style={{ margin: '-6px 0 16px', color: 'var(--text-2)', fontSize: 13, maxWidth: 800 }}>Observaciones contextualizadas por rol, ruta y documento. Este tablero es de triage: clasifica, prioriza y deja la referencia de la solución antes de marcar un caso como resuelto.</p>
 
     <div style={metricsStyle}>
-      <Metric label="Pendientes" value={open.length} icon="messageSquare" tone="var(--blue)" />
-      <Metric label="Bloquean operación" value={blocking.length} icon="alertTriangle" tone="var(--red)" />
-      <Metric label="Resueltos" value={items.filter(item => item.status === 'resuelto').length} icon="checkCircle" tone="var(--green-600)" />
-      <Metric label="Total consultado" value={data?.total ?? 0} icon="clipboard" tone="var(--text-2)" />
+      <Metric
+        label="Pendientes"
+        value={open.length}
+        icon="messageSquare"
+        tone="var(--blue)"
+        active={filters.status === 'pendientes'}
+        onClick={() => handleMetricClick('pendientes')}
+      />
+      <Metric
+        label="Bloquean operación"
+        value={blocking.length}
+        icon="alertTriangle"
+        tone="var(--red)"
+        active={isBloqueantesActive}
+        onClick={() => handleMetricClick('bloqueantes')}
+      />
+      <Metric
+        label="Resueltos"
+        value={resolved.length}
+        icon="checkCircle"
+        tone="var(--green-600)"
+        active={isResueltosActive}
+        onClick={() => handleMetricClick('resueltos')}
+      />
+      <Metric
+        label="Total consultado"
+        value={data?.total ?? 0}
+        icon="clipboard"
+        tone="var(--text-2)"
+        active={isTodosActive}
+        onClick={() => handleMetricClick('todos')}
+      />
     </div>
 
     <section style={typeSummaryStyle} aria-label="Señal de reportes por tipo">
@@ -39,7 +85,16 @@ export default function PilotFeedbackPage() {
     </section>
 
     <section style={filterStyle} aria-label="Filtros de feedback">
-      <Filter label="Estado" value={filters.status} onChange={value => setFilters(v => ({ ...v, status: value }))} options={[['', 'Todos'], ...Object.entries(STATUS_LABELS)]} />
+      <Filter
+        label="Estado"
+        value={filters.status}
+        onChange={value => setFilters(v => ({ ...v, status: value }))}
+        options={[
+          ['', 'Todos'],
+          ['pendientes', 'Pendientes (sin cerrar)'],
+          ...Object.entries(STATUS_LABELS)
+        ]}
+      />
       <Filter label="Módulo" value={filters.module} onChange={value => setFilters(v => ({ ...v, module: value }))} options={[['', 'Todos'], ...modules.map(value => [value, value])]} />
       <Filter label="Tipo" value={filters.category} onChange={value => setFilters(v => ({ ...v, category: value, severity: value && value !== 'falla' ? '' : v.severity }))} options={[['', 'Todos'], ...Object.entries(CATEGORY_LABELS)]} />
       <Filter label="Severidad de falla" value={filters.severity} onChange={value => setFilters(v => ({ ...v, severity: value }))} options={[['', 'Todas'], ['bloqueante', 'Bloqueante'], ['alta', 'Alta'], ['media', 'Media'], ['baja', 'Baja']]} />
@@ -55,20 +110,88 @@ export default function PilotFeedbackPage() {
     {!isLoading && !error && <section style={tableCardStyle}>
       {items.length === 0 ? <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-3)' }}><Icon name="messageSquare" size={26} /><div style={{ marginTop: 10 }}>No hay reportes con estos filtros.</div></div> : <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead><tr>{['Fecha', 'Estado', 'Tipo', 'Señal', 'Módulo / contexto', 'Reportado por', 'Observación', ''].map(label => <th key={label} style={thStyle}>{label}</th>)}</tr></thead>
-          <tbody>{items.map(item => <tr key={item.id} style={{ borderTop: '1px solid var(--border)' }}>
+          <thead><tr>{['Fecha', 'Estado', 'Tipo', 'Señal', 'Módulo / contexto', 'Reportado por', 'Observación / Solución', ''].map(label => <th key={label} style={thStyle}>{label}</th>)}</tr></thead>
+          <tbody>{items.map(item => <tr key={item.id} style={{ borderTop: '1px solid var(--border)', background: item.status === 'resuelto' ? 'rgba(240, 253, 244, 0.35)' : '#fff' }}>
             <td style={tdStyle}>{new Date(item.createdAt).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })}</td>
             <td style={tdStyle}><Badge tone={STATUS_TONES[item.status] || 'gray'}>{STATUS_LABELS[item.status] || item.status}</Badge></td>
             <td style={tdStyle}><Badge tone={CATEGORY_TONES[item.category] || 'gray'}>{CATEGORY_LABELS[item.category] || item.category}</Badge></td>
             <td style={tdStyle}><ItemSignal item={item} /></td>
             <td style={{ ...tdStyle, maxWidth: 180 }}><strong>{item.module}</strong><br /><span style={{ color: 'var(--text-3)' }}>{item.route}</span></td>
             <td style={tdStyle}>{item.reporter?.nombre || item.reporterName || 'Usuario'}<br /><span style={{ color: 'var(--text-3)' }}>{item.reporterRole || '—'}</span></td>
-            <td style={{ ...tdStyle, maxWidth: 380, whiteSpace: 'normal', lineHeight: 1.4 }}>
+            <td style={{ ...tdStyle, maxWidth: 440, whiteSpace: 'normal', lineHeight: 1.4 }}>
               <div style={{ fontWeight: 600, color: 'var(--text-1)' }}>{item.note}</div>
               {item.queFalta && <div style={{ fontSize: 11, color: 'var(--amber-700, #b45309)', marginTop: 3 }}><strong>Falta:</strong> {item.queFalta}</div>}
+              {item.paraQueSeNecesita && <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 3 }}><strong>Para qué:</strong> {item.paraQueSeNecesita}</div>}
               {item.queSePropone && <div style={{ fontSize: 11, color: 'var(--blue-700, #1d4ed8)', marginTop: 3 }}><strong>Propuesta:</strong> {item.queSePropone}</div>}
               {item.comportamientoEsperado && <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 3 }}><strong>Esperado:</strong> {item.comportamientoEsperado}</div>}
-              {item.resolutionNote && <div style={{ fontSize: 11, color: 'var(--green-700, #15803d)', marginTop: 3 }}><strong>Resolución:</strong> {item.resolutionNote}</div>}
+
+              {/* Bloque destacado si está resuelto */}
+              {item.status === 'resuelto' && (
+                <div style={{
+                  marginTop: 8,
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  background: 'var(--green-50, #f0fdf4)',
+                  border: '1px solid var(--green-300, #86efac)',
+                  fontSize: 12,
+                  lineHeight: 1.45,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 750, color: 'var(--green-800, #166534)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.35 }}>
+                      <Icon name="checkCircle" size={14} /> Solución implementada
+                    </span>
+                    {item.resolutionReference && (
+                      <span style={{
+                        padding: '2px 7px',
+                        borderRadius: 5,
+                        background: '#fff',
+                        border: '1px solid var(--green-400, #4ade80)',
+                        fontFamily: "'DM Mono', monospace",
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        color: 'var(--green-800, #166534)'
+                      }}>
+                        {item.resolutionReference}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ color: 'var(--text-1)', whiteSpace: 'pre-wrap', fontWeight: 500 }}>
+                    {item.resolutionNote || 'Observación corregida y desplegada en producción.'}
+                  </div>
+                  {item.updatedAt && (
+                    <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4, textAlign: 'right' }}>
+                      Resuelto: {new Date(item.updatedAt).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Bloque si está en validación por el usuario */}
+              {item.status === 'validacion_usuario' && (
+                <div style={{
+                  marginTop: 8,
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  background: 'var(--amber-bg, #fffbeb)',
+                  border: '1px solid var(--amber-border, #fde68a)',
+                  fontSize: 12,
+                  lineHeight: 1.45
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginBottom: 4 }}>
+                    <span style={{ fontWeight: 750, color: 'var(--amber-800, #92400e)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.35 }}>
+                      ⏳ En validación por el usuario
+                    </span>
+                    {item.resolutionReference && (
+                      <span style={{ padding: '2px 6px', borderRadius: 4, background: '#fff', border: '1px solid var(--amber-border, #fde68a)', fontFamily: "'DM Mono', monospace", fontSize: 10, fontWeight: 700, color: 'var(--amber-800, #92400e)' }}>
+                        {item.resolutionReference}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ color: 'var(--text-1)', whiteSpace: 'pre-wrap' }}>
+                    {item.resolutionNote || 'Solución implementada / en revisión con el usuario.'}
+                  </div>
+                </div>
+              )}
             </td>
             <td style={{ ...tdStyle, textAlign: 'right' }}><Btn size="xs" variant="secondary" onClick={() => setSelected(item)}>Revisar</Btn></td>
           </tr>)}</tbody>
@@ -109,6 +232,35 @@ function FeedbackDetail({ item, onClose }) {
       <header style={detailHeaderStyle}><div><h2 id="feedback-detail-title" style={{ margin: 0, fontSize: 18 }}>Detalle de observación</h2><p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-3)' }}>{item.id} · {new Date(item.createdAt).toLocaleString('es-CL')}</p></div><button type="button" onClick={onClose} aria-label="Cerrar detalle" style={closeStyle}><Icon name="x" size={18} /></button></header>
       <form onSubmit={save} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
         <div style={detailBodyStyle}>
+          {item.status === 'resuelto' && (
+            <div style={{
+              padding: '12px 14px',
+              borderRadius: 8,
+              background: 'var(--green-50, #f0fdf4)',
+              border: '1px solid var(--green-300, #86efac)',
+              fontSize: 13,
+              lineHeight: 1.45
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 750, color: 'var(--green-800, #166534)', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                  <Icon name="checkCircle" size={16} /> Solución implementada y desplegada
+                </span>
+                {item.resolutionReference && (
+                  <span style={{ padding: '2px 7px', borderRadius: 4, background: '#fff', border: '1px solid var(--green-400, #4ade80)', fontFamily: "'DM Mono', monospace", fontSize: 11, fontWeight: 700, color: 'var(--green-800, #166534)' }}>
+                    {item.resolutionReference}
+                  </span>
+                )}
+              </div>
+              <div style={{ color: 'var(--text-1)', whiteSpace: 'pre-wrap' }}>
+                {item.resolutionNote || 'Observación cerrada y desplegada en producción.'}
+              </div>
+              {item.updatedAt && (
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6, textAlign: 'right' }}>
+                  Cerrado: {new Date(item.updatedAt).toLocaleString('es-CL')}
+                </div>
+              )}
+            </div>
+          )}
           <div style={contextGridStyle}>
             <Info label="Origen" value={`${item.module}${item.submodule ? ` / ${item.submodule}` : ''}`} />
             <Info label="Rol" value={item.reporterRole || item.reporter?.role || '—'} />
@@ -151,7 +303,26 @@ function FeedbackSpecificDetails({ item }) {
   return <DetailValues values={[['Qué existe hoy', item.queExisteHoy], ['Propuesta', item.queSePropone], ['Impacto esperado', item.impactoEsperado]]} />
 }
 function DetailValues({ values }) { return <div style={{ display: 'grid', gap: 8, marginTop: 13 }}>{values.filter(([, value]) => value).map(([label, value]) => <div key={label}><span style={noteLabelStyle}>{label}</span><p style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{value}</p></div>)}</div> }
-function Metric({ label, value, icon, tone }) { return <div style={metricStyle}><span style={{ color: tone }}><Icon name={icon} size={17} /></span><div><div style={{ fontSize: 20, fontWeight: 750, lineHeight: 1.1, color: 'var(--text-1)' }}>{value.toLocaleString('es-CL')}</div><div style={{ color: 'var(--text-3)', fontSize: 11, marginTop: 3 }}>{label}</div></div></div> }
+function Metric({ label, value, icon, tone, active, onClick }) {
+  return <div
+    onClick={onClick}
+    style={{
+      ...metricStyle,
+      cursor: onClick ? 'pointer' : 'default',
+      borderColor: active ? tone : 'var(--border)',
+      boxShadow: active ? `0 0 0 2px ${tone}25` : 'none',
+      background: active ? 'var(--bg)' : '#fff',
+      transition: 'all 0.15s ease',
+      userSelect: 'none',
+    }}
+  >
+    <span style={{ color: tone }}><Icon name={icon} size={17} /></span>
+    <div>
+      <div style={{ fontSize: 20, fontWeight: 750, lineHeight: 1.1, color: 'var(--text-1)' }}>{value.toLocaleString('es-CL')}</div>
+      <div style={{ color: active ? 'var(--text-1)' : 'var(--text-3)', fontWeight: active ? 650 : 400, fontSize: 11, marginTop: 3 }}>{label}</div>
+    </div>
+  </div>
+}
 function LoadState({ title, detail, error = false }) { return <div style={{ padding: 32, borderRadius: 10, background: error ? 'var(--red-bg)' : '#fff', border: '1px solid var(--border)', color: error ? 'var(--red)' : 'var(--text-2)' }}><strong style={{ display: 'block', marginBottom: 5 }}>{title}</strong><span style={{ fontSize: 12 }}>{detail}</span></div> }
 
 const metricsStyle = { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10, marginBottom: 14 }
