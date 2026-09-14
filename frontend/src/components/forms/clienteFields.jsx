@@ -7,12 +7,35 @@
 // con menos datos que uno creado desde Clientes, sin que nadie lo note.
 import { FormField, FormDivider, Input, Select } from './index'
 import { PAISES_LATAM, REGIONES_CHILE, COMUNAS_POR_REGION } from '../../data/geoLatam'
+import { isValidRut } from '../../utils/facturacion'
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const TIPOS_CLIENTE = ['Persona natural', 'Empresa', 'Institucional', 'Municipal', 'Gobierno', 'Distribuidor']
 
+function isValidTelefono(value) {
+  const text = String(value || '').trim()
+  if (!text) return true
+  if (!/^[+\d][\d\s()+-]*$/.test(text)) return false
+  const digits = text.replace(/\D/g, '')
+  return digits.length >= 7 && digits.length <= 15
+}
+
 // eslint-disable-next-line react-refresh/only-export-components
-export const CLIENTE_RULES = { nombre: { required: true }, rut: { required: true } }
+export const CLIENTE_RULES = {
+  nombre: { required: true },
+  rut: {
+    required: true,
+    // El checksum chileno solo aplica si el cliente es de Chile (default):
+    // otros paises de PAISES_LATAM usan otro tipo de ID fiscal (CUIT, RUC, etc).
+    validator: (value, data) => {
+      if (data.pais && data.pais !== 'Chile') return null
+      return isValidRut(value) ? null : 'RUT inválido: verifica el dígito verificador (ej: 76123456-7)'
+    },
+  },
+  telefono: {
+    validator: value => (isValidTelefono(value) ? null : 'Teléfono inválido: solo números, espacios, +, ( ) o -'),
+  },
+}
 
 const VACIO = {
   rut: '', nombre: '', razonSocial: '', giro: '', tipo: 'Empresa',

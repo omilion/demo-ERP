@@ -1179,11 +1179,14 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                       </thead>
                       <tbody>
                         {items.map((item, i) => {
-                          const itemNetoUnitario = item.precioUnitario
-                          const itemNetoTotal = itemNetoUnitario * item.cantidad
-                          const itemIvaTotal = Math.round(itemNetoTotal * 0.19)
-                          const itemBrutoUnitario = Math.round(itemNetoUnitario * 1.19)
-                          const itemSubtotalConIva = itemNetoTotal + itemIvaTotal
+                          // item.precioUnitario ya incluye IVA (precio de venta sala), igual que
+                          // en el resumen financiero de mas abajo: no volver a sumarle IVA aca.
+                          const itemBrutoUnitario = item.precioUnitario
+                          const itemBrutoTotal = itemBrutoUnitario * item.cantidad
+                          const itemNetoTotal = Math.round(itemBrutoTotal / 1.19)
+                          const itemNetoUnitario = Math.round(itemBrutoUnitario / 1.19)
+                          const itemIvaTotal = itemBrutoTotal - itemNetoTotal
+                          const itemSubtotalConIva = itemBrutoTotal
                           return (
                           <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
                             <td style={{ padding: '8px 4px 8px 12px', width: 40 }}>

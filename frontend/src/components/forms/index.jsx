@@ -217,7 +217,11 @@ export const useForm = (initial) => {
   const validate = useCallback((rules) => {
     const errs = {}
     for (const [k, r] of Object.entries(rules)) {
-      if (r.required && !data[k]) errs[k] = 'Campo requerido'
+      if (r.required && !data[k]) { errs[k] = 'Campo requerido'; continue }
+      if (r.validator && data[k]) {
+        const message = r.validator(data[k], data)
+        if (message) errs[k] = message
+      }
     }
     setErrors(errs)
     return Object.keys(errs).length === 0

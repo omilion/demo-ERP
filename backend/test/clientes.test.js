@@ -1,6 +1,21 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app.js'
 
+// Genera un RUT chileno con digito verificador valido para pruebas que pasan
+// por el endpoint HTTP (que ahora exige checksum real, ver PR feedback #2).
+function validRut(bodyNumber) {
+  const body = String(bodyNumber)
+  let sum = 0
+  let factor = 2
+  for (let i = body.length - 1; i >= 0; i--) {
+    sum += Number(body[i]) * factor
+    factor = factor === 7 ? 2 : factor + 1
+  }
+  const res = 11 - (sum % 11)
+  const dv = res === 11 ? '0' : res === 10 ? 'K' : String(res)
+  return `${body}-${dv}`
+}
+
 async function loginAs(app, role = 'admin') {
   const res = await app.inject({
     method: 'POST', url: '/api/auth/login',
@@ -106,7 +121,7 @@ describe('POST /api/clientes', () => {
   afterAll(() => app.close())
 
   it('creates cliente', async () => {
-    const rut = `TEST-RUT-${Date.now()}`
+    const rut = validRut(10000000 + (Date.now() % 89999999))
     const res = await app.inject({
       method: 'POST', url: '/api/clientes',
       headers: { authorization: `Bearer ${token}` },
@@ -119,9 +134,42 @@ describe('POST /api/clientes', () => {
     await app.prisma.cliente.delete({ where: { rut } }).catch(() => {})
   })
 
+  it('rejects rut with invalid checksum for cliente chileno (feedback #2)', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/clientes',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { rut: '16888432-K2', nombre: 'Cliente Rut Invalido' },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).error).toMatch(/RUT/)
+  })
+
+  it('accepts non-chilean identifier without checksum when pais no es Chile (feedback #2)', async () => {
+    const rut = `CUIT-${Date.now()}`
+    const res = await app.inject({
+      method: 'POST', url: '/api/clientes',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { rut, nombre: 'Cliente Extranjero', pais: 'Argentina' },
+    })
+    expect(res.statusCode).toBe(201)
+    await app.prisma.cliente.delete({ where: { rut } }).catch(() => {})
+  })
+
+  it('rejects telefono compuesto por texto (feedback #2)', async () => {
+    const rut = validRut(10000000 + (Date.now() % 89999999))
+    const res = await app.inject({
+      method: 'POST', url: '/api/clientes',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { rut, nombre: 'Cliente Telefono Invalido', telefono: 'no tiene telefono' },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).error).toMatch(/[Tt]el[eé]fono/)
+  })
+
   it('returns 409 for duplicate rut or email', async () => {
     const marker = Date.now()
-    const rut = `TEST-DUP-${marker}`
+    const rut = validRut(10000000 + (marker % 89999999))
+    const rut2 = validRut(10000000 + ((marker + 1) % 89999999))
     const email = `cliente-duplicado-${marker}@example.cl`
     const cliente = await app.prisma.cliente.create({
       data: { rut, nombre: 'Cliente Duplicado Base', email },
@@ -138,7 +186,7 @@ describe('POST /api/clientes', () => {
       const dupEmail = await app.inject({
         method: 'POST', url: '/api/clientes',
         headers: { authorization: `Bearer ${token}` },
-        payload: { rut: `${rut}-2`, nombre: 'Otro Cliente Email', email: email.toUpperCase() },
+        payload: { rut: rut2, nombre: 'Otro Cliente Email', email: email.toUpperCase() },
       })
       expect(dupEmail.statusCode).toBe(409)
       expect(JSON.parse(dupEmail.body).error).toMatch(/email/)
@@ -429,20 +477,24 @@ describe('PUT /api/clientes/:id', () => {
 
   it('updates rut and blocks duplicate rut/email on update', async () => {
     const marker = `TEST-CLIENTE-RUT-PUT-${Date.now()}`
+    const base = Date.now()
+    const rut1 = validRut(10000000 + (base % 89999999))
+    const rut2 = validRut(10000000 + ((base + 1) % 89999999))
+    const rutEdit = validRut(10000000 + ((base + 2) % 89999999))
     const first = await app.prisma.cliente.create({
-      data: { rut: `${marker}-1`, nombre: `${marker} 1`, email: `${marker}-1@example.cl` },
+      data: { rut: rut1, nombre: `${marker} 1`, email: `${marker}-1@example.cl` },
     })
     const second = await app.prisma.cliente.create({
-      data: { rut: `${marker}-2`, nombre: `${marker} 2`, email: `${marker}-2@example.cl` },
+      data: { rut: rut2, nombre: `${marker} 2`, email: `${marker}-2@example.cl` },
     })
     try {
       const updateRut = await app.inject({
         method: 'PUT', url: `/api/clientes/${first.id}`,
         headers: { authorization: `Bearer ${token}` },
-        payload: { rut: `${marker}-EDIT`, nombre: `${marker} Editado` },
+        payload: { rut: rutEdit, nombre: `${marker} Editado` },
       })
       expect(updateRut.statusCode).toBe(200)
-      expect(JSON.parse(updateRut.body)).toMatchObject({ rut: `${marker}-EDIT` })
+      expect(JSON.parse(updateRut.body)).toMatchObject({ rut: rutEdit })
 
       const dupRut = await app.inject({
         method: 'PUT', url: `/api/clientes/${first.id}`,

@@ -3,6 +3,8 @@ import {
   computeSaldo,
   ensureClienteIdentifiersAvailable,
   handleClienteUniqueError,
+  isValidRut,
+  isValidTelefono,
   normalizeClientePayload,
 } from './helpers.js'
 import { can } from '../../middleware/rbac.js'
@@ -52,6 +54,21 @@ export default async function updateCliente(fastify) {
     if (!isGerenciaOrAdmin) {
       delete parsed.data.limiteCredito
       delete parsed.data.diasInactivoAlerta
+    }
+
+    if (parsed.data.rut !== undefined || parsed.data.telefono !== undefined) {
+      let pais = parsed.data.pais
+      if (pais === undefined && parsed.data.rut !== undefined) {
+        const actual = await fastify.prisma.cliente.findUnique({ where: { id }, select: { pais: true } })
+        pais = actual?.pais
+      }
+      const esChile = !pais || pais === 'Chile'
+      if (parsed.data.rut !== undefined && esChile && !isValidRut(parsed.data.rut)) {
+        return reply.code(400).send({ error: 'RUT inválido: verifica el formato y el dígito verificador.' })
+      }
+      if (parsed.data.telefono && !isValidTelefono(parsed.data.telefono)) {
+        return reply.code(400).send({ error: 'Teléfono inválido: usa solo números, espacios, +, paréntesis o guiones.' })
+      }
     }
 
     if (!await ensureClienteIdentifiersAvailable(fastify.prisma, parsed.data, reply, id)) return

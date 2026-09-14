@@ -2,6 +2,8 @@ import { z } from 'zod'
 import {
   ensureClienteIdentifiersAvailable,
   handleClienteUniqueError,
+  isValidRut,
+  isValidTelefono,
   normalizeClientePayload,
 } from './helpers.js'
 
@@ -28,6 +30,16 @@ export default async function createCliente(fastify) {
   }, async (request, reply) => {
     const parsed = Schema.safeParse(normalizeClientePayload(request.body || {}))
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0].message })
+    // El checksum de RUT solo aplica a clientes chilenos: PAISES_LATAM (frontend
+    // clienteFields.jsx) permite otros paises donde el RUT/Identificador es un
+    // ID fiscal distinto (CUIT, RUC, etc) sin digito verificador chileno.
+    const esChile = !parsed.data.pais || parsed.data.pais === 'Chile'
+    if (esChile && !isValidRut(parsed.data.rut)) {
+      return reply.code(400).send({ error: 'RUT inválido: verifica el formato y el dígito verificador.' })
+    }
+    if (parsed.data.telefono && !isValidTelefono(parsed.data.telefono)) {
+      return reply.code(400).send({ error: 'Teléfono inválido: usa solo números, espacios, +, paréntesis o guiones.' })
+    }
     if (!await ensureClienteIdentifiersAvailable(fastify.prisma, parsed.data, reply)) return
     try {
       const c = await fastify.prisma.cliente.create({ data: parsed.data })

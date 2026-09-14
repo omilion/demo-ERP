@@ -19,6 +19,36 @@ export async function computeSaldo(prisma, clienteId) {
   return Number(rows[0]?.saldo ?? 0)
 }
 
+export function normalizeRut(value) {
+  return String(value || '').replace(/[.\-\s]/g, '').trim().toUpperCase()
+}
+
+export function isValidRut(value) {
+  const rut = normalizeRut(value)
+  if (!/^\d{1,8}[0-9K]$/.test(rut)) return false
+  const body = rut.slice(0, -1)
+  const dv = rut.slice(-1)
+  if (/^0+$/.test(body)) return false
+
+  let sum = 0
+  let factor = 2
+  for (let i = body.length - 1; i >= 0; i--) {
+    sum += Number(body[i]) * factor
+    factor = factor === 7 ? 2 : factor + 1
+  }
+  const expected = 11 - (sum % 11)
+  const expectedDv = expected === 11 ? '0' : expected === 10 ? 'K' : String(expected)
+  return expectedDv === dv
+}
+
+export function isValidTelefono(value) {
+  const text = String(value || '').trim()
+  if (!text) return true
+  if (!/^[+\d][\d\s()+-]*$/.test(text)) return false
+  const digits = text.replace(/\D/g, '')
+  return digits.length >= 7 && digits.length <= 15
+}
+
 export function normalizeClienteText(value) {
   if (typeof value !== 'string') return value
   const trimmed = value.trim()
