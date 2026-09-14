@@ -67,6 +67,11 @@ function ProductoSearch({ onAdd, tipoVenta, disabled = false, onFocus }) {
   const [open, setOpen] = useState(false)
   const ref = useRef()
   const inputRef = useRef()
+  const user = useAuthStore(s => s.user)
+  // precioLista guarda el costo de transferencia del proveedor/taller, no un
+  // precio de venta: solo se muestra a quien puede ver costos (mismo gate que
+  // Consulta de Precios), para no confundirlo con lo que se va a cobrar.
+  const canVerCosto = can(user, 'bodega', 'read')
 
   const { data: result } = useProductos(!disabled && q.length >= 2 ? { search: q } : {})
   const productos = result?.items ?? []
@@ -134,9 +139,10 @@ function ProductoSearch({ onAdd, tipoVenta, disabled = false, onFocus }) {
                 <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</div>
                 <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
                   Stock: <strong style={{ color: p.stock > 0 ? 'var(--green-600)' : 'var(--red)' }}>{p.stock}</strong>
-                  {!p.precioLista && defaultPrecioUnitario(p, tipoVenta) > 0 && <span> · Lista: <strong>${defaultPrecioUnitario(p, tipoVenta).toLocaleString('es-CL')}</strong></span>}
-                  {p.precioLista > 0 && <span> · Lista: <strong>${p.precioLista.toLocaleString('es-CL')}</strong></span>}
-                  {isConvenioMarco(tipoVenta) && defaultPrecioUnitario(p, tipoVenta) > 0 && <span> · Marco + IVA: <strong>${defaultPrecioUnitario(p, tipoVenta).toLocaleString('es-CL')}</strong></span>}
+                  {defaultPrecioUnitario(p, tipoVenta) > 0 && (
+                    <span> · {isConvenioMarco(tipoVenta) ? 'Marco + IVA' : 'Precio Venta (c/IVA)'}: <strong>${defaultPrecioUnitario(p, tipoVenta).toLocaleString('es-CL')}</strong></span>
+                  )}
+                  {canVerCosto && p.precioLista > 0 && <span style={{ color: 'var(--text-3)' }}> · Costo ref: ${p.precioLista.toLocaleString('es-CL')}</span>}
                 </div>
               </div>
             </button>
