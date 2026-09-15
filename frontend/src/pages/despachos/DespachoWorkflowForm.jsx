@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Btn } from '../../components/shared'
 import { useCreateDespacho, useDespachoColaOperativa, useUpdateDespacho } from '../../api/despachos'
@@ -38,6 +38,7 @@ export default function DespachoWorkflowForm({ isEdit, initial, venta: ventaProp
   const [nuevoItemCant, setNuevoItemCant] = useState('1')
   const [nuevoItemUnidad, setNuevoItemUnidad] = useState('UN')
   const [createdDespacho, setCreatedDespacho] = useState(null)
+  const [itemSelections, setItemSelections] = useState({})
   const loadedOrder = useRef(null)
   const inheritedHydrationKey = useRef('')
 
@@ -69,7 +70,7 @@ export default function DespachoWorkflowForm({ isEdit, initial, venta: ventaProp
   }, [esManual, isEdit, selected])
 
   const ventaId = !esManual && form.ordenId ? Number(form.ordenId) : undefined
-  const { data: ventaQueryData } = useVenta(!isEdit ? ventaId : undefined)
+  const { data: ventaQueryData } = useVenta(ventaId)
   const ventaData = ventaQueryData || ventaProp || null
 
   // La venta y su sucursal son la fuente maestra de datos ya capturados al
@@ -104,6 +105,112 @@ export default function DespachoWorkflowForm({ isEdit, initial, venta: ventaProp
       tipoDespacho: prev.tipoDespacho || (fromVenta ? 'Despacho a domicilio' : ''),
     }))
   }, [esManual, form.ordenId, fromVenta, isEdit, selected, ventaData])
+
+  // Inicializar selección de ítems cuando carga la venta
+  useEffect(() => {
+    if (!ventaData?.items?.length) return
+    setItemSelections(prev => {
+      const next = { ...prev }
+      for (const it of ventaData.items) {
+        if (next[it.id] !== undefined) continue
+        const yaEntregados = Number(it.nEntregados || 0)
+        const totalCant = Number(it.cantidad || 0)
+        const pendiente = Math.max(0, totalCant - yaEntregados)
+
+        // Si estamos editando y el despacho ya tenía ítems guardados
+        const savedItem = (initial.items || []).find(si => Number(si.ordenItemId || si.id) === Number(it.id))
+        if (savedItem) {
+          next[it.id] = {
+            selected: true,
+            cantidad: Number(savedItem.cantidad || 1)
+          }
+        } else {
+          next[it.id] = {
+            selected: pendiente > 0 || totalCant > 0,
+            cantidad: pendiente > 0 ? pendiente : totalCant
+          }
+        }
+      }
+      return next
+    })
+  }, [ventaData, initial.items])
+
+  const toggleItem = (itemId, checked) => {
+    setItemSelections(prev => ({
+      ...prev,
+      [itemId]: { ...(prev[itemId] || { cantidad: 1 }), selected: checked }
+    }))
+  }
+
+  const changeItemCant = (itemId, cant) => {
+    setItemSelections(prev => ({
+      ...prev,
+      [itemId]: { ...(prev[itemId] || { selected: true }), cantidad: Math.max(1, Number(cant) || 1) }
+    }))
+  }
+
+  const selectAllItems = () => {
+    if (!ventaData?.items) return
+    setItemSelections(prev => {
+      const next = { ...prev }
+      for (const it of ventaData.items) {
+        const yaEntregados = Number(it.nEntregados || 0)
+        const totalCant = Number(it.cantidad || 0)
+        const pendiente = Math.max(0, totalCant - yaEntregados)
+        next[it.id] = {
+          selected: true,
+          cantidad: pendiente > 0 ? pendiente : totalCant
+        }
+      }
+      return next
+    })
+  }
+
+  const deselectAllItems = () => {
+    if (!ventaData?.items) return
+    setItemSelections(prev => {
+      const next = { ...prev }
+      for (const it of ventaData.items) {
+        next[it.id] = {
+          ...(next[it.id] || { cantidad: 1 }),
+          selected: false
+        }
+      }
+      return next
+    })
+  }
+
+  const itemsVentaComputed = useMemo(() => {
+    if (esManual || !ventaData?.items) return []
+    return ventaData.items.map(it => {
+      const sel = itemSelections[it.id]
+      const yaEntregados = Number(it.nEntregados || 0)
+      const totalCant = Number(it.cantidad || 0)
+      const pendiente = Math.max(0, totalCant - yaEntregados)
+      const isSelected = sel ? !!sel.selected : true
+      const despacharCant = sel?.cantidad !== undefined ? sel.cantidad : (pendiente > 0 ? pendiente : totalCant)
+      return {
+        ...it,
+        selected: isSelected,
+        despacharCant,
+        pendiente,
+        yaEntregados,
+        totalCant
+      }
+    })
+  }, [esManual, ventaData, itemSelections])
+
+  const selectedItemsVenta = useMemo(() => {
+    return itemsVentaComputed.filter(it => it.selected && it.despacharCant > 0)
+  }, [itemsVentaComputed])
+
+  const isAutoParcial = useMemo(() => {
+    if (esManual || !itemsVentaComputed.length) return false
+    const someUnselected = itemsVentaComputed.some(it => !it.selected)
+    const somePartialQty = itemsVentaComputed.some(it => it.selected && it.despacharCant < it.totalCant)
+    const alreadyDelivered = itemsVentaComputed.some(it => it.yaEntregados > 0)
+    return someUnselected || somePartialQty || alreadyDelivered
+  }, [esManual, itemsVentaComputed])
 
   const createMut = useCreateDespacho()
   const updateMut = useUpdateDespacho()
@@ -152,12 +259,15 @@ export default function DespachoWorkflowForm({ isEdit, initial, venta: ventaProp
   }
 
   const guardar = () => {
-    if (!isEdit && !esManual && !linkedFromSale && !selected) {
+    if (!isEdit && !esManual && !linkedFromSale && !selected && !form.ordenId) {
       return showError({ response: { data: { error: 'Elige una venta lista para despacho de la cola.' } } })
     }
     const pendienteTaller = selected?.preparacion?.pendienteTaller ?? ventaData?.preparacion?.pendienteTaller
-    if (!isEdit && !esManual && Number(pendienteTaller || 0) > 0 && !form.parcial) {
+    if (!isEdit && !esManual && Number(pendienteTaller || 0) > 0 && !form.parcial && !isAutoParcial) {
       return showError({ response: { data: { error: 'Esta venta tiene unidades en taller pendientes. Sólo puede realizarse una salida parcial si ya tiene unidades preparadas en packing.' } } })
+    }
+    if (!esManual && selectedItemsVenta.length === 0) {
+      return showError({ response: { data: { error: 'Debes marcar con la casilla al menos un producto a incluir en el despacho.' } } })
     }
     if (esManual && !String(form.motivoOperacion || '').trim()) {
       return showError({ response: { data: { error: 'Indica el motivo del despacho aislado para mantener la trazabilidad de bodega.' } } })
@@ -176,14 +286,27 @@ export default function DespachoWorkflowForm({ isEdit, initial, venta: ventaProp
       return showError({ response: { data: { error: 'Completa dirección, región y comuna; para retiro indica “Retiro en sucursal” en tipo de despacho.' } } })
     }
 
+    const finalItems = esManual
+      ? (form.items?.length ? form.items : undefined)
+      : selectedItemsVenta.map(it => ({
+          ordenItemId: it.id,
+          productoId: it.productoId,
+          codigoInterno: it.codigoInterno || it.producto?.codigoInterno || '',
+          nombre: it.producto?.nombre || it.nombre || it.descripcion,
+          descripcion: it.descripcion,
+          cantidad: Number(it.despacharCant),
+          unidad: it.unidad || 'UN',
+        }))
+
     const data = {
       ...form,
+      parcial: Boolean(form.parcial || isAutoParcial),
       ordenId: esManual ? undefined : form.ordenId,
       odtId: esManual ? undefined : form.odtId || undefined,
       origenTipo: esManual ? 'manual' : 'orden',
       origenId: esManual ? undefined : form.ordenId,
       emailContacto: esManual ? (form.emailContacto || undefined) : form.emailContacto,
-      items: esManual ? (form.items?.length ? form.items : undefined) : undefined,
+      items: finalItems,
     }
 
     if (isEdit) {
@@ -274,6 +397,130 @@ export default function DespachoWorkflowForm({ isEdit, initial, venta: ventaProp
             </select>
           </Field>
           {selected && <VentaResumen item={selected} />}
+        </section>
+      )}
+
+      {/* ── Tabla de Selección Ítem por Ítem para Despacho de Venta ── */}
+      {!esManual && (form.ordenId || selected) && (
+        <section style={sectionStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+            <div>
+              <strong style={{ fontSize: 13, color: 'var(--text-1)' }}>
+                2. Productos incluidos en este despacho ({selectedItemsVenta.length} de {itemsVentaComputed.length} marcados)
+              </strong>
+              <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--text-3)' }}>
+                Marca con la casilla los ítems que viajan en esta entrega. Si ajustas cantidades o desmarcas ítems, el despacho se registrará como <b>Parcial</b> automáticamente.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                onClick={selectAllItems}
+                style={{ padding: '4px 10px', fontSize: 11, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5, cursor: 'pointer', fontWeight: 600, color: 'var(--blue)' }}
+              >
+                ✓ Seleccionar todos
+              </button>
+              <button
+                type="button"
+                onClick={deselectAllItems}
+                style={{ padding: '4px 10px', fontSize: 11, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5, cursor: 'pointer', fontWeight: 500, color: 'var(--text-3)' }}
+              >
+                ✗ Deseleccionar todos
+              </button>
+            </div>
+          </div>
+
+          {itemsVentaComputed.length > 0 ? (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'auto', marginBottom: 12 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 680 }}>
+                <thead style={{ background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+                  <tr>
+                    <th style={{ padding: '7px 8px', textAlign: 'center', width: 44 }}>Incluir</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'left', width: 95 }}>Código</th>
+                    <th style={{ padding: '7px 10px', textAlign: 'left' }}>Producto</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'left', width: 85 }}>Ubicación</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'right', width: 65 }}>Pedido</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'right', width: 75 }}>Entregado</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'right', width: 75 }}>Pendiente</th>
+                    <th style={{ padding: '7px 10px', textAlign: 'right', width: 110, color: 'var(--green-700)' }}>A Despachar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {itemsVentaComputed.map((it, idx) => (
+                    <tr
+                      key={it.id || idx}
+                      style={{
+                        borderBottom: '1px solid var(--border)',
+                        background: it.selected ? 'rgba(13, 148, 136, 0.04)' : 'var(--bg-card, #fff)',
+                        opacity: it.selected ? 1 : 0.6,
+                        transition: 'background 0.15s, opacity 0.15s',
+                      }}
+                    >
+                      <td style={{ padding: '8px 4px', textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={it.selected}
+                          onChange={e => toggleItem(it.id, e.target.checked)}
+                          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#0d9488' }}
+                        />
+                      </td>
+                      <td style={{ padding: '8px', fontFamily: "'DM Mono',monospace", fontSize: 11, fontWeight: 600, color: 'var(--text-1)' }}>
+                        {it.producto?.codigoInterno || it.codigoInterno || '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-1)' }}>
+                          {it.producto?.nombre || it.nombre || `Producto #${it.productoId}`}
+                        </div>
+                        {it.descripcion && (
+                          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+                            {it.descripcion}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '8px', fontFamily: "'DM Mono',monospace", fontSize: 11, color: 'var(--text-2)' }}>
+                        {it.producto?.ubicacion || it.ubicacion || '—'}
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>
+                        {it.totalCant}
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: '#166534', fontWeight: 600 }}>
+                        {it.yaEntregados}
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 700, color: it.pendiente > 0 ? 'var(--amber, #b45309)' : '#166534' }}>
+                        {it.pendiente}
+                      </td>
+                      <td style={{ padding: '4px 10px', textAlign: 'right' }}>
+                        <input
+                          type="number"
+                          min="1"
+                          max={it.totalCant}
+                          disabled={!it.selected}
+                          value={it.despacharCant}
+                          onChange={e => changeItemCant(it.id, e.target.value)}
+                          style={{
+                            width: 65,
+                            padding: '4px 6px',
+                            borderRadius: 5,
+                            border: '1px solid var(--border)',
+                            fontSize: 12,
+                            fontFamily: "'DM Mono',monospace",
+                            textAlign: 'right',
+                            fontWeight: 700,
+                            color: it.selected ? '#0f766e' : 'var(--text-3)',
+                            background: it.selected ? '#fff' : 'var(--bg)'
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ padding: 12, textAlign: 'center', color: 'var(--text-3)', fontSize: 12, background: 'var(--bg)', borderRadius: 6, marginBottom: 12 }}>
+              Cargando productos de la venta…
+            </div>
+          )}
         </section>
       )}
 
@@ -420,12 +667,12 @@ export default function DespachoWorkflowForm({ isEdit, initial, venta: ventaProp
 
       <section style={sectionStyle}>
         <Header
-          title={esManual ? 'Datos operativos de salida' : linkedFromSale ? '2. Registrar salida' : '2. Programa los datos de salida'}
+          title={esManual ? 'Datos operativos de salida' : linkedFromSale ? '3. Registrar salida' : '3. Programa los datos de salida'}
           text={esManual ? 'Completa lo necesario para trasladar, controlar y seguir esta salida.' : linkedFromSale ? 'Ingresa sólo la fecha y el transporte. El destino se hereda de la venta.' : 'La información de venta ya está precargada.'}
         />
-        {(form.parcial || form.tieneMulta) && (
+        {(form.parcial || isAutoParcial || form.tieneMulta) && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            {form.parcial && <Badge tone="amber">Envío parcial preparado</Badge>}
+            {(form.parcial || isAutoParcial) && <Badge tone="amber">Envío parcial preparado</Badge>}
             {form.tieneMulta && <Badge tone="red">⚠️ Venta con Multa / Retraso Licitación</Badge>}
           </div>
         )}
@@ -433,7 +680,7 @@ export default function DespachoWorkflowForm({ isEdit, initial, venta: ventaProp
           <label style={checkLabel}>
             <input
               type="checkbox"
-              checked={!!form.parcial}
+              checked={!!(form.parcial || isAutoParcial)}
               onChange={e => set('parcial', e.target.checked)}
             /> Parcial
           </label>
