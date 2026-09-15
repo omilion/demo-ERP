@@ -4,7 +4,7 @@ import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table } from '../../compone
 import { useDespachoColaOperativa } from '../../api/despachos'
 import { PackingProgress } from '../despachos/shared-ui'
 import { useAuthStore } from '../../store/auth'
-import { can } from '../../utils/permissions'
+import { can, ventaPath } from '../../utils/permissions'
 import BotonExportar from '../../components/BotonExportar'
 
 function tone(estado) {
@@ -21,6 +21,9 @@ export default function PanelPackingPage() {
   const { data: colaData, isLoading, refetch } = useDespachoColaOperativa({ etapa: 'packing', search })
   const items = colaData?.items || []
 
+  const abrirPacking = row => navigate(`/despachos/ordenes/${encodeURIComponent(String(row.ordenId))}/packing`)
+  const abrirPedido = row => navigate(ventaPath(row.ordenId))
+
   const filtrados = items.filter(item => {
     if (filtroEstado === 'iniciado') return (item.packing?.preparados > 0 && !item.packing?.completo)
     if (filtroEstado === 'completo') return item.packing?.completo
@@ -36,7 +39,7 @@ export default function PanelPackingPage() {
         <div>
           <button
             type="button"
-            onClick={() => navigate(`/ventas/${row.ordenId}`)}
+            onClick={() => abrirPedido(row)}
             style={{ fontWeight: 700, color: 'var(--blue)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
           >
             #{row.nInterno || row.ordenId}
@@ -99,6 +102,13 @@ export default function PanelPackingPage() {
       label: 'Acciones',
       render: (_, row) => (
         <div style={{ display: 'flex', gap: 6 }}>
+          <Btn
+            variant="ghost"
+            size="sm"
+            onClick={() => abrirPedido(row)}
+          >
+            Ver pedido
+          </Btn>
           {canWriteDespacho && (
             <Btn
               variant="primary"
@@ -145,8 +155,10 @@ export default function PanelPackingPage() {
         <Table
           columns={columns}
           rows={filtrados}
+          onRowClick={abrirPacking}
           loading={isLoading}
           emptyMessage="No hay pedidos en cola de packing."
+          ariaLabel="Pedidos en cola de packing; haz clic en una fila para abrir su detalle"
           toolbarExtra={<>
             <SearchBar value={search} onChange={setSearch} placeholder="Buscar por venta, interno, cliente o transporte..." style={{ height: 28, width: 280 }} />
             <select

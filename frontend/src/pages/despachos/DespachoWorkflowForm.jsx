@@ -438,10 +438,11 @@ function Header({ title, text, badge }) {
 
 function VentaResumen({ item }) {
   const preparacion = item.preparacion || {}
+  const navigate = useNavigate()
   return (
     <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: 'var(--bg)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr auto auto', gap: 12, alignItems: 'center' }}>
-        <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700 }}>{item.clienteNombre || 'Cliente sin nombre'}</div>
           <div style={{ marginTop: 3, color: 'var(--text-3)', fontSize: 12 }}>
             {item.direccion || 'Sin dirección de despacho'}{item.comuna ? ` · ${item.comuna}` : ''}
@@ -449,6 +450,9 @@ function VentaResumen({ item }) {
         </div>
         <PackingProgress row={{ packing: item.packing }} />
         <Badge tone={tone(item.estadoLogistico)}>{item.estadoLogistico?.label || 'Listo'}</Badge>
+        <Btn variant="ghost" size="sm" onClick={() => navigate(`/ventas/${encodeURIComponent(String(item.ordenId))}`)}>
+          Ver pedido
+        </Btn>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, alignItems: 'center', marginTop: 10 }}>
         <Badge tone="green">Picking disponible: {preparacion.disponiblePicking || 0} u.</Badge>

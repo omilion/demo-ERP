@@ -175,6 +175,9 @@ export default function DespachosPage({ defaultTab }) {
       label: 'Acciones',
       render: (_, r) => (
         <div style={{ display: 'flex', gap: 6 }}>
+          <Btn variant="ghost" size="sm" onClick={() => navigate(`/despachos/ordenes/${encodeURIComponent(String(r.ordenId))}/packing`)}>
+            Ver packing
+          </Btn>
           {canWriteDespacho && (
             <Btn variant="primary" size="sm" onClick={() => navigate(`/despachos/nuevo?ordenId=${r.ordenId}&nInterno=${r.nInterno || ''}`)}>
               Programar Salida
@@ -464,8 +467,10 @@ export default function DespachosPage({ defaultTab }) {
           <Table
             columns={colsSalidas}
             rows={colaSalidas.data?.items || []}
+            onRowClick={r => navigate(`/despachos/ordenes/${encodeURIComponent(String(r.ordenId))}/packing`)}
             loading={colaSalidas.isLoading}
             emptyMessage="No hay pedidos listos para salida en este momento."
+            ariaLabel="Salidas listas; haz clic en una fila para abrir el detalle del packing"
             toolbarExtra={<SearchBar value={search} onChange={setSearch} placeholder="Buscar por venta, interno, destinatario, RUT o transporte..." style={{ height: 28, width: 320 }} />}
           />
         )}
@@ -514,8 +519,10 @@ export default function DespachosPage({ defaultTab }) {
           <Table
             columns={colsAdmin}
             rows={colaAdmin.data?.items || []}
+            onRowClick={r => navigate(`/despachos/ordenes/${encodeURIComponent(String(r.ordenId))}/packing`)}
             loading={colaAdmin.isLoading}
             emptyMessage="No hay ventas activas en el embudo logístico."
+            ariaLabel="Panel administrador de despachos; haz clic en una fila para abrir el detalle del packing"
             toolbarExtra={<SearchBar value={search} onChange={setSearch} placeholder="Buscar por venta, interno, destinatario, RUT o transporte..." style={{ height: 28, width: 320 }} />}
           />
         )}
