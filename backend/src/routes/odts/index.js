@@ -108,6 +108,10 @@ export default async function odtsRoutes(fastify) {
             id: true,
             nombre: true
           }
+        },
+        evidencias: {
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, archivoUrl: true, nombreArchivo: true, usuario: true, createdAt: true },
         }
       },
       orderBy: {

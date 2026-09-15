@@ -1,6 +1,10 @@
+import { mkdir, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { parsePositiveInt } from '../operational-utils.js'
 import { can } from '../../middleware/rbac.js'
 import { getUserSucursalId } from '../caja/scope.js'
+import { parseImageDataUrl, uploadsRoot } from './evidencia-helpers.js'
 
 export const ODT_ITEM_TALLER_ESTADOS = Object.freeze([
   'pendiente',
@@ -462,10 +466,69 @@ export default async function itemWorkflowRoutes(fastify) {
     }
   }
 
+  // Evidencia fotografica del trabajo: antes solo existia para "Taller de
+  // Corte" (backend/src/routes/taller-corte/index.js). Cualquier estacion
+  // declara su propio avance con el mismo permiso, asi que cualquier estacion
+  // puede documentarlo igual (feedback de Zalma Lobos, taller confecciones,
+  // 2026-09-15: sin esto no hay como "ratificar el trabajo de salida").
+  async function subirEvidencia(request, reply) {
+    const parsedParams = parseWorkflowParams(request.params)
+    if (parsedParams.error) return reply.code(400).send({ error: parsedParams.error })
+
+    const parsed = parseImageDataUrl(request.body?.data)
+    if (parsed.error) return reply.code(400).send({ error: parsed.error })
+
+    const sucursalId = getUserSucursalId(request.user)
+    const relationWhere = buildTallerItemRelationWhere(parsedParams, { sucursalId })
+    const current = await fastify.prisma.odtItemTaller.findFirst({
+      where: relationWhere,
+      select: relationSelect,
+    })
+    if (!current) return reply.code(404).send({ error: 'Relacion ODT/item/taller no encontrada' })
+    if (!isOdtWorkflowWritable(current.odtItem?.odt)) {
+      return reply.code(409).send({ error: 'ODT cerrada o anulada' })
+    }
+
+    const odtId = current.odtItem.odtId
+    const dir = path.join(uploadsRoot(), 'taller-evidencias', String(odtId))
+    await mkdir(dir, { recursive: true })
+    const filename = `${randomUUID()}${parsed.ext}`
+    await writeFile(path.join(dir, filename), parsed.bytes)
+    const usuario = getRequestUsuario(request.user) || 'Sistema'
+
+    const evidencia = await fastify.prisma.$transaction(async tx => {
+      const created = await tx.tallerEvidencia.create({
+        data: {
+          odtId,
+          odtItemTallerId: current.id,
+          archivoUrl: `/uploads/taller-evidencias/${odtId}/${filename}`,
+          nombreArchivo: String(request.body?.nombreArchivo || filename).slice(0, 180),
+          mimeType: parsed.mimeType,
+          usuario,
+          ipEquipo: request.ip,
+        },
+      })
+      await tx.bitacoraTaller.create({
+        data: {
+          odtId,
+          usuario,
+          usuarioReporta: usuario,
+          ipEquipo: request.ip,
+          sucursalId: current.odtItem?.odt?.sucursalId ?? sucursalId,
+          fecha: new Date(),
+          texto: `Evidencia fotografica adjunta en ${current.taller?.nombre || 'taller'}: ${created.nombreArchivo}`,
+        },
+      })
+      return created
+    })
+    return reply.code(201).send(evidencia)
+  }
+
   // Mover el estado del item es como el operario declara su avance.
   const opts = { preHandler: [fastify.authenticate, fastify.rbac('taller.avance', 'write')] }
   fastify.put(ROUTE, opts, updateEstado)
   fastify.patch(ROUTE, opts, updateEstado)
   fastify.post(BULK_ROUTE, opts, updateTallerEstadoMasivo)
   fastify.post(`${ROUTE.replace('/estado', '')}/recepcion`, opts, recibirEtapa)
+  fastify.post(`${ROUTE.replace('/estado', '')}/evidencias`, { ...opts, bodyLimit: 7 * 1024 * 1024 }, subirEvidencia)
 }

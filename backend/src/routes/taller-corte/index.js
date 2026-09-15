@@ -2,21 +2,12 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { getUserSucursalId } from '../caja/scope.js'
+import { parseImageDataUrl, uploadsRoot } from '../odts/evidencia-helpers.js'
 
 const CORTE_NOMBRE = 'Taller de Corte'
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024
-const IMAGE_TYPES = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-}
 
 function usuarioActual(user) {
   return String(user?.nombre || user?.email || 'Sistema').trim() || 'Sistema'
-}
-
-function uploadsRoot() {
-  return path.resolve(process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads'))
 }
 
 function parsePositiveNumber(value) {
@@ -53,17 +44,6 @@ function relationWhere(tallerId, user, tallerItemId = null) {
       },
     },
   }
-}
-
-function parseImageDataUrl(value) {
-  const raw = String(value || '')
-  const match = raw.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/i)
-  if (!match) return { error: 'La evidencia debe ser una imagen JPG, PNG o WEBP' }
-  const mimeType = match[1].toLowerCase()
-  const bytes = Buffer.from(match[2], 'base64')
-  if (!bytes.length) return { error: 'La imagen esta vacia' }
-  if (bytes.length > MAX_IMAGE_BYTES) return { error: 'La imagen supera el maximo de 5 MB' }
-  return { bytes, mimeType, ext: IMAGE_TYPES[mimeType] }
 }
 
 function buildProgressSummary(item, avances = []) {

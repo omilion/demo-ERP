@@ -208,3 +208,17 @@ export const useOdtTallerItems = (tallerKind, { mine = false } = {}) =>
     queryFn: () => api.get('/odts/taller-items', { params: { tallerKind, mine: mine ? 'true' : undefined } }).then(r => r.data),
     enabled: !!tallerKind,
   })
+
+// Evidencia fotografica valida para cualquier estacion (antes solo existia
+// para Taller de Corte, ver api/tallerCorte.js useSubirTallerCorteEvidencia).
+export const useSubirOdtItemEvidencia = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ odtId, itemId, tallerItemId, data, nombreArchivo }) =>
+      api.post(`/odts/${odtId}/items/${itemId}/talleres/${tallerItemId}/evidencias`, { data, nombreArchivo }).then(r => r.data),
+    onSuccess: (_, { odtId }) => {
+      qc.invalidateQueries({ queryKey: ['odts', 'taller-items'] })
+      qc.invalidateQueries({ queryKey: ['odts', odtId] })
+    },
+  })
+}

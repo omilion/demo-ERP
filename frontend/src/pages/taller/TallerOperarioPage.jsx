@@ -1,7 +1,17 @@
 import { useState } from 'react'
+import { toast } from '../../store/notif'
 import { Btn, Icon, PageHeader } from '../../components/shared'
-import { useOdtTallerItems, useOdtItemTallerEstado, useOdtOperarios } from '../../api/odts'
+import { useOdtTallerItems, useOdtItemTallerEstado, useOdtOperarios, useSubirOdtItemEvidencia } from '../../api/odts'
 import { useAuthStore } from '../../store/auth'
+
+function fileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
 
 const WORKSHOPS = [
   { id: 'Espumas', label: 'Espuma', icon: 'package', color: 'var(--amber)' },
@@ -29,6 +39,8 @@ export default function TallerOperarioPage() {
   const { data: itemsData, isLoading: loadingItems, refetch } = useOdtTallerItems(activeWorkshop, { mine: soloMias })
   const { data: operariosData } = useOdtOperarios()
   const updateEstadoMut = useOdtItemTallerEstado()
+  const subirEvidencia = useSubirOdtItemEvidencia()
+  const [uploadingItemId, setUploadingItemId] = useState(null)
 
   const items = itemsData?.items || []
   const operarios = operariosData?.items || []
@@ -53,6 +65,24 @@ export default function TallerOperarioPage() {
     }, {
       onSuccess: () => refetch()
     })
+  }
+
+  const handleSubirEvidencia = async (item, file) => {
+    if (!file) return
+    setUploadingItemId(item.id)
+    try {
+      const data = await fileAsDataUrl(file)
+      await subirEvidencia.mutateAsync({
+        odtId: item.odtItem.odtId, itemId: item.odtItemId, tallerItemId: item.id,
+        data, nombreArchivo: file.name,
+      })
+      toast.success('Evidencia guardada')
+      refetch()
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'No se pudo subir la evidencia')
+    } finally {
+      setUploadingItemId(null)
+    }
   }
 
   const handleSaveObs = (item) => {
@@ -309,6 +339,35 @@ export default function TallerOperarioPage() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* Evidencia fotografica del trabajo */}
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong style={{ fontSize: 12, color: 'var(--text-2)' }}>Evidencia fotográfica</strong>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: 'var(--green-700)', cursor: uploadingItemId === item.id ? 'default' : 'pointer' }}>
+                      <Icon name="upload" size={12} />
+                      {uploadingItemId === item.id ? 'Subiendo...' : 'Agregar foto'}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        style={{ display: 'none' }}
+                        disabled={uploadingItemId === item.id}
+                        onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; handleSubirEvidencia(item, file) }}
+                      />
+                    </label>
+                  </div>
+                  {item.evidencias?.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+                      {item.evidencias.slice(0, 4).map(evidencia => (
+                        <a key={evidencia.id} href={evidencia.archivoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--blue)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Icon name="upload" size={11} /> {evidencia.nombreArchivo}
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4, fontStyle: 'italic' }}>Sin fotos adjuntas</div>
+                  )}
                 </div>
 
                 {/* Acciones de Flujo */}
