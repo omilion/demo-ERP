@@ -784,7 +784,28 @@ function opBtnStyle(color) {
   }
 }
 
-function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, canEmitirDte, onEmitirDte, canEmitirNotaFiscal, onEmitirNotaFiscal, canDelete, canManageInternalCreditNotes, internalCreditNoteBlocked, onCreateInternalCreditNote, canRegistrarPago, canCobrar, saldo, onCobrar, onCreateDespacho, onPrepararGuia }) {
+function OperacionesDisponibles({
+  v,
+  odtsCount,
+  guiasCount,
+  canWriteDespacho,
+  canEmitirDte,
+  onEmitirDte,
+  canEmitirNotaFiscal,
+  onEmitirNotaFiscal,
+  canDelete,
+  canWrite,
+  onEdit,
+  canManageInternalCreditNotes,
+  internalCreditNoteBlocked,
+  onCreateInternalCreditNote,
+  canRegistrarPago,
+  canCobrar,
+  saldo,
+  onCobrar,
+  onCreateDespacho,
+  onPrepararGuia,
+}) {
   const navigate = useNavigate()
   const anularVenta = useAnularVenta()
   const activarVenta = useActivarVenta()
@@ -898,15 +919,57 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, ca
           <Icon name="fileText" size={14} /> Emitir DTE
         </button>
       )}
-      {!v.eliminada && canDelete && (
-        <button onClick={anular} disabled={anularVenta.isPending} style={{ ...opBtnStyle('var(--red)'), opacity: anularVenta.isPending ? 0.7 : 1 }}>
-          <Icon name="xCircle" size={14} /> {anularVenta.isPending ? 'Anulando...' : 'Anular Venta'}
-        </button>
-      )}
-      {v.eliminada && canDelete && (
-        <button onClick={revertir} disabled={activarVenta.isPending} style={{ ...opBtnStyle('var(--green-600)'), opacity: activarVenta.isPending ? 0.7 : 1 }}>
-          <Icon name="refreshCw" size={14} /> {activarVenta.isPending ? 'Reactivando...' : 'Revertir a Activa'}
-        </button>
+      {((canWrite && onEdit) || (!v.eliminada && canDelete) || (v.eliminada && canDelete)) && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: (canWrite && onEdit) && canDelete ? '1fr 1fr' : '1fr',
+          gap: 8,
+          marginTop: 4
+        }}>
+          {canWrite && onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              style={{
+                ...opBtnStyle('var(--green-900, #064e3b)'),
+                justifyContent: 'center',
+                marginBottom: 0,
+              }}
+            >
+              <Icon name="edit" size={14} /> Editar
+            </button>
+          )}
+          {!v.eliminada && canDelete && (
+            <button
+              type="button"
+              onClick={anular}
+              disabled={anularVenta.isPending}
+              style={{
+                ...opBtnStyle('var(--red)'),
+                justifyContent: 'center',
+                marginBottom: 0,
+                opacity: anularVenta.isPending ? 0.7 : 1
+              }}
+            >
+              <Icon name="xCircle" size={14} /> {anularVenta.isPending ? 'Anulando...' : 'Anular Venta'}
+            </button>
+          )}
+          {v.eliminada && canDelete && (
+            <button
+              type="button"
+              onClick={revertir}
+              disabled={activarVenta.isPending}
+              style={{
+                ...opBtnStyle('var(--green-600)'),
+                justifyContent: 'center',
+                marginBottom: 0,
+                opacity: activarVenta.isPending ? 0.7 : 1
+              }}
+            >
+              <Icon name="refreshCw" size={14} /> {activarVenta.isPending ? 'Reactivando...' : 'Revertir a Activa'}
+            </button>
+          )}
+        </div>
       )}
     </div>
   )
@@ -1757,10 +1820,6 @@ export function ViewVentaPanel({
           <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 0 }}>
             {/* Columna izquierda */}
             <div style={{ padding: '18px 16px', borderRight: '1px solid var(--border)' }}>
-              <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 14px', marginBottom: 14, fontSize: 13 }}>
-                <div><strong>Ejecutivo(a):</strong> {v.creadorNombre || 'Sin vendedor'}</div>
-                <div style={{ marginTop: 4 }}><strong>Fecha:</strong> {fecha}</div>
-              </div>
               <OperacionesDisponibles
                 v={v}
                 odtsCount={odts.length}
@@ -1771,6 +1830,8 @@ export function ViewVentaPanel({
                 canEmitirNotaFiscal={puedeEmitirNotaFiscal}
                 onEmitirNotaFiscal={onEmitirNotaFiscal}
                 canDelete={canDelete}
+                canWrite={canWrite}
+                onEdit={onEdit}
                 canManageInternalCreditNotes={canManageInternalCreditNotes}
                 internalCreditNoteBlocked={ventaYaEmitida}
                 onCreateInternalCreditNote={() => setNotaInterna(true)}

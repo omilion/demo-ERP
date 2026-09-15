@@ -17,28 +17,54 @@ export default function VentaDetallePage() {
 
   const { data: venta } = useVenta(id)
   const displayNum = venta?.nInterno || id || '-'
+  const fechaStr = venta?.createdAt
+    ? new Date(venta.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null
+  const ejecutivoStr = venta?.creadorNombre || venta?.creador?.nombre || 'Sin vendedor'
 
   return (
     <main className="page page-wide">
       <PageHeader
-        title={`Detalle de Venta #${displayNum}`}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span>Detalle de Venta #{displayNum}</span>
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 12,
+              fontWeight: 500,
+              background: '#fff',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              padding: '3px 10px',
+              color: 'var(--text-2)'
+            }}>
+              <strong style={{ color: 'var(--text-1)' }}>Ejecutivo(a):</strong> {ejecutivoStr}
+            </span>
+            {fechaStr && (
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 12,
+                fontWeight: 500,
+                background: '#fff',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                padding: '3px 10px',
+                color: 'var(--text-2)'
+              }}>
+                <strong style={{ color: 'var(--text-1)' }}>Fecha:</strong> {fechaStr}
+              </span>
+            )}
+          </div>
+        }
         breadcrumb={['Inicio', 'Ventas', `Venta #${displayNum}`]}
         actions={
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            {canWriteVentas && (
-              <Btn variant="primary" icon="edit" size="sm" onClick={() => navigate(`/ventas/${safeId}/editar`)}>
-                Editar
-              </Btn>
-            )}
-            {canDeleteVentas && (
-              <Btn variant="ghost" icon="trash" size="sm" onClick={() => setConfirmDelete(true)} style={{ color: 'var(--red)' }}>
-                Eliminar
-              </Btn>
-            )}
-            <Btn variant="secondary" icon="chevronLeft" size="sm" onClick={() => navigate('/ventas')}>
-              Volver
-            </Btn>
-          </div>
+          <Btn variant="secondary" icon="chevronLeft" size="sm" onClick={() => navigate('/ventas')}>
+            Volver
+          </Btn>
         }
       />
 
