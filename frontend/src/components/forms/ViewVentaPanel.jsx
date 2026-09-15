@@ -15,7 +15,7 @@ import { downloadDteXml, openDtePdf } from '../../utils/dteDocuments'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 import { InternalCreditNoteModal, InternalCreditNotes } from '../facturacion/InternalCreditNotes'
-import { collectibleDocuments, isReferencialPago } from '../../utils/cobranza'
+import { activeReferentialDocs, collectibleDocuments, isReferencialPago } from '../../utils/cobranza'
 
 const fmt = n => '$' + (n || 0).toLocaleString('es-CL')
 
