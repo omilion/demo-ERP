@@ -826,6 +826,18 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, ca
           {!canCobrar && <div style={{ margin: '-3px 0 10px', fontSize: 11, color: 'var(--text-3)' }}>Primero emite o registra una factura o boleta.</div>}
         </>
       )}
+      {(v.cotizaciones?.length > 0 || v.licitacion) && (
+        <button
+          onClick={() => {
+            const cotId = v.cotizaciones?.[0]?.id
+            if (cotId) navigate(`/licitaciones/${cotId}`)
+            else navigate(`/licitaciones?search=${encodeURIComponent(v.licitacion || '')}`)
+          }}
+          style={opBtnStyle('var(--teal, #0d9488)')}
+        >
+          <Icon name="clipboard" size={14} /> Ver Cotización Licit. {v.cotizaciones?.[0]?.idLicitacion || v.licitacion ? `(${v.cotizaciones?.[0]?.idLicitacion || v.licitacion})` : ''}
+        </button>
+      )}
       <button onClick={() => navigate(`/taller?search=${v.nInterno || v.id}`)} style={opBtnStyle('var(--blue)')}>
         <Icon name="tool" size={14} /> Órdenes de Trabajo ({odtsCount})
       </button>
@@ -1082,7 +1094,31 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
           : null],
       ] : []),
       ...(['licitacion', 'convenio marco', 'compra agil', 'trato directo'].includes(tipoNormalizado) && v.licitacion
-        ? [[tipoNormalizado === 'convenio marco' ? 'Orden de compra' : 'Identificador comercial', v.licitacion]]
+        ? [[tipoNormalizado === 'convenio marco' ? 'Orden de compra' : 'Identificador comercial', (
+            <span key="licit-ref" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span>{v.licitacion}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const cotId = v.cotizaciones?.[0]?.id
+                  if (cotId) navigate(`/licitaciones/${cotId}`)
+                  else navigate(`/licitaciones?search=${encodeURIComponent(v.licitacion || '')}`)
+                }}
+                style={{
+                  fontSize: 11,
+                  color: 'var(--blue)',
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  fontWeight: 600,
+                }}
+              >
+                (Ver Cotización Licit.)
+              </button>
+            </span>
+          )]]
         : []),
       ...(v.plazoEntregaDias != null ? [['Plazo comprometido', `${v.plazoEntregaDias} días ${v.plazoEntregaTipo || 'corridos'}`]] : []),
       ...(v.enviosParciales ? [['Despachos', 'Envíos parciales permitidos']] : []),
@@ -1220,6 +1256,11 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                               <div style={{ fontWeight: 500 }}>{item.producto?.nombre || item.nombre || `Producto #${item.productoId}`}</div>
                               {(item.producto?.codigoInterno || item.codigoInterno) && (
                                 <div style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>{item.producto?.codigoInterno || item.codigoInterno}</div>
+                              )}
+                              {item.descripcion && (
+                                <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 4, background: 'var(--bg)', padding: '3px 7px', borderRadius: 4, border: '1px solid var(--border)', lineHeight: 1.4 }}>
+                                  {item.descripcion}
+                                </div>
                               )}
                             </td>
                             <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>{item.cantidad}</td>
