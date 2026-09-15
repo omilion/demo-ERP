@@ -1761,7 +1761,6 @@ export function ViewVentaPanel({
                 <div><strong>Ejecutivo(a):</strong> {v.creadorNombre || 'Sin vendedor'}</div>
                 <div style={{ marginTop: 4 }}><strong>Fecha:</strong> {fecha}</div>
               </div>
-              <AgregarProductoWidget venta={v} items={items} canWrite={canWrite} />
               <OperacionesDisponibles
                 v={v}
                 odtsCount={odts.length}
@@ -1805,11 +1804,11 @@ export function ViewVentaPanel({
                   ].filter(([, valor]) => valor)
                   if (!filas.length) return <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Sin cliente asociado</div>
                   return (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 20, rowGap: 4 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', columnGap: 24, rowGap: 6 }}>
                       {filas.map(([label, valor]) => (
-                        <div key={label} style={{ display: 'flex', gap: 8, fontSize: 12, minWidth: 0 }}>
-                          <span style={{ color: 'var(--text-3)', fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>
-                          <span style={{ color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{valor}</span>
+                        <div key={label} style={{ display: 'flex', gap: 6, fontSize: 12, minWidth: 0, alignItems: 'baseline' }}>
+                          <span style={{ color: 'var(--text-3)', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>{label}</span>
+                          <span style={{ color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={typeof valor === 'string' ? valor : undefined}>{valor}</span>
                         </div>
                       ))}
                     </div>
