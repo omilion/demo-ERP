@@ -31,6 +31,146 @@ function normalizeForMatch(value) {
     .trim()
 }
 
+const SOURCE_TYPE_LABELS = {
+  manual: 'Movimiento manual',
+  ajuste_manual: 'Ajuste manual',
+  importacion: 'Importación',
+  importacion_stock: 'Importación de stock',
+  carga_excel_locaciones: 'Carga de inventario por Excel',
+  orden: 'Venta',
+  venta: 'Venta',
+  venta_directa: 'Venta directa',
+  odt: 'Orden de trabajo',
+  odt_consumo: 'Consumo de ODT',
+  pago_proveedor: 'Documento proveedor',
+  orden_compra_proveedor: 'Orden de compra proveedor',
+}
+
+function normalizeSourceType(value) {
+  return normalizeForMatch(value).replace(/[\s-]+/g, '_')
+}
+
+function sourceTypeLabel(value) {
+  const normalized = normalizeSourceType(value)
+  if (!normalized) return SOURCE_TYPE_LABELS.manual
+  if (SOURCE_TYPE_LABELS[normalized]) return SOURCE_TYPE_LABELS[normalized]
+  return normalized
+    .split('_')
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+function sourceReferenceFromMotivo(movimiento, sourceType) {
+  if (sourceType !== 'carga_excel_locaciones') return null
+  const filename = String(movimiento.motivo || '').match(/\(([^)]+\.(?:xlsx?|csv))\)/i)?.[1]
+  return filename || null
+}
+
+export function buildDocumentoOrigen(movimiento, relations = {}) {
+  const pagoProveedor = relations.pagoProveedor || movimiento.pagoProveedor
+  if (pagoProveedor) {
+    const parts = [pagoProveedor.documento, pagoProveedor.nDoc ? `N° ${pagoProveedor.nDoc}` : null].filter(Boolean)
+    return {
+      tipo: SOURCE_TYPE_LABELS.pago_proveedor,
+      referencia: parts.join(' · ') || `Pago proveedor #${pagoProveedor.id}`,
+      id: pagoProveedor.id,
+    }
+  }
+
+  const odt = relations.odt || movimiento.odt
+  if (odt) {
+    const number = odt.legacyNInterno ?? odt.id
+    return {
+      tipo: SOURCE_TYPE_LABELS.odt,
+      referencia: `ODT #${number}`,
+      id: odt.id,
+    }
+  }
+
+  const orden = relations.orden || movimiento.orden
+  if (orden) {
+    const number = orden.nInterno ?? orden.id
+    return {
+      tipo: SOURCE_TYPE_LABELS.orden,
+      referencia: `Venta #${number}`,
+      id: orden.id,
+    }
+  }
+
+  const sourceType = normalizeSourceType(movimiento.origenTipo)
+  const tipo = sourceTypeLabel(sourceType)
+  const referencia = sourceReferenceFromMotivo(movimiento, sourceType)
+    || (movimiento.origenId ? `${tipo} #${movimiento.origenId}` : null)
+
+  return {
+    tipo,
+    referencia,
+    id: movimiento.origenId ?? null,
+  }
+}
+
+export function buildMovimientoUsuario(movimiento, user = null) {
+  const id = movimiento.userId ?? null
+  const nombre = user?.nombre || user?.email || (id ? `Usuario #${id}` : 'Sistema')
+  return { id, nombre, email: user?.email || null }
+}
+
+function isOrderSource(sourceType) {
+  return sourceType === 'orden' || sourceType === 'venta' || sourceType.startsWith('venta_')
+}
+
+function isOdtSource(sourceType) {
+  return sourceType === 'odt' || sourceType.startsWith('odt_')
+}
+
+async function loadOriginRelations(prisma, movimientos) {
+  const orderIds = new Set()
+  const odtIds = new Set()
+  const pagoProveedorIds = new Set()
+
+  for (const movimiento of movimientos) {
+    const sourceType = normalizeSourceType(movimiento.origenTipo)
+    const originId = Number.isInteger(movimiento.origenId) ? movimiento.origenId : null
+    if (!originId) continue
+    if (!movimiento.orden && isOrderSource(sourceType)) orderIds.add(originId)
+    if (!movimiento.odt && isOdtSource(sourceType)) odtIds.add(originId)
+    if (!movimiento.pagoProveedor && sourceType === 'pago_proveedor') pagoProveedorIds.add(originId)
+  }
+
+  const [ordenes, odts, pagosProveedor] = await Promise.all([
+    orderIds.size
+      ? prisma.orden.findMany({ where: { id: { in: [...orderIds] } }, select: { id: true, nInterno: true } })
+      : [],
+    odtIds.size
+      ? prisma.odt.findMany({ where: { id: { in: [...odtIds] } }, select: { id: true, legacyNInterno: true } })
+      : [],
+    pagoProveedorIds.size
+      ? prisma.pagoProveedor.findMany({ where: { id: { in: [...pagoProveedorIds] } }, select: { id: true, documento: true, nDoc: true } })
+      : [],
+  ])
+
+  return {
+    ordenes: new Map(ordenes.map(orden => [orden.id, orden])),
+    odts: new Map(odts.map(odt => [odt.id, odt])),
+    pagosProveedor: new Map(pagosProveedor.map(pago => [pago.id, pago])),
+  }
+}
+
+export function serializeMovimiento(movimiento, user, relations = {}) {
+  const documentoOrigen = buildDocumentoOrigen(movimiento, relations)
+  const usuario = buildMovimientoUsuario(movimiento, user)
+  const { orden, odt, pagoProveedor, ...base } = movimiento
+  return {
+    ...base,
+    documentoOrigen,
+    usuario,
+    tipoDocumento: documentoOrigen.tipo,
+    documentoReferencia: documentoOrigen.referencia,
+    usuarioNombre: usuario.nombre,
+  }
+}
+
 export function normalizeMotivoCategoria(value) {
   const normalized = normalizeForMatch(value)
   if (!normalized) return null
@@ -245,9 +385,32 @@ export default async function movimientosProductoRoutes(fastify) {
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })
-    return fastify.prisma.movimientoBodega.findMany({
-      where: { productoId: id }, orderBy: { createdAt: 'desc' }, take: 100,
+    const movimientos = await fastify.prisma.movimientoBodega.findMany({
+      where: { productoId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        orden: { select: { id: true, nInterno: true } },
+        odt: { select: { id: true, legacyNInterno: true } },
+        pagoProveedor: { select: { id: true, documento: true, nDoc: true } },
+      },
     })
+    const users = await fastify.prisma.user.findMany({
+      where: { id: { in: [...new Set(movimientos.map(movimiento => movimiento.userId).filter(Number.isInteger))] } },
+      select: { id: true, nombre: true, email: true },
+    })
+    const usersById = new Map(users.map(user => [user.id, user]))
+    const originRelations = await loadOriginRelations(fastify.prisma, movimientos)
+
+    return movimientos.map(movimiento => serializeMovimiento(
+      movimiento,
+      usersById.get(movimiento.userId),
+      {
+        orden: movimiento.orden || originRelations.ordenes.get(movimiento.origenId),
+        odt: movimiento.odt || originRelations.odts.get(movimiento.origenId),
+        pagoProveedor: movimiento.pagoProveedor || originRelations.pagosProveedor.get(movimiento.origenId),
+      },
+    ))
   })
 
   // Entradas y salidas: es lo que hace el encargado de inventario a diario.

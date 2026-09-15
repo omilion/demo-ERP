@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/app.js'
+import { buildDocumentoOrigen } from '../src/routes/productos/movimientos.js'
 
 async function loginAs(app, role = 'admin') {
   const res = await app.inject({
@@ -570,6 +571,83 @@ describe('Bodega product safeguards', () => {
     })
     await app.prisma.producto.deleteMany({ where: { codigoInterno: { startsWith: 'TEST-' } } })
     await app.close()
+  })
+
+  it('returns the source document and creator for movement history', async () => {
+    const actor = await app.prisma.user.findUnique({
+      where: { id: app.jwt.decode(token).id },
+      select: { id: true, nombre: true, email: true },
+    })
+    const marker = `TEST-MOV-TRAZ-${Date.now()}-${Math.floor(Math.random() * 100000)}`
+    const cliente = await app.prisma.cliente.create({
+      data: { rut: marker, nombre: marker, activo: true },
+    })
+    const orden = await app.prisma.orden.create({
+      data: {
+        tipo: 'Normal',
+        clienteId: cliente.id,
+        userId: actor.id,
+        nInterno: 980000000 + Math.floor(Math.random() * 1000000),
+      },
+    })
+    const producto = await app.prisma.producto.create({
+      data: {
+        codigoInterno: testCode(),
+        nombre: 'Producto trazabilidad movimiento',
+        bodega: 'Inventario',
+        stock: 5,
+        precioLista: 1000,
+      },
+    })
+
+    try {
+      await app.prisma.movimientoBodega.create({
+        data: {
+          productoId: producto.id,
+          tipo: 'egreso',
+          cantidad: -1,
+          stockAnterior: 5,
+          stockPosterior: 4,
+          motivo: 'salida trazable',
+          userId: actor.id,
+          ordenId: orden.id,
+          origenTipo: 'orden',
+          origenId: orden.id,
+        },
+      })
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/productos/${producto.id}/movimientos`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+
+      expect(res.statusCode).toBe(200)
+      expect(JSON.parse(res.body)[0]).toMatchObject({
+        documentoOrigen: { tipo: 'Venta', referencia: `Venta #${orden.nInterno}`, id: orden.id },
+        tipoDocumento: 'Venta',
+        documentoReferencia: `Venta #${orden.nInterno}`,
+        usuario: { id: actor.id, nombre: actor.nombre, email: actor.email },
+        usuarioNombre: actor.nombre,
+      })
+    } finally {
+      await app.prisma.movimientoBodega.deleteMany({ where: { productoId: producto.id } })
+      await app.prisma.producto.delete({ where: { id: producto.id } })
+      await app.prisma.orden.delete({ where: { id: orden.id } })
+      await app.prisma.cliente.delete({ where: { id: cliente.id } })
+    }
+  })
+
+  it('labels historical Excel origins without an attached document record', () => {
+    expect(buildDocumentoOrigen({
+      origenTipo: 'carga_excel_locaciones',
+      origenId: null,
+      motivo: 'Error inventario: Ajuste por subida (L.ocaciones_13_08_2026.xlsx)',
+    })).toEqual({
+      tipo: 'Carga de inventario por Excel',
+      referencia: 'L.ocaciones_13_08_2026.xlsx',
+      id: null,
+    })
   })
 
   it('rejects direct stock edits through product update', async () => {

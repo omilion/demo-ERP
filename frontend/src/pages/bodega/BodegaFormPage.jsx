@@ -32,8 +32,8 @@ const MOTIVO_CATEGORIAS_POR_TIPO = {
 function MiniTable({ columns, rows, getRowKey, maxHeight }) {
   if (!rows.length) return null
   return (
-    <div style={{ borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden', maxHeight, overflowY: maxHeight ? 'auto' : undefined }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+    <div style={{ borderRadius: 8, border: '1px solid var(--border)', overflowX: 'auto', overflowY: maxHeight ? 'auto' : undefined, maxHeight }}>
+      <table style={{ width: '100%', minWidth: columns.length >= 7 ? 980 : undefined, borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
           <tr style={{ background: 'var(--bg)' }}>
             {columns.map(c => (
@@ -201,6 +201,14 @@ export default function BodegaFormPage() {
       set('estadoInventario', found.estadoInventario || 'Inventariado')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [found?.id])
+
+  useEffect(() => {
+    if (!found?.id || window.location.hash !== '#movimientos') return undefined
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('movimientos')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+    return () => window.cancelAnimationFrame(frame)
   }, [found?.id])
 
   if (isEdit && !found) return <main style={{ padding: 24 }}><p>Cargando...</p></main>
@@ -602,7 +610,7 @@ function ProveedoresSection({ productoId, precioCostoActual }) {
 }
 
 function MovimientosSection({ productoId, stockActual, stockReservado = 0, stockDanado = 0, stockDisponible }) {
-  const { data: movs = [] } = useMovimientos(productoId)
+  const { data: movs = [], isLoading: movsLoading, isError: movsError } = useMovimientos(productoId)
   const addMov = useAddMovimiento()
   const [tipo, setTipo] = useState('ingreso')
   const [cantidad, setCantidad] = useState('')
@@ -613,9 +621,7 @@ function MovimientosSection({ productoId, stockActual, stockReservado = 0, stock
   const disponibleActual = Number(stockDisponible ?? (Number(stockActual || 0) - Number(stockReservado || 0) - Number(stockDanado || 0)))
   const requiereCategoria = tipo === 'egreso' || tipo === 'dano' || tipo === 'merma' || (tipo === 'ajuste' && !isNaN(cantidadNumero) && cantidadNumero < Number(stockActual || 0))
   const motivoCategoriaOptions = requiereCategoria ? (MOTIVO_CATEGORIAS_POR_TIPO[tipo] || ['']) : ['']
-  useEffect(() => {
-    if (!motivoCategoriaOptions.includes(motivoCategoria)) setMotivoCategoria('')
-  }, [tipo, requiereCategoria, motivoCategoria])
+  const motivoCategoriaActual = motivoCategoriaOptions.includes(motivoCategoria) ? motivoCategoria : ''
   const movementLabels = {
     ingreso: 'Ingreso: suma físico',
     egreso: 'Egreso: resta disponible',
@@ -641,8 +647,8 @@ function MovimientosSection({ productoId, stockActual, stockReservado = 0, stock
     const c = parseInt(cantidad, 10)
     if (isNaN(c)) { toast.warning('Cantidad inválida'); return }
     if (!motivo.trim()) { toast.warning('Motivo requerido'); return }
-    if (requiereCategoria && !motivoCategoria) { toast.warning('Motivo operacional requerido'); return }
-    addMov.mutate({ productoId, tipo, cantidad: c, motivo: motivo.trim(), motivoCategoria: requiereCategoria ? motivoCategoria : undefined }, {
+    if (requiereCategoria && !motivoCategoriaActual) { toast.warning('Motivo operacional requerido'); return }
+    addMov.mutate({ productoId, tipo, cantidad: c, motivo: motivo.trim(), motivoCategoria: requiereCategoria ? motivoCategoriaActual : undefined }, {
       onSuccess: () => { setCantidad(''); setMotivo(''); setMotivoCategoria('') },
       onError: e => toast.error(e.response?.data?.error || 'Error'),
     })
@@ -667,7 +673,7 @@ function MovimientosSection({ productoId, stockActual, stockReservado = 0, stock
         <Select value={tipo} onChange={setTipo} options={Object.entries(movementLabels).map(([value, label]) => ({ value, label }))} />
         <Input value={cantidad} onChange={setCantidad} type="number" placeholder={tipo === 'ajuste' ? 'Nuevo físico' : '0'} />
         <Select
-          value={motivoCategoria}
+          value={motivoCategoriaActual}
           onChange={setMotivoCategoria}
           disabled={!requiereCategoria}
           options={motivoCategoriaOptions.map(value => ({ value, label: value || 'Motivo operacional' }))}
@@ -680,6 +686,9 @@ function MovimientosSection({ productoId, stockActual, stockReservado = 0, stock
       <div style={{ margin: '-4px 0 12px', fontSize: 12, color: 'var(--text-3)' }}>
         {impacto}. {requiereCategoria ? 'Debe indicar el motivo operacional.' : 'El motivo describe la operación.'}
       </div>
+      {movsLoading && <div style={{ padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-3)', fontSize: 12 }}>Cargando movimientos…</div>}
+      {movsError && <div style={{ padding: '12px 14px', border: '1px solid var(--red-200, #fecaca)', borderRadius: 8, color: 'var(--red)', fontSize: 12 }}>No se pudieron cargar los movimientos. Intente nuevamente.</div>}
+      {!movsLoading && !movsError && !movs.length && <div style={{ padding: '12px 14px', border: '1px dashed var(--border)', borderRadius: 8, color: 'var(--text-3)', fontSize: 12 }}>No hay movimientos registrados para este producto.</div>}
       <MiniTable
         maxHeight={240}
         columns={[
@@ -687,6 +696,16 @@ function MovimientosSection({ productoId, stockActual, stockReservado = 0, stock
           { key: 'tipo', label: 'Tipo', render: m => <span style={{ textTransform: 'capitalize' }}>{m.tipo}</span> },
           { key: 'cantidad', label: 'Cantidad', render: m => <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600, color: m.cantidad >= 0 ? 'var(--green-700)' : 'var(--red)' }}>{m.cantidad > 0 ? '+' : ''}{m.cantidad}</span> },
           { key: 'saldos', label: 'Saldos', render: m => m.stockPosterior == null ? '-' : <span style={{ color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>F {m.stockPosterior} · D {m.stockPosterior - Number(m.reservadoFinal || 0) - Number(m.danadoFinal || 0)} · R {m.reservadoFinal || 0} · Ñ {m.danadoFinal || 0}</span> },
+          { key: 'documento', label: 'Documento origen', render: m => {
+            const documento = m.documentoOrigen || { tipo: m.tipoDocumento, referencia: m.documentoReferencia }
+            return (
+              <div style={{ minWidth: 150 }}>
+                <div style={{ color: 'var(--text-1)', fontWeight: 600 }}>{documento.tipo || 'Movimiento manual'}</div>
+                <div style={{ color: 'var(--text-3)', fontSize: 11, marginTop: 2 }}>{documento.referencia || 'Sin referencia'}</div>
+              </div>
+            )
+          } },
+          { key: 'usuario', label: 'Generado por', render: m => <span style={{ color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{m.usuario?.nombre || m.usuarioNombre || (m.userId ? `Usuario #${m.userId}` : 'Sistema')}</span> },
           { key: 'motivo', label: 'Motivo', render: m => {
             const motivoInfo = parseMotivo(m.motivo)
             return (
