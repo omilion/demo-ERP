@@ -169,6 +169,47 @@ describe('matriz ventas legacy parity', () => {
     }
   })
 
+  it('expone en la matriz la multa y la prioridad operativa de la venta', async () => {
+    const marker = `atencion-operativa-${Date.now()}`
+    const fixture = await createOrder(app, marker, { sucursalId: 9111 })
+    let odt
+    try {
+      odt = await app.prisma.odt.create({
+        data: {
+          ordenId: fixture.orden.id,
+          sucursalId: 9111,
+          estado: 'Pendiente',
+          prioridad: 'Alta',
+        },
+      })
+      await app.prisma.multa.create({ data: { ordenId: fixture.orden.id, monto: 125000, fecha: new Date() } })
+      await app.prisma.despacho.create({
+        data: { ordenId: fixture.orden.id, sucursalId: 9111, tipoDespacho: 'Despacho cliente', tieneMulta: true },
+      })
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/matriz-ventas?nInterno=${fixture.orden.nInterno}`,
+        headers: { authorization: `Bearer ${tokenFor(app, 'admin', 9111)}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const row = JSON.parse(res.body).items.find(item => item.id === fixture.orden.id)
+      expect(row).toMatchObject({
+        tieneMulta: true,
+        multaCount: 1,
+        multaDespachoCount: 1,
+        multasTotal: 125000,
+        prioridadOperativa: 'alta',
+        prioridadOperativaRank: 1,
+        prioridadOperativaOdtId: odt.id,
+        requiereAtencion: true,
+      })
+    } finally {
+      if (odt) await app.prisma.odt.delete({ where: { id: odt.id } }).catch(() => {})
+      await cleanup(app, fixture)
+    }
+  })
+
   it('filters by NC documents and exports NC/ND rows scoped by sucursal', async () => {
     const marker = `nc-${Date.now()}`
     const fixture = await createOrder(app, marker, { sucursalId: 9103 })

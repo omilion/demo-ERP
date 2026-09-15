@@ -6,6 +6,7 @@ import { computeVentaFinancialState } from '../ventas/financial.js'
 import { deriveEstadoFlujo, GRAFIAS_CONVENIO_MARCO, TIPOS_VENTA_MOSTRADOR, grafiasDeTipoVenta } from '../ventas/estados-normalize.js'
 import { transitionEstadoFlujoFormal } from '../ventas/estado-flujo-formal.js'
 import { deriveEstadoLogistico, resumenPreparacion } from '../despachos/estado-logistico.js'
+import { summarizeOperationalAttention } from '../operational-priority.js'
 
 const LIMIT = 100
 const MAX_PAGE_SIZE = 500
@@ -505,6 +506,12 @@ async function getOrdenRowsByWhere(fastify, where) {
     const odts = odtMap[o.id] || []
     const guias = guiasMap[o.id] || []
     const despachos = despachosMap[o.id] || []
+    const atencionOperativa = summarizeOperationalAttention({
+      multas,
+      despachos,
+      odts,
+      clienteConflictivo: cliente?.conflictivo,
+    })
     const itemsWithInv = (o.items || []).map(i => ({ ...i, estadoInventario: productoInvMap.get(i.productoId) }))
     const preparacion = resumenPreparacion(itemsWithInv, odts)
     const estadoLogistico = deriveEstadoLogistico({ items: itemsWithInv, preparacion, despachos, guias, tracking: trackingByOrden.get(o.id) || null })
@@ -535,6 +542,7 @@ async function getOrdenRowsByWhere(fastify, where) {
       estadoEntrega: o.estadoEntrega,
       fechaEstadoEntrega: o.fechaEstadoEntrega,
       pago: financialState.estadoPago,
+      ...atencionOperativa,
       estadoFlujo: deriveEstadoFlujo({ ...o, estadoPago: financialState.estadoPago }),
       estadoLogistico,
       // El estado logístico describe la preparación; el formal conserva la etapa
@@ -1149,6 +1157,8 @@ export default async function matrizVentasRoutes(fastify) {
       { key: 'creadorNombre', label: 'Creado por' },
       { key: 'cliente', label: 'Cliente' },
       { key: 'nombreCliente', label: 'Nombre' },
+      { key: 'tieneMulta', label: 'Multa / Sanción' },
+      { key: 'prioridadOperativa', label: 'Prioridad Salida' },
       { key: 'tipo', label: 'Tipo' },
       { key: 'documentosLegacy', label: 'Documentos' },
       { key: 'emailCliente', label: 'Email' },

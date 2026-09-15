@@ -1,7 +1,7 @@
 import { confirmDialog, toast, promptDialog } from '../../store/notif'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Badge, Btn, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
+import { Badge, Btn, Icon, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { useDespachoConsolidadoTaller, useDespachos, useGuias, useDeleteDespacho, useDeleteGuia, useDespachoColaOperativa } from '../../api/despachos'
 import { useAuthStore } from '../../store/auth'
 import { can, odtPath, ventaPath } from '../../utils/permissions'
@@ -9,6 +9,7 @@ import { openDtePdf } from '../../utils/dteDocuments'
 import { trackingTone, showError, linkButton } from './shared'
 import { Mono, PackingProgress } from './shared-ui'
 import api from '../../api/client'
+import { operationalPriorityMeta, operationalPrioritySortValue } from '../../utils/operationalPriority'
 
 const TABS = [
   { id: 'salidas', label: 'Salidas Listas (Despacho)' },
@@ -121,6 +122,29 @@ export default function DespachosPage({ defaultTab }) {
     v ? <button onClick={e => { e.stopPropagation(); navigate(odtPath(v, user)) }} style={linkButton('var(--amber-700)')}>OT #{v}</button> : '-'
   )
 
+  const renderPriority = row => {
+    const meta = operationalPriorityMeta(row.prioridadOperativa)
+    if (!row.prioridadOperativa) return <span style={{ color: 'var(--text-3)' }}>Sin prioridad</span>
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }} title="Prioridad tomada desde la OT abierta de la venta">
+        <Badge tone={meta.tone}>{meta.label}</Badge>
+        {row.prioridadOperativaOdtId && <span style={{ fontSize: 10, color: 'var(--text-3)' }}>OT #{row.prioridadOperativaOdtId}</span>}
+      </div>
+    )
+  }
+
+  const renderRisk = row => {
+    const tieneMultaRegistrada = Number(row.multaCount || 0) > 0 || Number(row.multaDespachoCount || 0) > 0
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {tieneMultaRegistrada && <Badge tone="red"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="alertTriangle" size={11} />Multa / sanción</span></Badge>}
+        {row.plazoVencido && <Badge tone="amber">Plazo vencido</Badge>}
+        {row.clienteConflictivo && <Badge tone="red">Cliente conflictivo</Badge>}
+        {!tieneMultaRegistrada && !row.plazoVencido && !row.clienteConflictivo && <span style={{ color: 'var(--text-3)' }}>Sin alertas</span>}
+      </div>
+    )
+  }
+
   // Columnas Salidas Listas
   const colsSalidas = [
     {
@@ -161,10 +185,12 @@ export default function DespachosPage({ defaultTab }) {
       render: (_, r) => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <Badge tone={r.estadoLogistico?.tone || 'blue'}>{r.estadoLogistico?.label || 'Listo'}</Badge>
-          {r.tieneMulta && <Badge tone="red">⚠️ Multa Licitación</Badge>}
+          {(Number(r.multaCount || 0) > 0 || Number(r.multaDespachoCount || 0) > 0) && <Badge tone="red"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="alertTriangle" size={11} />Multa / sanción</span></Badge>}
+          {r.plazoVencido && <Badge tone="amber">Plazo vencido</Badge>}
         </div>
       ),
     },
+    { key: 'prioridadOperativa', label: 'Prioridad Salida', required: true, sortValue: operationalPrioritySortValue, render: (_, r) => renderPriority(r) },
     {
       key: 'packing',
       label: 'Packing',
@@ -399,13 +425,9 @@ export default function DespachosPage({ defaultTab }) {
     {
       key: 'riesgo',
       label: 'Alertas / Multa',
-      render: (_, r) => (
-        <div>
-          {r.tieneMulta && <Badge tone="red">⚠️ Multa Licitación</Badge>}
-          {r.plazoEntrega && new Date(r.plazoEntrega) < new Date() && <Badge tone="amber">Plazo Vencido</Badge>}
-        </div>
-      ),
+      render: (_, r) => renderRisk(r),
     },
+    { key: 'prioridadOperativa', label: 'Prioridad Salida', required: true, sortValue: operationalPrioritySortValue, render: (_, r) => renderPriority(r) },
     {
       key: '_acc',
       label: 'Acciones',
@@ -471,6 +493,7 @@ export default function DespachosPage({ defaultTab }) {
             loading={colaSalidas.isLoading}
             emptyMessage="No hay pedidos listos para salida en este momento."
             ariaLabel="Salidas listas; haz clic en una fila para abrir el detalle del packing"
+            defaultSort={{ key: 'prioridadOperativa', direction: 'asc' }}
             toolbarExtra={<SearchBar value={search} onChange={setSearch} placeholder="Buscar por venta, interno, destinatario, RUT o transporte..." style={{ height: 28, width: 320 }} />}
           />
         )}
@@ -523,6 +546,7 @@ export default function DespachosPage({ defaultTab }) {
             loading={colaAdmin.isLoading}
             emptyMessage="No hay ventas activas en el embudo logístico."
             ariaLabel="Panel administrador de despachos; haz clic en una fila para abrir el detalle del packing"
+            defaultSort={{ key: 'prioridadOperativa', direction: 'asc' }}
             toolbarExtra={<SearchBar value={search} onChange={setSearch} placeholder="Buscar por venta, interno, destinatario, RUT o transporte..." style={{ height: 28, width: 320 }} />}
           />
         )}

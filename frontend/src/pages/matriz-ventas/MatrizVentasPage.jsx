@@ -1,13 +1,14 @@
 import { toast, confirmDialog } from '../../store/notif'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Badge, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
+import { Badge, Icon, KpiCard, PageHeader, SearchBar, Table, Tabs } from '../../components/shared'
 import { useMatrizVentas, useMatrizTotales } from '../../api/matrizVentas'
 import { useAnularVenta } from '../../api/ventas'
 import { useAuthStore } from '../../store/auth'
 import { downloadFromBackend } from '../../utils/csv'
 import { can, ventaPath } from '../../utils/permissions'
 import BotonExportar from '../../components/BotonExportar'
+import { operationalPriorityMeta, operationalPrioritySortValue } from '../../utils/operationalPriority'
 
 const TABS = [
   { id: 'all', label: 'Todos' },
@@ -521,6 +522,32 @@ export default function MatrizVentasPage() {
     )
   }
 
+  const renderMulta = row => {
+    const multaCount = Number(row.multaCount || 0)
+    const multaDespachoCount = Number(row.multaDespachoCount || 0)
+    if (!row.tieneMulta) return <span style={{ color: 'var(--text-3)' }}>Sin multa</span>
+    const detail = multaCount
+      ? `${multaCount} ${multaCount === 1 ? 'registro' : 'registros'} · ${fmt(row.multasTotal)}`
+      : `${multaDespachoCount} ${multaDespachoCount === 1 ? 'despacho marcado' : 'despachos marcados'}`
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }} title="La venta tiene una multa registrada o una salida marcada con multa">
+        <Badge tone="red"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="alertTriangle" size={11} />Multa / sanción</span></Badge>
+        <span style={{ ...mono, fontSize: 10, color: 'var(--red)' }}>{detail}</span>
+      </div>
+    )
+  }
+
+  const renderPrioridad = row => {
+    const meta = operationalPriorityMeta(row.prioridadOperativa)
+    if (!row.prioridadOperativa) return <span style={{ color: 'var(--text-3)' }}>Sin prioridad</span>
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 100 }} title="Prioridad tomada desde la OT abierta de la venta">
+        <Badge tone={meta.tone}>{meta.label}</Badge>
+        {row.prioridadOperativaOdtId && <span style={{ ...mono, fontSize: 10, color: 'var(--text-3)' }}>OT #{row.prioridadOperativaOdtId}</span>}
+      </div>
+    )
+  }
+
   const cols = [
     { key: '_acc', label: 'Operaciones', render: (_, row) => renderOperations(row) },
     { key: 'nInterno', label: 'Nro. Interno', render: v => <span style={{ ...mono, fontWeight: 700 }}>{v || '-'}</span> },
@@ -545,12 +572,14 @@ export default function MatrizVentasPage() {
               }}
               title={row.clienteConflictivoDetalle || 'Cliente marcado como conflictivo'}
             >
-              ⚠ Conflictivo
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Icon name="alertTriangle" size={10} color="#b91c1c" />Conflictivo</span>
             </span>
           )}
         </span>
       )
     },
+    { key: 'tieneMulta', label: 'Multa / Sanción', required: true, wrap: true, sortValue: row => row.tieneMulta ? 0 : 1, render: (_, row) => renderMulta(row) },
+    { key: 'prioridadOperativa', label: 'Prioridad Salida', required: true, wrap: true, sortValue: operationalPrioritySortValue, render: (_, row) => renderPrioridad(row) },
     { key: 'ref', label: 'OC', wrap: true, render: (_, row) => <span style={{ fontSize: 12, whiteSpace: 'normal' }}>{ocValue(row) || '-'}</span> },
     { key: 'total', label: 'Total', align: 'right',
       render: v => <span style={{ ...mono, fontWeight: 600, color: 'var(--green-700)' }}>{fmt(v)}</span> },

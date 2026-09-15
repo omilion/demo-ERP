@@ -11,6 +11,7 @@ import { isValidContactEmail } from '../ventas/operational-rules.js'
 import { avanzarEstadoFlujo, cerrarSiCorresponde, transitionEstadoFlujoDesdeTracking } from '../ventas/estado-flujo-formal.js'
 import { codigoBarrasObligatorio, validateBarcodeScans } from '../ordenes-compra-proveedores/barcode-policy.js'
 import { deriveEstadoLogistico, resumenPacking, resumenPreparacion } from './estado-logistico.js'
+import { summarizeOperationalAttention } from '../operational-priority.js'
 import { IND_TRASLADO, TIPO_DESPACHO, computeTotales } from '../../facturacion/documento.js'
 import { isValidRut, normalizeRut } from '../../facturacion/xmlUtil.js'
 import { createFacturacionEngine } from '../../facturacion/engine.js'
@@ -1152,7 +1153,17 @@ export default async function despachosRoutes(fastify) {
             AND (o.estado_entrega IS NULL OR o.estado_entrega NOT IN ('Entregada', 'Entregado'))
             AND EXISTS (SELECT 1 FROM ventas.orden_items oi WHERE oi.orden_id = o.id AND NOT oi.eliminado)
             AND (o.sucursal_id = ${sucursalId} OR o.sucursal_id IS NULL)
-          ORDER BY o.created_at ASC
+          ORDER BY
+            CASE WHEN EXISTS (SELECT 1 FROM ventas.multas m WHERE m.orden_id = o.id)
+                   OR EXISTS (SELECT 1 FROM bodega.despachos d WHERE d.orden_id = o.id AND NOT d.eliminado AND d.tiene_multa)
+                 THEN 0 ELSE 1 END,
+            CASE
+              WHEN EXISTS (SELECT 1 FROM taller.odts od WHERE od.orden_id = o.id AND NOT od.eliminado AND lower(od.prioridad) IN ('urgente', 'emergencia')) THEN 0
+              WHEN EXISTS (SELECT 1 FROM taller.odts od WHERE od.orden_id = o.id AND NOT od.eliminado AND lower(od.prioridad) = 'alta') THEN 1
+              WHEN EXISTS (SELECT 1 FROM taller.odts od WHERE od.orden_id = o.id AND NOT od.eliminado AND lower(od.prioridad) IN ('media', 'normal')) THEN 2
+              ELSE 3
+            END,
+            o.created_at ASC
           LIMIT 500
         `
       : await fastify.prisma.$queryRaw`
@@ -1162,7 +1173,17 @@ export default async function despachosRoutes(fastify) {
             AND o.estado = 'Activa'
             AND (o.estado_entrega IS NULL OR o.estado_entrega NOT IN ('Entregada', 'Entregado'))
             AND EXISTS (SELECT 1 FROM ventas.orden_items oi WHERE oi.orden_id = o.id AND NOT oi.eliminado)
-          ORDER BY o.created_at ASC
+          ORDER BY
+            CASE WHEN EXISTS (SELECT 1 FROM ventas.multas m WHERE m.orden_id = o.id)
+                   OR EXISTS (SELECT 1 FROM bodega.despachos d WHERE d.orden_id = o.id AND NOT d.eliminado AND d.tiene_multa)
+                 THEN 0 ELSE 1 END,
+            CASE
+              WHEN EXISTS (SELECT 1 FROM taller.odts od WHERE od.orden_id = o.id AND NOT od.eliminado AND lower(od.prioridad) IN ('urgente', 'emergencia')) THEN 0
+              WHEN EXISTS (SELECT 1 FROM taller.odts od WHERE od.orden_id = o.id AND NOT od.eliminado AND lower(od.prioridad) = 'alta') THEN 1
+              WHEN EXISTS (SELECT 1 FROM taller.odts od WHERE od.orden_id = o.id AND NOT od.eliminado AND lower(od.prioridad) IN ('media', 'normal')) THEN 2
+              ELSE 3
+            END,
+            o.created_at ASC
           LIMIT 500
         `
     const ordenIdsPendientes = pendientes.map(row => Number(row.id)).filter(Number.isInteger)
@@ -1199,13 +1220,15 @@ export default async function despachosRoutes(fastify) {
           },
           orderBy: { id: 'asc' },
         },
-        cliente: { select: { id: true, nombre: true, razonSocial: true, rut: true, email: true, telefono: true } },
+        cliente: { select: { id: true, nombre: true, razonSocial: true, rut: true, email: true, telefono: true, conflictivo: true, conflictivoDetalle: true } },
         clienteSucursal: { select: { nombre: true, direccion: true, region: true, comuna: true, ciudad: true, contacto: true, email: true, telefono: true } },
         despachos: { where: { eliminado: false }, select: { id: true, eliminado: true, tipoDespacho: true, transporte: true, numeroSeguimiento: true, fechaEntrega: true, parcial: true, tieneMulta: true, createdAt: true }, orderBy: { createdAt: 'desc' } },
         guiasDespacho: { where: { eliminado: false }, select: { id: true, nGuia: true, fechaGuia: true, despachoId: true, items: true }, orderBy: { createdAt: 'desc' } },
         packingBultos: { select: { id: true, numero: true, estado: true, dimensiones: true, peso: true }, orderBy: { createdAt: 'asc' } },
       },
     })
+    const queuePosition = new Map(ordenIdsPendientes.map((ordenId, index) => [ordenId, index]))
+    ordenes.sort((a, b) => (queuePosition.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (queuePosition.get(b.id) ?? Number.MAX_SAFE_INTEGER))
     const guiaIds = ordenes.flatMap(orden => orden.guiasDespacho.map(guia => guia.id))
     const despachoIds = ordenes.flatMap(orden => orden.despachos.map(despacho => despacho.id))
     const productoIds = [...new Set(ordenes.flatMap(orden => orden.items.map(item => item.productoId).filter(Boolean)))]
@@ -1231,6 +1254,8 @@ export default async function despachosRoutes(fastify) {
           id: true,
           ordenId: true,
           eliminado: true,
+          estado: true,
+          prioridad: true,
           items: {
             where: { eliminado: false },
             select: { productoId: true, cantidad: true, talleres: { select: { estado: true } } },
@@ -1283,9 +1308,19 @@ export default async function despachosRoutes(fastify) {
       const esLicitacion = tipo.includes('licit')
       const ordenMultas = multasByOrden.get(orden.id) || []
       const fechaPlazo = cotizByOrden.get(orden.id)?.fechaPlazo || orden.fechaPlazo || null
-      const tieneMulta = esLicitacion && (ordenMultas.length > 0 || (fechaPlazo && new Date(fechaPlazo) < now))
       const plazoDate = fechaPlazo ? new Date(fechaPlazo) : null
-      const atrasada = Boolean(plazoDate && plazoDate < now && (!orden.estadoEntrega || !['Entregada', 'Entregado'].includes(orden.estadoEntrega)))
+      const plazoVencido = Boolean(plazoDate && !Number.isNaN(plazoDate.getTime()) && plazoDate < now && esLicitacion)
+      const atencionOperativa = summarizeOperationalAttention({
+        multas: ordenMultas,
+        despachos: orden.despachos,
+        odts: odtsByOrden.get(orden.id) || [],
+        clienteConflictivo: cliente.conflictivo,
+        plazoVencido,
+      })
+      // Un plazo vencido de licitación sigue siendo un riesgo histórico de la
+      // cola, aunque todavía no exista una multa registrada en ventas.multas.
+      const tieneMulta = atencionOperativa.tieneMulta || plazoVencido
+      const atrasada = Boolean(plazoDate && !Number.isNaN(plazoDate.getTime()) && plazoDate < now && (!orden.estadoEntrega || !['Entregada', 'Entregado'].includes(orden.estadoEntrega)))
 
       return {
         ordenId: orden.id,
@@ -1307,7 +1342,9 @@ export default async function despachosRoutes(fastify) {
         plazoEntrega: orden.fechaPlazo || null,
         montoEnvio: orden.montoDespacho || 0,
         enviosParciales: orden.enviosParciales,
+        ...atencionOperativa,
         tieneMulta,
+        plazoVencido,
         atrasada,
         despachos: orden.despachos,
         guias,
