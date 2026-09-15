@@ -21,7 +21,17 @@ export function resolveOdtItemEstadoTaller(talleres = []) {
 function attachEstadoTallerReal(odts) {
   return odts.map(odt => ({
     ...odt,
-    items: odt.items.map(({ talleres, ...item }) => ({ ...item, estado: resolveOdtItemEstadoTaller(talleres) })),
+    items: odt.items.map(({ talleres, ...item }) => ({
+      ...item,
+      estado: resolveOdtItemEstadoTaller(talleres),
+      talleres: (talleres || []).map(t => ({
+        id: t.id,
+        tallerId: t.tallerId,
+        nombreTaller: t.taller?.nombre || null,
+        estado: t.estado,
+        fechaListo: t.fechaListo,
+      })),
+    })),
   }))
 }
 
@@ -47,7 +57,25 @@ export default async function getVenta(fastify) {
         include: {
           items: {
             where: { eliminado: false },
-            select: { id: true, productoId: true, estado: true, fechaListo: true, talleres: { select: { estado: true } } },
+            select: {
+              id: true,
+              odtId: true,
+              productoId: true,
+              codigoInterno: true,
+              nombre: true,
+              cantidad: true,
+              estado: true,
+              fechaListo: true,
+              talleres: {
+                select: {
+                  id: true,
+                  tallerId: true,
+                  estado: true,
+                  fechaListo: true,
+                  taller: { select: { id: true, nombre: true } },
+                },
+              },
+            },
           },
         },
       }),

@@ -1039,12 +1039,35 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
     // precioUnitario ya incluye IVA (precio de venta sala) — se desglosa desde el total, no se suma aparte.
     const netoVenta = Math.round(total / 1.19)
     const ivaVenta = total - netoVenta
-    // odts ya viene ordenado por createdAt desc: el primer match por productoId es el mas reciente.
-    const estadoTallerPorProducto = new Map()
+    const isMkItem = (item) => {
+      const cod = String(item.codigoInterno || item.producto?.codigoInterno || '').toUpperCase()
+      const estadoInv = String(item.producto?.estadoInventario || '').toLowerCase()
+      const bodega = String(item.producto?.bodega || '').toLowerCase()
+      return cod.startsWith('MK') || estadoInv === 'transitorio' || bodega === 'transitorio' || Boolean(item.producto?.tallerId)
+    }
+
+    const odtItemsPorProducto = new Map()
     for (const odt of odts) {
       for (const odtItem of odt.items || []) {
-        if (!estadoTallerPorProducto.has(odtItem.productoId)) estadoTallerPorProducto.set(odtItem.productoId, odtItem)
+        const key = odtItem.productoId
+        if (key) {
+          if (!odtItemsPorProducto.has(key)) odtItemsPorProducto.set(key, [])
+          odtItemsPorProducto.get(key).push({ ...odtItem, odtId: odt.id, odtTipo: odt.tipo, odtEstado: odt.estado })
+        }
+        if (odtItem.codigoInterno) {
+          const codKey = `code:${odtItem.codigoInterno.trim().toUpperCase()}`
+          if (!odtItemsPorProducto.has(codKey)) odtItemsPorProducto.set(codKey, [])
+          odtItemsPorProducto.get(codKey).push({ ...odtItem, odtId: odt.id, odtTipo: odt.tipo, odtEstado: odt.estado })
+        }
       }
+    }
+
+    const getOdtsForItem = (item) => {
+      const byId = odtItemsPorProducto.get(item.productoId) || []
+      if (byId.length > 0) return byId
+      const cod = (item.codigoInterno || item.producto?.codigoInterno || '').trim().toUpperCase()
+      if (cod) return odtItemsPorProducto.get(`code:${cod}`) || []
+      return []
     }
     const dtesValidos = doc => ['emitido', 'enviado', 'aceptado'].includes(doc.estado)
     const totalNC = dtes.filter(d => d.tipoDte === 61 && dtesValidos(d)).reduce((s, d) => s + Number(d.totales?.total || 0), 0)
@@ -1225,15 +1248,90 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                             </td>
                             <td style={{ padding: '8px 12px', textAlign: 'right' }}>
                               {(() => {
-                                const odtItem = estadoTallerPorProducto.get(item.productoId)
-                                if (!odtItem) return <span style={{ color: 'var(--text-3)', fontSize: 11 }}>—</span>
-                                const listo = odtItem.estado === 'Listo' || odtItem.estado === 'listo'
-                                return (
-                                  <span style={{ fontSize: 11, fontWeight: 600, color: listo ? 'var(--green-600)' : 'var(--amber)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                    {listo && <Icon name="check" size={11} color="var(--green-600)" />}
-                                    {odtItem.estado}
-                                  </span>
-                                )
+                                const odtList = getOdtsForItem(item)
+                                const esFabricacion = isMkItem(item)
+
+                                if (odtList.length > 0) {
+                                  return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                                      {odtList.map((oi, idx) => {
+                                        const listo = oi.estado === 'Listo' || oi.estado === 'listo'
+                                        const talleresList = (oi.talleres || [])
+                                          .map(t => t.nombreTaller)
+                                          .filter(Boolean)
+                                        const tallerText = talleresList.length > 0 ? talleresList.join(', ') : (oi.odtTipo || 'Taller')
+                                        return (
+                                          <div key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, background: listo ? 'var(--green-50, #f0fdf4)' : 'var(--amber-50, #fffbeb)', padding: '3px 8px', borderRadius: 6, border: `1px solid ${listo ? 'var(--green-200, #bbf7d0)' : 'var(--amber-200, #fde68a)'}` }}>
+                                            <span
+                                              onClick={() => navigate(`/taller?search=${oi.odtId}`)}
+                                              title={`Ver OT #${oi.odtId} en Taller`}
+                                              style={{
+                                                fontFamily: "'DM Mono',monospace",
+                                                color: 'var(--blue)',
+                                                cursor: 'pointer',
+                                                fontWeight: 700,
+                                                textDecoration: 'underline'
+                                              }}
+                                            >
+                                              OT #{oi.odtId}
+                                            </span>
+                                            <span style={{ color: 'var(--text-3)' }}>·</span>
+                                            <span style={{ color: 'var(--text-2)', fontWeight: 500 }}>{tallerText}</span>
+                                            <span style={{ color: 'var(--text-3)' }}>·</span>
+                                            <span style={{
+                                              fontWeight: 600,
+                                              color: listo ? 'var(--green-700)' : 'var(--amber-800)',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: 3
+                                            }}>
+                                              {listo && <Icon name="check" size={11} color="var(--green-700)" />}
+                                              {listo ? 'Listo' : (oi.estado ? (oi.estado.charAt(0).toUpperCase() + oi.estado.slice(1)) : 'Pendiente')}
+                                            </span>
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  )
+                                }
+
+                                if (esFabricacion) {
+                                  return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                                      <span style={{
+                                        fontSize: 11,
+                                        fontWeight: 600,
+                                        color: '#b45309',
+                                        background: '#fef3c7',
+                                        border: '1px solid #fde68a',
+                                        padding: '2px 7px',
+                                        borderRadius: 6,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: 4
+                                      }}>
+                                        ⚠️ Sin notificar a taller
+                                      </span>
+                                      <button
+                                        onClick={() => navigate(`/excepciones-taller?ordenId=${v.id}`)}
+                                        style={{
+                                          fontSize: 11,
+                                          color: 'var(--blue)',
+                                          background: 'none',
+                                          border: 'none',
+                                          padding: 0,
+                                          cursor: 'pointer',
+                                          textDecoration: 'underline',
+                                          fontWeight: 500
+                                        }}
+                                      >
+                                        Notificar ahora →
+                                      </button>
+                                    </div>
+                                  )
+                                }
+
+                                return <span style={{ color: 'var(--text-3)', fontSize: 11 }}>—</span>
                               })()}
                             </td>
                           </tr>
