@@ -7,6 +7,7 @@ import { useOdts, useOdtKanban, useOdtEstado, useAddBitacora, useDeleteBitacora,
 import { downloadFromBackend } from '../../utils/csv'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
 import BotonExportar from '../../components/BotonExportar'
 
 const ESTADO_TONE = {
@@ -116,8 +117,18 @@ const renderDetalle = row => {
       {list.map((item, idx) => (
         <div key={item.id || idx} style={{ display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr)', borderTop: '1px solid var(--border)' }}>
           <span style={detailCell}>{item.cantidad || 0}</span>
-          <span style={{ ...detailCell, whiteSpace: 'normal', overflowWrap: 'anywhere', fontWeight: 600, lineHeight: 1.15 }}>
-            {item.nombre || item.codigoInterno || 'Item'}
+          <span style={{ ...detailCell, display: 'flex', alignItems: 'center', gap: 7, minHeight: 58, whiteSpace: 'normal', overflowWrap: 'anywhere', fontWeight: 600, lineHeight: 1.15 }}>
+            <img
+              src={item.producto?.fotoUrl || item.producto?.fotoUrlGrande || PRODUCT_PLACEHOLDER_IMAGE}
+              alt={`Imagen de ${item.nombre || item.producto?.nombre || 'producto'}`}
+              loading="lazy"
+              onError={useProductPlaceholderOnError}
+              style={{ width: 50, height: 50, flex: '0 0 50px', objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 5, background: 'var(--bg)' }}
+            />
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: 'block' }}>{item.nombre || item.producto?.nombre || item.codigoInterno || 'Item'}</span>
+              {(item.codigoInterno || item.producto?.codigoInterno) && <span style={{ display: 'block', marginTop: 2, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace", fontSize: 8, fontWeight: 500 }}>{item.codigoInterno || item.producto.codigoInterno}</span>}
+            </span>
           </span>
         </div>
       ))}
@@ -722,13 +733,6 @@ export default function TallerPage() {
   function handleExport(archivo) {
     downloadFromBackend('/reportes/export/odts', `odts-${new Date().toISOString().slice(0,10)}.${archivo}`, { ...filterParams, archivo })
   }
-
-  const crmToggle = (
-    <button type="button" className="table-tool-btn" onClick={() => setViewMode('kanban')} title="Abrir vista CRM">
-      <Icon name="grid" size={13} />
-      Vista CRM
-    </button>
-  )
 
   const estadoOptions = [
     { value: 'all', label: 'Todos' },

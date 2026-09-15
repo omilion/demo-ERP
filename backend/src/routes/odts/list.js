@@ -1,5 +1,6 @@
 import { applyDateRange, parsePagination, parsePositiveInt } from '../operational-utils.js'
 import { getUserSucursalId } from '../caja/scope.js'
+import { normalizeProductoFotos } from '../productos/helpers.js'
 import { ODT_ESTADOS, attachOdtMetrics, attachOperarios, attachOrdenes, attachTalleres, normalizeOdtFechaField, tipoTallerFilter } from './operations.js'
 import { attachOdtCosteos, opcionesCosteoOdt } from './costeo.js'
 
@@ -56,6 +57,26 @@ export function sortOdtsOperativas(odts = []) {
     return new Date(fechaA) - new Date(fechaB) || new Date(a.createdAt) - new Date(b.createdAt)
   })
   return odts
+}
+
+async function attachOdtItemProductos(prisma, odts) {
+  const list = Array.isArray(odts) ? odts : [odts]
+  const productoIds = [...new Set(list.flatMap(odt => odt?.items || []).map(item => item.productoId).filter(Boolean))]
+  if (!productoIds.length) return Array.isArray(odts) ? list : list[0]
+
+  const productos = await prisma.producto.findMany({
+    where: { id: { in: productoIds } },
+    select: { id: true, codigoInterno: true, nombre: true, fotoUrl: true, fotoUrlGrande: true },
+  })
+  const byId = new Map(productos.map(producto => [producto.id, normalizeProductoFotos(producto)]))
+  const enriched = list.map(odt => ({
+    ...odt,
+    items: (odt.items || []).map(item => ({
+      ...item,
+      producto: byId.get(item.productoId) || null,
+    })),
+  }))
+  return Array.isArray(odts) ? enriched : enriched[0]
 }
 
 export async function buildOdtListWhere(fastify, query = {}, user, { defaultEstados } = {}) {
@@ -148,8 +169,9 @@ export default async function listOdts(fastify) {
     for (const g of byEstado) stats[g.estado] = g._count._all
     const withOrdenes = await attachOrdenes(fastify.prisma, odts)
     const withTalleres = await attachTalleres(fastify.prisma, withOrdenes)
+    const withProductos = await attachOdtItemProductos(fastify.prisma, withTalleres)
 
-    const withOperarios = await attachOperarios(fastify.prisma, withTalleres)
+    const withOperarios = await attachOperarios(fastify.prisma, withProductos)
     const withMetrics = attachOdtMetrics(withOperarios)
     const withCosteo = await attachOdtCosteos(fastify.prisma, withMetrics, new Date(), opcionesCosteoOdt(request.user))
     return {
