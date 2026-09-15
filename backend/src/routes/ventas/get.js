@@ -37,7 +37,7 @@ function attachEstadoTallerReal(odts) {
 
 export default async function getVenta(fastify) {
   fastify.get('/:id', {
-    preHandler: [fastify.authenticate, fastify.rbac('ventas', 'read')],
+    preHandler: [fastify.authenticate, fastify.rbac(['ventas', 'bodega', 'taller', 'despacho'], 'read')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10)
     if (isNaN(id)) return reply.code(400).send({ error: 'ID invalido' })

@@ -8,6 +8,7 @@ import MatrizVentasPage from './pages/matriz-ventas/MatrizVentasPage'
 import VentaDetallePage from './pages/ventas/VentaDetallePage'
 import VentasFormPage from './pages/ventas/VentasFormPage'
 import VentaPrintPage from './pages/ventas/VentaPrintPage'
+import VentaBodegaPrintPage from './pages/ventas/VentaBodegaPrintPage'
 import AsistentePage from './pages/asistente/AsistentePage'
 import AiInsightsPage from './pages/asistente/AiInsightsPage'
 import BodegaPage from './pages/bodega/BodegaPage'
@@ -108,6 +109,7 @@ export const router = createBrowserRouter([
       { path: 'ventas/nueva', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
       { path: 'ventas/:id/editar', element: protect(<VentasFormPage />, { module: 'ventas', permission: 'write' }) },
       { path: 'ventas/:id/imprimir', element: protect(<VentaPrintPage />, { module: 'ventas' }) },
+      { path: 'ventas/:id/bodega', element: protect(<VentaBodegaPrintPage />, { module: ['ventas', 'bodega', 'taller', 'despacho'] }) },
       { path: 'asistente', element: protect(<AsistentePage />, { allowedRoles: ALL }) },
       { path: 'asistente/alertas', element: protect(<AiInsightsPage />, { allowedRoles: ALL }) },
       { path: 'bodega', element: protect(<BodegaPage />, { module: 'bodega' }) },

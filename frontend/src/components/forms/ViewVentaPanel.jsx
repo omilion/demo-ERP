@@ -795,6 +795,11 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, ca
     if (!w) toast.warning('Habilita popups para imprimir')
   }
 
+  const abrirHojaBodega = () => {
+    const w = window.open(`${window.location.origin}/ventas/${v.id}/bodega`, '_blank')
+    if (!w) toast.warning('Habilita popups para imprimir')
+  }
+
   const anular = async () => {
     if (!await confirmDialog({ title: 'Anular venta', detail: `¿Anular la venta #${v.id}? Esta acción revierte el stock y bloquea nuevas acciones sobre la venta. No se puede deshacer directo (hay que Revertir a Activa).`, tone: 'danger' })) return
     anularVenta.mutate(v.id, {
@@ -864,6 +869,9 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, ca
       </button>
       <button onClick={abrirNotaVenta} style={opBtnStyle('var(--blue)')}>
         <Icon name="printer" size={14} /> Nota de Venta
+      </button>
+      <button onClick={abrirHojaBodega} style={opBtnStyle('var(--teal, #0d9488)')} title="Imprimir hoja de preparación y despacho para Bodega/Taller (sin montos)">
+        <Icon name="package" size={14} /> Hoja de Bodega
       </button>
       {canEmitirNotaFiscal && (
         <button onClick={onEmitirNotaFiscal} style={opBtnStyle('var(--amber)')}>

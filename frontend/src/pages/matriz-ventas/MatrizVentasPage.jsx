@@ -418,6 +418,9 @@ export default function MatrizVentasPage() {
           <button onClick={e => { e.stopPropagation(); navigate(`/ventas/${row.id}/imprimir`) }} style={operationBtn('#ef4444')} title="Nota de venta">
             Nota Venta
           </button>
+          <button onClick={e => { e.stopPropagation(); window.open(`/ventas/${row.id}/bodega`, '_blank') }} style={operationBtn('#0d9488')} title="Hoja de preparación y despacho de bodega (sin montos)">
+            Hoja Bodega
+          </button>
           {canDeleteVentas && (
             <button onClick={e => { e.stopPropagation(); eliminarFila(row) }} style={operationBtn('#dc2626')} title="Eliminar venta">
               Eliminar Venta
