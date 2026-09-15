@@ -437,20 +437,59 @@ export default function MatrizVentasPage() {
     if (!list.length) return <span style={{ color: 'var(--text-3)' }}>-</span>
     return (
       <div style={{ width: '100%', minWidth: 360, border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '24px minmax(230px, 1fr) 52px 38px', background: 'var(--text-2)', color: '#fff', fontSize: 7, fontWeight: 700 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '28px minmax(230px, 1fr) 52px 38px', background: 'var(--text-2)', color: '#fff', fontSize: 7, fontWeight: 700 }}>
           <span style={detailHeadCell}>Cant.</span>
           <span style={detailHeadCell}>Producto</span>
           <span style={{ ...detailHeadCell, textAlign: 'right' }}>Total</span>
           <span style={{ ...detailHeadCell, textAlign: 'center' }}>Entreg.</span>
         </div>
-        {list.map(item => (
-          <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '24px minmax(230px, 1fr) 52px 38px', borderTop: '1px solid var(--border)', background: Number(item.nEntregados || 0) >= Number(item.cantidad || 0) ? 'var(--green-50)' : '#fff' }}>
-            <span style={detailCell}>{item.cantidad || 0}</span>
-            <span style={{ ...detailCell, whiteSpace: 'normal', overflowWrap: 'anywhere', fontWeight: 600, lineHeight: 1.15 }}>{item.nombre || item.codigoInterno || 'Item'}</span>
-            <span style={{ ...detailCell, textAlign: 'right', ...mono }}>{fmt(item.total)}</span>
-            <span style={{ ...detailCell, textAlign: 'center', ...mono }}>{item.nEntregados ?? '-'}</span>
-          </div>
-        ))}
+        {list.map(item => {
+          const cant = Number(item.cantidad || 0)
+          const ent = Number(item.nEntregados || 0)
+          const entregado = ent >= cant && cant > 0
+          const parcial = ent > 0 && ent < cant
+
+          // Colores heredados del Legacy SisGestión (Verde = Entregado, Fucsia/Rosa = Pendiente, Ámbar = Parcial)
+          let rowBg = '#ffe4e6'
+          let rowColor = '#9f1239'
+          let borderCol = '#fecdd3'
+          if (entregado) {
+            rowBg = '#dcfce7'
+            rowColor = '#14532d'
+            borderCol = '#bbf7d0'
+          } else if (parcial) {
+            rowBg = '#fef3c7'
+            rowColor = '#92400e'
+            borderCol = '#fde68a'
+          }
+
+          return (
+            <div
+              key={item.id}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '28px minmax(230px, 1fr) 52px 38px',
+                borderTop: `1px solid ${borderCol}`,
+                background: rowBg,
+                color: rowColor,
+              }}
+            >
+              <span style={{ ...detailCell, borderRight: `1px solid ${borderCol}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 2, fontWeight: 700 }}>
+                {entregado && <span style={{ fontSize: 9, color: '#16a34a' }}>✔</span>}
+                {cant}
+              </span>
+              <span style={{ ...detailCell, borderRight: `1px solid ${borderCol}`, whiteSpace: 'normal', overflowWrap: 'anywhere', fontWeight: 600, lineHeight: 1.15 }}>
+                {item.nombre || item.codigoInterno || 'Item'}
+              </span>
+              <span style={{ ...detailCell, borderRight: `1px solid ${borderCol}`, textAlign: 'right', ...mono, fontWeight: 600 }}>
+                {fmt(item.total)}
+              </span>
+              <span style={{ ...detailCell, borderRight: 'none', textAlign: 'center', ...mono, fontWeight: 700 }}>
+                {item.nEntregados ?? 0}
+              </span>
+            </div>
+          )
+        })}
       </div>
     )
   }
