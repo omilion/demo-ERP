@@ -90,7 +90,7 @@ function TabBtn({ active, onClick, children, badge }) {
 }
 
 // ── Tab: Detalle ───────────────────────────────────────────────────────────────
-function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespacho, canEmitirDte, onEmitirDte, canRegistrarPago, canCobrar, onCobrar }) {
+function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespacho, canWriteDespacho, canEmitirDte, onEmitirDte, canRegistrarPago, canCobrar, onCobrar }) {
   const items = v.items || []
   const total = v.total || 0
   const abono = v.abono || 0
@@ -272,7 +272,7 @@ function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespac
             {!canCobrar && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Primero emite o registra una factura o boleta.</span>}
           </div>
         )}
-        <button
+        {canWriteDespacho && <button
           onClick={handleCreateDespacho}
           style={{
             flex: '1 1 140px',
@@ -292,8 +292,8 @@ function TabDetalle({ v, handleForzarTaller, forzarTallerMut, handleCreateDespac
           }}
         >
           <Icon name="truck" size={14} />
-          Crear Despacho
-        </button>
+          Registrar salida
+        </button>}
 
         <button
           onClick={handleForzarTaller}
@@ -864,9 +864,11 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, ca
           <Icon name="fileText" size={14} /> Preparar Guía DTE 52
         </button>
       )}
-      <button onClick={onCreateDespacho} style={opBtnStyle('var(--blue)')}>
-        <Icon name="truck" size={14} /> Crear Despacho ({despachosCount})
-      </button>
+      {canWriteDespacho && (
+        <button onClick={onCreateDespacho} style={opBtnStyle('var(--blue)')}>
+          <Icon name="truck" size={14} /> Registrar salida ({despachosCount})
+        </button>
+      )}
       <button onClick={abrirNotaVenta} style={opBtnStyle('var(--blue)')}>
         <Icon name="printer" size={14} /> Nota de Venta
       </button>
@@ -1594,6 +1596,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
           handleForzarTaller={handleForzarTaller}
           forzarTallerMut={forzarTallerMut}
           handleCreateDespacho={handleCreateDespacho}
+          canWriteDespacho={canWriteDespacho}
           canEmitirDte={canWriteFacturacion && !ventaYaEmitida}
           onEmitirDte={() => setEmitirDte(true)}
           canRegistrarPago={canRegistrarPago}
@@ -1634,6 +1637,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
         <DespachoModal
           ordenId={v.id}
           nInterno={v.nInterno}
+          venta={v}
           onClose={() => { setShowDespachoModal(false); qc.invalidateQueries({ queryKey: ['ventas', v.id] }) }}
         />
       )}

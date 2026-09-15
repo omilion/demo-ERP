@@ -4,23 +4,22 @@ import { useDespacho } from '../../api/despachos'
 import { emptyDespacho, cardStyle } from './shared'
 import DespachoWorkflowForm from './DespachoWorkflowForm'
 
-// Modal embebido para crear el despacho sin salir de la pantalla de venta
-// (feedback FB #6, 09-11: el flujo legado abria esto sin sacar al usuario de
-// la venta; DespachoWorkflowForm ya resuelve la direccion sin pedirla de
-// nuevo, ver el fallback a venta.cliente en ese archivo).
-export function DespachoModal({ ordenId, nInterno, onClose }) {
+// Modal embebido para registrar la salida sin salir de la pantalla de venta.
+// La venta es el contexto maestro; el operador sólo completa los datos de
+// salida y las etapas de packing, guía y tracking siguen separadas.
+export function DespachoModal({ ordenId, nInterno, venta, onClose }) {
   const initial = { ...emptyDespacho, ordenId: String(ordenId), interno: String(nInterno || ''), origenTipo: 'orden' }
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'oklch(0 0 0 / .45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div
-        role="dialog" aria-modal="true" aria-label="Nuevo despacho"
+        role="dialog" aria-modal="true" aria-label="Registrar salida desde venta"
         onClick={event => event.stopPropagation()}
         style={{ width: 1040, maxWidth: '100%', maxHeight: '92vh', overflowY: 'auto', borderRadius: 12, boxShadow: '0 16px 48px oklch(0 0 0 / .2)' }}
       >
         <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 10px 0' }}>
           <button onClick={onClose} aria-label="Cerrar diálogo" title="Cerrar" style={{ minWidth: 40, minHeight: 40, background: '#fff', borderRadius: 8, color: 'var(--text-3)' }}>✕</button>
         </div>
-        <DespachoWorkflowForm isEdit={false} initial={initial} onDone={onClose} onCancel={onClose} />
+        <DespachoWorkflowForm isEdit={false} initial={initial} venta={venta} fromVenta onDone={onClose} onCancel={onClose} />
       </div>
     </div>
   )

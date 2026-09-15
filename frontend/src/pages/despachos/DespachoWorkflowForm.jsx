@@ -5,17 +5,25 @@ import { useCreateDespacho, useDespachoColaOperativa, useUpdateDespacho } from '
 import { useVenta } from '../../api/ventas'
 import { emptyDespacho, showError, checkLabel, input, grid } from './shared'
 import { DespachoCamposFields, Field, Footer, PackingProgress } from './shared-ui'
+import { TRANSPORTISTAS } from '../../utils/facturacion'
 
 const tone = estado => estado?.tone || 'gray'
+const localToday = () => {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${day}`
+}
 
-export default function DespachoWorkflowForm({ isEdit, initial, onDone, onCancel }) {
+export default function DespachoWorkflowForm({ isEdit, initial, venta: ventaProp, fromVenta = false, onDone, onCancel }) {
   const navigate = useNavigate()
   const [form, setForm] = useState(() => ({
     ...emptyDespacho,
     ...initial,
-    fechaInterno: initial.fechaInterno ? String(initial.fechaInterno).slice(0, 10) : '',
+    fechaInterno: initial.fechaInterno ? String(initial.fechaInterno).slice(0, 10) : (fromVenta ? localToday() : ''),
     fechaEntrega: initial.fechaEntrega ? String(initial.fechaEntrega).slice(0, 10) : '',
     plazoEntrega: initial.plazoEntrega && /^\d{4}-\d{2}-\d{2}/.test(initial.plazoEntrega) ? initial.plazoEntrega.slice(0, 10) : '',
+    tipoDespacho: initial.tipoDespacho || (fromVenta ? 'Despacho a domicilio' : ''),
     origenTipo: initial.origenTipo || (initial.ordenId ? 'orden' : 'manual'),
     motivoOperacion: initial.motivoOperacion || '',
     receptorRut: initial.receptorRut || '',
@@ -31,10 +39,12 @@ export default function DespachoWorkflowForm({ isEdit, initial, onDone, onCancel
   const [nuevoItemUnidad, setNuevoItemUnidad] = useState('UN')
   const [createdDespacho, setCreatedDespacho] = useState(null)
   const loadedOrder = useRef(null)
+  const inheritedHydrationKey = useRef('')
 
   const cola = useDespachoColaOperativa({ etapa: 'despacho', search })
   const selected = (cola.data?.items || []).find(item => Number(item.ordenId) === Number(form.ordenId)) || null
   const esManual = form.origenTipo === 'manual'
+  const linkedFromSale = fromVenta && !isEdit && !esManual
   const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
 
   useEffect(() => {
@@ -58,31 +68,42 @@ export default function DespachoWorkflowForm({ isEdit, initial, onDone, onCancel
     }))
   }, [esManual, isEdit, selected])
 
-  // Si la venta no aparece en la cola operativa (ej: Licitacion sin direccion
-  // de despacho propia ni sucursal asignada) el efecto de arriba nunca corre y
-  // el destino queda en blanco aunque el cliente ya tenga domicilio en ficha
-  // desde que se creo (feedback FB #6, 09-11: "esta venta ya solicito todos
-  // los datos necesarios al inicio"). Se completa con ese domicilio solo si
-  // nada (ni la cola, ni el usuario) ya cargo un destino.
-  const clienteFallbackApplied = useRef(false)
   const ventaId = !esManual && form.ordenId ? Number(form.ordenId) : undefined
-  const { data: ventaData } = useVenta(!isEdit ? ventaId : undefined)
+  const { data: ventaQueryData } = useVenta(!isEdit ? ventaId : undefined)
+  const ventaData = ventaQueryData || ventaProp || null
+
+  // La venta y su sucursal son la fuente maestra de datos ya capturados al
+  // vender. Sólo se rellenan campos vacíos, de modo que una excepción de cola
+  // o una edición explícita del usuario no se pierda.
   useEffect(() => {
-    if (isEdit || esManual || clienteFallbackApplied.current) return
-    if (cola.isLoading || !ventaData?.cliente) return
-    clienteFallbackApplied.current = true
-    const cliente = ventaData.cliente
-    // Seed unico del destino cuando la cola operativa no trajo uno (ver
-    // comentario arriba); no es estado derivable en render porque el usuario
-    // debe poder seguir editando estos campos despues.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (isEdit || esManual || (!selected && !ventaData)) return
+    const sourceKey = `${form.ordenId}|${Boolean(selected)}|${Boolean(ventaData)}`
+    if (inheritedHydrationKey.current === sourceKey) return
+    inheritedHydrationKey.current = sourceKey
+    const cliente = ventaData?.cliente || {}
+    const sucursal = ventaData?.clienteSucursal || {}
+    const value = (...values) => values.find(item => item !== null && item !== undefined && String(item).trim() !== '') || ''
+    const inherited = {
+      direccion: value(ventaData?.direccionDespacho, selected?.direccion, sucursal.direccion, cliente.direccion),
+      region: value(ventaData?.regionDespacho, selected?.region, sucursal.region, cliente.region),
+      comuna: value(ventaData?.comunaDespacho, selected?.comuna, sucursal.comuna, cliente.comuna),
+      ciudad: value(ventaData?.ciudadDespacho, sucursal.ciudad, cliente.ciudad),
+      contacto: value(ventaData?.contactoDespacho, selected?.contacto, sucursal.contacto, cliente.nombre),
+      emailContacto: value(ventaData?.emailContactoDespacho, selected?.emailContacto, sucursal.email, ventaData?.emailCliente, cliente.email),
+      plazoEntrega: value(ventaData?.fechaPlazo, selected?.plazoEntrega),
+      montoEnvio: value(ventaData?.montoDespacho, selected?.montoEnvio),
+    }
     setForm(prev => ({
       ...prev,
-      direccion: prev.direccion || cliente.direccion || '',
-      region: prev.region || cliente.region || '',
-      comuna: prev.comuna || cliente.comuna || '',
+      ...Object.fromEntries(Object.entries(inherited).map(([key, item]) => [
+        key,
+        prev[key] || item,
+      ])),
+      interno: prev.interno || (ventaData?.nInterno ? String(ventaData.nInterno) : ''),
+      odtId: prev.odtId || (selected?.odtId || ventaData?.odts?.[0]?.id ? String(selected?.odtId || ventaData?.odts?.[0]?.id) : ''),
+      tipoDespacho: prev.tipoDespacho || (fromVenta ? 'Despacho a domicilio' : ''),
     }))
-  }, [isEdit, esManual, cola.isLoading, ventaData])
+  }, [esManual, form.ordenId, fromVenta, isEdit, selected, ventaData])
 
   const createMut = useCreateDespacho()
   const updateMut = useUpdateDespacho()
@@ -90,7 +111,7 @@ export default function DespachoWorkflowForm({ isEdit, initial, onDone, onCancel
 
   const elegirModo = mode => {
     loadedOrder.current = null
-    clienteFallbackApplied.current = false
+    inheritedHydrationKey.current = ''
     if (mode === 'manual') {
       setForm(prev => ({
         ...emptyDespacho,
@@ -131,14 +152,21 @@ export default function DespachoWorkflowForm({ isEdit, initial, onDone, onCancel
   }
 
   const guardar = () => {
-    if (!isEdit && !esManual && !selected) {
+    if (!isEdit && !esManual && !linkedFromSale && !selected) {
       return showError({ response: { data: { error: 'Elige una venta lista para despacho de la cola.' } } })
     }
-    if (!isEdit && !esManual && Number(selected?.preparacion?.pendienteTaller || 0) > 0 && !form.parcial) {
+    const pendienteTaller = selected?.preparacion?.pendienteTaller ?? ventaData?.preparacion?.pendienteTaller
+    if (!isEdit && !esManual && Number(pendienteTaller || 0) > 0 && !form.parcial) {
       return showError({ response: { data: { error: 'Esta venta tiene unidades en taller pendientes. Sólo puede realizarse una salida parcial si ya tiene unidades preparadas en packing.' } } })
     }
     if (esManual && !String(form.motivoOperacion || '').trim()) {
       return showError({ response: { data: { error: 'Indica el motivo del despacho aislado para mantener la trazabilidad de bodega.' } } })
+    }
+    if (linkedFromSale && !String(form.fechaInterno || '').trim()) {
+      return showError({ response: { data: { error: 'Indica la fecha de salida.' } } })
+    }
+    if (linkedFromSale && !String(form.transporte || '').trim()) {
+      return showError({ response: { data: { error: 'Indica el transporte o selecciona “Por Confirmar”.' } } })
     }
     if (!esManual && !/^\S+@\S+\.\S+$/.test(String(form.emailContacto || '').trim())) {
       return showError({ response: { data: { error: 'La venta necesita un correo de contacto de despacho válido.' } } })
@@ -214,7 +242,11 @@ export default function DespachoWorkflowForm({ isEdit, initial, onDone, onCancel
         </div>
       )}
 
-      {!isEdit && !esManual && (
+      {!isEdit && !esManual && linkedFromSale && (
+        <VentaSalidaContext venta={ventaData} form={form} />
+      )}
+
+      {!isEdit && !esManual && !linkedFromSale && (
         <section style={sectionStyle}>
           <Header
             title="1. Venta reconocida para programar salida"
@@ -229,7 +261,7 @@ export default function DespachoWorkflowForm({ isEdit, initial, onDone, onCancel
           <Field label="Venta lista para despacho">
             <select
               value={form.ordenId || ''}
-              onChange={event => { loadedOrder.current = null; clienteFallbackApplied.current = false; set('ordenId', event.target.value) }}
+              onChange={event => { loadedOrder.current = null; inheritedHydrationKey.current = ''; set('ordenId', event.target.value) }}
               style={input}
               disabled={cola.isLoading}
             >
@@ -388,8 +420,8 @@ export default function DespachoWorkflowForm({ isEdit, initial, onDone, onCancel
 
       <section style={sectionStyle}>
         <Header
-          title={esManual ? 'Datos operativos de salida' : '2. Programa los datos de salida'}
-          text={esManual ? 'Completa lo necesario para trasladar, controlar y seguir esta salida.' : 'La información de venta ya está precargada.'}
+          title={esManual ? 'Datos operativos de salida' : linkedFromSale ? '2. Registrar salida' : '2. Programa los datos de salida'}
+          text={esManual ? 'Completa lo necesario para trasladar, controlar y seguir esta salida.' : linkedFromSale ? 'Ingresa sólo la fecha y el transporte. El destino se hereda de la venta.' : 'La información de venta ya está precargada.'}
         />
         {(form.parcial || form.tieneMulta) && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
@@ -416,7 +448,7 @@ export default function DespachoWorkflowForm({ isEdit, initial, onDone, onCancel
             </Field>
           </div>
         )}
-        <DespachoCamposFields form={form} set={set} />
+        {linkedFromSale ? <SalidaOperativaFields form={form} set={set} /> : <DespachoCamposFields form={form} set={set} />}
       </section>
 
       <Footer saving={saving} onClose={onCancel} onSave={guardar} closeLabel="Cancelar" />
@@ -465,6 +497,83 @@ function VentaResumen({ item }) {
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+function VentaSalidaContext({ venta, form }) {
+  const cliente = venta?.cliente || {}
+  const sucursal = venta?.clienteSucursal || {}
+  const nombre = cliente.razonSocial || cliente.nombre || 'Cliente sin nombre'
+  const destino = form.direccion || venta?.direccionDespacho || sucursal.direccion || cliente.direccion
+  const ubicacion = [form.comuna || venta?.comunaDespacho || sucursal.comuna || cliente.comuna, form.region || venta?.regionDespacho || sucursal.region || cliente.region]
+    .filter(Boolean)
+    .join(' · ')
+  const contacto = form.contacto || venta?.contactoDespacho || sucursal.contacto || cliente.nombre
+  const email = form.emailContacto || venta?.emailContactoDespacho || sucursal.email || venta?.emailCliente || cliente.email
+  const faltanDatos = !String(email || '').trim() || (!String(form.tipoDespacho || '').match(/retiro|retira|pickup/i) && (!String(destino || '').trim() || !String(ubicacion || '').trim()))
+
+  return (
+    <section style={sectionStyle}>
+      <Header
+        title={`1. Venta vinculada #${venta?.nInterno || form.interno || form.ordenId}`}
+        text="La venta concentra el cliente y el destino. Bodega no debe volver a digitarlos."
+        badge="Venta vinculada"
+      />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, padding: 12, borderRadius: 10, background: 'var(--bg)' }}>
+        <ReadOnlyValue label="Cliente" value={nombre} />
+        <ReadOnlyValue label="ODT / interno" value={form.odtId ? `ODT #${form.odtId} · ${form.interno || 'Venta'}` : `Venta #${form.interno || form.ordenId}`} />
+        <ReadOnlyValue label="Destino" value={destino || 'Sin dirección registrada'} />
+        <ReadOnlyValue label="Región / comuna" value={ubicacion || 'Sin ubicación registrada'} />
+        <ReadOnlyValue label="Contacto" value={contacto || 'Sin contacto registrado'} />
+        <ReadOnlyValue label="Correo" value={email || 'Sin correo registrado'} />
+      </div>
+      {faltanDatos && (
+        <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 8, border: '1px solid #f0c36d', background: '#fff8e6', color: '#7a4d00', fontSize: 12, lineHeight: 1.45 }}>
+          Faltan datos de despacho en la venta. Completa la dirección, región, comuna o correo en el detalle de la venta; el operador no debe reingresarlos aquí.
+        </div>
+      )}
+    </section>
+  )
+}
+
+function ReadOnlyValue({ label, value }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.35 }}>{label}</div>
+      <div style={{ marginTop: 3, fontSize: 12, color: 'var(--text-1)', overflowWrap: 'anywhere' }}>{value}</div>
+    </div>
+  )
+}
+
+function SalidaOperativaFields({ form, set }) {
+  const transporteEsOtro = !!form.transporte && !TRANSPORTISTAS.includes(form.transporte)
+  return (
+    <div style={grid}>
+      <Field label="Fecha de salida *">
+        <input type="date" value={form.fechaInterno || ''} onChange={event => set('fechaInterno', event.target.value)} style={input} />
+      </Field>
+      <Field label="Tipo de entrega *">
+        <select value={form.tipoDespacho || ''} onChange={event => set('tipoDespacho', event.target.value)} style={input}>
+          <option value="">Seleccionar...</option>
+          <option value="Despacho a domicilio">Despacho a domicilio</option>
+          <option value="Retiro en sucursal">Retiro en sucursal</option>
+          <option value="Retiro en bodega">Retiro en bodega</option>
+        </select>
+      </Field>
+      <Field label="Transporte *">
+        <select value={transporteEsOtro ? 'Otro' : (form.transporte || '')} onChange={event => set('transporte', event.target.value === 'Otro' ? '' : event.target.value)} style={input}>
+          <option value="">Seleccionar...</option>
+          {TRANSPORTISTAS.map(item => <option key={item} value={item}>{item}</option>)}
+          <option value="Otro">Otro: indicar</option>
+        </select>
+        {(transporteEsOtro || form.transporte === '') && (
+          <input value={transporteEsOtro ? form.transporte : ''} onChange={event => set('transporte', event.target.value)} placeholder="Nombre del transportista" style={{ ...input, marginTop: 6 }} />
+        )}
+      </Field>
+      <Field label="N° de seguimiento (opcional)">
+        <input value={form.numeroSeguimiento || ''} onChange={event => set('numeroSeguimiento', event.target.value)} placeholder="Se completa al disponer de él" style={input} />
+      </Field>
     </div>
   )
 }
