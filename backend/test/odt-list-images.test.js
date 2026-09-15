@@ -63,5 +63,18 @@ describe('GET /api/odts adjunta imagen de producto para la vista de taller', () 
       fotoUrl: '/uploads/fotos_chicas/test.jpg',
       fotoUrlGrande: '/uploads/fotos_grandes/test.jpg',
     })
+
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/api/odts/${odt.id}`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+
+    expect(detail.statusCode).toBe(200)
+    expect(JSON.parse(detail.body).items[0].producto).toMatchObject({
+      id: producto.id,
+      fotoUrl: '/uploads/fotos_chicas/test.jpg',
+      fotoUrlGrande: '/uploads/fotos_grandes/test.jpg',
+    })
   })
 })

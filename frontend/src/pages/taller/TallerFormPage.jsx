@@ -27,6 +27,7 @@ import { useTelas } from '../../api/telas'
 import { useHistorialMateriales } from '../../api/historialMateriales'
 import { useAuthStore } from '../../store/auth'
 import { can, ventaPath } from '../../utils/permissions'
+import { PRODUCT_PLACEHOLDER_IMAGE, useProductPlaceholderOnError } from '../../utils/assets'
 import { Icon, Badge, Btn } from '../../components/shared'
 
 const ESTADOS_ODT = [
@@ -901,13 +902,23 @@ function OdtItemsTable({ odtId, items }) {
           })}
         </div>
       )}
-      {items.map(it => (
+      {items.map(it => {
+        const image = it.producto?.fotoUrlGrande || it.producto?.fotoUrl || PRODUCT_PLACEHOLDER_IMAGE
+        const imageLink = it.producto?.fotoUrlGrande || it.producto?.fotoUrl
+        return (
         <div key={it.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: '#fff' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 8 }}>
+            {imageLink ? (
+              <a href={imageLink} target="_blank" rel="noreferrer" title="Abrir imagen del producto" style={{ display: 'block', flex: '0 0 88px' }}>
+                <img src={image} alt={`Imagen de ${it.nombre || it.producto?.nombre || 'producto'}`} loading="lazy" onError={useProductPlaceholderOnError} style={{ display: 'block', width: 88, height: 88, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--bg)' }} />
+              </a>
+            ) : (
+              <img src={image} alt={`Imagen de ${it.nombre || it.producto?.nombre || 'producto'}`} loading="lazy" onError={useProductPlaceholderOnError} style={{ display: 'block', flex: '0 0 88px', width: 88, height: 88, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--bg)' }} />
+            )}
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{it.nombre || it.codigoInterno || `Item #${it.id}`}</div>
-              {it.codigoInterno && it.nombre && (
-                <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>{it.codigoInterno}</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{it.nombre || it.producto?.nombre || it.codigoInterno || `Item #${it.id}`}</div>
+              {(it.codigoInterno || it.producto?.codigoInterno) && (
+                <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: "'DM Mono', monospace" }}>{it.codigoInterno || it.producto.codigoInterno}</div>
               )}
               {it.obs && <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4 }}>{it.obs}</div>}
             </div>
@@ -965,7 +976,8 @@ function OdtItemsTable({ odtId, items }) {
             </div>
           )}
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
