@@ -13,7 +13,7 @@ function testCode(prefix = 'TEST') {
 }
 
 describe('Módulo de Sugerencias de OC y Órdenes de Compra a Proveedores', () => {
-  let app, token, prisma, testProveedor, testProducto, testCliente, testOrden
+  let app, token, prisma, testProveedor, testProducto, testProductoDirecto, testCliente, testOrden
 
   beforeAll(async () => {
     app = buildApp({ logger: false })
@@ -38,6 +38,19 @@ describe('Módulo de Sugerencias de OC y Órdenes de Compra a Proveedores', () =
         stock: 2,
         stockCritico: 10,
         precioLista: 20000,
+        proveedorId: testProveedor.id,
+      },
+    })
+
+    // Producto legacy: conserva proveedorId directo, pero no tiene fila
+    // ProductoProveedor. El generador debe seguir encontrándolo.
+    testProductoDirecto = await prisma.producto.create({
+      data: {
+        codigoInterno: testCode('PROV-DIRECTO'),
+        nombre: 'Producto Legacy Proveedor Directo Test',
+        stock: 1,
+        stockCritico: 8,
+        precioLista: 9000,
         proveedorId: testProveedor.id,
       },
     })
@@ -99,6 +112,11 @@ describe('Módulo de Sugerencias de OC y Órdenes de Compra a Proveedores', () =
       await prisma.productoProveedor.deleteMany({ where: { productoId: testProducto.id } })
       await prisma.producto.delete({ where: { id: testProducto.id } }).catch(() => {})
     }
+    if (testProductoDirecto) {
+      await prisma.ordenCompraProveedorItem.deleteMany({ where: { productoId: testProductoDirecto.id } })
+      await prisma.productoProveedor.deleteMany({ where: { productoId: testProductoDirecto.id } })
+      await prisma.producto.delete({ where: { id: testProductoDirecto.id } }).catch(() => {})
+    }
     if (testProveedor) {
       await prisma.ordenCompraProveedor.deleteMany({ where: { proveedorId: testProveedor.id } })
       await prisma.proveedor.delete({ where: { id: testProveedor.id } }).catch(() => {})
@@ -127,6 +145,16 @@ describe('Módulo de Sugerencias de OC y Órdenes de Compra a Proveedores', () =
     expect(item.stockCritico).toBe(10)
     expect(item.cantidadSugerida).toBeGreaterThan(0)
     expect(item.costoUnitario).toBe(12000)
+
+    const resSugSinProveedor = await app.inject({
+      method: 'GET',
+      url: `/api/ordenes-compra-proveedores/sugerencias?desde=${hace15Dias.toISOString().slice(0, 10)}&hasta=${hoy.toISOString().slice(0, 10)}&diasProyeccion=30`,
+      headers: { authorization: `Bearer ${token}` },
+    })
+
+    expect(resSugSinProveedor.statusCode).toBe(200)
+    const sugSinProveedor = JSON.parse(resSugSinProveedor.body)
+    expect(sugSinProveedor.items.find(i => i.productoId === testProductoDirecto.id)).toBeDefined()
   })
 
   it('crea borrador de OC, ejecuta flujo de aprobación gerencial y recepción en bodega', async () => {

@@ -1,5 +1,21 @@
 import { parseDate, parsePositiveInt } from '../operational-utils.js'
 
+const PRODUCT_ID_BATCH_SIZE = 5000
+
+function splitIntoBatches(values, size = PRODUCT_ID_BATCH_SIZE) {
+  const batches = []
+  for (let i = 0; i < values.length; i += size) batches.push(values.slice(i, i + size))
+  return batches
+}
+
+async function collectProductIdBatches(productoIds, queryBatch) {
+  const rows = []
+  for (const batch of splitIntoBatches(productoIds)) {
+    rows.push(...await queryBatch(batch))
+  }
+  return rows
+}
+
 export async function calcularSugerenciasOC(prisma, params = {}) {
   const {
     proveedorId,
@@ -60,14 +76,43 @@ export async function calcularSugerenciasOC(prisma, params = {}) {
     },
   })
 
-  // También buscar productos que tengan proveedorId asignado directamente en Producto
-  const directProds = provId ? await prisma.producto.findMany({
+  // También buscar productos legacy que tengan proveedorId asignado
+  // directamente en Producto. La migración de backfill cubre los datos
+  // existentes, pero este fallback evita que una carga legacy vuelva a dejar
+  // el generador vacío antes de crear su relación normalizada.
+  const directRelationFilter = provId
+    ? { none: { proveedorId: provId, activo: true } }
+    : { none: { activo: true } }
+  const directProds = await prisma.producto.findMany({
     where: {
-      proveedorId: provId,
+      proveedorId: provId || { not: null },
       activo: true,
-      id: { notIn: rels.map(r => r.productoId) },
+      proveedores: directRelationFilter,
     },
-  }) : []
+    select: {
+      id: true,
+      codigoInterno: true,
+      codigoBarra: true,
+      nombre: true,
+      stock: true,
+      stockReservado: true,
+      stockDanado: true,
+      stockCritico: true,
+      unidadMedida: true,
+      precioLista: true,
+      categoria: true,
+      proveedorId: true,
+    },
+  })
+
+  const directProviderIds = [...new Set(directProds.map(p => p.proveedorId).filter(Boolean))]
+  const directProviders = directProviderIds.length
+    ? await prisma.proveedor.findMany({
+      where: { id: { in: directProviderIds } },
+      select: { id: true, nombre: true, rut: true },
+    })
+    : []
+  const directProviderMap = new Map(directProviders.map(p => [p.id, p]))
 
   // Unificar catálogo de productos a analizar
   const productosMap = new Map()
@@ -96,6 +141,7 @@ export async function calcularSugerenciasOC(prisma, params = {}) {
 
   for (const p of directProds) {
     if (productosMap.has(p.id)) continue
+    const directProvider = directProviderMap.get(p.proveedorId)
     productosMap.set(p.id, {
       productoId: p.id,
       codigoInterno: p.codigoInterno,
@@ -109,9 +155,9 @@ export async function calcularSugerenciasOC(prisma, params = {}) {
       stockCritico: Number(p.stockCritico || 0),
       unidadMedida: p.unidadMedida || 'UND',
       costoUnitario: Number(p.precioLista || 0),
-      proveedorId: provId,
-      proveedorNombre: 'Proveedor',
-      proveedorRut: null,
+      proveedorId: p.proveedorId,
+      proveedorNombre: directProvider?.nombre || 'Proveedor',
+      proveedorRut: directProvider?.rut || null,
       categoria: p.categoria,
     })
   }
@@ -132,10 +178,10 @@ export async function calcularSugerenciasOC(prisma, params = {}) {
   }
 
   // 2. Consultar Ventas reales en el rango de fechas
-  const ventasItems = await prisma.ordenItem.groupBy({
+  const ventasItems = await collectProductIdBatches(productoIds, (batch) => prisma.ordenItem.groupBy({
     by: ['productoId'],
     where: {
-      productoId: { in: productoIds },
+      productoId: { in: batch },
       eliminado: false,
       orden: {
         eliminada: false,
@@ -149,7 +195,7 @@ export async function calcularSugerenciasOC(prisma, params = {}) {
     _sum: {
       cantidad: true,
     },
-  })
+  }))
 
   const ventasMap = new Map()
   for (const vi of ventasItems) {
@@ -159,9 +205,9 @@ export async function calcularSugerenciasOC(prisma, params = {}) {
   }
 
   // 3. Consultar Stock en Tránsito de Importaciones activas
-  const importacionItems = await prisma.importacionItem.findMany({
+  const importacionItems = await collectProductIdBatches(productoIds, (batch) => prisma.importacionItem.findMany({
     where: {
-      productoId: { in: productoIds },
+      productoId: { in: batch },
       recibido: false,
       importacion: {
         estado: { in: ['En tránsito', 'En aduana'] },
@@ -172,7 +218,7 @@ export async function calcularSugerenciasOC(prisma, params = {}) {
       cantidadEsperada: true,
       cantidadRecibida: true,
     },
-  })
+  }))
 
   const enTransitoMap = new Map()
   for (const it of importacionItems) {
@@ -184,9 +230,9 @@ export async function calcularSugerenciasOC(prisma, params = {}) {
   }
 
   // 4. Consultar OCs pendientes a proveedores
-  const ocPendientes = await prisma.ordenCompraProveedorItem.findMany({
+  const ocPendientes = await collectProductIdBatches(productoIds, (batch) => prisma.ordenCompraProveedorItem.findMany({
     where: {
-      productoId: { in: productoIds },
+      productoId: { in: batch },
       ordenCompraProveedor: {
         estado: { in: ['Aprobada por Gerencia', 'Enviada a Proveedor', 'Recepcionada Parcial'] },
       },
@@ -196,7 +242,7 @@ export async function calcularSugerenciasOC(prisma, params = {}) {
       cantidadPedida: true,
       cantidadRecepcionada: true,
     },
-  })
+  }))
 
   for (const oc of ocPendientes) {
     if (oc.productoId) {
