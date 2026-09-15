@@ -912,62 +912,377 @@ function OperacionesDisponibles({ v, odtsCount, guiasCount, canWriteDespacho, ca
   )
 }
 
-// ── Documentos + Pagos (columna izquierda) ───────────────────────────────────
-function DocumentosPagosList({ pagos, dtes, canWriteFacturacion, onNota }) {
-  const pagosReales = (pagos || []).filter(p => !isReferencialPago(p))
-  const totalPagado = pagosReales
-    .filter(p => p.tipo === 'Ingreso')
-    .reduce((s, p) => s + Math.abs(p.monto), 0)
+// ── Card de Venta Pagada y Cerrada (observación 9bb3ac95) ─────────────────────
+function VentaCerradaCard({ v, items, odts, saldo, total }) {
+  const estaPagada = saldo <= 0 && (total > 0 || (v?.pagos || []).length > 0)
+  const todosEntregados = (items || []).length > 0 && items.every(it => Number(it.nEntregados || 0) >= Number(it.cantidad || 0))
+  const tallerTerminado = (odts || []).length === 0 || odts.every(odt => (odt.items || []).every(it => it.estado === 'listo'))
+  const cerradaYPagada = estaPagada && todosEntregados && tallerTerminado
 
-  if (pagosReales.length === 0 && (dtes || []).length === 0) return null
+  if (cerradaYPagada) {
+    return (
+      <div style={{
+        background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+        border: '1px solid #86efac',
+        borderRadius: 10,
+        padding: '12px 14px',
+        marginBottom: 14,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        boxShadow: '0 2px 6px rgba(22, 163, 74, 0.12)'
+      }}>
+        <div style={{
+          width: 34,
+          height: 34,
+          borderRadius: '50%',
+          background: '#16a34a',
+          color: '#fff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)'
+        }}>
+          <Icon name="check" size={20} />
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: '#166534', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>Venta Pagada y Cerrada</span>
+            <span style={{ fontSize: 10, background: '#16a34a', color: '#fff', padding: '1px 6px', borderRadius: 99, fontWeight: 700 }}>OK</span>
+          </div>
+          <div style={{ fontSize: 11, color: '#15803d', marginTop: 2 }}>
+            100% Pagada · 100% Entregada · Taller completado
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div>
-      <FormDivider label="Documentos emitidos" />
+    <div style={{
+      background: 'var(--bg)',
+      border: '1px solid var(--border)',
+      borderRadius: 10,
+      padding: '10px 12px',
+      marginBottom: 14,
+      fontSize: 11,
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-3)', marginBottom: 6 }}>
+        Estado Operativo y Cierre
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        <div style={{
+          background: estaPagada ? '#f0fdf4' : '#fff',
+          border: `1px solid ${estaPagada ? '#86efac' : 'var(--border)'}`,
+          borderRadius: 6,
+          padding: '5px 8px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6
+        }}>
+          <Icon name={estaPagada ? 'check' : 'clock'} size={12} style={{ color: estaPagada ? '#16a34a' : 'var(--amber)', flexShrink: 0 }} />
+          <span style={{ color: estaPagada ? '#166534' : 'var(--text-2)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {estaPagada ? '100% Pagada' : 'Pago pendiente'}
+          </span>
+        </div>
+
+        <div style={{
+          background: todosEntregados ? '#f0fdf4' : '#fff',
+          border: `1px solid ${todosEntregados ? '#86efac' : 'var(--border)'}`,
+          borderRadius: 6,
+          padding: '5px 8px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6
+        }}>
+          <Icon name={todosEntregados ? 'check' : 'clock'} size={12} style={{ color: todosEntregados ? '#16a34a' : 'var(--amber)', flexShrink: 0 }} />
+          <span style={{ color: todosEntregados ? '#166534' : 'var(--text-2)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {todosEntregados ? '100% Entregada' : 'Entrega parcial'}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Card de Documentos Emitidos (observación 934c4582) ───────────────────────
+function DocumentosEmitidosCard({ v, dtes = [], canWriteFacturacion, onNota }) {
+  const referenciales = activeReferentialDocs(v)
+  const pagosReales = (v?.pagos || []).filter(p => !isReferencialPago(p))
+  const saldoVenta = Math.max(0, Number(v?.total || 0) - Number(v?.abono || 0))
+
+  const docs = []
+  const vistosDtes = new Set()
+
+  for (const ref of referenciales) {
+    const pagado = pagosReales
+      .filter(p => sameDocumento(p, ref) && p.tipo === 'Ingreso')
+      .reduce((s, p) => s + Math.abs(Number(p.monto || 0)), 0)
+
+    const montoDoc = Math.abs(Number(ref.monto || 0))
+    const saldoDoc = Math.max(0, montoDoc - pagado)
+
+    let estadoPago = 'No pagada'
+    let estadoTone = 'red'
+
+    const estadoNorm = String(ref.estadoPagoDoc || '').toLowerCase()
+    if (estadoNorm === 'pagada' || (montoDoc > 0 && pagado >= montoDoc) || saldoVenta <= 0) {
+      estadoPago = 'Pagada'
+      estadoTone = 'green'
+    } else if (pagado > 0) {
+      estadoPago = 'Parcial'
+      estadoTone = 'amber'
+    } else {
+      estadoPago = 'No pagada'
+      estadoTone = 'red'
+    }
+
+    const dteAsociado = (dtes || []).find(d => String(d.folio) === String(ref.nDoc))
+    if (dteAsociado) vistosDtes.add(dteAsociado.id)
+
+    docs.push({
+      key: `ref-${ref.id}`,
+      id: ref.id,
+      tipoLabel: ref.documento || 'Documento',
+      nDoc: ref.nDoc,
+      monto: montoDoc,
+      pagado,
+      saldo: saldoDoc,
+      estadoPago,
+      estadoTone,
+      fecha: ref.fecha ? new Date(ref.fecha).toLocaleDateString('es-CL') : null,
+      dte: dteAsociado,
+    })
+  }
+
+  for (const dte of (dtes || [])) {
+    if (vistosDtes.has(dte.id)) continue
+    const tipoNum = Number(dte.tipoDte)
+    const esNC = tipoNum === 61
+    const esND = tipoNum === 56
+    const esGuia = tipoNum === 52
+    const monto = Number(dte.totales?.total || 0)
+
+    let estadoPago = 'No pagada'
+    let estadoTone = 'red'
+
+    if (esNC) {
+      estadoPago = 'Aplicada'
+      estadoTone = 'neutral'
+    } else if (esGuia) {
+      estadoPago = 'Despacho'
+      estadoTone = 'blue'
+    } else if (esND) {
+      estadoPago = 'Pendiente'
+      estadoTone = 'amber'
+    } else {
+      if (saldoVenta <= 0 && Number(v?.total || 0) > 0) {
+        estadoPago = 'Pagada'
+        estadoTone = 'green'
+      } else if (Number(v?.abono || 0) > 0) {
+        estadoPago = 'Parcial'
+        estadoTone = 'amber'
+      } else {
+        estadoPago = 'No pagada'
+        estadoTone = 'red'
+      }
+    }
+
+    docs.push({
+      key: `dte-${dte.id}`,
+      id: dte.id,
+      tipoLabel: TIPOS_DTE[dte.tipoDte] || `DTE ${dte.tipoDte}`,
+      nDoc: dte.folio,
+      monto,
+      pagado: estadoPago === 'Pagada' ? monto : 0,
+      saldo: estadoPago === 'Pagada' ? 0 : monto,
+      estadoPago,
+      estadoTone,
+      fecha: dte.fechaEmision ? new Date(dte.fechaEmision).toLocaleDateString('es-CL') : null,
+      dte,
+    })
+  }
+
+  const runDteAction = async (action, doc) => {
+    try {
+      await action(doc)
+    } catch (error) {
+      toast.error(error?.response?.data?.error || error?.message || 'No se pudo abrir el documento.')
+    }
+  }
+
+  return (
+    <div style={{
+      background: 'var(--surface, #fff)',
+      border: '1px solid var(--border)',
+      borderRadius: 10,
+      padding: '12px 14px',
+      marginBottom: 14,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Icon name="fileText" size={14} style={{ color: 'var(--blue)' }} />
+          <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-2)' }}>
+            Documentos emitidos
+          </span>
+        </div>
+        <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--bg)', color: 'var(--text-3)', padding: '1px 6px', borderRadius: 99 }}>
+          {docs.length}
+        </span>
+      </div>
+
+      {docs.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--text-3)', textAlign: 'center', padding: '10px 0' }}>
+          Sin facturas ni notas de crédito emitidas
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {docs.map(doc => {
+            const esNC = String(doc.tipoLabel || '').toLowerCase().includes('nc') || String(doc.tipoLabel || '').toLowerCase().includes('crédito')
+            return (
+              <div key={doc.key} style={{
+                background: 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: '8px 10px',
+                fontSize: 12
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <span style={{ fontWeight: 600, color: 'var(--text-1)', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {doc.tipoLabel} {doc.nDoc ? `#${doc.nDoc}` : ''}
+                  </span>
+                  <Badge tone={doc.estadoTone}>{doc.estadoPago}</Badge>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: 'var(--text-3)' }}>
+                  <span>{doc.fecha || 'Sin fecha'}</span>
+                  <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: 700, color: esNC ? 'var(--amber)' : 'var(--text-1)', fontSize: 12 }}>
+                    {esNC ? `−${fmt(doc.monto)}` : fmt(doc.monto)}
+                  </span>
+                </div>
+
+                {doc.dte?.xml && doc.dte.estado !== 'borrador' && (
+                  <div style={{ display: 'flex', gap: 10, marginTop: 4, paddingTop: 4, borderTop: '1px dashed var(--border)' }}>
+                    <button type="button" onClick={() => runDteAction(openDtePdf, doc.dte)} style={dteLink('var(--blue)')}>Ver PDF</button>
+                    <button type="button" onClick={() => runDteAction(downloadDteXml, doc.dte)} style={dteLink('var(--text-2)')}>Descargar XML</button>
+                    {canWriteFacturacion && [33, 39].includes(Number(doc.dte.tipoDte)) && ['aceptado', 'enviado'].includes(doc.dte.estado) && onNota && (
+                      <button type="button" onClick={() => onNota(doc.dte, 61)} style={dteLink('var(--red)')}>Emitir NC</button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Card de Transferencias y Pagos Recibidos (discriminada de documentos) ────
+function TransferenciasYPagosCard({ v, pagos = [], saldo }) {
+  const pagosReales = (pagos || []).filter(p => !isReferencialPago(p) && !p.eliminado)
+  const totalPagado = pagosReales
+    .filter(p => p.tipo === 'Ingreso')
+    .reduce((s, p) => s + Math.abs(Number(p.monto || 0)), 0)
+
+  if (pagosReales.length === 0 && (!saldo || saldo <= 0)) return null
+
+  return (
+    <div style={{
+      background: 'var(--surface, #fff)',
+      border: '1px solid var(--border)',
+      borderRadius: 10,
+      padding: '12px 14px',
+      marginBottom: 14,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Icon name="dollarSign" size={14} style={{ color: 'var(--green-700)' }} />
+          <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--text-2)' }}>
+            Pagos y Transferencias
+          </span>
+        </div>
+        <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--green-50)', color: 'var(--green-700)', padding: '1px 6px', borderRadius: 99 }}>
+          {pagosReales.length} {pagosReales.length === 1 ? 'abono' : 'abonos'}
+        </span>
+      </div>
+
       {totalPagado > 0 && (
-        <div style={{ background: 'var(--green-50)', borderRadius: 8, padding: '8px 12px', marginBottom: 10, display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+        <div style={{
+          background: 'var(--green-50)',
+          borderRadius: 8,
+          padding: '8px 10px',
+          marginBottom: 8,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          fontSize: 12
+        }}>
           <span style={{ color: 'var(--green-700)', fontWeight: 600 }}>Total recibido</span>
           <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: 700, color: 'var(--green-700)' }}>{fmt(totalPagado)}</span>
         </div>
       )}
-      {(dtes || []).map(doc => {
-        const runDteAction = async (action) => {
-          try {
-            await action(doc)
-          } catch (error) {
-            toast.error(error?.response?.data?.error || error?.message || 'No se pudo abrir el documento.')
-          }
-        }
-        return (
-          <div key={doc.id} style={{ padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>{TIPOS_DTE[doc.tipoDte] || `DTE ${doc.tipoDte}`} {doc.folio ? `#${doc.folio}` : ''}</span>
-              <Badge tone={DTE_TONE[doc.estado] || 'gray'}>{doc.estado}</Badge>
-            </div>
-            {doc.xml && doc.estado !== 'borrador' && (
-              <div style={{ marginTop: 2 }}>
-                <button onClick={() => runDteAction(openDtePdf)} style={dteLink('var(--blue)')}>Ver PDF</button>
-                <button onClick={() => runDteAction(downloadDteXml)} style={dteLink('var(--text-2)')}>Descargar XML</button>
-              </div>
-            )}
-            {canWriteFacturacion && [33, 39].includes(Number(doc.tipoDte)) && ['aceptado', 'enviado'].includes(doc.estado) && onNota && (
-              <div style={{ marginTop: 4, display: 'flex', gap: 8 }}>
-                <button onClick={() => onNota(doc, 61)} style={dteLink('var(--red)')}>Emitir NC</button>
-                <button onClick={() => onNota(doc, 56)} style={dteLink('var(--blue)')}>Emitir ND</button>
-              </div>
-            )}
-          </div>
-        )
-      })}
-      {pagosReales.map(p => (
-        <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
-          <span>{p.medioPago}</span>
-          <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: 600, color: p.tipo === 'Ingreso' ? 'var(--green-600)' : 'var(--red)' }}>
-            {p.tipo === 'Ingreso' ? '+' : '−'}{fmt(Math.abs(p.monto))}
-          </span>
+
+      {pagosReales.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--text-3)', textAlign: 'center', padding: '6px 0' }}>
+          Sin transferencias ni pagos registrados
         </div>
-      ))}
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {pagosReales.map(p => {
+            const medioLabel = [
+              p.medioPago || 'Pago',
+              p.origenMedioPago ? `(${p.origenMedioPago})` : null,
+              p.referencia && p.referencia !== 'Abono' && p.referencia !== 'Referencial' ? `Ref: ${p.referencia}` : null
+            ].filter(Boolean).join(' ')
+
+            const fechaPago = p.fecha ? new Date(p.fecha).toLocaleDateString('es-CL') : null
+
+            return (
+              <div key={p.id} style={{
+                padding: '6px 0',
+                borderBottom: '1px solid var(--border)',
+                fontSize: 12,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div style={{ minWidth: 0, paddingRight: 8 }}>
+                  <div style={{ fontWeight: 500, color: 'var(--text-1)', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {medioLabel}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-3)' }}>
+                    {fechaPago || '—'} {p.usuario ? `· por ${p.usuario}` : ''}
+                  </div>
+                </div>
+                <span style={{
+                  fontFamily: "'DM Mono',monospace",
+                  fontWeight: 600,
+                  fontSize: 12,
+                  whiteSpace: 'nowrap',
+                  color: p.tipo === 'Ingreso' ? 'var(--green-600)' : 'var(--red)'
+                }}>
+                  {p.tipo === 'Ingreso' ? '+' : '−'}{fmt(Math.abs(p.monto))}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
+  )
+}
+
+function DocumentosPagosList({ v, pagos, dtes, canWriteFacturacion, onNota }) {
+  return (
+    <>
+      <DocumentosEmitidosCard v={v} dtes={dtes} canWriteFacturacion={canWriteFacturacion} onNota={onNota} />
+      <TransferenciasYPagosCard v={v} pagos={pagos} />
+    </>
   )
 }
 
@@ -1160,6 +1475,7 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                 <div><strong>Ejecutivo(a):</strong> {v.creadorNombre || 'Sin vendedor'}</div>
                 <div style={{ marginTop: 4 }}><strong>Fecha:</strong> {fecha}</div>
               </div>
+              <VentaCerradaCard v={v} items={items} odts={odts} saldo={saldo} total={total} />
               <AgregarProductoWidget venta={v} items={items} canWrite={canWrite} />
               <OperacionesDisponibles
                 v={v}
@@ -1181,7 +1497,8 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                 onCreateDespacho={() => setShowDespachoModal(true)}
                 onPrepararGuia={() => setShowGuiaDespacho(true)}
               />
-              <DocumentosPagosList pagos={pagos} dtes={dtes} canWriteFacturacion={canWriteFacturacion} onNota={(documento, tipoDte) => setNotaDte({ documento, tipoDte })} />
+              <DocumentosEmitidosCard v={v} dtes={dtes} canWriteFacturacion={canWriteFacturacion} onNota={(documento, tipoDte) => setNotaDte({ documento, tipoDte })} />
+              <TransferenciasYPagosCard v={v} pagos={pagos} saldo={saldo} />
             </div>
 
             {/* Columna derecha */}
