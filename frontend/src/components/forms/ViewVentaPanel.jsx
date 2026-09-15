@@ -1225,11 +1225,39 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                 <>
                   <FormDivider label={`Productos (${items.length})`} />
                   <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'auto', marginBottom: 14 }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 820 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 960 }}>
                       <thead>
                         <tr style={{ background: 'var(--bg)' }}>
-                          {['', 'Producto', 'Cant.', 'P. Unit. (Neto)', 'P. Unit. (c/IVA)', 'IVA (19%)', 'Subtotal (c/IVA)', 'Entregados', 'Pendiente', 'Estado Taller'].map((h, i) => (
-                            <th key={i} style={{ padding: i === 0 ? '7px 4px' : '7px ' + (i === 1 ? '12px' : '8px'), textAlign: i <= 1 ? 'left' : 'right', fontWeight: 600, color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, whiteSpace: 'nowrap' }}>{h}</th>
+                          {[
+                            { label: 'Nº', align: 'center', width: 34 },
+                            { label: 'Código', align: 'left' },
+                            { label: 'Cant.', align: 'right' },
+                            { label: 'Producto', align: 'left' },
+                            { label: 'Foto', align: 'center', width: 44 },
+                            { label: 'Unit. Neto', align: 'right' },
+                            { label: 'Total Neto', align: 'right' },
+                            { label: 'Stock', align: 'right' },
+                            { label: 'Entregados', align: 'right' },
+                            { label: 'Pendiente', align: 'right' },
+                            { label: 'Estado Taller', align: 'right' },
+                            { label: 'Ubicación', align: 'left' },
+                          ].map((col, idx) => (
+                            <th
+                              key={idx}
+                              style={{
+                                padding: '7px 8px',
+                                textAlign: col.align,
+                                width: col.width,
+                                fontWeight: 600,
+                                color: 'var(--text-3)',
+                                fontSize: 10,
+                                textTransform: 'uppercase',
+                                letterSpacing: 0.4,
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {col.label}
+                            </th>
                           ))}
                         </tr>
                       </thead>
@@ -1241,34 +1269,68 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                           const itemBrutoTotal = itemBrutoUnitario * item.cantidad
                           const itemNetoTotal = Math.round(itemBrutoTotal / 1.19)
                           const itemNetoUnitario = Math.round(itemBrutoUnitario / 1.19)
-                          const itemIvaTotal = itemBrutoTotal - itemNetoTotal
-                          const itemSubtotalConIva = itemBrutoTotal
+                          const stockVal = item.producto?.stock
+                          const ubicacionVal = item.producto?.ubicacion || item.ubicacion
+
                           return (
                           <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                            <td style={{ padding: '8px 4px 8px 12px', width: 40 }}>
-                              {item.producto?.fotoUrl ? (
-                                <img src={item.producto.fotoUrl} alt="" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} />
-                              ) : (
-                                <div style={{ width: 32, height: 32, borderRadius: 4, background: 'var(--bg)', border: '1px solid var(--border)' }} />
-                              )}
+                            {/* 1. Nº */}
+                            <td style={{ padding: '8px 4px', textAlign: 'center', fontFamily: "'DM Mono',monospace", fontSize: 11, color: 'var(--text-3)' }}>
+                              {i + 1}
                             </td>
-                            <td style={{ padding: '8px 12px' }}>
+
+                            {/* 2. Código */}
+                            <td style={{ padding: '8px', textAlign: 'left', fontFamily: "'DM Mono',monospace", fontSize: 11, fontWeight: 600, color: 'var(--text-1)', whiteSpace: 'nowrap' }}>
+                              {item.producto?.codigoInterno || item.codigoInterno || '—'}
+                            </td>
+
+                            {/* 3. Cant. */}
+                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600, color: 'var(--text-1)' }}>
+                              {item.cantidad}
+                            </td>
+
+                            {/* 4. Producto */}
+                            <td style={{ padding: '8px 12px', textAlign: 'left', minWidth: 200 }}>
                               <div style={{ fontWeight: 500 }}>{item.producto?.nombre || item.nombre || `Producto #${item.productoId}`}</div>
-                              {(item.producto?.codigoInterno || item.codigoInterno) && (
-                                <div style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: "'DM Mono',monospace" }}>{item.producto?.codigoInterno || item.codigoInterno}</div>
-                              )}
                               {item.descripcion && (
                                 <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 4, background: 'var(--bg)', padding: '3px 7px', borderRadius: 4, border: '1px solid var(--border)', lineHeight: 1.4 }}>
                                   {item.descripcion}
                                 </div>
                               )}
                             </td>
-                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>{item.cantidad}</td>
-                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>{fmt(itemNetoUnitario)}</td>
-                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>{fmt(itemBrutoUnitario)}</td>
-                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--green-700)', fontWeight: 600 }}>{fmt(itemIvaTotal)}</td>
-                            <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 700, color: 'var(--text-1)' }}>{fmt(itemSubtotalConIva)}</td>
-                            <td style={{ padding: '4px 12px', textAlign: 'right' }}>
+
+                            {/* 5. Foto */}
+                            <td style={{ padding: '8px 4px', textAlign: 'center', width: 44 }}>
+                              {item.producto?.fotoUrl ? (
+                                <img src={item.producto.fotoUrl} alt="" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)', display: 'inline-block' }} />
+                              ) : (
+                                <div style={{ width: 32, height: 32, borderRadius: 4, background: 'var(--bg)', border: '1px solid var(--border)', display: 'inline-block' }} />
+                              )}
+                            </td>
+
+                            {/* 6. Unit. Neto */}
+                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: 'var(--text-2)' }}>
+                              {fmt(itemNetoUnitario)}
+                            </td>
+
+                            {/* 7. Total Neto */}
+                            <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 700, color: 'var(--text-1)' }}>
+                              {fmt(itemNetoTotal)}
+                            </td>
+
+                            {/* 8. Stock */}
+                            <td style={{
+                              padding: '8px',
+                              textAlign: 'right',
+                              fontFamily: "'DM Mono',monospace",
+                              fontWeight: 600,
+                              color: stockVal !== undefined && stockVal !== null ? (stockVal <= 0 ? 'var(--red-600, #dc2626)' : 'var(--text-2)') : 'var(--text-3)'
+                            }}>
+                              {stockVal !== undefined && stockVal !== null ? stockVal : '—'}
+                            </td>
+
+                            {/* 9. Entregados */}
+                            <td style={{ padding: '4px 8px', textAlign: 'right' }}>
                               {canWrite ? (
                                 <input
                                   type="number" min={0} max={item.cantidad} defaultValue={item.nEntregados ?? 0}
@@ -1278,15 +1340,19 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
                                       onError: err => toast.error(err.response?.data?.error || 'No se pudo actualizar entregados'),
                                     })
                                   }}
-                                  style={{ width: 60, padding: '4px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right' }}
+                                  style={{ width: 56, padding: '4px 6px', borderRadius: 5, border: '1px solid var(--border)', fontSize: 12, fontFamily: "'DM Mono',monospace", textAlign: 'right' }}
                                 />
                               ) : (
                                 <span style={{ fontFamily: "'DM Mono',monospace" }}>{item.nEntregados ?? 0}</span>
                               )}
                             </td>
+
+                            {/* 10. Pendiente */}
                             <td style={{ padding: '8px', textAlign: 'right', fontFamily: "'DM Mono',monospace", fontWeight: 600, color: (item.cantidad - (item.nEntregados ?? 0)) > 0 ? 'var(--amber)' : 'var(--green-600)' }}>
                               {item.cantidad - (item.nEntregados ?? 0)}
                             </td>
+
+                            {/* 11. Estado Taller */}
                             <td style={{ padding: '8px 12px', textAlign: 'right' }}>
                               {(() => {
                                 const odtList = getOdtsForItem(item)
@@ -1374,6 +1440,11 @@ export function ViewVentaPanel({ venta, onClose, onEdit, canWrite = true, canDel
 
                                 return <span style={{ color: 'var(--text-3)', fontSize: 11 }}>—</span>
                               })()}
+                            </td>
+
+                            {/* 12. Ubicación */}
+                            <td style={{ padding: '8px 12px', textAlign: 'left', fontFamily: "'DM Mono',monospace", fontSize: 11, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>
+                              {ubicacionVal || '—'}
                             </td>
                           </tr>
                         )})}

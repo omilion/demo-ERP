@@ -31,7 +31,7 @@ export async function attachProductos(fastify, items = []) {
   const ids = [...new Set(items.map(i => i.productoId).filter(Boolean))]
   const productos = await fastify.prisma.producto.findMany({
     where: { id: { in: ids } },
-    select: { id: true, nombre: true, codigoInterno: true, fotoUrl: true, estadoInventario: true, tallerId: true, bodega: true },
+    select: { id: true, nombre: true, codigoInterno: true, fotoUrl: true, estadoInventario: true, tallerId: true, bodega: true, stock: true, ubicacion: true },
   })
   const map = Object.fromEntries(productos.map(p => [p.id, p]))
   return items.map(i => ({ ...i, producto: map[i.productoId] || null }))
