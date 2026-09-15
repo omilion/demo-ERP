@@ -11,6 +11,7 @@ import {
 } from '../../api/rrhh'
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
+import { getRegionFromComuna } from '../../utils/rut'
 
 const fmtPeso = n => '$' + (Number(n) || 0).toLocaleString('es-CL')
 const fmtDate = d => d ? new Date(d).toLocaleDateString('es-CL') : '—'
@@ -83,6 +84,7 @@ function TabDatos({ t }) {
       <DataRow l="Email" v={t.email} />
       <DataRow l="Teléfono" v={t.telefono} />
       <DataRow l="Dirección" v={t.direccion} />
+      <DataRow l="Región" v={t.region || getRegionFromComuna(t.comuna)} />
       <DataRow l="Comuna" v={t.comuna} />
       <DataRow l="Emergencia" v={t.contactoEmergencia ? `${t.contactoEmergencia} — ${t.numeroEmergencia || ''}` : null} />
 

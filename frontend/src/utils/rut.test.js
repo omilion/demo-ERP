@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeRut, formatRut, isValidRut, isValidPhone, isValidEmail, validateClienteData } from './rut'
+import {
+  normalizeRut,
+  formatRut,
+  isValidRut,
+  isValidPhone,
+  isValidEmail,
+  validateClienteData,
+  cleanLetters,
+  isValidName,
+  getRegionFromComuna,
+  parseDireccion,
+} from './rut'
 
 describe('rut utils', () => {
   it('normalizes RUT string', () => {
@@ -56,4 +67,55 @@ describe('rut utils', () => {
     expect(valid.isValid).toBe(true)
     expect(valid.errors).toEqual({})
   })
+
+  it('cleanLetters allows only letters, accents, ñ, spaces, hyphens, and apostrophes', () => {
+    expect(cleanLetters('Juan123')).toBe('Juan')
+    expect(cleanLetters('María José')).toBe('María José')
+    expect(cleanLetters('Ñoño O\'Higgins-Pérez 99!!')).toBe("Ñoño O'Higgins-Pérez ")
+    expect(cleanLetters(null)).toBe('')
+  })
+
+  it('isValidName verifies that name has only valid letter chars', () => {
+    expect(isValidName('Juan Pérez')).toBe(true)
+    expect(isValidName('María-José O\'Higgins')).toBe(true)
+    expect(isValidName('Ángel Nuñez')).toBe(true)
+    expect(isValidName('Juan123')).toBe(false)
+    expect(isValidName('')).toBe(false)
+    expect(isValidName('   ')).toBe(false)
+    expect(isValidName('---')).toBe(false)
+    expect(isValidName('Juan @ Perez')).toBe(false)
+  })
+
+  it('getRegionFromComuna resolves correct region', () => {
+    expect(getRegionFromComuna('Santiago')).toBe('Metropolitana de Santiago')
+    expect(getRegionFromComuna('Providencia')).toBe('Metropolitana de Santiago')
+    expect(getRegionFromComuna('Viña del Mar')).toBe('Valparaíso')
+    expect(getRegionFromComuna('Concepción')).toBe('Biobío')
+    expect(getRegionFromComuna('NonExistentComuna')).toBe('')
+    expect(getRegionFromComuna('')).toBe('')
+  })
+
+  it('parseDireccion splits street and depto', () => {
+    expect(parseDireccion('Av. Providencia 1234, Depto 402')).toEqual({
+      calle: 'Av. Providencia 1234',
+      depto: '402',
+    })
+    expect(parseDireccion('Calle Los Alerces 550, Casa 12')).toEqual({
+      calle: 'Calle Los Alerces 550',
+      depto: '12',
+    })
+    expect(parseDireccion('San Martín 888 Oficina 301')).toEqual({
+      calle: 'San Martín 888',
+      depto: '301',
+    })
+    expect(parseDireccion('Av. Matta 999')).toEqual({
+      calle: 'Av. Matta 999',
+      depto: '',
+    })
+    expect(parseDireccion('')).toEqual({
+      calle: '',
+      depto: '',
+    })
+  })
 })
+

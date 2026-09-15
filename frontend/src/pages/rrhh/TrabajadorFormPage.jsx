@@ -7,6 +7,17 @@ import { useTrabajador, useCreateTrabajador, useUpdateTrabajador, useCuentasDisp
 import { useAuthStore } from '../../store/auth'
 import { can } from '../../utils/permissions'
 import { toast } from '../../store/notif'
+import { REGIONES_CHILE, COMUNAS_POR_REGION } from '../../data/geoLatam'
+import {
+  formatRut,
+  isValidRut,
+  cleanLetters,
+  isValidName,
+  isValidEmail,
+  isValidPhone,
+  getRegionFromComuna,
+  parseDireccion,
+} from '../../utils/rut'
 
 // Ficha del trabajador: crear y editar en pantalla completa.
 //
@@ -28,7 +39,8 @@ const TIPOS_CONTRATO = ['', 'Indefinido', 'Plazo fijo', 'Por obra o faena', 'Par
 const VACIO = {
   empresa: 'plastimar', nombres: '', apellidoPaterno: '', apellidoMaterno: '', rut: '',
   fechaNacimiento: '', estadoCivil: '', cargasFamiliares: '', nacionalidad: '',
-  email: '', telefono: '', direccion: '', comuna: '', contactoEmergencia: '', numeroEmergencia: '',
+  email: '', telefono: '', region: 'Metropolitana de Santiago', comuna: '', calle: '', depto: '',
+  direccion: '', contactoEmergencia: '', numeroEmergencia: '',
   afp: '', salud: '',
   banco: '', tipoCuenta: '', numeroCuenta: '',
   cargo: '', fechaIngreso: '', fechaTermino: '', tipoContrato: '',
@@ -38,56 +50,49 @@ const VACIO = {
 
 const texto = valor => (valor === null || valor === undefined ? '' : String(valor))
 
-const desdeTrabajador = t => ({
-  empresa: t.empresa || 'plastimar',
-  nombres: t.nombres || '',
-  apellidoPaterno: t.apellidoPaterno || '',
-  apellidoMaterno: t.apellidoMaterno || '',
-  rut: t.rut || '',
-  fechaNacimiento: t.fechaNacimiento || '',
-  estadoCivil: t.estadoCivil || '',
-  cargasFamiliares: t.cargasFamiliares || '',
-  nacionalidad: t.nacionalidad || '',
-  email: t.email || '',
-  telefono: t.telefono || '',
-  direccion: t.direccion || '',
-  comuna: t.comuna || '',
-  contactoEmergencia: t.contactoEmergencia || '',
-  numeroEmergencia: t.numeroEmergencia || '',
-  afp: t.afp || '',
-  salud: t.salud || '',
-  banco: t.banco || '',
-  tipoCuenta: t.tipoCuenta || '',
-  numeroCuenta: t.numeroCuenta || '',
-  cargo: t.cargo || '',
-  fechaIngreso: t.fechaIngreso || '',
-  fechaTermino: t.fechaTermino ? String(t.fechaTermino).slice(0, 10) : '',
-  tipoContrato: t.tipoContrato || '',
-  sueldoLiquido: t.sueldoLiquido || '',
-  sueldoBase: texto(t.sueldoBase),
-  valorHoraExtra: texto(t.valorHoraExtra),
-  usuarioId: t.usuarioId ? String(t.usuarioId) : '',
-  estado: t.estado !== false,
-  observacion: t.observacion || '',
-})
+function withCurrentValue(options, current) {
+  if (!current || options.includes(current)) return options
+  return [...options, current]
+}
 
-// El RUT se guarda tal cual lo escriben, pero el digito verificador se valida:
-// un RUT mal tipeado se arrastra despues a contratos, liquidaciones y F30.
-function rutValido(valor) {
-  const limpio = String(valor || '').replace(/[.\s-]/g, '').toUpperCase()
-  if (limpio.length < 2) return false
-  const cuerpo = limpio.slice(0, -1)
-  const dv = limpio.slice(-1)
-  if (!/^\d+$/.test(cuerpo)) return false
-  let suma = 0
-  let factor = 2
-  for (let i = cuerpo.length - 1; i >= 0; i -= 1) {
-    suma += Number(cuerpo[i]) * factor
-    factor = factor === 7 ? 2 : factor + 1
+const desdeTrabajador = t => {
+  const { calle, depto } = parseDireccion(t.direccion)
+  const region = t.region || getRegionFromComuna(t.comuna) || 'Metropolitana de Santiago'
+  return {
+    empresa: t.empresa || 'plastimar',
+    nombres: t.nombres || '',
+    apellidoPaterno: t.apellidoPaterno || '',
+    apellidoMaterno: t.apellidoMaterno || '',
+    rut: formatRut(t.rut) || t.rut || '',
+    fechaNacimiento: t.fechaNacimiento || '',
+    estadoCivil: t.estadoCivil || '',
+    cargasFamiliares: t.cargasFamiliares || '',
+    nacionalidad: t.nacionalidad || '',
+    email: t.email || '',
+    telefono: t.telefono || '',
+    region,
+    comuna: t.comuna || '',
+    calle,
+    depto,
+    direccion: t.direccion || '',
+    contactoEmergencia: t.contactoEmergencia || '',
+    numeroEmergencia: t.numeroEmergencia || '',
+    afp: t.afp || '',
+    salud: t.salud || '',
+    banco: t.banco || '',
+    tipoCuenta: t.tipoCuenta || '',
+    numeroCuenta: t.numeroCuenta || '',
+    cargo: t.cargo || '',
+    fechaIngreso: t.fechaIngreso || '',
+    fechaTermino: t.fechaTermino ? String(t.fechaTermino).slice(0, 10) : '',
+    tipoContrato: t.tipoContrato || '',
+    sueldoLiquido: t.sueldoLiquido || '',
+    sueldoBase: texto(t.sueldoBase),
+    valorHoraExtra: texto(t.valorHoraExtra),
+    usuarioId: t.usuarioId ? String(t.usuarioId) : '',
+    estado: t.estado !== false,
+    observacion: t.observacion || '',
   }
-  const resto = 11 - (suma % 11)
-  const esperado = resto === 11 ? '0' : resto === 10 ? 'K' : String(resto)
-  return dv === esperado
 }
 
 export default function TrabajadorFormPage() {
@@ -104,7 +109,46 @@ export default function TrabajadorFormPage() {
 
   const cuentas = cuentasData?.items || []
   const [form, setForm] = useState(VACIO)
-  const set = (campo, valor) => setForm(actual => ({ ...actual, [campo]: valor }))
+  const [errors, setErrors] = useState({})
+
+  const set = (campo, valor) => {
+    setForm(actual => ({ ...actual, [campo]: valor }))
+    if (errors[campo]) setErrors(prev => ({ ...prev, [campo]: null }))
+  }
+
+  const handleRutChange = valor => {
+    const filtrado = valor.replace(/[^0-9kK.\-\s]/g, '')
+    set('rut', filtrado)
+  }
+
+  const handleRutBlur = () => {
+    if (!form.rut.trim()) return
+    const formateado = formatRut(form.rut)
+    setForm(actual => ({ ...actual, rut: formateado }))
+    if (!isValidRut(form.rut)) {
+      setErrors(prev => ({ ...prev, rut: 'RUT inválido: revisa el dígito verificador' }))
+    } else {
+      setErrors(prev => ({ ...prev, rut: null }))
+    }
+  }
+
+  const handleNombreChange = (campo, valor) => {
+    const limpio = cleanLetters(valor)
+    set(campo, limpio)
+  }
+
+  const handleRegionChange = nuevaRegion => {
+    setForm(actual => {
+      const comunasDeNuevaRegion = nuevaRegion ? (COMUNAS_POR_REGION[nuevaRegion] || []) : []
+      const comunaSigueValida = comunasDeNuevaRegion.includes(actual.comuna)
+      return {
+        ...actual,
+        region: nuevaRegion,
+        comuna: comunaSigueValida ? actual.comuna : '',
+      }
+    })
+    if (errors.region) setErrors(prev => ({ ...prev, region: null }))
+  }
 
   useEffect(() => {
     if (trabajador) {
@@ -117,17 +161,56 @@ export default function TrabajadorFormPage() {
   const volver = () => navigate(esNuevo ? '/rrhh' : `/rrhh/${id}`)
 
   const guardar = () => {
-    if (!form.nombres.trim() || !form.apellidoPaterno.trim() || !form.rut.trim()) {
-      toast.warning('Nombres, apellido paterno y RUT son obligatorios')
-      return
+    const nuevosErrores = {}
+
+    if (!form.nombres.trim()) nuevosErrores.nombres = 'Nombres es obligatorio'
+    else if (!isValidName(form.nombres)) nuevosErrores.nombres = 'Solo se permiten letras en nombres'
+
+    if (!form.apellidoPaterno.trim()) nuevosErrores.apellidoPaterno = 'Apellido paterno es obligatorio'
+    else if (!isValidName(form.apellidoPaterno)) nuevosErrores.apellidoPaterno = 'Solo se permiten letras en apellido paterno'
+
+    if (form.apellidoMaterno.trim() && !isValidName(form.apellidoMaterno)) {
+      nuevosErrores.apellidoMaterno = 'Solo se permiten letras en apellido materno'
     }
-    if (!rutValido(form.rut)) {
-      toast.warning('El RUT no es válido: revisa el dígito verificador')
+
+    if (!form.rut.trim()) nuevosErrores.rut = 'RUT es obligatorio'
+    else if (!isValidRut(form.rut)) nuevosErrores.rut = 'RUT inválido: revisa el dígito verificador'
+
+    if (form.email.trim() && !isValidEmail(form.email)) {
+      nuevosErrores.email = 'Email inválido (ej: usuario@empresa.cl)'
+    }
+
+    if (form.telefono.trim() && !isValidPhone(form.telefono)) {
+      nuevosErrores.telefono = 'Teléfono inválido (ej: +56 9 1234 5678)'
+    }
+
+    if (form.numeroEmergencia.trim() && !isValidPhone(form.numeroEmergencia)) {
+      nuevosErrores.numeroEmergencia = 'N° de emergencia inválido (ej: +56 9 8765 4321)'
+    }
+
+    if (Object.keys(nuevosErrores).length > 0) {
+      setErrors(nuevosErrores)
+      const primerMensaje = Object.values(nuevosErrores)[0]
+      toast.warning(primerMensaje)
       return
     }
 
+    const direccionPartes = [
+      form.calle.trim(),
+      form.depto.trim()
+        ? (/^(depto|dpto|departamento|oficina|of|casa|block)\b/i.test(form.depto.trim())
+          ? form.depto.trim()
+          : `Depto ${form.depto.trim()}`)
+        : null,
+    ].filter(Boolean)
+    const direccionCompleta = direccionPartes.join(', ')
+
     const payload = {
       ...form,
+      rut: formatRut(form.rut) || form.rut,
+      direccion: direccionCompleta,
+      comuna: form.comuna || '',
+      region: form.region || '',
       sueldoBase: form.sueldoBase === '' ? null : Number(form.sueldoBase),
       valorHoraExtra: form.valorHoraExtra === '' ? null : Number(form.valorHoraExtra),
       usuarioId: form.usuarioId || null,
@@ -187,6 +270,17 @@ export default function TrabajadorFormPage() {
     })),
   ]
 
+  const opcionesRegion = [
+    { value: '', label: '— Selecciona región —' },
+    ...withCurrentValue(REGIONES_CHILE, form.region).map(r => ({ value: r, label: r })),
+  ]
+
+  const comunasDisponibles = form.region ? (COMUNAS_POR_REGION[form.region] || []) : []
+  const opcionesComuna = [
+    { value: '', label: form.region ? '— Selecciona comuna —' : 'Elige región primero' },
+    ...withCurrentValue(comunasDisponibles, form.comuna).map(c => ({ value: c, label: c })),
+  ]
+
   const grilla = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }
 
   return (
@@ -196,17 +290,38 @@ export default function TrabajadorFormPage() {
           <FormField label="Empresa" required>
             <Select value={form.empresa} onChange={v => set('empresa', v)} options={EMPRESAS} />
           </FormField>
-          <FormField label="RUT" required hint="Se valida el dígito verificador.">
-            <Input value={form.rut} onChange={v => set('rut', v)} placeholder="12.345.678-9" />
+          <FormField label="RUT" required hint="Se valida el dígito verificador." error={errors.rut}>
+            <Input
+              value={form.rut}
+              onChange={handleRutChange}
+              onBlur={handleRutBlur}
+              placeholder="12.345.678-9"
+              error={errors.rut}
+            />
           </FormField>
-          <FormField label="Nombres" required>
-            <Input value={form.nombres} onChange={v => set('nombres', v)} />
+          <FormField label="Nombres" required error={errors.nombres}>
+            <Input
+              value={form.nombres}
+              onChange={v => handleNombreChange('nombres', v)}
+              placeholder="Ej: Juan Andrés"
+              error={errors.nombres}
+            />
           </FormField>
-          <FormField label="Apellido paterno" required>
-            <Input value={form.apellidoPaterno} onChange={v => set('apellidoPaterno', v)} />
+          <FormField label="Apellido paterno" required error={errors.apellidoPaterno}>
+            <Input
+              value={form.apellidoPaterno}
+              onChange={v => handleNombreChange('apellidoPaterno', v)}
+              placeholder="Ej: Pérez"
+              error={errors.apellidoPaterno}
+            />
           </FormField>
-          <FormField label="Apellido materno">
-            <Input value={form.apellidoMaterno} onChange={v => set('apellidoMaterno', v)} />
+          <FormField label="Apellido materno" error={errors.apellidoMaterno}>
+            <Input
+              value={form.apellidoMaterno}
+              onChange={v => handleNombreChange('apellidoMaterno', v)}
+              placeholder="Ej: González"
+              error={errors.apellidoMaterno}
+            />
           </FormField>
           <FormField label="Fecha de nacimiento">
             <Input type="date" value={form.fechaNacimiento} onChange={v => set('fechaNacimiento', v)} />
@@ -216,7 +331,11 @@ export default function TrabajadorFormPage() {
               options={ESTADOS_CIVILES.map(e => ({ value: e, label: e || 'Sin especificar' }))} />
           </FormField>
           <FormField label="Cargas familiares">
-            <Input value={form.cargasFamiliares} onChange={v => set('cargasFamiliares', v)} />
+            <Input
+              value={form.cargasFamiliares}
+              onChange={v => set('cargasFamiliares', v.replace(/\D/g, ''))}
+              placeholder="0"
+            />
           </FormField>
           <FormField label="Nacionalidad">
             <Input value={form.nacionalidad} onChange={v => set('nacionalidad', v)} placeholder="Chilena" />
@@ -226,23 +345,66 @@ export default function TrabajadorFormPage() {
 
       <FormSection title="Contacto">
         <div style={grilla}>
-          <FormField label="Email">
-            <Input type="email" value={form.email} onChange={v => set('email', v)} />
+          <FormField label="Email" error={errors.email}>
+            <Input
+              type="email"
+              value={form.email}
+              onChange={v => set('email', v)}
+              placeholder="correo@ejemplo.cl"
+              error={errors.email}
+            />
           </FormField>
-          <FormField label="Teléfono">
-            <Input value={form.telefono} onChange={v => set('telefono', v)} placeholder="+56 9 …" />
+          <FormField label="Teléfono" error={errors.telefono}>
+            <Input
+              value={form.telefono}
+              onChange={v => set('telefono', v)}
+              placeholder="+56 9 1234 5678"
+              error={errors.telefono}
+            />
           </FormField>
-          <FormField label="Dirección">
-            <Input value={form.direccion} onChange={v => set('direccion', v)} />
+          <FormField label="Región">
+            <Select
+              value={form.region}
+              onChange={handleRegionChange}
+              options={opcionesRegion}
+            />
           </FormField>
           <FormField label="Comuna">
-            <Input value={form.comuna} onChange={v => set('comuna', v)} />
+            <Select
+              value={form.comuna}
+              onChange={v => set('comuna', v)}
+              options={opcionesComuna}
+              disabled={!form.region}
+            />
+          </FormField>
+          <FormField label="Calle y numeración">
+            <Input
+              value={form.calle}
+              onChange={v => set('calle', v)}
+              placeholder="Ej: Av. Providencia 1234"
+            />
+          </FormField>
+          <FormField label="N° Depto / Casa (opcional)">
+            <Input
+              value={form.depto}
+              onChange={v => set('depto', v)}
+              placeholder="Ej: Depto 402, Block B (opcional)"
+            />
           </FormField>
           <FormField label="Contacto de emergencia">
-            <Input value={form.contactoEmergencia} onChange={v => set('contactoEmergencia', v)} />
+            <Input
+              value={form.contactoEmergencia}
+              onChange={v => handleNombreChange('contactoEmergencia', v)}
+              placeholder="Nombre del contacto"
+            />
           </FormField>
-          <FormField label="N° de emergencia">
-            <Input value={form.numeroEmergencia} onChange={v => set('numeroEmergencia', v)} />
+          <FormField label="N° de emergencia" error={errors.numeroEmergencia}>
+            <Input
+              value={form.numeroEmergencia}
+              onChange={v => set('numeroEmergencia', v)}
+              placeholder="+56 9 8765 4321"
+              error={errors.numeroEmergencia}
+            />
           </FormField>
         </div>
       </FormSection>
@@ -257,6 +419,7 @@ export default function TrabajadorFormPage() {
           </FormField>
         </div>
       </FormSection>
+
 
       <FormSection title="Datos bancarios">
         <div style={grilla}>

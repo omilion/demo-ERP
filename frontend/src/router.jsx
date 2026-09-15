@@ -203,6 +203,7 @@ export const router = createBrowserRouter([
       { path: 'admin/ia-balance', element: <ProtectedRoute allowedRoles={['admin']}><IaBalancePage /></ProtectedRoute> },
       { path: 'admin/excepciones', element: <ProtectedRoute allowedRoles={['admin']}><ExcepcionesPage /></ProtectedRoute> },
       { path: 'admin/feedback', element: <ProtectedRoute allowedRoles={['admin']}><PilotFeedbackPage /></ProtectedRoute> },
+      { path: 'feedback', element: <Navigate to="/admin/feedback" replace /> },
 
     ],
   },

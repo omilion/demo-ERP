@@ -1,4 +1,6 @@
-// Utilidades de validación y formateo de RUT chileno y teléfonos.
+import { COMUNAS_POR_REGION } from '../data/geoLatam'
+
+// Utilidades de validación y formateo de RUT chileno, nombres, direcciones y teléfonos.
 
 export function normalizeRut(value) {
   return String(value || '').replace(/[.\-\s]/g, '').trim().toUpperCase()
@@ -28,6 +30,40 @@ export function isValidRut(value) {
   const expected = 11 - (sum % 11)
   const expectedDv = expected === 11 ? '0' : expected === 10 ? 'K' : String(expected)
   return expectedDv === dv
+}
+
+export function cleanLetters(value) {
+  return String(value ?? '').replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'-]/g, '')
+}
+
+export function isValidName(value) {
+  const text = String(value ?? '').trim()
+  if (!text) return false
+  return /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'-]+$/.test(text) && /[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ]/.test(text)
+}
+
+export function getRegionFromComuna(comuna) {
+  if (!comuna) return ''
+  const normalizada = String(comuna).trim().toLowerCase()
+  for (const [region, comunas] of Object.entries(COMUNAS_POR_REGION)) {
+    if (comunas.some(c => c.toLowerCase() === normalizada)) {
+      return region
+    }
+  }
+  return ''
+}
+
+export function parseDireccion(direccion) {
+  if (!direccion) return { calle: '', depto: '' }
+  const str = String(direccion).trim()
+  const match = str.match(/^(.*?)(?:,\s*|\s+)(?:depto\.?|dpto\.?|departamento|oficina|of\.?|casa|block|n°|nro\.?)\s*(.+)$/i)
+  if (match) {
+    return {
+      calle: match[1].trim(),
+      depto: match[2].trim(),
+    }
+  }
+  return { calle: str, depto: '' }
 }
 
 export function isValidPhone(value) {
@@ -79,3 +115,4 @@ export function validateClienteData(data = {}) {
     errors,
   }
 }
+
