@@ -11,6 +11,7 @@ import { can, ventaPath } from '../../utils/permissions'
 import CobranzaGestionPanel from './CobranzaGestionPanel'
 import BotonExportar from '../../components/BotonExportar'
 import { collectibleDocuments, docSaldo } from '../../utils/cobranza'
+import { RegistrarPagoModal } from '../../components/forms/RegistrarPagoModal'
 
 const MEDIOS_PAGO = ['Efectivo', 'Debito', 'Credito', 'Transferencia', 'Cheque dia', 'Cheque fecha', 'Webpay', 'Transbank']
 
@@ -85,18 +86,6 @@ export default function CobranzaPage() {
   const [histDebounced, setHistDebounced] = useState('')
   const histDebRef = useRef(null)
   const [paymentRow, setPaymentRow] = useState(null)
-  const [paymentForm, setPaymentForm] = useState({
-    monto: '',
-    medioPago: 'Efectivo',
-    documento: '',
-    nDoc: '',
-    tipoDocumento: '',
-    cuotas: '',
-    pagaCon: '',
-    nMedioPago: '',
-    origenMedioPago: '',
-    referencia: '',
-  })
 
   useEffect(() => {
     clearTimeout(debounceRef.current)
@@ -165,43 +154,15 @@ export default function CobranzaPage() {
 
   const fmt = n => '$' + Math.abs(n || 0).toLocaleString('es-CL')
   const fmtM = n => '$' + (Math.abs(n || 0) / 1_000_000).toFixed(1) + 'M'
-  const paymentSaldo = paymentRow ? Math.max(0, (paymentRow.total || 0) - (paymentRow.abono || 0)) : 0
-  const paymentDocs = paymentRow ? collectibleDocuments(paymentRow) : []
-  const selectedPaymentDocKey = paymentForm.documento && paymentForm.nDoc ? `${paymentForm.documento}|||${paymentForm.nDoc}` : ''
-  const selectedPaymentDoc = paymentDocs.find(doc => `${doc.documento}|||${doc.nDoc}` === selectedPaymentDocKey) || null
-  const paymentAmount = Number(paymentForm.monto)
-  const paymentCanSubmit = Boolean(
-    paymentRow
-    && turno
-    && selectedPaymentDoc
-    && Number.isFinite(paymentAmount)
-    && paymentAmount > 0
-    && paymentAmount <= paymentSaldo
-    && paymentAmount <= docSaldo(paymentRow, selectedPaymentDoc)
-  )
   const miniInput = { padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-1)' }
 
   const openPayment = (row) => {
-    const saldo = Math.max(0, (row.total || 0) - (row.abono || 0))
-    const doc = collectibleDocuments(row)[0]
-    if (!doc) {
+    const docs = collectibleDocuments(row)
+    if (!docs.length) {
       toast.warning('Emite o registra una factura o boleta activa antes de registrar cobros.')
       return
     }
-    const saldoDoc = doc ? docSaldo(row, doc) : saldo
     setPaymentRow(row)
-    setPaymentForm({
-      monto: String(Math.min(saldo, saldoDoc || saldo)),
-      medioPago: 'Efectivo',
-      documento: doc?.documento || '',
-      nDoc: doc?.nDoc || '',
-      tipoDocumento: doc?.tipoDocumento || doc?.documento || '',
-      cuotas: '',
-      pagaCon: '',
-      nMedioPago: '',
-      origenMedioPago: '',
-      referencia: row.nInterno ? `Pago venta N interno ${row.nInterno}` : `Pago venta #${row.id}`,
-    })
   }
 
   // Deep-link desde Venta ("Cobrar") -> abre directo el modal de pago de esa venta.
@@ -221,36 +182,6 @@ export default function CobranzaPage() {
     const t = setTimeout(() => openPayment(ventaDeepLink), 0)
     return () => clearTimeout(t)
   }, [ventaIdParam, ventaDeepLink, setSearchParams])
-
-  const submitPayment = () => {
-    if (!paymentRow) return
-    const monto = Number(paymentForm.monto)
-    if (!monto || monto <= 0) return toast.warning('Monto invalido')
-    if (monto > paymentSaldo) return toast.warning('El monto excede el saldo pendiente')
-    if (!paymentForm.documento || !paymentForm.nDoc) return toast.warning('Selecciona un documento referencial activo antes de registrar el pago')
-    if (!turno) return toast.warning('No hay turno activo. Abre un turno en caja antes de registrar pagos.')
-    registrarPagoMut.mutate({
-      ordenId: paymentRow.id,
-      data: {
-        monto,
-        medioPago: paymentForm.medioPago,
-        referencia: paymentForm.referencia || undefined,
-        documento: paymentForm.documento || undefined,
-        nDoc: paymentForm.nDoc || undefined,
-        tipoDocumento: paymentForm.tipoDocumento || undefined,
-        cuotas: paymentForm.cuotas ? Number(paymentForm.cuotas) : undefined,
-        pagaCon: paymentForm.pagaCon ? Number(paymentForm.pagaCon) : undefined,
-        nMedioPago: paymentForm.nMedioPago || undefined,
-        origenMedioPago: paymentForm.origenMedioPago || undefined,
-      },
-    }, {
-      onSuccess: () => {
-        setPaymentRow(null)
-        toast.success('Pago registrado en caja y saldo de venta actualizado')
-      },
-      onError: err => toast.error(err.response?.data?.error || 'Error al registrar abono'),
-    })
-  }
 
   // Active cobranza KPIs
   const montoPendiente = activeResult.stats?.montoPendiente ?? ventas.reduce((s, v) => s + Math.max(0, (v.total || 0) - (v.abono || 0)), 0)
@@ -666,82 +597,10 @@ export default function CobranzaPage() {
         )}
       </div>
       {paymentRow && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.35)', display: 'grid', placeItems: 'center', zIndex: 50, padding: 16 }}>
-          <section ref={paymentDialogRef} role="dialog" aria-modal="true" aria-labelledby="payment-dialog-title" tabIndex={-1} style={{ width: 'min(760px, 100%)', background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
-              <h2 id="payment-dialog-title" style={{ margin: 0, fontSize: 18 }}>Registrar pago venta #{paymentRow.id}</h2>
-              <p style={{ margin: '4px 0 0', color: 'var(--text-3)', fontSize: 13 }}>El pago se imputará a la factura o boleta seleccionada. Saldo de la venta: {fmt(paymentSaldo)}</p>
-            </div>
-            <div style={{ padding: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
-              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
-                <span>Monto</span>
-                <input type="number" min="1" max={paymentSaldo} value={paymentForm.monto} onChange={e => setPaymentForm(f => ({ ...f, monto: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6 }} />
-              </label>
-              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
-                <span>Medio de pago</span>
-                <select value={paymentForm.medioPago} onChange={e => setPaymentForm(f => ({ ...f, medioPago: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, background: '#fff' }}>
-                  {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </label>
-              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
-                <span>Documento</span>
-                <select
-                  value={selectedPaymentDocKey}
-                  onChange={e => {
-                    const doc = paymentDocs.find(d => `${d.documento}|||${d.nDoc}` === e.target.value)
-                    setPaymentForm(f => ({
-                      ...f,
-                      documento: doc?.documento || '',
-                      nDoc: doc?.nDoc || '',
-                      tipoDocumento: doc?.tipoDocumento || doc?.documento || '',
-                      monto: doc ? String(Math.min(paymentSaldo, docSaldo(paymentRow, doc))) : f.monto,
-                    }))
-                  }}
-                  style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, background: '#fff' }}
-                >
-                  <option value="">Selecciona una factura o boleta</option>
-                  {paymentDocs.map(doc => (
-                    <option key={doc.id} value={`${doc.documento}|||${doc.nDoc}`}>
-                      {doc.documento} #{doc.nDoc} - saldo {fmt(docSaldo(paymentRow, doc))}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
-                <span>N doc / voucher</span>
-                <input value={paymentForm.nDoc} disabled style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)' }} />
-              </label>
-              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
-                <span>Tipo documento</span>
-                <input value={paymentForm.tipoDocumento} onChange={e => setPaymentForm(f => ({ ...f, tipoDocumento: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6 }} />
-              </label>
-              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
-                <span>Cuotas</span>
-                <input type="number" min="1" value={paymentForm.cuotas} onChange={e => setPaymentForm(f => ({ ...f, cuotas: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6 }} />
-              </label>
-              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
-                <span>Paga con</span>
-                <input type="number" min="0" value={paymentForm.pagaCon} onChange={e => setPaymentForm(f => ({ ...f, pagaCon: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6 }} />
-              </label>
-              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
-                <span>N medio pago</span>
-                <input value={paymentForm.nMedioPago} onChange={e => setPaymentForm(f => ({ ...f, nMedioPago: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6 }} />
-              </label>
-              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
-                <span>Origen medio pago</span>
-                <input value={paymentForm.origenMedioPago} onChange={e => setPaymentForm(f => ({ ...f, origenMedioPago: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6 }} />
-              </label>
-              <label style={{ gridColumn: '1 / -1', display: 'grid', gap: 4, fontSize: 12, color: 'var(--text-2)' }}>
-                <span>Referencia</span>
-                <input value={paymentForm.referencia} onChange={e => setPaymentForm(f => ({ ...f, referencia: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6 }} />
-              </label>
-            </div>
-            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <Btn variant="secondary" size="sm" onClick={() => setPaymentRow(null)}>Cancelar</Btn>
-              <Btn variant="primary" size="sm" onClick={submitPayment} disabled={registrarPagoMut.isPending || !paymentCanSubmit}>Registrar pago</Btn>
-            </div>
-          </section>
-        </div>
+        <RegistrarPagoModal
+          venta={paymentRow}
+          onClose={() => setPaymentRow(null)}
+        />
       )}
     </main>
   )

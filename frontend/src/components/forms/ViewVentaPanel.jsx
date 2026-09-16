@@ -10,6 +10,7 @@ import { useDocumentos, useDocumentosReferenciables, useReenviarDocumento } from
 import { EmitirDteModal, NotaDteModal } from '../facturacion/DteModals'
 import { GuiaDespachoModal } from '../../pages/despachos/GuiaFormPage'
 import { DespachoModal } from '../../pages/despachos/DespachoFormPage'
+import { RegistrarPagoModal } from './RegistrarPagoModal'
 import { hasActiveSalesDte, TIPOS_DTE } from '../../utils/facturacion'
 import { downloadDteXml, openDtePdf } from '../../utils/dteDocuments'
 import { useAuthStore } from '../../store/auth'
@@ -1600,6 +1601,7 @@ export function ViewVentaPanel({
   const [notaInterna, setNotaInterna] = useState(false)
   const [showDespachoModal, setShowDespachoModal] = useState(false)
   const [showGuiaDespacho, setShowGuiaDespacho] = useState(false)
+  const [showCobranzaModal, setShowCobranzaModal] = useState(false)
 
   const { data: full, isLoading } = useVenta(venta.id)
   const deleteVenta = useDeleteVenta()
@@ -1628,7 +1630,7 @@ export function ViewVentaPanel({
     .find(documento => [33, 39].includes(Number(documento.tipoDte))) || null
   const puedeEmitirNotaFiscal = canWriteFacturacion && !v.eliminada && Boolean(documentoParaNota)
   const canManageInternalCreditNotes = canWrite || canWriteFacturacion
-  const onCobrar = () => navigate(`/cobranza?ventaId=${v.id}`)
+  const onCobrar = () => setShowCobranzaModal(true)
   const onEmitirNotaFiscal = () => {
     if (!documentoParaNota) return
     const params = new URLSearchParams({
@@ -2306,6 +2308,12 @@ export function ViewVentaPanel({
           ordenId={v.id}
           nInterno={v.nInterno}
           onClose={() => { setShowGuiaDespacho(false); qc.invalidateQueries({ queryKey: ['ventas', v.id] }) }}
+        />
+      )}
+      {showCobranzaModal && (
+        <RegistrarPagoModal
+          venta={v}
+          onClose={() => setShowCobranzaModal(false)}
         />
       )}
     </ViewPanel>
