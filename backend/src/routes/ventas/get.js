@@ -4,6 +4,7 @@ import { getUserSucursalId } from '../caja/scope.js'
 import { attachEstadoFlujo } from './estados-normalize.js'
 import { deriveEstadoLogistico, resumenPreparacion } from '../despachos/estado-logistico.js'
 import { assertTipoVentaPermitido } from './tipos-permitidos.js'
+import { syncDteReferencialToCaja } from '../facturacion/syncCaja.js'
 
 function ignoreMissingLegacyColumn(error) {
   return error.code === 'P2022' ? [] : Promise.reject(error)
@@ -49,6 +50,22 @@ export default async function getVenta(fastify) {
     })
     if (!o) return reply.code(404).send({ error: 'Venta no encontrada' })
     if (!assertTipoVentaPermitido(reply, request.user, o.tipo)) return
+
+    try {
+      const dtesVenta = await fastify.prisma.factDocumento.findMany({
+        where: {
+          ordenId: id,
+          folio: { not: null },
+          tipoDte: { in: [33, 34, 39, 41] },
+          estado: { in: ['emitido', 'enviado', 'aceptado'] },
+        },
+      })
+      for (const dte of dtesVenta) {
+        await syncDteReferencialToCaja(fastify.prisma, dte, request.user)
+      }
+    } catch (syncErr) {
+      fastify.log.warn({ err: syncErr, ordenId: id }, 'Error auto-sincronizando referenciales DTE para venta')
+    }
 
     const [odts, pagos, multas, despachos, guias, cobranza, cotizaciones] = await Promise.all([
       fastify.prisma.odt.findMany({

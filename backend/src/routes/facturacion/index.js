@@ -11,6 +11,7 @@ import { syncGmailReceptor } from '../../facturacion/receptorDte.js'
 import { sendDteEmail, buildReenvioHtml } from '../../facturacion/mailer.js'
 import { assertNotaDteInput, evaluarDocumentoParaNota } from '../../facturacion/notas.js'
 import { getTrazabilidadOrden, listTrazabilidadExcepciones } from './trazabilidad.js'
+import { syncDteReferencialToCaja } from './syncCaja.js'
 
 const ESTADOS = ['borrador', 'emitido', 'enviado', 'aceptado', 'rechazado', 'error']
 
@@ -561,6 +562,11 @@ export default async function facturacionRoutes(fastify) {
   fastify.post('/documentos/:id/emitir', emitirAuth, async (request, reply) => {
     try {
       const emitido = await engine.emitir(request.params.id)
+      try {
+        await syncDteReferencialToCaja(fastify.prisma, emitido, request.user)
+      } catch (syncErr) {
+        fastify.log.warn({ err: syncErr, docId: emitido.id }, 'Error sincronizando DTE referencial a Caja')
+      }
       // Envio automatico al SII apenas se emite: el usuario ya no tiene que
       // acordarse de apretar "Enviar al SII" aparte. Si el envio falla (SII
       // caido, rechazo de schema, etc.) NO se revierte la emision — el folio

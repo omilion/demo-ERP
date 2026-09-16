@@ -72,6 +72,14 @@ function cleanText(value) {
   return text || null
 }
 
+function normalizeDocText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
 async function lockReferentialDocumentKey(prisma, { documento, nDoc, sucursalId } = {}) {
   const key = [
     'caja',
@@ -166,7 +174,7 @@ async function validatePaymentDocumentReference(prisma, { ordenId, documento, nD
   if (!doc || !number) {
     return { status: 400, error: 'Selecciona un documento referencial activo para registrar el pago' }
   }
-  const referencial = referenciales.find(mov => cleanText(mov.documento) === doc && cleanText(mov.nDoc) === number)
+  const referencial = referenciales.find(mov => (cleanText(mov.documento) === doc || normalizeDocText(mov.documento) === normalizeDocText(doc)) && cleanText(mov.nDoc) === number)
   if (!referencial) return { status: 404, error: 'Documento referencial no encontrado para la venta' }
 
   const pagos = await prisma.movimientoCaja.findMany({
@@ -175,14 +183,13 @@ async function validatePaymentDocumentReference(prisma, { ordenId, documento, nD
       eliminado: false,
       tipo: 'Ingreso',
       monto: { gt: 0 },
-      documento: doc,
       nDoc: number,
       ...(sucursalId ? { sucursalId } : {}),
     },
-    select: { monto: true, medioPago: true },
+    select: { monto: true, medioPago: true, documento: true },
   })
   const totalPagado = pagos
-    .filter(mov => !isReferencialMedioPago(mov.medioPago))
+    .filter(mov => !isReferencialMedioPago(mov.medioPago) && (cleanText(mov.documento) === doc || normalizeDocText(mov.documento) === normalizeDocText(doc)))
     .reduce((sum, mov) => sum + Number(mov.monto || 0), 0)
   const saldoDocumento = Math.max(0, Number(referencial.monto || 0) - totalPagado)
   if (Number(monto || 0) > saldoDocumento) {
