@@ -2221,6 +2221,32 @@ export function ViewVentaPanel({
         {emitirDte && <EmitirDteModal venta={v} onClose={() => setEmitirDte(false)} onSuccess={({ emitido, documento }) => { setEmitirDte(false); toast.success(`DTE emitido${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`) }} />}
         {notaDte && <NotaDteModal documento={notaDte.documento} tipoDte={notaDte.tipoDte} onClose={() => setNotaDte(null)} onSuccess={({ emitido, documento }) => { setNotaDte(null); toast.success(`DTE emitido${emitido?.folio || documento?.folio ? `: folio ${emitido?.folio || documento?.folio}` : ''}`) }} />}
         {notaInterna && <InternalCreditNoteModal venta={v} onClose={() => setNotaInterna(false)} />}
+        {showDespachoModal && (
+          <DespachoModal
+            ordenId={v.id}
+            nInterno={v.nInterno}
+            venta={v}
+            onClose={() => { setShowDespachoModal(false); qc.invalidateQueries({ queryKey: ['ventas', v.id] }) }}
+          />
+        )}
+        {showGuiaDespacho && (
+          <GuiaDespachoModal
+            ordenId={v.id}
+            nInterno={v.nInterno}
+            onClose={() => { setShowGuiaDespacho(false); qc.invalidateQueries({ queryKey: ['ventas', v.id] }) }}
+          />
+        )}
+        {showCobranzaModal && (
+          <RegistrarPagoModal
+            venta={v}
+            onClose={() => setShowCobranzaModal(false)}
+            onSuccess={() => {
+              setShowCobranzaModal(false)
+              qc.invalidateQueries({ queryKey: ['ventas', v.id] })
+              qc.invalidateQueries({ queryKey: ['ventas'] })
+            }}
+          />
+        )}
       </section>
     )
   }
@@ -2314,6 +2340,11 @@ export function ViewVentaPanel({
         <RegistrarPagoModal
           venta={v}
           onClose={() => setShowCobranzaModal(false)}
+          onSuccess={() => {
+            setShowCobranzaModal(false)
+            qc.invalidateQueries({ queryKey: ['ventas', v.id] })
+            qc.invalidateQueries({ queryKey: ['ventas'] })
+          }}
         />
       )}
     </ViewPanel>
